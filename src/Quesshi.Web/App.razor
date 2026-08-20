@@ -1,0 +1,19 @@
+@inject Translator L
+
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <div class="shell">
+                <div class="empty">
+                    <h2>@L["notFound.title"]</h2>
+                    <p class="muted">@L["notFound.body"]</p>
+                    <a class="btn btn--ghost" href="/">@L["notFound.home"]</a>
+                </div>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

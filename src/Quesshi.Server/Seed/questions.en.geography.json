@@ -1,0 +1,2290 @@
+[
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of France?",
+  "c": [
+   "Paris",
+   "Lyon",
+   "Marseille",
+   "Nice"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which is the largest ocean on Earth?",
+  "c": [
+   "The Pacific",
+   "The Atlantic",
+   "The Indian",
+   "The Arctic"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Japan?",
+  "c": [
+   "Tokyo",
+   "Osaka",
+   "Kyoto",
+   "Nagoya"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "On which continent is Brazil?",
+  "c": [
+   "South America",
+   "Africa",
+   "Asia",
+   "Europe"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Italy?",
+  "c": [
+   "Rome",
+   "Milan",
+   "Naples",
+   "Turin"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country is shaped like a boot?",
+  "c": [
+   "Italy",
+   "Greece",
+   "Spain",
+   "Portugal"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Iran?",
+  "c": [
+   "Tehran",
+   "Isfahan",
+   "Shiraz",
+   "Tabriz"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which is the largest continent?",
+  "c": [
+   "Asia",
+   "Africa",
+   "North America",
+   "Europe"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Egypt?",
+  "c": [
+   "Cairo",
+   "Alexandria",
+   "Luxor",
+   "Giza"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country has the Eiffel Tower?",
+  "c": [
+   "France",
+   "Italy",
+   "Belgium",
+   "Switzerland"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Spain?",
+  "c": [
+   "Madrid",
+   "Barcelona",
+   "Seville",
+   "Valencia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country is famous for the pyramids of Giza?",
+  "c": [
+   "Egypt",
+   "Mexico",
+   "Sudan",
+   "Peru"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Germany?",
+  "c": [
+   "Berlin",
+   "Munich",
+   "Hamburg",
+   "Frankfurt"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which sea is between Europe and Africa?",
+  "c": [
+   "The Mediterranean",
+   "The Baltic",
+   "The Black Sea",
+   "The Red Sea"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Russia?",
+  "c": [
+   "Moscow",
+   "Saint Petersburg",
+   "Kazan",
+   "Sochi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country is home to the kangaroo?",
+  "c": [
+   "Australia",
+   "New Zealand",
+   "South Africa",
+   "Argentina"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of the United Kingdom?",
+  "c": [
+   "London",
+   "Manchester",
+   "Birmingham",
+   "Edinburgh"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which is the longest river in South America?",
+  "c": [
+   "The Amazon",
+   "The Paraná",
+   "The Orinoco",
+   "The Magdalena"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Canada?",
+  "c": [
+   "Ottawa",
+   "Toronto",
+   "Vancouver",
+   "Montreal"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which continent is the coldest?",
+  "c": [
+   "Antarctica",
+   "Europe",
+   "Asia",
+   "South America"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of China?",
+  "c": [
+   "Beijing",
+   "Shanghai",
+   "Hong Kong",
+   "Guangzhou"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country is known as the Land of the Rising Sun?",
+  "c": [
+   "Japan",
+   "China",
+   "Thailand",
+   "South Korea"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Turkey?",
+  "c": [
+   "Ankara",
+   "Istanbul",
+   "Izmir",
+   "Bursa"
+  ],
+  "a": 0,
+  "e": "Istanbul is the largest city, but Ankara has been the capital since 1923."
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which mountain is the highest in the world?",
+  "c": [
+   "Everest",
+   "K2",
+   "Kangchenjunga",
+   "Denali"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of India?",
+  "c": [
+   "New Delhi",
+   "Mumbai",
+   "Kolkata",
+   "Chennai"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country has the maple leaf on its flag?",
+  "c": [
+   "Canada",
+   "Norway",
+   "Ireland",
+   "Austria"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Greece?",
+  "c": [
+   "Athens",
+   "Thessaloniki",
+   "Patras",
+   "Sparta"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which desert is the largest hot desert on Earth?",
+  "c": [
+   "The Sahara",
+   "The Gobi",
+   "The Kalahari",
+   "The Atacama"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of the United States?",
+  "c": [
+   "Washington, D.C.",
+   "New York",
+   "Los Angeles",
+   "Chicago"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which ocean is on the east coast of the United States?",
+  "c": [
+   "The Atlantic",
+   "The Pacific",
+   "The Indian",
+   "The Arctic"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Portugal?",
+  "c": [
+   "Lisbon",
+   "Porto",
+   "Braga",
+   "Faro"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country is Mount Fuji in?",
+  "c": [
+   "Japan",
+   "China",
+   "Nepal",
+   "Indonesia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Argentina?",
+  "c": [
+   "Buenos Aires",
+   "Córdoba",
+   "Rosario",
+   "Mendoza"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which is the smallest country in the world by area?",
+  "c": [
+   "Vatican City",
+   "Monaco",
+   "San Marino",
+   "Nauru"
+  ],
+  "a": 0,
+  "e": "Vatican City covers about 0.49 square kilometres."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Through which country does the Danube NOT flow?",
+  "c": [
+   "Spain",
+   "Hungary",
+   "Austria",
+   "Serbia"
+  ],
+  "a": 0,
+  "e": "The Danube crosses ten countries, all of them in central and eastern Europe."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of South Korea?",
+  "c": [
+   "Seoul",
+   "Busan",
+   "Incheon",
+   "Daegu"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which African country was never colonised by a European power?",
+  "c": [
+   "Ethiopia",
+   "Kenya",
+   "Ghana",
+   "Senegal"
+  ],
+  "a": 0,
+  "e": "Ethiopia repelled Italy at Adwa in 1896."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Mexico?",
+  "c": [
+   "Mexico City",
+   "Guadalajara",
+   "Monterrey",
+   "Cancún"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which mountain range separates Europe from Asia?",
+  "c": [
+   "The Urals",
+   "The Alps",
+   "The Carpathians",
+   "The Caucasus"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Norway?",
+  "c": [
+   "Oslo",
+   "Bergen",
+   "Trondheim",
+   "Stavanger"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which island is the largest in the world?",
+  "c": [
+   "Greenland",
+   "New Guinea",
+   "Borneo",
+   "Madagascar"
+  ],
+  "a": 0,
+  "e": "Australia is larger, but it counts as a continent."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Brazil?",
+  "c": [
+   "Brasília",
+   "Rio de Janeiro",
+   "São Paulo",
+   "Salvador"
+  ],
+  "a": 0,
+  "e": "Brasília was built inland in the 1950s to pull growth away from the coast."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which country has the most people?",
+  "c": [
+   "India",
+   "China",
+   "United States",
+   "Indonesia"
+  ],
+  "a": 0,
+  "e": "India passed China in 2023."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Sweden?",
+  "c": [
+   "Stockholm",
+   "Gothenburg",
+   "Malmö",
+   "Uppsala"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which sea is the saltiest large body of water?",
+  "c": [
+   "The Dead Sea",
+   "The Red Sea",
+   "The Black Sea",
+   "The Caspian Sea"
+  ],
+  "a": 0,
+  "e": "It is about ten times saltier than the ocean."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of the Netherlands?",
+  "c": [
+   "Amsterdam",
+   "The Hague",
+   "Rotterdam",
+   "Utrecht"
+  ],
+  "a": 0,
+  "e": "The Hague holds the government, but Amsterdam is the constitutional capital."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which country lies directly south of the United States?",
+  "c": [
+   "Mexico",
+   "Guatemala",
+   "Cuba",
+   "Belize"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Switzerland?",
+  "c": [
+   "Bern",
+   "Zurich",
+   "Geneva",
+   "Basel"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which river runs through London?",
+  "c": [
+   "The Thames",
+   "The Severn",
+   "The Mersey",
+   "The Trent"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Poland?",
+  "c": [
+   "Warsaw",
+   "Kraków",
+   "Gdańsk",
+   "Wrocław"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which country is entirely inside Italy besides the Vatican?",
+  "c": [
+   "San Marino",
+   "Monaco",
+   "Andorra",
+   "Liechtenstein"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Austria?",
+  "c": [
+   "Vienna",
+   "Salzburg",
+   "Graz",
+   "Innsbruck"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which is the longest river in the world?",
+  "c": [
+   "The Nile",
+   "The Amazon",
+   "The Yangtze",
+   "The Mississippi"
+  ],
+  "a": 0,
+  "e": "The Nile and the Amazon are close enough that the answer depends on where you start measuring."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Indonesia?",
+  "c": [
+   "Jakarta",
+   "Surabaya",
+   "Bandung",
+   "Bali"
+  ],
+  "a": 0,
+  "e": "Indonesia is building a new capital, Nusantara, but Jakarta still holds the title."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which US state is the largest by area?",
+  "c": [
+   "Alaska",
+   "Texas",
+   "California",
+   "Montana"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Iraq?",
+  "c": [
+   "Baghdad",
+   "Basra",
+   "Mosul",
+   "Erbil"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which strait separates Europe from Asia at Istanbul?",
+  "c": [
+   "The Bosphorus",
+   "The Dardanelles",
+   "The Strait of Gibraltar",
+   "The Strait of Malacca"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Afghanistan?",
+  "c": [
+   "Kabul",
+   "Kandahar",
+   "Herat",
+   "Mazar-i-Sharif"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which country owns Greenland?",
+  "c": [
+   "Denmark",
+   "Norway",
+   "Iceland",
+   "Canada"
+  ],
+  "a": 0,
+  "e": "Greenland is self-governing within the Kingdom of Denmark."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Saudi Arabia?",
+  "c": [
+   "Riyadh",
+   "Jeddah",
+   "Mecca",
+   "Medina"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which lake is the largest in Africa?",
+  "c": [
+   "Lake Victoria",
+   "Lake Tanganyika",
+   "Lake Malawi",
+   "Lake Chad"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Pakistan?",
+  "c": [
+   "Islamabad",
+   "Karachi",
+   "Lahore",
+   "Peshawar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which line of latitude circles the Earth at zero degrees?",
+  "c": [
+   "The Equator",
+   "The Tropic of Cancer",
+   "The Prime Meridian",
+   "The Arctic Circle"
+  ],
+  "a": 0,
+  "e": "The Prime Meridian is a line of longitude, not latitude."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country has the longest coastline in the world?",
+  "c": [
+   "Canada",
+   "Russia",
+   "Indonesia",
+   "Australia"
+  ],
+  "a": 0,
+  "e": "Canada's fjords and islands add up to about 200,000 km."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Kazakhstan?",
+  "c": [
+   "Astana",
+   "Almaty",
+   "Shymkent",
+   "Karaganda"
+  ],
+  "a": 0,
+  "e": "Almaty was the capital until 1997."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which river forms much of the border between the United States and Mexico?",
+  "c": [
+   "The Rio Grande",
+   "The Colorado",
+   "The Pecos",
+   "The Gila"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Mount Damavand is the highest peak of which mountain range?",
+  "c": [
+   "The Alborz",
+   "The Zagros",
+   "The Caucasus",
+   "The Hindu Kush"
+  ],
+  "a": 0,
+  "e": "At 5,610 m it is also the highest volcano in Asia."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country has the most volcanoes?",
+  "c": [
+   "Indonesia",
+   "Japan",
+   "United States",
+   "Chile"
+  ],
+  "a": 0,
+  "e": "Indonesia sits on the collision of three tectonic plates."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Vietnam?",
+  "c": [
+   "Hanoi",
+   "Ho Chi Minh City",
+   "Da Nang",
+   "Hue"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which European capital sits on the Vltava river?",
+  "c": [
+   "Prague",
+   "Budapest",
+   "Vienna",
+   "Bratislava"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "The Great Barrier Reef lies off the coast of which state?",
+  "c": [
+   "Queensland",
+   "New South Wales",
+   "Western Australia",
+   "Victoria"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country is landlocked and lies between Russia and China?",
+  "c": [
+   "Mongolia",
+   "Kazakhstan",
+   "Kyrgyzstan",
+   "Nepal"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Morocco?",
+  "c": [
+   "Rabat",
+   "Casablanca",
+   "Marrakesh",
+   "Fez"
+  ],
+  "a": 0,
+  "e": "Casablanca is far bigger, but Rabat holds the government."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which sea does the Volga flow into?",
+  "c": [
+   "The Caspian Sea",
+   "The Black Sea",
+   "The Baltic Sea",
+   "The Sea of Azov"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which is the highest waterfall in the world?",
+  "c": [
+   "Angel Falls",
+   "Niagara Falls",
+   "Victoria Falls",
+   "Iguazu Falls"
+  ],
+  "a": 0,
+  "e": "Angel Falls in Venezuela drops 979 metres."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Chile?",
+  "c": [
+   "Santiago",
+   "Valparaíso",
+   "Concepción",
+   "Antofagasta"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country contains the source of the Blue Nile?",
+  "c": [
+   "Ethiopia",
+   "Sudan",
+   "Uganda",
+   "Kenya"
+  ],
+  "a": 0,
+  "e": "It rises at Lake Tana."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which two seas does the Suez Canal connect?",
+  "c": [
+   "The Mediterranean and the Red Sea",
+   "The Red Sea and the Persian Gulf",
+   "The Mediterranean and the Black Sea",
+   "The Arabian Sea and the Red Sea"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Peru?",
+  "c": [
+   "Lima",
+   "Cusco",
+   "Arequipa",
+   "Trujillo"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country has the most islands in the world?",
+  "c": [
+   "Sweden",
+   "Indonesia",
+   "Canada",
+   "Philippines"
+  ],
+  "a": 0,
+  "e": "Sweden counts over 260,000, most of them tiny."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "The Persian Gulf borders how many countries?",
+  "c": [
+   "Eight",
+   "Six",
+   "Five",
+   "Ten"
+  ],
+  "a": 0,
+  "e": "Iran, Iraq, Kuwait, Saudi Arabia, Bahrain, Qatar, the UAE and Oman."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which African country has both Atlantic and Mediterranean coastlines?",
+  "c": [
+   "Morocco",
+   "Egypt",
+   "Algeria",
+   "Tunisia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Kenya?",
+  "c": [
+   "Nairobi",
+   "Mombasa",
+   "Kisumu",
+   "Nakuru"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which mountain range runs the length of western South America?",
+  "c": [
+   "The Andes",
+   "The Rockies",
+   "The Sierra Madre",
+   "The Atlas"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Lake Baikal is the world's deepest lake — in which country?",
+  "c": [
+   "Russia",
+   "Mongolia",
+   "Kazakhstan",
+   "China"
+  ],
+  "a": 0,
+  "e": "It holds about a fifth of the world's unfrozen fresh water."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of New Zealand?",
+  "c": [
+   "Wellington",
+   "Auckland",
+   "Christchurch",
+   "Dunedin"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country's territory is crossed by both the Equator and the Tropic of Capricorn?",
+  "c": [
+   "Brazil",
+   "Kenya",
+   "Indonesia",
+   "Colombia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which desert covers much of Mongolia and northern China?",
+  "c": [
+   "The Gobi",
+   "The Taklamakan",
+   "The Karakum",
+   "The Thar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Nigeria?",
+  "c": [
+   "Abuja",
+   "Lagos",
+   "Kano",
+   "Ibadan"
+  ],
+  "a": 0,
+  "e": "The capital moved from Lagos to Abuja in 1991."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which strait separates Spain from Morocco?",
+  "c": [
+   "The Strait of Gibraltar",
+   "The Bosphorus",
+   "The Strait of Hormuz",
+   "The Strait of Sicily"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country has three capital cities?",
+  "c": [
+   "South Africa",
+   "Bolivia",
+   "Netherlands",
+   "Malaysia"
+  ],
+  "a": 0,
+  "e": "Pretoria governs, Cape Town legislates, Bloemfontein judges."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Ukraine?",
+  "c": [
+   "Kyiv",
+   "Kharkiv",
+   "Odesa",
+   "Lviv"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which is the largest lake in the world by area?",
+  "c": [
+   "The Caspian Sea",
+   "Lake Superior",
+   "Lake Victoria",
+   "Lake Baikal"
+  ],
+  "a": 0,
+  "e": "It is a lake, despite the name — landlocked and fed by rivers."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country lies between Iran and Pakistan on the coast of the Gulf of Oman?",
+  "c": [
+   "None — they share a border",
+   "Afghanistan",
+   "Oman",
+   "United Arab Emirates"
+  ],
+  "a": 0,
+  "e": "Iran and Pakistan border each other directly in Balochistan."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Ethiopia?",
+  "c": [
+   "Addis Ababa",
+   "Dire Dawa",
+   "Mekelle",
+   "Gondar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which sea lies north of Iran?",
+  "c": [
+   "The Caspian Sea",
+   "The Black Sea",
+   "The Aral Sea",
+   "The Persian Gulf"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country has the largest population in Africa?",
+  "c": [
+   "Nigeria",
+   "Egypt",
+   "Ethiopia",
+   "DR Congo"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "The Yucatán Peninsula belongs mainly to which country?",
+  "c": [
+   "Mexico",
+   "Guatemala",
+   "Belize",
+   "Honduras"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Colombia?",
+  "c": [
+   "Bogotá",
+   "Medellín",
+   "Cali",
+   "Cartagena"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which European country has the most volcanoes?",
+  "c": [
+   "Iceland",
+   "Italy",
+   "Greece",
+   "Spain"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which cape is at the southern tip of Africa?",
+  "c": [
+   "Cape Agulhas",
+   "Cape of Good Hope",
+   "Cape Horn",
+   "Cape Verde"
+  ],
+  "a": 0,
+  "e": "The Cape of Good Hope is famous, but Agulhas is further south."
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Cuba?",
+  "c": [
+   "Havana",
+   "Santiago de Cuba",
+   "Camagüey",
+   "Holguín"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which is the driest desert on Earth?",
+  "c": [
+   "The Atacama",
+   "The Sahara",
+   "The Namib",
+   "The Gobi"
+  ],
+  "a": 0,
+  "e": "Some Atacama weather stations have never recorded rain."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country has the most land borders?",
+  "c": [
+   "China",
+   "Russia",
+   "Brazil",
+   "Germany"
+  ],
+  "a": 0,
+  "e": "China and Russia both touch fourteen neighbours."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Myanmar?",
+  "c": [
+   "Naypyidaw",
+   "Yangon",
+   "Mandalay",
+   "Bago"
+  ],
+  "a": 0,
+  "e": "The government moved inland from Yangon in 2005."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which river is the longest in Europe?",
+  "c": [
+   "The Volga",
+   "The Danube",
+   "The Rhine",
+   "The Dnieper"
+  ],
+  "a": 0,
+  "e": "About 3,530 km, entirely inside Russia."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "The Aral Sea shrank on the border of which two countries?",
+  "c": [
+   "Kazakhstan and Uzbekistan",
+   "Russia and Kazakhstan",
+   "Uzbekistan and Turkmenistan",
+   "Iran and Turkmenistan"
+  ],
+  "a": 0,
+  "e": "Soviet irrigation diverted the rivers that fed it."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country's highest point is Mount Kosciuszko?",
+  "c": [
+   "Australia",
+   "New Zealand",
+   "Papua New Guinea",
+   "Fiji"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Uruguay?",
+  "c": [
+   "Montevideo",
+   "Salto",
+   "Paysandú",
+   "Punta del Este"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which Iranian province borders both Iraq and Turkey?",
+  "c": [
+   "West Azerbaijan",
+   "Kurdistan",
+   "Kermanshah",
+   "Ardabil"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country contains the geographic centre of Asia by most reckonings?",
+  "c": [
+   "Russia",
+   "China",
+   "Kazakhstan",
+   "Mongolia"
+  ],
+  "a": 0,
+  "e": "The usual marker is near Kyzyl in the Tuva Republic."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which sea is enclosed by Croatia and Italy?",
+  "c": [
+   "The Adriatic",
+   "The Ionian",
+   "The Tyrrhenian",
+   "The Aegean"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Mongolia?",
+  "c": [
+   "Ulaanbaatar",
+   "Erdenet",
+   "Darkhan",
+   "Choibalsan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country is the only one to border both the Caspian Sea and the Persian Gulf?",
+  "c": [
+   "Iran",
+   "Iraq",
+   "Turkmenistan",
+   "Azerbaijan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which African lake is shared by Tanzania, DR Congo, Burundi and Zambia?",
+  "c": [
+   "Lake Tanganyika",
+   "Lake Victoria",
+   "Lake Malawi",
+   "Lake Turkana"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Bolivia's judiciary?",
+  "c": [
+   "Sucre",
+   "La Paz",
+   "Santa Cruz",
+   "Cochabamba"
+  ],
+  "a": 0,
+  "e": "La Paz is the seat of government; Sucre is the constitutional capital."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "The Kuril Islands are disputed between which two countries?",
+  "c": [
+   "Russia and Japan",
+   "China and Japan",
+   "Russia and China",
+   "South Korea and Japan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which strait separates Alaska from Russia?",
+  "c": [
+   "The Bering Strait",
+   "The Davis Strait",
+   "The Denmark Strait",
+   "The Cook Strait"
+  ],
+  "a": 0,
+  "e": "About 82 km at its narrowest."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which is the largest island in the Mediterranean?",
+  "c": [
+   "Sicily",
+   "Sardinia",
+   "Cyprus",
+   "Crete"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Azerbaijan?",
+  "c": [
+   "Baku",
+   "Ganja",
+   "Sumqayit",
+   "Nakhchivan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country has the highest average elevation?",
+  "c": [
+   "Bhutan",
+   "Nepal",
+   "Tajikistan",
+   "Kyrgyzstan"
+  ],
+  "a": 0,
+  "e": "Bhutan averages over 3,000 metres."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "The Danakil Depression, one of the hottest places on Earth, lies mainly in which country?",
+  "c": [
+   "Ethiopia",
+   "Eritrea",
+   "Djibouti",
+   "Sudan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country was formerly called Upper Volta?",
+  "c": [
+   "Burkina Faso",
+   "Benin",
+   "Mali",
+   "Niger"
+  ],
+  "a": 0,
+  "e": "Renamed in 1984."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which two countries share the island of Hispaniola?",
+  "c": [
+   "Haiti and the Dominican Republic",
+   "Cuba and Jamaica",
+   "Trinidad and Tobago",
+   "Haiti and Puerto Rico"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Turkmenistan?",
+  "c": [
+   "Ashgabat",
+   "Turkmenabat",
+   "Mary",
+   "Dashoguz"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which Iranian city sits closest to the Strait of Hormuz?",
+  "c": [
+   "Bandar Abbas",
+   "Bushehr",
+   "Chabahar",
+   "Abadan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which river delta is the largest in the world?",
+  "c": [
+   "The Ganges–Brahmaputra",
+   "The Nile",
+   "The Mississippi",
+   "The Mekong"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country claims the largest Antarctic territory?",
+  "c": [
+   "Australia",
+   "United Kingdom",
+   "Norway",
+   "Chile"
+  ],
+  "a": 0,
+  "e": "The Australian Antarctic Territory covers about 42% of the continent, though no claim is widely recognised."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Sri Lanka's legislature?",
+  "c": [
+   "Sri Jayawardenepura Kotte",
+   "Colombo",
+   "Kandy",
+   "Galle"
+  ],
+  "a": 0,
+  "e": "Colombo is the commercial capital."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which is the southernmost capital city in the world?",
+  "c": [
+   "Wellington",
+   "Canberra",
+   "Buenos Aires",
+   "Santiago"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Lake Urmia is fed by rivers from which mountain range?",
+  "c": [
+   "The Zagros",
+   "The Alborz",
+   "The Kopet Dag",
+   "The Hindu Kush"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country has a coastline on both the Red Sea and the Indian Ocean?",
+  "c": [
+   "Yemen",
+   "Egypt",
+   "Sudan",
+   "Jordan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Georgia, the country?",
+  "c": [
+   "Tbilisi",
+   "Batumi",
+   "Kutaisi",
+   "Rustavi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which country is the world's largest producer of saffron?",
+  "c": [
+   "Iran",
+   "Spain",
+   "India",
+   "Morocco"
+  ],
+  "a": 0,
+  "e": "Iran grows over 85% of the world's crop, mostly in Khorasan."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which is the only sea on Earth with no land boundary?",
+  "c": [
+   "The Sargasso Sea",
+   "The Coral Sea",
+   "The Bering Sea",
+   "The Andaman Sea"
+  ],
+  "a": 0,
+  "e": "It is bounded by ocean currents, not coasts."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Point Nemo, the ocean spot farthest from land, lies in which ocean?",
+  "c": [
+   "The Pacific",
+   "The Atlantic",
+   "The Indian",
+   "The Southern"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which country contains the confluence that forms the Amazon's main stem?",
+  "c": [
+   "Peru",
+   "Brazil",
+   "Colombia",
+   "Ecuador"
+  ],
+  "a": 0,
+  "e": "The Marañón and the Ucayali meet in Peru."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "The Chagos Archipelago sits in which ocean?",
+  "c": [
+   "The Indian Ocean",
+   "The Pacific",
+   "The Atlantic",
+   "The Southern Ocean"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which landlocked country is doubly landlocked along with Uzbekistan?",
+  "c": [
+   "Liechtenstein",
+   "Nepal",
+   "Bhutan",
+   "Andorra"
+  ],
+  "a": 0,
+  "e": "Both are surrounded only by other landlocked countries."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which desert plateau covers most of central Iran?",
+  "c": [
+   "The Dasht-e Kavir",
+   "The Registan",
+   "The Thar",
+   "The Karakum"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which country's exclusive economic zone is the largest in the world?",
+  "c": [
+   "France",
+   "United States",
+   "Australia",
+   "Russia"
+  ],
+  "a": 0,
+  "e": "France's scattered overseas territories give it the widest reach."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Mount Chimborazo is the point farthest from Earth's centre — in which country?",
+  "c": [
+   "Ecuador",
+   "Peru",
+   "Bolivia",
+   "Colombia"
+  ],
+  "a": 0,
+  "e": "The equatorial bulge lifts it above Everest by that measure."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which strait links the Sea of Japan to the Pacific between Hokkaido and Honshu?",
+  "c": [
+   "The Tsugaru Strait",
+   "The Korea Strait",
+   "The Soya Strait",
+   "The Kanmon Strait"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which African country's capital is Bujumbura's replacement, Gitega?",
+  "c": [
+   "Burundi",
+   "Rwanda",
+   "Tanzania",
+   "Malawi"
+  ],
+  "a": 0,
+  "e": "Gitega became the political capital in 2019."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "The Kerguelen Islands are administered by which country?",
+  "c": [
+   "France",
+   "Australia",
+   "South Africa",
+   "Norway"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which country has the world's longest land border with a single neighbour?",
+  "c": [
+   "Canada",
+   "Russia",
+   "Kazakhstan",
+   "Mongolia"
+  ],
+  "a": 0,
+  "e": "About 8,890 km with the United States, including Alaska."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which Iranian island is the largest in the Persian Gulf?",
+  "c": [
+   "Qeshm",
+   "Kish",
+   "Hormuz",
+   "Lavan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which is the highest capital city in the world?",
+  "c": [
+   "La Paz",
+   "Quito",
+   "Bogotá",
+   "Thimphu"
+  ],
+  "a": 0,
+  "e": "La Paz sits above 3,600 metres."
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which continent is Egypt mostly in?",
+  "c": [
+   "Africa",
+   "Asia",
+   "Europe",
+   "Oceania"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Ireland?",
+  "c": [
+   "Dublin",
+   "Cork",
+   "Galway",
+   "Belfast"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country has Big Ben?",
+  "c": [
+   "United Kingdom",
+   "France",
+   "Germany",
+   "Belgium"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Belgium?",
+  "c": [
+   "Brussels",
+   "Antwerp",
+   "Ghent",
+   "Bruges"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "Which country is the Great Wall in?",
+  "c": [
+   "China",
+   "Japan",
+   "Mongolia",
+   "Korea"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 1,
+  "q": "What is the capital of Denmark?",
+  "c": [
+   "Copenhagen",
+   "Aarhus",
+   "Odense",
+   "Aalborg"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which African river flows through Khartoum?",
+  "c": [
+   "The Nile",
+   "The Congo",
+   "The Niger",
+   "The Zambezi"
+  ],
+  "a": 0,
+  "e": "The Blue and White Nile meet there."
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Finland?",
+  "c": [
+   "Helsinki",
+   "Tampere",
+   "Turku",
+   "Espoo"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which country is Petra in?",
+  "c": [
+   "Jordan",
+   "Syria",
+   "Lebanon",
+   "Israel"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Hungary?",
+  "c": [
+   "Budapest",
+   "Debrecen",
+   "Szeged",
+   "Pécs"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which country has the city of Marrakesh?",
+  "c": [
+   "Morocco",
+   "Algeria",
+   "Tunisia",
+   "Libya"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "What is the capital of Czechia?",
+  "c": [
+   "Prague",
+   "Brno",
+   "Ostrava",
+   "Plzeň"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 2,
+  "q": "Which mountain is the highest in Japan?",
+  "c": [
+   "Mount Fuji",
+   "Mount Kita",
+   "Mount Ontake",
+   "Mount Aso"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which Iranian city is famous for its wind towers and mud-brick old city?",
+  "c": [
+   "Yazd",
+   "Kerman",
+   "Qom",
+   "Semnan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Uzbekistan?",
+  "c": [
+   "Tashkent",
+   "Samarkand",
+   "Bukhara",
+   "Khiva"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which river flows through Baghdad?",
+  "c": [
+   "The Tigris",
+   "The Euphrates",
+   "The Karun",
+   "The Orontes"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which country has the world's largest rainforest by area?",
+  "c": [
+   "Brazil",
+   "Democratic Republic of the Congo",
+   "Indonesia",
+   "Peru"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "What is the capital of Armenia?",
+  "c": [
+   "Yerevan",
+   "Gyumri",
+   "Vanadzor",
+   "Ararat"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which Iranian city is the country's second largest?",
+  "c": [
+   "Mashhad",
+   "Isfahan",
+   "Tabriz",
+   "Shiraz"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 3,
+  "q": "Which sea lies between Italy and the Balkans?",
+  "c": [
+   "The Adriatic",
+   "The Aegean",
+   "The Tyrrhenian",
+   "The Ligurian"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which Iranian river is the longest entirely inside the country?",
+  "c": [
+   "The Karun",
+   "The Zayandeh",
+   "The Sefid-Rud",
+   "The Aras"
+  ],
+  "a": 0,
+  "e": "About 950 km, and the only navigable one."
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Tajikistan?",
+  "c": [
+   "Dushanbe",
+   "Khujand",
+   "Kulob",
+   "Bokhtar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which country contains most of the Tibetan Plateau?",
+  "c": [
+   "China",
+   "India",
+   "Nepal",
+   "Bhutan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "Which African country is entirely surrounded by Senegal except for its coast?",
+  "c": [
+   "The Gambia",
+   "Guinea-Bissau",
+   "Sierra Leone",
+   "Cape Verde"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 4,
+  "q": "What is the capital of Laos?",
+  "c": [
+   "Vientiane",
+   "Luang Prabang",
+   "Pakse",
+   "Savannakhet"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which Iranian salt desert holds the record for the highest recorded land surface temperature?",
+  "c": [
+   "The Lut Desert",
+   "The Dasht-e Kavir",
+   "The Maranjab",
+   "The Rig-e Jenn"
+  ],
+  "a": 0,
+  "e": "70.7°C measured by satellite."
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which country is the only one whose flag is not a rectangle or square?",
+  "c": [
+   "Nepal",
+   "Switzerland",
+   "Vatican City",
+   "Qatar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "geography",
+  "level": 5,
+  "q": "Which African lake is the world's largest by volume among rift lakes?",
+  "c": [
+   "Lake Tanganyika",
+   "Lake Victoria",
+   "Lake Malawi",
+   "Lake Albert"
+  ],
+  "a": 0,
+  "e": null
+ }
+]

@@ -1,0 +1,91 @@
+@page "/admin/users"
+@inherits AdminPageBase
+
+<PageTitle>@L["admin.users"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["admin.users"]</h1></header>
+    <AdminNav />
+
+    <div class="row" style="margin-bottom:1rem">
+        <input class="input grow" placeholder="@L["admin.search"]" @bind="_query" @bind:event="oninput" @onkeydown="OnKey" />
+        <button class="btn btn--sm" @onclick="ReloadAsync">@L["admin.search"]</button>
+    </div>
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <div class="scroll-x card card--flat">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>@L["admin.name"]</th>
+                        <th>@L["auth.email"]</th>
+                        <th>@L["profile.wins"]</th>
+                        <th>@L["profile.score"]</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in _page?.Items ?? [])
+                    {
+                        <tr>
+                            <td>
+                                <div class="row" style="gap:.5rem">
+                                    <span class="avatar" style="width:1.75rem;height:1.75rem;font-size:.8rem;background:@Ranks.Tint(user.AvatarSeed)">
+                                        @(user.DisplayName.Length > 0 ? user.DisplayName[..1].ToUpperInvariant() : "?")
+                                    </span>
+                                    <span>@user.DisplayName</span>
+                                    @if (user.IsBanned) { <span class="chip chip--loss">banned</span> }
+                                </div>
+                            </td>
+                            <td dir="ltr" class="faint">@user.Email</td>
+                            <td class="numeral">@L.Num(user.Stats.Wins)</td>
+                            <td class="numeral">@L.Num(user.Stats.TotalScore)</td>
+                            <td>
+                                <div class="row" style="gap:.3rem;justify-content:flex-end">
+                                    <button class="btn @(user.IsBanned ? "btn--ghost" : "btn--danger") btn--sm"
+                                            @onclick="() => SetBannedAsync(user, !user.IsBanned)">
+                                        @(user.IsBanned ? L["admin.unban"] : L["admin.ban"])
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private AdminUserPageDto? _page;
+    private string _query = "";
+
+    protected override async Task LoadAsync()
+    {
+        _query = QueryState.Read(Nav, "q");
+        _page = await Api.AdminUsersAsync(_query);
+    }
+
+    private async Task ReloadAsync()
+    {
+        QueryState.Write(Nav, new Dictionary<string, string?> { ["q"] = _query.Trim() });
+        _page = await Api.AdminUsersAsync(_query);
+        StateHasChanged();
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ReloadAsync();
+    }
+
+    private async Task SetBannedAsync(AdminUserDto user, bool value)
+    {
+        await Api.SetBannedAsync(user.Id, value);
+        await ReloadAsync();
+    }
+}

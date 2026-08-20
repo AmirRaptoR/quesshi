@@ -1,0 +1,177 @@
+@page "/play/{MatchId}"
+@inherits PageBase
+@implements IAsyncDisposable
+
+<PageTitle>@L["play.question"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_card is null)
+    {
+        <div class="empty">
+            <p>@L["common.error"]</p>
+            <a class="btn btn--ghost" href="/">@L["common.back"]</a>
+        </div>
+    }
+    else
+    {
+        <header class="topbar">
+            <span class="chip" style="border-color:@(_card.CategoryColor + "66")">
+                <span aria-hidden="true">@_card.CategoryIcon</span> @_card.CategoryName
+            </span>
+            <span class="level" aria-label="@L["level." + _card.Level]">
+                @for (var i = 1; i <= 3; i++) { <i class="@(i <= _card.Level ? "on" : null)"></i> }
+            </span>
+            <div class="topbar__spacer"></div>
+            <span class="muted numeral">@L.Num(_card.Slot + 1) / @L.Num(_card.TotalSlots)</span>
+            <Ring Remaining="_remaining" Total="_card.SecondsLimit" Size="38" />
+        </header>
+
+        <section class="card card--taq enter" @key="_card.Slot">
+            <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@_card.Prompt</h1>
+
+            <MediaBlock Media="_card.Media" />
+
+            <div class="answers">
+                @for (var i = 0; i < _card.Choices.Count; i++)
+                {
+                    var index = i;
+                    <button class="answer @ClassFor(index)" disabled="@(_result is not null)" @onclick="() => AnswerAsync(index)">
+                        <span class="answer__key" aria-hidden="true">@Keys[index]</span>
+                        <span class="grow" dir="auto">@_card.Choices[index]</span>
+                        @if (_result is not null && index == _result.CorrectIndex) { <span aria-hidden="true">✓</span> }
+                    </button>
+                }
+            </div>
+        </section>
+
+        @if (_result is { } result)
+        {
+            <section class="card card--flat enter" style="margin-top:.85rem">
+                <div class="row row--between">
+                    <strong style="color:@(result.Correct ? "var(--zaferan)" : "var(--anaar)")">
+                        @(_timedOut ? L["play.timeUp"] : result.Correct ? L["play.correct"] : L["play.wrong"])
+                    </strong>
+                    <span class="numeral" style="color:var(--zaferan)">+@L.Num(result.Score)</span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(result.Explanation))
+                {
+                    <p class="muted" dir="auto" style="margin:.6rem 0 0;font-size:var(--step--1)">@result.Explanation</p>
+                }
+
+                <button class="btn btn--block" style="margin-top:.9rem" @onclick="AdvanceAsync">
+                    @(result.RunFinished ? L["play.finish"] : L["play.next"])
+                </button>
+
+                <div style="margin-top:.7rem;text-align:center">
+                    <ReportQuestion QuestionId="@_card.QuestionId" />
+                </div>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private static readonly string[] Keys = ["A", "B", "C", "D"];
+
+    /// <summary>Playing the duel is the whole reason a guest exists.</summary>
+    protected override bool AllowsGuest => true;
+
+    [Parameter] public string MatchId { get; set; } = "";
+
+    private QuestionCardDto? _card;
+    private AnswerResultDto? _result;
+    private int _remaining;
+    private bool _timedOut;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource _ticking = new();
+
+    protected override async Task LoadAsync() => await NextAsync();
+
+    private async Task NextAsync()
+    {
+        _result = null;
+        _timedOut = false;
+
+        _card = await Api.NextAsync(MatchId);
+        if (_card is null)
+        {
+            Nav.NavigateTo($"/duel/{MatchId}");
+            return;
+        }
+
+        _remaining = _card.SecondsLimit;
+        StartClock();
+    }
+
+    /// <summary>Decoration only — the server stamped when the question was served and scores on its own clock.</summary>
+    private void StartClock()
+    {
+        _ticking.Cancel();
+        _ticking = new CancellationTokenSource();
+        var token = _ticking.Token;
+
+        _timer?.Dispose();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await _timer.WaitForNextTickAsync(token))
+                {
+                    _remaining--;
+                    await InvokeAsync(StateHasChanged);
+
+                    if (_remaining > 0) continue;
+
+                    await InvokeAsync(async () => await AnswerAsync(-1));
+                    return;
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, token);
+    }
+
+    private async Task AnswerAsync(int choice)
+    {
+        if (_result is not null || _card is null) return;
+
+        _ticking.Cancel();
+        _timedOut = choice < 0;
+        _chosen = choice;
+
+        _result = await Api.AnswerAsync(MatchId, _card.Slot, choice)
+                  ?? new AnswerResultDto(false, -1, 0, null, false, 0);
+
+        StateHasChanged();
+    }
+
+    private async Task AdvanceAsync()
+    {
+        if (_result?.RunFinished == true) { Nav.NavigateTo($"/duel/{MatchId}"); return; }
+        await NextAsync();
+    }
+
+    private string? ClassFor(int index)
+    {
+        if (_result is null) return null;
+        if (index == _result.CorrectIndex) return "answer--right";
+        if (!_result.Correct && !_timedOut && index == _chosen) return "answer--wrong";
+        return "answer--dim";
+    }
+
+    private int _chosen = -1;
+
+    public async ValueTask DisposeAsync()
+    {
+        await _ticking.CancelAsync();
+        _timer?.Dispose();
+        _ticking.Dispose();
+        base.Dispose();
+    }
+}

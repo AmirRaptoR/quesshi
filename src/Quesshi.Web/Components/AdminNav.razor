@@ -1,0 +1,33 @@
+@implements IDisposable
+@inject Translator L
+
+<nav class="row" style="gap:.4rem;flex-wrap:wrap;margin-bottom:1.25rem">
+    <NavLink class="btn btn--ghost btn--sm" ActiveClass="btn--gold" href="/admin" Match="NavLinkMatch.All">@L["admin.dashboard"]</NavLink>
+    <NavLink class="btn btn--ghost btn--sm" ActiveClass="btn--gold" href="/admin/questions">@L["admin.questions"]</NavLink>
+    <NavLink class="btn btn--ghost btn--sm" ActiveClass="btn--gold" href="/admin/reported">@L["admin.reported"]</NavLink>
+    <NavLink class="btn btn--ghost btn--sm" ActiveClass="btn--gold" href="/admin/categories">@L["admin.categories"]</NavLink>
+    <NavLink class="btn btn--ghost btn--sm" ActiveClass="btn--gold" href="/admin/users">@L["admin.users"]</NavLink>
+    <NavLink class="btn btn--ghost btn--sm" ActiveClass="btn--gold" href="/admin/accounts">@L["admin.accounts"]</NavLink>
+
+    <span class="topbar__spacer"></span>
+    <span class="faint" style="font-size:var(--step--1)">@L.Format("admin.auth.signedInAs", Admin.Admin?.Username ?? "")</span>
+    <LangToggle />
+    <a class="btn btn--ghost btn--sm" href="/admin/password">@L["admin.auth.change"]</a>
+    <button class="btn btn--ghost btn--sm" @onclick="SignOutAsync">@L["admin.auth.signOut"]</button>
+</nav>
+
+@code {
+    [Inject] private AdminState Admin { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    // The nav is drawn before the session has resolved, so it has to redraw when it does.
+    protected override void OnInitialized() => Admin.Changed += StateHasChanged;
+
+    public void Dispose() => Admin.Changed -= StateHasChanged;
+
+    private async Task SignOutAsync()
+    {
+        await Admin.SignOutAsync();
+        Nav.NavigateTo("/admin/login");
+    }
+}

@@ -1,0 +1,62 @@
+@page "/admin/forgot"
+@inject AdminApi Api
+@inject Translator L
+
+<PageTitle>@L["admin.auth.forgotTitle"]</PageTitle>
+
+<div class="shell">
+    <div class="stack" style="margin-top:14vh">
+        <div class="card card--taq enter">
+            <div class="stack">
+                <div>
+                    <span class="eyebrow">@L["admin.auth.forgotTitle"]</span>
+                    <p class="muted" style="margin-top:.4rem">@L["admin.auth.forgotBlurb"]</p>
+                </div>
+
+                @if (_sent is null)
+                {
+                    <div class="field">
+                        <label for="handle">@L["admin.auth.usernameOrEmail"]</label>
+                        <input id="handle" class="input" dir="ltr" @bind="_handle" @bind:event="oninput" @onkeydown="OnKey" />
+                    </div>
+
+                    <button class="btn btn--block" disabled="@(_busy || _handle.Trim().Length == 0)" @onclick="SendAsync">
+                        @(_busy ? L["common.loading"] : L["admin.auth.sendLink"])
+                    </button>
+                }
+                else
+                {
+                    <div class="notice notice--good">@L["admin.auth.sentIfExists"]</div>
+
+                    @if (!string.IsNullOrWhiteSpace(_sent.DevLink))
+                    {
+                        <div class="notice">
+                            @L["admin.auth.devLink"]
+                            <a href="@_sent.DevLink" dir="ltr" style="word-break:break-all">@_sent.DevLink</a>
+                        </div>
+                    }
+                }
+
+                <a class="btn btn--ghost btn--block btn--sm" href="/admin/login">@L["admin.auth.backToLogin"]</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _handle = "";
+    private AdminForgotSentDto? _sent;
+    private bool _busy;
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _handle.Trim().Length > 0) await SendAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        _busy = true;
+        _sent = await Api.ForgotAsync(_handle.Trim()) ?? new AdminForgotSentDto(true, null);
+        _busy = false;
+    }
+}

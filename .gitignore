@@ -1,0 +1,17 @@
+bin/
+obj/
+*.user
+
+# Uploaded question media, and pictures fetched from Wikipedia. Both live outside the release on
+# the server and are symlinked in, so committing them would only bloat the repo. The seeded media
+# under wwwroot/media/seed is committed.
+src/Quesshi.Server/wwwroot/media/uploads/
+src/Quesshi.Server/wwwroot/media/sourced/
+
+# Local configuration. appsettings.Development.json holds the OpenRouter API key.
+# A comment must be on its own line: git treats a trailing one as part of the pattern.
+appsettings.Development.json
+appsettings.Local.json
+
+# Deployment scripts hold host names and paths for one particular machine, so they stay local.
+deploy/

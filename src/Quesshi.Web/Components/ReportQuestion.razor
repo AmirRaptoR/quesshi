@@ -1,0 +1,52 @@
+@* A quiet way to flag a bad question. Deliberately small and out of the way: it should be there
+   when a player is annoyed, and invisible the rest of the time. *@
+@inject Api Api
+@inject Translator L
+@inject AppState State
+
+@if (State.IsGuest)
+{
+    @* Reporting is closed to guests server-side, so the button would only ever fail for them. *@
+}
+else if (_done)
+{
+    <span class="faint" style="font-size:var(--step--1)">@L["report.thanks"]</span>
+}
+else if (!_open)
+{
+    <button class="report__open" @onclick="() => _open = true">@L["report.button"]</button>
+}
+else
+{
+    <div class="report">
+        <span class="faint" style="font-size:var(--step--1)">@L["report.why"]</span>
+        <div class="report__reasons">
+            @foreach (var reason in Reasons)
+            {
+                <button class="chip report__reason" disabled="@_busy" @onclick="() => SendAsync(reason)">
+                    @L[$"report.{reason}"]
+                </button>
+            }
+            <button class="chip report__reason" @onclick="() => _open = false">@L["report.cancel"]</button>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] Reasons = ["wronganswer", "unclear", "duplicate", "offensive", "other"];
+
+    [Parameter, EditorRequired] public string QuestionId { get; set; } = "";
+
+    private bool _open, _busy, _done;
+
+    private async Task SendAsync(string reason)
+    {
+        _busy = true;
+        await Api.ReportQuestionAsync(QuestionId, reason);
+
+        // Whether it counted or was a repeat from this player, the button's job is finished.
+        _busy = false;
+        _done = true;
+        _open = false;
+    }
+}

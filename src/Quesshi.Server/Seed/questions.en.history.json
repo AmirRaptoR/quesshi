@@ -1,0 +1,1835 @@
+[
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "In which year did the First World War begin?",
+  "c": [
+   "1914",
+   "1912",
+   "1918",
+   "1920"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who was the first President of the United States?",
+  "c": [
+   "George Washington",
+   "Thomas Jefferson",
+   "Abraham Lincoln",
+   "John Adams"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which ancient people built the Colosseum?",
+  "c": [
+   "The Romans",
+   "The Greeks",
+   "The Egyptians",
+   "The Persians"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "The Titanic sank after hitting what?",
+  "c": [
+   "An iceberg",
+   "A reef",
+   "Another ship",
+   "A mine"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who led the non-violent independence movement in India?",
+  "c": [
+   "Mahatma Gandhi",
+   "Jawaharlal Nehru",
+   "Subhas Chandra Bose",
+   "B. R. Ambedkar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which wall divided a German city until 1989?",
+  "c": [
+   "The Berlin Wall",
+   "Hadrian's Wall",
+   "The Great Wall",
+   "The Western Wall"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which empire was ruled by Julius Caesar's successors?",
+  "c": [
+   "The Roman Empire",
+   "The Greek Empire",
+   "The Ottoman Empire",
+   "The Persian Empire"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who was the queen of ancient Egypt famous for her links to Rome?",
+  "c": [
+   "Cleopatra",
+   "Nefertiti",
+   "Hatshepsut",
+   "Isis"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "In which country did the ancient Olympic Games begin?",
+  "c": [
+   "Greece",
+   "Italy",
+   "Egypt",
+   "Turkey"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which ship carried the Pilgrims to America in 1620?",
+  "c": [
+   "The Mayflower",
+   "The Santa María",
+   "The Beagle",
+   "The Endeavour"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who painted the ceiling of the Sistine Chapel?",
+  "c": [
+   "Michelangelo",
+   "Leonardo da Vinci",
+   "Raphael",
+   "Donatello"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which country was ruled by pharaohs?",
+  "c": [
+   "Egypt",
+   "Greece",
+   "Persia",
+   "India"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who discovered the sea route that reached the Americas in 1492?",
+  "c": [
+   "Christopher Columbus",
+   "Vasco da Gama",
+   "Ferdinand Magellan",
+   "Amerigo Vespucci"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "The French Revolution began in which century?",
+  "c": [
+   "The 18th",
+   "The 16th",
+   "The 17th",
+   "The 19th"
+  ],
+  "a": 0,
+  "e": "It began in 1789."
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which two cities were struck by atomic bombs in 1945?",
+  "c": [
+   "Hiroshima and Nagasaki",
+   "Tokyo and Osaka",
+   "Kyoto and Kobe",
+   "Nagoya and Sendai"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who was the British Prime Minister for most of the Second World War?",
+  "c": [
+   "Winston Churchill",
+   "Neville Chamberlain",
+   "Clement Attlee",
+   "Anthony Eden"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which civilisation built Machu Picchu?",
+  "c": [
+   "The Inca",
+   "The Aztec",
+   "The Maya",
+   "The Olmec"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who wrote the theory of evolution by natural selection?",
+  "c": [
+   "Charles Darwin",
+   "Gregor Mendel",
+   "Alfred Wallace",
+   "Carl Linnaeus"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which country did Nelson Mandela lead?",
+  "c": [
+   "South Africa",
+   "Kenya",
+   "Nigeria",
+   "Zimbabwe"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "The Persian Empire was centred on which modern country?",
+  "c": [
+   "Iran",
+   "Iraq",
+   "Turkey",
+   "Syria"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who was the first man in space?",
+  "c": [
+   "Yuri Gagarin",
+   "Neil Armstrong",
+   "Alan Shepard",
+   "John Glenn"
+  ],
+  "a": 0,
+  "e": "Gagarin orbited Earth in April 1961."
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which king signed the Magna Carta in 1215?",
+  "c": [
+   "King John",
+   "Henry II",
+   "Richard I",
+   "Edward I"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "In which year did the Soviet Union dissolve?",
+  "c": [
+   "1991",
+   "1989",
+   "1993",
+   "1985"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who was the first Emperor of a unified China?",
+  "c": [
+   "Qin Shi Huang",
+   "Kublai Khan",
+   "Sun Yat-sen",
+   "Han Wudi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "The Renaissance began in which country?",
+  "c": [
+   "Italy",
+   "France",
+   "Germany",
+   "Spain"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which empire did Genghis Khan found?",
+  "c": [
+   "The Mongol Empire",
+   "The Ottoman Empire",
+   "The Timurid Empire",
+   "The Qing Empire"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which war was fought between the North and the South of the United States?",
+  "c": [
+   "The Civil War",
+   "The War of Independence",
+   "The War of 1812",
+   "The Spanish-American War"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who was assassinated in Sarajevo in 1914?",
+  "c": [
+   "Archduke Franz Ferdinand",
+   "Tsar Nicholas II",
+   "Kaiser Wilhelm II",
+   "King Alexander"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which ancient city was destroyed by Vesuvius in AD 79?",
+  "c": [
+   "Pompeii",
+   "Carthage",
+   "Troy",
+   "Ephesus"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who led the Soviet Union during the Second World War?",
+  "c": [
+   "Joseph Stalin",
+   "Vladimir Lenin",
+   "Nikita Khrushchev",
+   "Leon Trotsky"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "The Ottoman Empire was ruled from which city after 1453?",
+  "c": [
+   "Istanbul",
+   "Ankara",
+   "Bursa",
+   "Edirne"
+  ],
+  "a": 0,
+  "e": "Constantinople was renamed and became the Ottoman capital."
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which document begins 'We hold these truths to be self-evident'?",
+  "c": [
+   "The US Declaration of Independence",
+   "The US Constitution",
+   "The Bill of Rights",
+   "The Gettysburg Address"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who was the first woman to win a Nobel Prize?",
+  "c": [
+   "Marie Curie",
+   "Rosalind Franklin",
+   "Ada Lovelace",
+   "Dorothy Hodgkin"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which plague swept Europe in the 14th century?",
+  "c": [
+   "The Black Death",
+   "The Spanish flu",
+   "Cholera",
+   "Smallpox"
+  ],
+  "a": 0,
+  "e": "It killed perhaps a third of Europe's population."
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which Iranian dynasty made Shia Islam the state religion?",
+  "c": [
+   "The Safavids",
+   "The Qajars",
+   "The Seljuks",
+   "The Pahlavis"
+  ],
+  "a": 0,
+  "e": "Shah Ismail I declared it in 1501."
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who was the Macedonian king who conquered Persia?",
+  "c": [
+   "Alexander the Great",
+   "Philip II",
+   "Ptolemy",
+   "Seleucus"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "In which year did the Berlin Wall come down?",
+  "c": [
+   "1989",
+   "1991",
+   "1987",
+   "1993"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which revolution overthrew the Russian Tsar in 1917?",
+  "c": [
+   "The Russian Revolution",
+   "The French Revolution",
+   "The Glorious Revolution",
+   "The Cultural Revolution"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which explorer first sailed around the world?",
+  "c": [
+   "Ferdinand Magellan's expedition",
+   "Christopher Columbus",
+   "Marco Polo",
+   "James Cook"
+  ],
+  "a": 0,
+  "e": "Magellan died en route; Elcano finished the voyage."
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who built the Taj Mahal?",
+  "c": [
+   "Shah Jahan",
+   "Akbar",
+   "Aurangzeb",
+   "Babur"
+  ],
+  "a": 0,
+  "e": "He built it as a tomb for his wife Mumtaz Mahal."
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which country did the Roman province of Gaul mostly become?",
+  "c": [
+   "France",
+   "Spain",
+   "Germany",
+   "Britain"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which city was the capital of the Byzantine Empire?",
+  "c": [
+   "Constantinople",
+   "Rome",
+   "Athens",
+   "Antioch"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who wrote the Communist Manifesto with Friedrich Engels?",
+  "c": [
+   "Karl Marx",
+   "Vladimir Lenin",
+   "Leon Trotsky",
+   "Rosa Luxemburg"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which war ended with the Treaty of Versailles?",
+  "c": [
+   "The First World War",
+   "The Second World War",
+   "The Franco-Prussian War",
+   "The Crimean War"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which people invaded England in 1066?",
+  "c": [
+   "The Normans",
+   "The Vikings",
+   "The Romans",
+   "The Saxons"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Nowruz, celebrated for over three thousand years, marks what?",
+  "c": [
+   "The spring equinox",
+   "The winter solstice",
+   "The summer solstice",
+   "The autumn equinox"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Cyrus Cylinder is held in which museum?",
+  "c": [
+   "The British Museum",
+   "The Louvre",
+   "The Metropolitan Museum",
+   "The Hermitage"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which battle in 1815 ended Napoleon's rule?",
+  "c": [
+   "Waterloo",
+   "Austerlitz",
+   "Trafalgar",
+   "Borodino"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Persepolis was burned during the campaign of which conqueror?",
+  "c": [
+   "Alexander the Great",
+   "Genghis Khan",
+   "Timur",
+   "Julius Caesar"
+  ],
+  "a": 0,
+  "e": "It burned in 330 BC."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which treaty divided the New World between Spain and Portugal?",
+  "c": [
+   "The Treaty of Tordesillas",
+   "The Treaty of Utrecht",
+   "The Peace of Westphalia",
+   "The Treaty of Paris"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who was the longest-reigning British monarch?",
+  "c": [
+   "Elizabeth II",
+   "Victoria",
+   "George III",
+   "Henry VIII"
+  ],
+  "a": 0,
+  "e": "Seventy years, from 1952 to 2022."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Meiji Restoration transformed which country?",
+  "c": [
+   "Japan",
+   "China",
+   "Korea",
+   "Thailand"
+  ],
+  "a": 0,
+  "e": "It ended the shogunate in 1868."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which empire did the Battle of Manzikert in 1071 weaken?",
+  "c": [
+   "The Byzantine Empire",
+   "The Roman Empire",
+   "The Abbasid Caliphate",
+   "The Sasanian Empire"
+  ],
+  "a": 0,
+  "e": "The Seljuks won, opening Anatolia to Turkic settlement."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who was the first Shah of the Pahlavi dynasty?",
+  "c": [
+   "Reza Shah",
+   "Mohammad Reza Shah",
+   "Ahmad Shah",
+   "Nader Shah"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Hundred Years' War was fought between England and which country?",
+  "c": [
+   "France",
+   "Spain",
+   "Scotland",
+   "The Netherlands"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which ancient code of law was carved on a black stone stele in Babylon?",
+  "c": [
+   "The Code of Hammurabi",
+   "The Twelve Tables",
+   "The Justinian Code",
+   "The Draconian Code"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which country did Simón Bolívar help liberate first?",
+  "c": [
+   "Venezuela",
+   "Peru",
+   "Chile",
+   "Argentina"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Rosetta Stone was key to deciphering which script?",
+  "c": [
+   "Egyptian hieroglyphs",
+   "Cuneiform",
+   "Linear B",
+   "Old Persian"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who was the Ottoman sultan who took Constantinople?",
+  "c": [
+   "Mehmed II",
+   "Suleiman I",
+   "Selim I",
+   "Bayezid II"
+  ],
+  "a": 0,
+  "e": "He was twenty-one in 1453."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Boxer Rebellion took place in which country?",
+  "c": [
+   "China",
+   "Japan",
+   "Korea",
+   "Vietnam"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which US president bought Louisiana from France?",
+  "c": [
+   "Thomas Jefferson",
+   "George Washington",
+   "James Madison",
+   "John Adams"
+  ],
+  "a": 0,
+  "e": "The 1803 purchase doubled the size of the country."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which Iranian revolution took place in 1979?",
+  "c": [
+   "The Islamic Revolution",
+   "The Constitutional Revolution",
+   "The White Revolution",
+   "The Tobacco Protest"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Great Fire of London happened in which year?",
+  "c": [
+   "1666",
+   "1600",
+   "1707",
+   "1720"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which civilisation invented cuneiform writing?",
+  "c": [
+   "The Sumerians",
+   "The Egyptians",
+   "The Phoenicians",
+   "The Hittites"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who was the last Tsar of Russia?",
+  "c": [
+   "Nicholas II",
+   "Alexander III",
+   "Peter III",
+   "Paul I"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Silk Road's western terminus was often which city?",
+  "c": [
+   "Antioch",
+   "Athens",
+   "Rome",
+   "Alexandria"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which war did the Treaty of Ghent end?",
+  "c": [
+   "The War of 1812",
+   "The American Revolution",
+   "The Mexican-American War",
+   "The Civil War"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who founded the Mughal Empire?",
+  "c": [
+   "Babur",
+   "Akbar",
+   "Humayun",
+   "Shah Jahan"
+  ],
+  "a": 0,
+  "e": "He won at Panipat in 1526."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Spanish Armada was defeated in which year?",
+  "c": [
+   "1588",
+   "1492",
+   "1600",
+   "1571"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which pharaoh's tomb did Howard Carter find in 1922?",
+  "c": [
+   "Tutankhamun",
+   "Ramesses II",
+   "Akhenaten",
+   "Khufu"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Trans-Siberian Railway connects Moscow with which city?",
+  "c": [
+   "Vladivostok",
+   "Irkutsk",
+   "Novosibirsk",
+   "Khabarovsk"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which Iranian king is credited with the first declaration of human rights?",
+  "c": [
+   "Cyrus the Great",
+   "Darius I",
+   "Xerxes I",
+   "Ardashir I"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which country was formerly known as Siam?",
+  "c": [
+   "Thailand",
+   "Cambodia",
+   "Myanmar",
+   "Laos"
+  ],
+  "a": 0,
+  "e": "Renamed in 1939."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Suez Crisis of 1956 involved Britain, France and which other country?",
+  "c": [
+   "Israel",
+   "Italy",
+   "Greece",
+   "Turkey"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which German chancellor unified Germany in 1871?",
+  "c": [
+   "Otto von Bismarck",
+   "Wilhelm I",
+   "Friedrich Ebert",
+   "Helmut Kohl"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who commanded the Carthaginian army that crossed the Alps?",
+  "c": [
+   "Hannibal",
+   "Hamilcar",
+   "Hasdrubal",
+   "Scipio"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Battle of Chaldiran in 1514 was fought between the Ottomans and which empire?",
+  "c": [
+   "The Safavids",
+   "The Mamluks",
+   "The Mughals",
+   "The Timurids"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which decade saw the Wall Street Crash?",
+  "c": [
+   "The 1920s",
+   "The 1910s",
+   "The 1930s",
+   "The 1940s"
+  ],
+  "a": 0,
+  "e": "October 1929."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which conference in 1945 divided post-war Europe among the Allies?",
+  "c": [
+   "Yalta",
+   "Versailles",
+   "Potsdam",
+   "Tehran"
+  ],
+  "a": 0,
+  "e": "Potsdam followed later that year."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Who was the first woman to fly solo across the Atlantic?",
+  "c": [
+   "Amelia Earhart",
+   "Bessie Coleman",
+   "Harriet Quimby",
+   "Jacqueline Cochran"
+  ],
+  "a": 0,
+  "e": "She did it in 1932."
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "The Ferdowsi epic Shahnameh records the history of which people?",
+  "c": [
+   "The Persians",
+   "The Arabs",
+   "The Turks",
+   "The Greeks"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Achaemenid king ordered the building of Persepolis?",
+  "c": [
+   "Darius I",
+   "Cyrus the Great",
+   "Xerxes I",
+   "Cambyses II"
+  ],
+  "a": 0,
+  "e": "Xerxes and later kings expanded it."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Peace of Westphalia in 1648 ended which war?",
+  "c": [
+   "The Thirty Years' War",
+   "The Hundred Years' War",
+   "The War of the Roses",
+   "The Eighty Years' War"
+  ],
+  "a": 0,
+  "e": "It also ended the Eighty Years' War, but the Thirty Years' War was its main subject."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Who was the Byzantine emperor who codified Roman law?",
+  "c": [
+   "Justinian I",
+   "Constantine I",
+   "Heraclius",
+   "Basil II"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Battle of Talas in 751 was fought between the Abbasids and which empire?",
+  "c": [
+   "The Tang dynasty",
+   "The Sasanians",
+   "The Uighur Khaganate",
+   "The Tibetan Empire"
+  ],
+  "a": 0,
+  "e": "Chinese papermakers captured there helped spread paper westward."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which treaty ceded the Caucasus territories from Persia to Russia in 1828?",
+  "c": [
+   "Turkmenchay",
+   "Gulistan",
+   "Erzurum",
+   "Akhal"
+  ],
+  "a": 0,
+  "e": "Gulistan came earlier, in 1813."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Roman emperor legalised Christianity?",
+  "c": [
+   "Constantine I",
+   "Nero",
+   "Diocletian",
+   "Theodosius I"
+  ],
+  "a": 0,
+  "e": "The Edict of Milan, 313."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Who led the Haitian Revolution's early years?",
+  "c": [
+   "Toussaint Louverture",
+   "Jean-Jacques Dessalines",
+   "Henri Christophe",
+   "Alexandre Pétion"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Zand dynasty ruled Iran from which city?",
+  "c": [
+   "Shiraz",
+   "Isfahan",
+   "Tehran",
+   "Mashhad"
+  ],
+  "a": 0,
+  "e": "Karim Khan Zand made it his capital."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Congress of Vienna met after the fall of whom?",
+  "c": [
+   "Napoleon",
+   "Louis XVI",
+   "Frederick the Great",
+   "Charles V"
+  ],
+  "a": 0,
+  "e": "It redrew Europe in 1814–15."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Chinese dynasty preceded the Ming?",
+  "c": [
+   "The Yuan",
+   "The Song",
+   "The Qing",
+   "The Tang"
+  ],
+  "a": 0,
+  "e": "The Yuan were the Mongol rulers."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Constitutional Revolution in Iran established what in 1906?",
+  "c": [
+   "A parliament",
+   "A republic",
+   "A monarchy",
+   "A caliphate"
+  ],
+  "a": 0,
+  "e": "The Majlis first met that year."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Who was the first Caliph after the Prophet Muhammad?",
+  "c": [
+   "Abu Bakr",
+   "Umar",
+   "Uthman",
+   "Ali"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which battle in 1453 is usually taken to end the Middle Ages?",
+  "c": [
+   "The fall of Constantinople",
+   "Agincourt",
+   "Bosworth Field",
+   "Lepanto"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Berlin Conference of 1884–85 organised what?",
+  "c": [
+   "The partition of Africa",
+   "The end of the Napoleonic Wars",
+   "The League of Nations",
+   "German unification"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which empire did Nader Shah invade in 1739, sacking Delhi?",
+  "c": [
+   "The Mughal Empire",
+   "The Ottoman Empire",
+   "The Qing Empire",
+   "The Uzbek Khanate"
+  ],
+  "a": 0,
+  "e": "He carried off the Peacock Throne."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Greek historian is called the father of history?",
+  "c": [
+   "Herodotus",
+   "Thucydides",
+   "Xenophon",
+   "Polybius"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Dreyfus Affair divided which country?",
+  "c": [
+   "France",
+   "Germany",
+   "Austria",
+   "Italy"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Who was the Mongol ruler who founded the Ilkhanate in Iran?",
+  "c": [
+   "Hulagu Khan",
+   "Ogedei Khan",
+   "Batu Khan",
+   "Tamerlane"
+  ],
+  "a": 0,
+  "e": "He sacked Baghdad in 1258."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which US amendment abolished slavery?",
+  "c": [
+   "The Thirteenth",
+   "The Fourteenth",
+   "The Fifteenth",
+   "The Twelfth"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Anglo-Persian Oil Company later became which firm?",
+  "c": [
+   "BP",
+   "Shell",
+   "Total",
+   "Exxon"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which war did the Battle of Tsushima decide in 1905?",
+  "c": [
+   "The Russo-Japanese War",
+   "The First Sino-Japanese War",
+   "The Boxer Rebellion",
+   "The Crimean War"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Sasanian king captured the Roman emperor Valerian?",
+  "c": [
+   "Shapur I",
+   "Ardashir I",
+   "Khosrow I",
+   "Yazdegerd III"
+  ],
+  "a": 0,
+  "e": "Shapur I captured Valerian in 260."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Council of Nicaea met in which year?",
+  "c": [
+   "325",
+   "451",
+   "787",
+   "1054"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which prime minister nationalised Iran's oil industry in 1951?",
+  "c": [
+   "Mohammad Mosaddegh",
+   "Ahmad Qavam",
+   "Ali Amini",
+   "Hassan Pirnia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which city was the Abbasid capital at its height?",
+  "c": [
+   "Baghdad",
+   "Damascus",
+   "Cairo",
+   "Samarra"
+  ],
+  "a": 0,
+  "e": "Samarra briefly took over in the 9th century."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Long March was undertaken by which force?",
+  "c": [
+   "The Chinese Red Army",
+   "The Kuomintang",
+   "The Viet Minh",
+   "The Japanese Imperial Army"
+  ],
+  "a": 0,
+  "e": "1934–35, about 9,000 km."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Italian city-state was ruled by the Doge?",
+  "c": [
+   "Venice",
+   "Florence",
+   "Milan",
+   "Genoa"
+  ],
+  "a": 0,
+  "e": "Genoa also had a doge, but Venice is the famous one."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which treaty created the European Economic Community in 1957?",
+  "c": [
+   "The Treaty of Rome",
+   "The Treaty of Maastricht",
+   "The Treaty of Paris",
+   "The Treaty of Lisbon"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Who was the Seljuk vizier who wrote the Siyasatnama?",
+  "c": [
+   "Nizam al-Mulk",
+   "Al-Ghazali",
+   "Ibn Khaldun",
+   "Rashid al-Din"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "The Kingdom of Aksum was centred on which modern country?",
+  "c": [
+   "Ethiopia",
+   "Sudan",
+   "Somalia",
+   "Yemen"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which Elamite city was the winter capital of the Achaemenids?",
+  "c": [
+   "Susa",
+   "Ecbatana",
+   "Pasargadae",
+   "Anshan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "The Behistun Inscription was commissioned by which king?",
+  "c": [
+   "Darius I",
+   "Cyrus the Great",
+   "Xerxes I",
+   "Artaxerxes II"
+  ],
+  "a": 0,
+  "e": "Its trilingual text unlocked cuneiform."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which year did the Sykes-Picot Agreement divide the Ottoman Middle East?",
+  "c": [
+   "1916",
+   "1918",
+   "1920",
+   "1922"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Who was the Parthian king who defeated Crassus at Carrhae?",
+  "c": [
+   "Orodes II",
+   "Mithridates I",
+   "Phraates IV",
+   "Vologases I"
+  ],
+  "a": 0,
+  "e": "Surena commanded the field in 53 BC."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "The Diet of Worms in 1521 confronted which reformer?",
+  "c": [
+   "Martin Luther",
+   "John Calvin",
+   "Huldrych Zwingli",
+   "Jan Hus"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which empire did the Battle of Nahavand in 642 effectively end?",
+  "c": [
+   "The Sasanian Empire",
+   "The Byzantine Empire",
+   "The Gupta Empire",
+   "The Umayyad Caliphate"
+  ],
+  "a": 0,
+  "e": "Arab sources called it the victory of victories."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which Ottoman institution recruited Christian boys into imperial service?",
+  "c": [
+   "The devshirme",
+   "The millet",
+   "The timar",
+   "The vakif"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "The Taiping Rebellion killed an estimated how many people?",
+  "c": [
+   "Twenty million",
+   "Two million",
+   "Fifty thousand",
+   "Two hundred million"
+  ],
+  "a": 0,
+  "e": "It ran from 1850 to 1864."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Who was the Buyid ruler who took Baghdad in 945?",
+  "c": [
+   "Ahmad ibn Buya",
+   "Adud al-Dawla",
+   "Mardavij",
+   "Rukn al-Dawla"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which Chinese admiral led seven treasure voyages in the 15th century?",
+  "c": [
+   "Zheng He",
+   "Li Shimin",
+   "Wu Sangui",
+   "Qi Jiguang"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "The Peace of Amasya in 1555 settled a border between the Ottomans and whom?",
+  "c": [
+   "The Safavids",
+   "The Habsburgs",
+   "The Mamluks",
+   "Venice"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which African empire was ruled by Mansa Musa?",
+  "c": [
+   "Mali",
+   "Songhai",
+   "Ghana",
+   "Kanem-Bornu"
+  ],
+  "a": 0,
+  "e": "His 1324 pilgrimage disrupted Egypt's gold price."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which document is the oldest surviving written constitution still in force?",
+  "c": [
+   "The US Constitution",
+   "The Magna Carta",
+   "The Constitution of San Marino",
+   "The Bill of Rights"
+  ],
+  "a": 0,
+  "e": "San Marino's statutes date from 1600."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which Iranian dynasty preceded the Safavids in Azerbaijan and Iraq?",
+  "c": [
+   "The Aq Qoyunlu",
+   "The Timurids",
+   "The Ilkhanids",
+   "The Jalayirids"
+  ],
+  "a": 0,
+  "e": "The Aq Qoyunlu were the White Sheep Turkomans."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which war ended with the Treaty of Zuhab in 1639?",
+  "c": [
+   "The Ottoman–Safavid War",
+   "The Russo-Turkish War",
+   "The Mughal–Safavid War",
+   "The Crimean War"
+  ],
+  "a": 0,
+  "e": "It fixed a border still roughly recognisable today."
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Which country built the Great Pyramid of Giza?",
+  "c": [
+   "Egypt",
+   "Greece",
+   "Rome",
+   "Persia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "Who was the leader of Nazi Germany?",
+  "c": [
+   "Adolf Hitler",
+   "Benito Mussolini",
+   "Francisco Franco",
+   "Joseph Goebbels"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 1,
+  "q": "In which year did the Second World War begin?",
+  "c": [
+   "1939",
+   "1935",
+   "1941",
+   "1945"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which US president was assassinated in 1963?",
+  "c": [
+   "John F. Kennedy",
+   "Franklin Roosevelt",
+   "Harry Truman",
+   "Lyndon Johnson"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Which country was divided into East and West after 1945?",
+  "c": [
+   "Germany",
+   "Austria",
+   "Poland",
+   "Czechoslovakia"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 2,
+  "q": "Who invented the printing press in Europe?",
+  "c": [
+   "Johannes Gutenberg",
+   "William Caxton",
+   "Aldus Manutius",
+   "Nicolas Jenson"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which US president issued the Emancipation Proclamation?",
+  "c": [
+   "Abraham Lincoln",
+   "Andrew Johnson",
+   "Ulysses Grant",
+   "James Buchanan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which city was destroyed by an earthquake and fire in 1906?",
+  "c": [
+   "San Francisco",
+   "Chicago",
+   "Tokyo",
+   "Lisbon"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which empire ruled Egypt before the British?",
+  "c": [
+   "The Ottoman Empire",
+   "The Roman Empire",
+   "The Persian Empire",
+   "The French Empire"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 3,
+  "q": "Which Iranian city was the Safavid capital before Isfahan?",
+  "c": [
+   "Qazvin",
+   "Shiraz",
+   "Tabriz",
+   "Mashhad"
+  ],
+  "a": 0,
+  "e": "Tabriz came first, then Qazvin, then Isfahan."
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which battle in 490 BC saw Athens defeat a Persian force?",
+  "c": [
+   "Marathon",
+   "Thermopylae",
+   "Salamis",
+   "Plataea"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which pact of 1939 divided eastern Europe between Germany and the USSR?",
+  "c": [
+   "The Molotov-Ribbentrop Pact",
+   "The Munich Agreement",
+   "The Anti-Comintern Pact",
+   "The Locarno Treaties"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 4,
+  "q": "Which Iranian city was destroyed by the Mongols in 1221 and never fully recovered?",
+  "c": [
+   "Nishapur",
+   "Rey",
+   "Qom",
+   "Sabzevar"
+  ],
+  "a": 0,
+  "e": "Rey was also destroyed, but Nishapur's fall is the byword."
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which Elamite kingdom preceded the Persians in southwestern Iran?",
+  "c": [
+   "Elam",
+   "Urartu",
+   "Mitanni",
+   "Media"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "history",
+  "level": 5,
+  "q": "Which Iranian dynasty ruled from Ctesiphon?",
+  "c": [
+   "The Sasanians",
+   "The Achaemenids",
+   "The Parthians",
+   "The Seleucids"
+  ],
+  "a": 0,
+  "e": "The Parthians used it too, but the Sasanians made it their capital."
+ }
+]

@@ -1,0 +1,142 @@
+@page "/admin"
+@inherits AdminPageBase
+
+<PageTitle>@L["admin.dashboard"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["nav.admin"]</h1></header>
+    <AdminNav />
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_data is null)
+    {
+        <p class="empty">@L["common.error"]</p>
+    }
+    else
+    {
+        <div class="grid-2 enter">
+            <div class="card stat"><div class="stat__value">@L.Num(_data.Players)</div><div class="stat__label">@L["admin.players"]</div></div>
+            <div class="card stat"><div class="stat__value">@L.Num(_data.Approved)</div><div class="stat__label">@L["admin.approved"]</div></div>
+            <div class="card stat"><div class="stat__value">@L.Num(_data.Pending)</div><div class="stat__label">@L["admin.pending"]</div></div>
+            <div class="card stat"><div class="stat__value">@L.Num(_data.Matches)</div><div class="stat__label">@L["admin.matches"]</div></div>
+        </div>
+
+        <section class="card enter" style="margin-top:1rem">
+            <div class="row row--between">
+                <span class="eyebrow">@L["admin.spend"]</span>
+                <span class="faint" dir="ltr" style="font-size:var(--step--1)">@_data.Model</span>
+            </div>
+
+            <div class="grid-2" style="margin-top:.8rem">
+                <div class="stat">
+                    <div class="stat__value" dir="ltr">$@_data.SpendAllTime.Cost.ToString("0.00")</div>
+                    <div class="stat__label">@L["admin.spend.allTime"]</div>
+                </div>
+                <div class="stat">
+                    <div class="stat__value" dir="ltr">$@_data.SpendMonth.Cost.ToString("0.00")</div>
+                    <div class="stat__label">@L["admin.spend.month"]</div>
+                </div>
+                <div class="stat">
+                    <div class="stat__value">@L.Num(Thousands(_data.SpendAllTime.PromptTokens + _data.SpendAllTime.CompletionTokens))</div>
+                    <div class="stat__label">@L["admin.spend.tokens"]</div>
+                </div>
+                <div class="stat">
+                    <div class="stat__value">@L.Num(_data.SpendAllTime.Calls)</div>
+                    <div class="stat__label">@L["admin.spend.calls"]</div>
+                </div>
+            </div>
+
+            <p class="faint" style="margin:.8rem 0 0;font-size:var(--step--1)">
+                @L.Format("admin.spend.split", L.Num(Thousands(_data.SpendAllTime.PromptTokens)), L.Num(Thousands(_data.SpendAllTime.CompletionTokens)))
+            </p>
+
+            @if (_data.SpendAllTime.Calls == 0)
+            {
+                <div class="notice" style="margin-top:.8rem">@L["admin.spend.none"]</div>
+            }
+        </section>
+
+        <section class="card enter" style="margin-top:1rem">
+            <div class="row row--between">
+                <span class="eyebrow">@L["admin.runs"]</span>
+                <button class="btn btn--sm" disabled="@(!_data.GeneratorConfigured || _busy)" @onclick="GenerateAsync">
+                    @(_busy ? L["common.loading"] : L["admin.generate"])
+                </button>
+            </div>
+
+            @if (!_data.GeneratorConfigured)
+            {
+                <div class="notice" style="margin-top:.8rem">@L["admin.noKey"]</div>
+            }
+
+            @if (_data.Runs.Count > 0)
+            {
+                <div class="scroll-x" style="margin-top:.8rem">
+                    <table class="table">
+                        <thead>
+                            <tr><th>@L["admin.runs"]</th><th>@L["admin.approved"]</th><th>@L["admin.rejected"]</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var run in _data.Runs)
+                            {
+                                <tr>
+                                    <td dir="ltr">@run.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                    <td class="numeral" style="color:var(--firouzeh)">@L.Num(run.Inserted)</td>
+                                    <td class="numeral faint">@L.Num(run.Rejected)</td>
+                                    <td class="faint">@run.Error</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        @if (_data.ThinBuckets.Count > 0)
+        {
+            <section class="card enter" style="margin-top:1rem">
+                <span class="eyebrow">@L["admin.thin"]</span>
+                <div class="scroll-x" style="margin-top:.8rem">
+                    <table class="table">
+                        <thead>
+                            <tr><th>@L["admin.category"]</th><th>@L["admin.language"]</th><th>@L["admin.level"]</th><th>@L["admin.approved"]</th><th>@L["admin.pending"]</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var bucket in _data.ThinBuckets)
+                            {
+                                <tr>
+                                    <td>@bucket.CategoryId</td>
+                                    <td dir="ltr">@bucket.Lang</td>
+                                    <td>@L["level." + bucket.Level]</td>
+                                    <td class="numeral">@L.Num(bucket.Approved)</td>
+                                    <td class="numeral faint">@L.Num(bucket.Pending)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private AdminDashboardDto? _data;
+
+    /// <summary>Token counts run to the millions; nobody reads the last six digits.</summary>
+    private static string Thousands(long tokens) => tokens < 1000 ? tokens.ToString() : $"{tokens / 1000m:0.#}k";
+    private bool _busy;
+
+    protected override async Task LoadAsync() => _data = await Api.DashboardAsync();
+
+    private async Task GenerateAsync()
+    {
+        _busy = true;
+        await Api.GenerateNowAsync();
+        await LoadAsync();
+        _busy = false;
+    }
+}

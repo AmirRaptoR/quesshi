@@ -1,0 +1,177 @@
+@page "/duel/{MatchId}"
+@inherits PageBase
+@inject IJSRuntime Js
+
+<PageTitle>@Headline · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_detail is null)
+    {
+        <div class="empty">
+            <p>@L["common.error"]</p>
+            <a class="btn btn--ghost" href="/">@L["common.back"]</a>
+        </div>
+    }
+    else
+    {
+        var summary = _detail.Summary;
+
+        <section class="card card--taq enter" style="text-align:center">
+            <span class="eyebrow">@Headline</span>
+
+            <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
+                <Shamseh Mine="@Mine" Theirs="@Theirs" Slots="@summary.Questions" HideTheirs="@(!summary.CanReveal)" Ignite="true"
+                         Centre="@(summary.CanReveal ? L.Num(summary.Me.Score) : "…")" />
+            </div>
+
+            <div class="row row--between" style="margin-top:1rem">
+                <div style="text-align:start">
+                    <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
+                    <div class="numeral" style="font-size:var(--step-2);color:var(--zaferan)">@L.Num(summary.Me.Score)</div>
+                </div>
+                <div style="text-align:end">
+                    <div class="faint" style="font-size:var(--step--1)">@(summary.Opponent?.DisplayName ?? L["result.them"])</div>
+                    <div class="numeral" style="font-size:var(--step-2)">
+                        @(summary.CanReveal && summary.Opponent is not null ? L.Num(summary.Opponent.Score) : "—")
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        @if (summary.Opponent is null)
+        {
+            <section class="card card--flat enter">
+                <span class="eyebrow">@L["result.share"]</span>
+                <div class="row" style="margin-top:.7rem">
+                    <code class="grow" dir="ltr"
+                          style="font-size:var(--step-2);font-weight:800;letter-spacing:.25em;color:var(--firouzeh)">@summary.Code</code>
+                    <button class="btn btn--ghost btn--sm" @onclick="CopyAsync">
+                        @(_copied ? L["result.copied"] : L["result.copyLink"])
+                    </button>
+                </div>
+                <p class="faint" dir="ltr" style="margin:.5rem 0 0;font-size:var(--step--1);word-break:break-all">@ShareLink</p>
+                <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["result.shareHint"]</p>
+            </section>
+        }
+        else if (!summary.CanReveal)
+        {
+            <p class="empty enter">@L["result.pendingHint"]</p>
+        }
+
+        @if (_detail.Reveal.Count > 0)
+        {
+            <section class="enter" style="margin-top:1rem">
+                <span class="eyebrow">@L["result.review"]</span>
+                <div class="stack" style="margin-top:.6rem">
+                    @foreach (var row in _detail.Reveal)
+                    {
+                        <article class="card card--flat">
+                            <div class="row row--between" style="gap:.5rem">
+                                <span class="faint" style="font-size:var(--step--1)">@row.CategoryName</span>
+                                <span class="faint numeral" style="font-size:var(--step--1)">@L.Num(row.Slot + 1)</span>
+                            </div>
+
+                            <p dir="auto" style="margin:.4rem 0 .7rem;font-weight:600">@row.Prompt</p>
+
+                            <MediaBlock Media="row.Media" Loop="false" Autoplay="false" />
+
+                            <div class="stack" style="gap:.35rem">
+                                @for (var i = 0; i < row.Choices.Count; i++)
+                                {
+                                    var index = i;
+                                    <div class="row" dir="auto" style="gap:.5rem;font-size:var(--step--1)">
+                                        <span style="color:@(index == row.CorrectIndex ? "var(--zaferan)" : "var(--sadaf-3)")">
+                                            @(index == row.CorrectIndex ? "●" : "○")
+                                        </span>
+                                        <span class="grow @(index == row.CorrectIndex ? null : "faint")">@row.Choices[index]</span>
+                                        @if (row.MyChoice == index) { <span class="chip chip--live">@L["result.you"]</span> }
+                                        @if (row.TheirChoice == index) { <span class="chip">@L["result.them"]</span> }
+                                    </div>
+                                }
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(row.Explanation))
+                            {
+                                <p class="muted" dir="auto" style="margin:.7rem 0 0;font-size:var(--step--1)">@row.Explanation</p>
+                            }
+
+                            <div style="margin-top:.6rem">
+                                <ReportQuestion QuestionId="@row.QuestionId" />
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+
+        <div class="stack enter" style="margin-top:1.2rem">
+            @if (summary.CanPlay)
+            {
+                <a class="btn btn--block" href="/play/@summary.Id">@L["play.next"]</a>
+            }
+
+            @if (State.IsGuest)
+            {
+                @* The only route onward a guest has is to stop being one. *@
+                <a class="btn btn--ghost btn--block" href="/signin">@L["result.keepScore"]</a>
+                <p class="faint" style="margin:-.4rem 0 0;text-align:center;font-size:var(--step--1)">@L["result.guestHint"]</p>
+            }
+            else
+            {
+                <a class="btn btn--ghost btn--block" href="/">@L["result.again"]</a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string MatchId { get; set; } = "";
+
+    /// <summary>The result of their one duel: the last thing a guest is shown, and the only thing left.</summary>
+    protected override bool AllowsGuest => true;
+
+    private MatchDetailDto? _detail;
+    private bool _copied;
+
+    /// <summary>The invite as something you can send: a code is fine to read out, a link is not.</summary>
+    private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_detail!.Summary.Code}";
+
+    protected override async Task LoadAsync() => _detail = await Api.MatchAsync(MatchId);
+
+    private string Headline => _detail?.Summary.Outcome switch
+    {
+        "win" => L["result.win"],
+        "loss" => L["result.loss"],
+        "draw" => L["result.draw"],
+        _ => L["result.pending"]
+    };
+
+    // Once revealed we colour by right/wrong; before that the rays only show how far each side got.
+    private IReadOnlyList<bool?> Mine => RaysFor(_detail?.Summary.Me, mine: true);
+    private IReadOnlyList<bool?> Theirs => RaysFor(_detail?.Summary.Opponent, mine: false);
+
+    private IReadOnlyList<bool?> RaysFor(PlayerSideDto? side, bool mine)
+    {
+        if (side is null) return [];
+
+        if (_detail?.Reveal.Count > 0)
+            return [.. _detail.Reveal.Select(r =>
+            {
+                var choice = mine ? r.MyChoice : r.TheirChoice;
+                return choice is null ? (bool?)null : choice == r.CorrectIndex;
+            })];
+
+        return [.. Enumerable.Range(0, _detail?.Summary.Questions ?? 6)
+            .Select(i => i < side.Correct ? (bool?)true : i < side.Answered ? false : null)];
+    }
+
+    private async Task CopyAsync()
+    {
+        _copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
+        StateHasChanged();
+    }
+}

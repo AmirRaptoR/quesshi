@@ -1,0 +1,118 @@
+@page "/admin/login"
+@implements IDisposable
+@inject AdminState Admin
+@inject AppState State
+@inject AdminApi Api
+@inject Translator L
+@inject NavigationManager Nav
+
+<PageTitle>@L["admin.auth.title"]</PageTitle>
+
+<div class="shell">
+    <div class="stack" style="margin-top:12vh">
+        <div class="enter" style="text-align:center">
+            <div style="width:6rem;margin-inline:auto">
+                <Shamseh Mine="@Mark" Theirs="@Mark" Label="@L["app.name"]" />
+            </div>
+            <h1 style="margin-top:1rem;font-size:var(--step-2)">@L["admin.auth.title"]</h1>
+            <p class="muted">@L["admin.auth.blurb"]</p>
+        </div>
+
+        <div class="card card--taq enter">
+            <div class="stack">
+                <div class="field">
+                    <label for="username">@L["admin.auth.username"]</label>
+                    <input id="username" class="input" dir="ltr" autocomplete="username"
+                           @bind="_username" @bind:event="oninput" @onkeydown="OnKey" />
+                </div>
+
+                <div class="field">
+                    <label for="password">@L["admin.auth.password"]</label>
+                    <input id="password" class="input" type="password" dir="ltr" autocomplete="current-password"
+                           @bind="_password" @bind:event="oninput" @onkeydown="OnKey" />
+                </div>
+
+                @if (_error is not null)
+                {
+                    <div class="notice notice--bad">
+                        @L[_error.Reason]
+                        @if (_error.LockedUntil is { } until)
+                        {
+                            <div class="faint" style="margin-top:.3rem">@L.Format("admin.auth.lockedUntil", until.ToLocalTime().ToString("HH:mm"))</div>
+                        }
+                    </div>
+                }
+
+                <button class="btn btn--block" disabled="@(_busy || !Ready)" @onclick="SignInAsync">
+                    @(_busy ? L["common.loading"] : L["admin.auth.signIn"])
+                </button>
+
+                <a class="btn btn--ghost btn--block btn--sm" href="/admin/forgot">@L["admin.auth.forgot"]</a>
+            </div>
+        </div>
+
+        <div class="enter" style="display:grid;justify-items:center;gap:.6rem">
+            <LangToggle />
+            <a class="faint" style="font-size:var(--step--1)" href="/">@L["admin.backToGame"]</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<bool?> Mark = [true, false, true, null, null, null];
+
+    private string _username = "", _password = "";
+    private AdminAuthErrorDto? _error;
+    private bool _busy;
+
+    private bool Ready => _username.Trim().Length > 0 && _password.Length > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Admin.Changed += StateHasChanged;
+        State.Changed += StateHasChanged;   // the language button is on this page; the page has to follow it
+        await Admin.InitialiseAsync();
+
+        if (Admin.SignedIn) Nav.NavigateTo(Next());
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && Ready) await SignInAsync();
+    }
+
+    private async Task SignInAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        var (session, error) = await Api.TryLoginAsync(_username.Trim(), _password);
+        _busy = false;
+
+        if (session is null)
+        {
+            _error = error ?? new AdminAuthErrorDto("admin.auth.invalid");
+            _password = "";
+            return;
+        }
+
+        await Admin.SignInAsync(session);
+        Nav.NavigateTo(session.Admin.MustChangePassword ? "/admin/password" : Next());
+    }
+
+    /// <summary>
+    /// Return the visitor to whatever they were trying to reach — but only inside the admin panel,
+    /// so the parameter cannot be used to bounce someone somewhere else.
+    /// </summary>
+    private string Next()
+    {
+        var next = QueryValues.Read(Nav.Uri, "next") ?? "/admin";
+        return next.StartsWith("/admin", StringComparison.Ordinal) ? next : "/admin";
+    }
+
+    public void Dispose()
+    {
+        Admin.Changed -= StateHasChanged;
+        State.Changed -= StateHasChanged;
+    }
+}

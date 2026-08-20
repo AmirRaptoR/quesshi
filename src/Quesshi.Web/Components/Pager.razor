@@ -1,0 +1,90 @@
+@* Page numbers for a long list. Kept generic so any admin table can use it. *@
+@inject Translator L
+
+@if (Total > 0)
+{
+    <nav class="pager" aria-label="@L["admin.pagination"]">
+        <span class="pager__count faint">@L.Format("admin.showing", L.Num(First), L.Num(Last), L.Num(Total))</span>
+
+        @if (PageCount > 1)
+        {
+            <button class="pager__step" disabled="@(Page <= 1)" @onclick="() => GoAsync(Page - 1)"
+                    aria-label="@L["admin.prevPage"]"><span class="pager__arrow" aria-hidden="true">‹</span></button>
+
+            @foreach (var slot in Slots())
+            {
+                if (slot is null)
+                {
+                    <span class="pager__gap" aria-hidden="true">…</span>
+                }
+                else
+                {
+                    var number = slot.Value;
+                    <button class="pager__page @(number == Page ? "is-current" : null)"
+                            aria-current="@(number == Page ? "page" : null)"
+                            aria-label="@L.Format("admin.page", L.Num(number))"
+                            @onclick="() => GoAsync(number)">@L.Num(number)</button>
+                }
+            }
+
+            <button class="pager__step" disabled="@(Page >= PageCount)" @onclick="() => GoAsync(Page + 1)"
+                    aria-label="@L["admin.nextPage"]"><span class="pager__arrow" aria-hidden="true">›</span></button>
+        }
+
+        <label class="pager__size">
+            <span class="faint">@L["admin.perPage"]</span>
+            <select class="select" value="@PageSize" @onchange="OnSizeChangedAsync">
+                @foreach (var size in Sizes)
+                {
+                    <option value="@size">@L.Num(size)</option>
+                }
+            </select>
+        </label>
+    </nav>
+}
+
+@code {
+    [Parameter, EditorRequired] public long Total { get; set; }
+    [Parameter, EditorRequired] public int Page { get; set; } = 1;
+    [Parameter, EditorRequired] public int PageSize { get; set; } = 25;
+
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    [Parameter] public int[] Sizes { get; set; } = [25, 50, 100];
+
+    public int PageCount => Total == 0 ? 1 : (int)Math.Ceiling(Total / (double)PageSize);
+
+    private long First => Total == 0 ? 0 : (long)(Page - 1) * PageSize + 1;
+    private long Last => Math.Min((long)Page * PageSize, Total);
+
+    /// <summary>First, last, and a window around the current page; null marks a gap.</summary>
+    private IEnumerable<int?> Slots()
+    {
+        const int window = 1;
+        var previous = 0;
+
+        for (var number = 1; number <= PageCount; number++)
+        {
+            var keep = number == 1 || number == PageCount || Math.Abs(number - Page) <= window;
+            if (!keep) continue;
+
+            if (previous > 0 && number - previous > 1) yield return null;
+
+            yield return number;
+            previous = number;
+        }
+    }
+
+    private async Task GoAsync(int page)
+    {
+        var clamped = Math.Clamp(page, 1, PageCount);
+        if (clamped != Page) await PageChanged.InvokeAsync(clamped);
+    }
+
+    private async Task OnSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && size != PageSize)
+            await PageSizeChanged.InvokeAsync(size);
+    }
+}

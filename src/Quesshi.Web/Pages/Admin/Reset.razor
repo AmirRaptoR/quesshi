@@ -1,0 +1,60 @@
+@page "/admin/reset"
+@inject AdminApi Api
+@inject Translator L
+@inject NavigationManager Nav
+
+<PageTitle>@L["admin.auth.resetTitle"]</PageTitle>
+
+<div class="shell">
+    <div class="stack" style="margin-top:14vh">
+        <div class="card card--taq enter">
+            <div class="stack">
+                <span class="eyebrow">@L["admin.auth.resetTitle"]</span>
+
+                @if (_done)
+                {
+                    <div class="notice notice--good">@L["admin.auth.resetDone"]</div>
+                    <a class="btn btn--block" href="/admin/login">@L["admin.auth.signIn"]</a>
+                }
+                else
+                {
+                    <PasswordFields @bind-Password="_password" @bind-Repeat="_repeat" Autocomplete="new-password" />
+
+                    @if (_message is not null) { <div class="notice notice--bad">@_message</div> }
+
+                    <button class="btn btn--block" disabled="@(_busy || !Filled)" @onclick="SubmitAsync">
+                        @(_busy ? L["common.loading"] : L["admin.auth.setPassword"])
+                    </button>
+                    <a class="btn btn--ghost btn--block btn--sm" href="/admin/login">@L["admin.auth.backToLogin"]</a>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _password = "", _repeat = "";
+    private string? _message;
+    private bool _busy, _done;
+
+    private bool Filled => _password.Length > 0 && _repeat.Length > 0;
+
+    private string Token => QueryValues.Read(Nav.Uri, "token") ?? "";
+
+    private async Task SubmitAsync()
+    {
+        _message = null;
+
+        if (_password != _repeat) { _message = L["admin.auth.mismatch"]; return; }
+
+        _busy = true;
+        var error = await Api.ResetAsync(Token, _password);
+        _busy = false;
+
+        if (error is null) { _done = true; return; }
+
+        _message = error.Problems is { Count: > 0 }
+            ? string.Join(" ", error.Problems.Select(p => L[p]))
+            : L[error.Reason];
+    }
+}

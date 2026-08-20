@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quesshi.Application\Quesshi.Application.csproj" />
+    <ProjectReference Include="..\Quesshi.Infrastructure\Quesshi.Infrastructure.csproj" />
+    <ProjectReference Include="..\Quesshi.Web\Quesshi.Web.csproj" />
+    <ProjectReference Include="..\Quesshi.Grains\Quesshi.Grains.csproj" />
+    <ProjectReference Include="..\Quesshi.Grains.Abstractions\Quesshi.Grains.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Orleans.Clustering.Redis" Version="10.2.2" />
+    <PackageReference Include="Microsoft.Orleans.Persistence.Redis" Version="10.2.2" />
+    <PackageReference Include="Microsoft.Orleans.Reminders.Redis" Version="10.2.2" />
+    <PackageReference Include="Microsoft.Orleans.Server" Version="10.2.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Seed data and server-side translations are read from disk at runtime. -->
+  <ItemGroup>
+    <Content Update="i18n\**;Seed\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

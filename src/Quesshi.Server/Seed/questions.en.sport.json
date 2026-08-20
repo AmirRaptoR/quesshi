@@ -1,0 +1,626 @@
+[
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "How many players are in a basketball team on the court?",
+  "c": [
+   "Five",
+   "Six",
+   "Seven",
+   "Four"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "Which sport is played at Wimbledon?",
+  "c": [
+   "Tennis",
+   "Golf",
+   "Cricket",
+   "Rowing"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "How many holes are on a full golf course?",
+  "c": [
+   "18",
+   "9",
+   "12",
+   "24"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "Which sport uses a puck?",
+  "c": [
+   "Ice hockey",
+   "Football",
+   "Rugby",
+   "Baseball"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "In which sport would you perform a slam dunk?",
+  "c": [
+   "Basketball",
+   "Volleyball",
+   "Handball",
+   "Netball"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "What colour card sends a footballer off?",
+  "c": [
+   "Red",
+   "Yellow",
+   "Blue",
+   "Black"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "How many minutes are in a football match, excluding stoppage?",
+  "c": [
+   "90",
+   "60",
+   "80",
+   "100"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "Which sport is Usain Bolt famous for?",
+  "c": [
+   "Sprinting",
+   "Swimming",
+   "Cycling",
+   "Boxing"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "How many players are on a volleyball court per team?",
+  "c": [
+   "Six",
+   "Five",
+   "Seven",
+   "Eight"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "Which country hosts the Tour de France's finish?",
+  "c": [
+   "France",
+   "Belgium",
+   "Italy",
+   "Spain"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "How often is the FIFA World Cup held?",
+  "c": [
+   "Every four years",
+   "Every two years",
+   "Every year",
+   "Every five years"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "Which country invented judo?",
+  "c": [
+   "Japan",
+   "China",
+   "South Korea",
+   "Thailand"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "How many points is a touchdown worth in American football?",
+  "c": [
+   "Six",
+   "Seven",
+   "Three",
+   "Five"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "Which Iranian sport involves a traditional gymnasium called a zurkhaneh?",
+  "c": [
+   "Varzesh-e Bastani",
+   "Wrestling",
+   "Chogan",
+   "Kabaddi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "How long is a standard Olympic swimming pool?",
+  "c": [
+   "50 metres",
+   "25 metres",
+   "100 metres",
+   "33 metres"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "Which country has won the most Olympic gold medals overall?",
+  "c": [
+   "The United States",
+   "Russia",
+   "China",
+   "Germany"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "How many players are on a cricket team?",
+  "c": [
+   "Eleven",
+   "Nine",
+   "Twelve",
+   "Ten"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "Which sport does the Ballon d'Or award belong to?",
+  "c": [
+   "Football",
+   "Basketball",
+   "Tennis",
+   "Cycling"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which Iranian wrestler is the country's most decorated Olympic freestyle champion?",
+  "c": [
+   "Gholamreza Takhti",
+   "Rasoul Khadem",
+   "Hassan Yazdani",
+   "Alireza Dabir"
+  ],
+  "a": 0,
+  "e": "Takhti is a national hero as much as an athlete."
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which country won the first FIFA World Cup in 1930?",
+  "c": [
+   "Uruguay",
+   "Brazil",
+   "Argentina",
+   "Italy"
+  ],
+  "a": 0,
+  "e": "They hosted it too."
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "How many periods are there in an ice hockey match?",
+  "c": [
+   "Three",
+   "Two",
+   "Four",
+   "Five"
+  ],
+  "e": "Twenty minutes each.",
+  "a": 0
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which tennis tournament is played on clay?",
+  "c": [
+   "The French Open",
+   "Wimbledon",
+   "The US Open",
+   "The Australian Open"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "What is the maximum break in snooker?",
+  "c": [
+   "147",
+   "155",
+   "180",
+   "100"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which sport is Iran's national team historically strongest at, winning Asian titles?",
+  "c": [
+   "Volleyball",
+   "Basketball",
+   "Handball",
+   "Hockey"
+  ],
+  "a": 0,
+  "e": "Wrestling and weightlifting are individual sports."
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "How many players are on a water polo team in the water?",
+  "c": [
+   "Seven",
+   "Six",
+   "Five",
+   "Eight"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which Formula 1 driver has won the most world championships, tied at seven?",
+  "c": [
+   "Lewis Hamilton",
+   "Ayrton Senna",
+   "Sebastian Vettel",
+   "Alain Prost"
+  ],
+  "a": 0,
+  "e": "He is tied with Michael Schumacher."
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "What is the length of an Olympic marathon in kilometres?",
+  "c": [
+   "42.195",
+   "40",
+   "45",
+   "38"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which martial art is Iran's traditional form of grappling in the zurkhaneh tradition?",
+  "c": [
+   "Pahlevani wrestling",
+   "Muay Thai",
+   "Sambo",
+   "Sumo"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "Which Iranian weightlifter won super-heavyweight Olympic gold in 2000 and 2004?",
+  "c": [
+   "Hossein Rezazadeh",
+   "Behdad Salimi",
+   "Kianoush Rostami",
+   "Sohrab Moradi"
+  ],
+  "a": 0,
+  "e": "He held the world record for over seven years."
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "How many players are on a rugby league team?",
+  "c": [
+   "Thirteen",
+   "Fifteen",
+   "Eleven",
+   "Twelve"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "Which country has won the most Rugby World Cups?",
+  "c": [
+   "South Africa",
+   "New Zealand",
+   "Australia",
+   "England"
+  ],
+  "a": 0,
+  "e": "South Africa has four."
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "In cricket, what is a hat-trick?",
+  "c": [
+   "Three wickets in three consecutive balls",
+   "Three centuries in a row",
+   "Three catches in an over",
+   "Three sixes in an over"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "Which city hosted the first modern Olympic Games?",
+  "c": [
+   "Athens",
+   "Paris",
+   "London",
+   "St Louis"
+  ],
+  "a": 0,
+  "e": "1896."
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "Which Iranian football club has won the Asian Champions League?",
+  "c": [
+   "Esteghlal",
+   "Persepolis",
+   "Sepahan",
+   "Tractor"
+  ],
+  "a": 0,
+  "e": "Esteghlal, then Taj, won in 1970 and 1990."
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "How high is a basketball hoop from the floor?",
+  "c": [
+   "3.05 metres",
+   "3.5 metres",
+   "2.75 metres",
+   "3.25 metres"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "What is the diameter of a golf hole?",
+  "c": [
+   "108 millimetres",
+   "90 millimetres",
+   "120 millimetres",
+   "75 millimetres"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "Which country won Olympic gold in football in 2024?",
+  "c": [
+   "Spain",
+   "France",
+   "Brazil",
+   "Argentina"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "Who won Iran's first Olympic medal?",
+  "c": [
+   "Jafar Salmasi",
+   "Gholamreza Takhti",
+   "Emam-Ali Habibi",
+   "Mahmoud Namjoo"
+  ],
+  "a": 0,
+  "e": "Jafar Salmasi took weightlifting bronze at London 1948."
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "What is the highest possible score in ten-pin bowling?",
+  "c": [
+   "300",
+   "250",
+   "270",
+   "200"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "In chess, what is the term for a move that attacks two pieces at once?",
+  "c": [
+   "A fork",
+   "A pin",
+   "A skewer",
+   "A discovered check"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "Which sport's world governing body is the FIVB?",
+  "c": [
+   "Volleyball",
+   "Fencing",
+   "Cycling",
+   "Table tennis"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "Which nation invented the sport of polo, called chogan in Persian?",
+  "c": [
+   "Iran",
+   "Mongolia",
+   "India",
+   "England"
+  ],
+  "a": 0,
+  "e": "Chogan was played in Persia over two thousand years ago."
+ },
+ {
+  "cat": "sport",
+  "level": 1,
+  "q": "Which sport uses a bat and a ball and has innings?",
+  "c": [
+   "Baseball",
+   "Football",
+   "Rugby",
+   "Hockey"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 2,
+  "q": "Which country invented modern football's rules?",
+  "c": [
+   "England",
+   "Scotland",
+   "Brazil",
+   "Italy"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "Which Iranian footballer has scored the most goals for the national team?",
+  "c": [
+   "Ali Daei",
+   "Karim Bagheri",
+   "Sardar Azmoun",
+   "Mehdi Taremi"
+  ],
+  "a": 0,
+  "e": "Cristiano Ronaldo eventually passed his international record."
+ },
+ {
+  "cat": "sport",
+  "level": 3,
+  "q": "How many players are on a handball court per team?",
+  "c": [
+   "Seven",
+   "Six",
+   "Five",
+   "Eight"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 4,
+  "q": "Which country has hosted the Summer Olympics the most times?",
+  "c": [
+   "The United States",
+   "France",
+   "United Kingdom",
+   "Greece"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "sport",
+  "level": 5,
+  "q": "Which Iranian city hosted the 1974 Asian Games?",
+  "c": [
+   "Tehran",
+   "Isfahan",
+   "Shiraz",
+   "Tabriz"
+  ],
+  "a": 0,
+  "e": null
+ }
+]

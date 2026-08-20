@@ -1,0 +1,153 @@
+@page "/join/{Code}"
+@implements IDisposable
+@inject AppState State
+@inject Api Api
+@inject Translator L
+@inject NavigationManager Nav
+
+@*
+    Where an invite link lands. Deliberately not a PageBase page: the whole point is that whoever
+    opens it has not signed in, and may never intend to.
+*@
+
+<PageTitle>@L["join.title"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    <div class="stack" style="margin-top:10vh">
+
+        <div class="enter" style="text-align:center">
+            <div style="width:7.5rem;margin-inline:auto">
+                <Shamseh Mine="@Mark" Theirs="@Mark" Ignite="true" Label="@L["app.name"]" />
+            </div>
+            <h1 style="margin-top:1.1rem;font-size:var(--step-2)">@L["app.name"]</h1>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+        }
+        else if (_invite is null)
+        {
+            <div class="card card--taq enter">
+                <div class="empty">
+                    <p>@L["join.noSuchCode"]</p>
+                    <a class="btn btn--ghost" href="/signin">@L["auth.title"]</a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card card--taq enter">
+                <div style="text-align:center">
+                    <span class="eyebrow">@L["join.invited"]</span>
+                    <p style="margin:.7rem 0 0;font-size:var(--step-1);font-weight:800">@_invite.ChallengerName</p>
+                    <p class="muted" style="margin:.2rem 0 0">
+                        @L.Format("join.questions", L.Num(_invite.Questions))
+                    </p>
+                </div>
+
+                @if (!_invite.Open)
+                {
+                    <div class="notice" style="margin-top:1rem">@L["join.taken"]</div>
+                    <a class="btn btn--ghost btn--block" style="margin-top:.8rem" href="/signin">@L["auth.title"]</a>
+                }
+                else
+                {
+                    <div class="stack" style="margin-top:1.2rem">
+                        <div class="field">
+                            <label for="guestname">@L["join.yourName"]</label>
+                            <input id="guestname" class="input" maxlength="24" autocomplete="nickname"
+                                   placeholder="@L["join.namePlaceholder"]"
+                                   @bind="_name" @bind:event="oninput" @onkeydown="OnNameKey" />
+                        </div>
+
+                        @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
+
+                        <button class="btn btn--block" disabled="@(_busy || !NameIsUsable)" @onclick="PlayAsGuestAsync">
+                            @(_busy ? L["common.loading"] : L["join.playAsGuest"])
+                        </button>
+
+                        <p class="faint" style="margin:-.35rem 0 0;text-align:center;font-size:var(--step--1)">
+                            @L["join.guestHint"]
+                        </p>
+
+                        <div class="row" style="gap:.6rem">
+                            <hr class="grow" style="border:0;border-top:1px solid var(--line)" />
+                            <span class="faint" style="font-size:var(--step--1)">@L["auth.or"]</span>
+                            <hr class="grow" style="border:0;border-top:1px solid var(--line)" />
+                        </div>
+
+                        <a class="btn btn--ghost btn--block" href="@SignInHref">@L["join.signInInstead"]</a>
+                        <p class="faint" style="margin:-.35rem 0 0;text-align:center;font-size:var(--step--1)">
+                            @L["join.signInHint"]
+                        </p>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<bool?> Mark = [true, null, true, null, true, null];
+
+    [Parameter] public string Code { get; set; } = "";
+
+    private InviteDto? _invite;
+    private string _name = "";
+    private string? _error;
+    private bool _loading = true, _busy;
+
+    private bool NameIsUsable => _name.Trim().Length is >= 2 and <= 24;
+
+    /// <summary>Signing in comes back here, so the invite is not lost on the way through.</summary>
+    private string SignInHref => $"/signin?next={Uri.EscapeDataString($"/join/{Code}")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.Changed += StateHasChanged;
+        await State.InitialiseAsync();
+
+        // Somebody already signed in does not need the guest path at all — take the seat and play.
+        if (State.SignedIn && !State.IsGuest)
+        {
+            if (await Api.JoinAsync(Code) is { } match)
+            {
+                Nav.NavigateTo($"/play/{match.Id}");
+                return;
+            }
+        }
+        else if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
+        {
+            // A guest reopening their own link belongs back in their duel, not at a second one.
+            Nav.NavigateTo($"/duel/{mine}");
+            return;
+        }
+
+        _invite = await Api.InviteAsync(Code);
+        _loading = false;
+    }
+
+    private async Task OnNameKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && NameIsUsable) await PlayAsGuestAsync();
+    }
+
+    private async Task PlayAsGuestAsync()
+    {
+        _busy = true; _error = null;
+
+        var result = await Api.JoinAsGuestAsync(Code, _name.Trim(), State.Lang);
+        if (result is null)
+        {
+            _busy = false;
+            _error = L["join.failed"];
+            return;
+        }
+
+        await State.SignInAsGuestAsync(result);
+        Nav.NavigateTo($"/play/{result.Match.Id}");
+    }
+
+    public void Dispose() => State.Changed -= StateHasChanged;
+}

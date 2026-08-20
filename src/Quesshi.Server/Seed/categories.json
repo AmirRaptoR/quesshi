@@ -1,0 +1,15 @@
+[
+  { "id": "geography",  "nameFa": "جغرافیا",         "nameEn": "Geography",        "icon": "🌍", "color": "#2EC4B6", "sortOrder": 1 },
+  { "id": "history",    "nameFa": "تاریخ",           "nameEn": "History",          "icon": "🏛️", "color": "#F2B441", "sortOrder": 2 },
+  { "id": "general",    "nameFa": "دانستنی‌ها",       "nameEn": "Common Knowledge", "icon": "🧠", "color": "#8FB3FF", "sortOrder": 3 },
+  { "id": "music",      "nameFa": "موسیقی",          "nameEn": "Music",            "icon": "🎼", "color": "#C77DFF", "sortOrder": 4 },
+  { "id": "food",       "nameFa": "خوراک و آشپزی",   "nameEn": "Food & Cooking",   "icon": "🍳", "color": "#F0785A", "sortOrder": 5 },
+  { "id": "movies",     "nameFa": "سینما",           "nameEn": "Movies",           "icon": "🎬", "color": "#D6435B", "sortOrder": 6 },
+  { "id": "science",    "nameFa": "علوم",            "nameEn": "Science",          "icon": "🔬", "color": "#6C8CF5", "sortOrder": 7 },
+  { "id": "nature",     "nameFa": "طبیعت و جانوران", "nameEn": "Nature & Animals", "icon": "🦁", "color": "#5FBF6A", "sortOrder": 8 },
+  { "id": "literature", "nameFa": "ادبیات",          "nameEn": "Literature",       "icon": "📚", "color": "#D9A441", "sortOrder": 9 },
+  { "id": "art",        "nameFa": "هنر",             "nameEn": "Art",              "icon": "🎨", "color": "#E86FA8", "sortOrder": 10 },
+  { "id": "technology", "nameFa": "فناوری",          "nameEn": "Technology",       "icon": "💻", "color": "#4FD1C5", "sortOrder": 11 },
+  { "id": "sport",      "nameFa": "ورزش",            "nameEn": "Sport",            "icon": "⚽", "color": "#48BB78", "sortOrder": 12 },
+  { "id": "knm",        "nameFa": "شناخت جامعهٔ هلند", "nameEn": "Dutch Society (KNM)", "nameNl": "Kennis van de Nederlandse Maatschappij", "icon": "🇳🇱", "color": "#FF7A2F", "sortOrder": 13 }
+]

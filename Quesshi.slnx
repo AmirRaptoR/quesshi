@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quesshi.Application/Quesshi.Application.csproj" />
+    <Project Path="src/Quesshi.Domain/Quesshi.Domain.csproj" />
+    <Project Path="src/Quesshi.Grains.Abstractions/Quesshi.Grains.Abstractions.csproj" />
+    <Project Path="src/Quesshi.Grains/Quesshi.Grains.csproj" />
+    <Project Path="src/Quesshi.Infrastructure/Quesshi.Infrastructure.csproj" />
+    <Project Path="src/Quesshi.Server/Quesshi.Server.csproj" />
+    <Project Path="src/Quesshi.Shared/Quesshi.Shared.csproj" />
+    <Project Path="src/Quesshi.Web/Quesshi.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Quesshi.Application.Tests/Quesshi.Application.Tests.csproj" />
+    <Project Path="tests/Quesshi.Domain.Tests/Quesshi.Domain.Tests.csproj" />
+    <Project Path="tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Quesshi</title>
+    <base href="/" />
+    <meta name="theme-color" content="#090E22" />
+    <meta name="description" content="Ask your friends. Persian and English trivia duels." />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+</head>
+<body>
+    <div id="app">
+        <div class="spinner" role="status" aria-label="Loading"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        Something went wrong. Reload to carry on.
+        <a href="" class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <script>
+      window.quesshi = {
+        get: k => localStorage.getItem(k),
+        set: (k, v) => localStorage.setItem(k, v),
+        remove: k => localStorage.removeItem(k),
+        setLang: (lang) => {
+          document.documentElement.lang = lang;
+          document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
+        },
+        copy: async (text) => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },
+
+        // Google Identity Services, loaded only when a client id is actually configured.
+        google: async (clientId, dotnet) => {
+          if (!window.google) {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement('script');
+              s.src = 'https://accounts.google.com/gsi/client';
+              s.async = true; s.onload = resolve; s.onerror = reject;
+              document.head.appendChild(s);
+            });
+          }
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: r => dotnet.invokeMethodAsync('OnGoogleCredential', r.credential)
+          });
+          window.google.accounts.id.renderButton(
+            document.getElementById('google-button'),
+            { theme: 'filled_black', size: 'large', width: 320, shape: 'pill' });
+        }
+      };
+    </script>
+    <script>
+      // A new deploy replaces the service worker under us; reload once so the running tab
+      // picks it up instead of quietly staying on the old bundle.
+      if ('serviceWorker' in navigator) {
+        let reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (reloading) return;
+          reloading = true;
+          location.reload();
+        });
+      }
+    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

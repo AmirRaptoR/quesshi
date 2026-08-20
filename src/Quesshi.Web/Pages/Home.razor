@@ -1,0 +1,154 @@
+@page "/play"
+@inherits PageBase
+
+<PageTitle>@L["app.name"]</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        <div style="width:2.5rem"><Shamseh Mine="@Emblem" Theirs="@Emblem" Size="40" Label="@L["app.name"]" /></div>
+        <div class="topbar__title">@L["app.name"]</div>
+        <div class="topbar__spacer"></div>
+        @if (State.Me is { } me)
+        {
+            <span class="chip"><span class="numeral">@L.Num(me.Stats.TotalScore)</span></span>
+        }
+    </header>
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <div class="stack">
+            <section class="card card--taq enter">
+                <span class="eyebrow">@L["home.newDuel"]</span>
+
+                <div class="field" style="margin-top:.9rem">
+                    <label>@L["home.length"]</label>
+                    <div class="segmented" role="group" aria-label="@L["home.length"]">
+                        @foreach (var count in QuestionCounts)
+                        {
+                            var value = count;
+                            <button type="button" class="segmented__option @(_questions == value ? "is-on" : null)"
+                                    aria-pressed="@((_questions == value).ToString().ToLowerInvariant())" @onclick="() => _questions = value">
+                                @L.Num(value)
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="field" style="margin-top:.9rem">
+                    <label>@L["home.categories"]</label>
+                    <div class="picker">
+                        @foreach (var category in _categories)
+                        {
+                            var id = category.Id;
+                            <button type="button" class="picker__chip @(_picked.Contains(id) ? "is-on" : null)"
+                                    style="--pick:@category.Color" aria-pressed="@(_picked.Contains(id).ToString().ToLowerInvariant())"
+                                    @onclick="() => Toggle(id)">
+                                <span aria-hidden="true">@category.Icon</span> @category.Name
+                            </button>
+                        }
+                    </div>
+                    <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
+                        @(_picked.Count == 0 ? L["home.anyCategory"] : L.Format("home.pickedCount", L.Num(_picked.Count)))
+                    </p>
+                </div>
+
+                <div class="stack" style="margin-top:1rem">
+                    <button class="btn btn--block" disabled="@_busy" @onclick="() => StartAsync(random: false)">
+                        <span>@L["home.friend"]</span>
+                    </button>
+                    <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.friendHint"]</p>
+
+                    <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="() => StartAsync(random: true)">
+                        <span>@L["home.random"]</span>
+                    </button>
+                    <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.randomHint"]</p>
+                </div>
+
+                @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.85rem">@_error</div> }
+            </section>
+
+            <section class="card card--flat enter">
+                <span class="eyebrow">@L["home.join"]</span>
+                <div class="row" style="margin-top:.7rem">
+                    <input class="input grow" dir="ltr" maxlength="6" placeholder="@L["home.joinPlaceholder"]"
+                           @bind="_code" @bind:event="oninput" style="text-transform:uppercase" />
+                    <button class="btn btn--gold" disabled="@(_busy || _code.Length < 4)" @onclick="JoinAsync">→</button>
+                </div>
+            </section>
+
+            @if (_active.Count > 0)
+            {
+                <section class="enter">
+                    <span class="eyebrow">@L["home.yourTurn"]</span>
+                    <div class="stack" style="margin-top:.6rem">
+                        @foreach (var match in _active)
+                        {
+                            <MatchRow Match="match" />
+                        }
+                    </div>
+                </section>
+            }
+            else
+            {
+                <p class="empty enter">@L["home.noMatches"]</p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<bool?> Emblem = [true, true, true, false, true, null];
+
+    /// <summary>Mirrors MatchRules.QuestionCountChoices; the server rejects anything else anyway.</summary>
+    private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
+
+    private List<MatchSummaryDto> _active = [];
+    private List<CategoryDto> _categories = [];
+    private readonly HashSet<string> _picked = [];
+    private int _questions = 6;
+    private string _code = "";
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        _categories = await Api.CategoriesAsync() ?? [];
+
+        var all = await Api.MatchesAsync() ?? [];
+        _active = [.. all.Where(m => m.State is "awaitingopponent" or "inprogress").OrderByDescending(m => m.CanPlay).Take(8)];
+    }
+
+    private void Toggle(string id)
+    {
+        if (!_picked.Remove(id)) _picked.Add(id);
+    }
+
+    private async Task StartAsync(bool random)
+    {
+        _busy = true; _error = null;
+
+        // Nothing picked means "surprise me" — the server draws three categories itself.
+        var match = await Api.CreateMatchAsync(random, State.Lang, _picked.Count == 0 ? null : [.. _picked], _questions);
+        _busy = false;
+
+        if (match is null) { _error = L["common.error"]; return; }
+
+        Nav.NavigateTo(match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}");
+    }
+
+    private async Task JoinAsync()
+    {
+        _busy = true; _error = null;
+
+        var match = await Api.JoinAsync(_code);
+        _busy = false;
+
+        if (match is null) { _error = L["common.error"]; return; }
+
+        Nav.NavigateTo($"/play/{match.Id}");
+    }
+}

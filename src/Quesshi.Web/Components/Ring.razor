@@ -1,0 +1,17 @@
+@* Countdown ring. The clock that counts is the server's; this one just shows it draining. *@
+<svg class="ring" viewBox="0 0 44 44" width="@Size" height="@Size" aria-hidden="true">
+    <circle class="ring__track" cx="22" cy="22" r="19" stroke-width="3" />
+    <circle class="ring__fill @Heat" cx="22" cy="22" r="19" stroke-width="3"
+            stroke-dasharray="@Circumference" stroke-dashoffset="@Offset" />
+</svg>
+
+@code {
+    [Parameter] public int Remaining { get; set; }
+    [Parameter] public int Total { get; set; } = 20;
+    [Parameter] public string Size { get; set; } = "44";
+
+    private const double Circumference = 2 * Math.PI * 19;
+
+    private double Offset => Circumference * (1 - Math.Clamp(Total == 0 ? 0 : (double)Remaining / Total, 0, 1));
+    private string Heat => Remaining <= 5 ? "hot" : Remaining <= 10 ? "warn" : "";
+}

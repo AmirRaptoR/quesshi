@@ -1,0 +1,486 @@
+@page "/admin/questions"
+@inherits AdminPageBase
+
+<PageTitle>@L["admin.questions"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["admin.questions"]</h1></header>
+    <AdminNav />
+
+    <section class="card card--taq">
+        <div class="row row--between" style="flex-wrap:wrap;gap:.5rem">
+            <span class="eyebrow">@L["admin.askAi"]</span>
+            <a class="btn btn--ghost btn--sm" href="/admin">@L["admin.dashboard"]</a>
+        </div>
+
+        <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.9rem">
+            <select class="select" style="width:auto" @bind="_ask.Lang">
+                <option value="fa">@L["lang.fa"]</option>
+                <option value="en">@L["lang.en"]</option>
+                        <option value="nl">@L["lang.nl"]</option>
+            </select>
+
+            <select class="select" style="width:auto" @bind="_ask.CategoryId">
+                @foreach (var category in _categories)
+                {
+                    <option value="@category.Id">@L.Name(category)</option>
+                }
+            </select>
+
+            <select class="select" style="width:auto" @bind="_ask.Level">
+                @foreach (var level in Levels)
+                {
+                    <option value="@level">@L[$"level.{level}"]</option>
+                }
+            </select>
+
+            <input class="input" style="width:5.5rem" type="number" min="1" max="20" @bind="_ask.Count" aria-label="@L["admin.count"]" />
+
+            <button class="btn" disabled="@(_generating || !_generatorReady)" @onclick="GenerateAsync">
+                @(_generating ? L["admin.generating"] : L["admin.askAi"])
+            </button>
+
+            <button class="btn btn--gold" disabled="@(_generating || !_generatorReady)" @onclick="GenerateIllustratedAsync">
+                @(_generating ? L["admin.generating"] : L["admin.askAiImages"])
+            </button>
+        </div>
+
+        <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["admin.generateHint"]</p>
+        <p class="faint" style="margin:.2rem 0 0;font-size:var(--step--1)">@L["admin.imagesHint"]</p>
+
+        @if (!_generatorReady)
+        {
+            <div class="notice" style="margin-top:.7rem">@L["admin.noKey"]</div>
+        }
+        @if (_lastRun is { } run)
+        {
+            <div class="notice @(run.Error is null && run.Inserted > 0 ? "notice--good" : "notice--bad")" style="margin-top:.7rem">
+                @if (run.Error is not null)
+                {
+                    <span dir="ltr">@run.Error</span>
+                }
+                else if (run.Inserted == 0)
+                {
+                    @L["admin.generatedNone"]
+                }
+                else
+                {
+                    @L.Format("admin.generated", L.Num(run.Inserted), L.Num(run.Rejected))
+                    <button class="btn btn--ghost btn--sm" style="margin-inline-start:.6rem" @onclick="ShowPendingAsync">@L["admin.reviewPending"]</button>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card card--flat">
+        <div class="row" style="flex-wrap:wrap;gap:.5rem">
+            <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
+                <option value="">@L["admin.language"]: @L["admin.all"]</option>
+                <option value="fa">@L["lang.fa"]</option>
+                <option value="en">@L["lang.en"]</option>
+                        <option value="nl">@L["lang.nl"]</option>
+            </select>
+
+            <select class="select" style="width:auto" @bind="_category" @bind:after="ReloadAsync">
+                <option value="">@L["admin.category"]: @L["admin.all"]</option>
+                @foreach (var category in _categories)
+                {
+                    <option value="@category.Id">@L.Name(category)</option>
+                }
+            </select>
+
+            <select class="select" style="width:auto" @bind="_status" @bind:after="ReloadAsync">
+                <option value="">@L["admin.status"]: @L["admin.all"]</option>
+                <option value="pending">@L["admin.pending"]</option>
+                <option value="approved">@L["admin.approved"]</option>
+                <option value="rejected">@L["admin.rejected"]</option>
+            </select>
+
+            <select class="select" style="width:auto" @bind="_level" @bind:after="ReloadAsync">
+                <option value="0">@L["admin.level"]: @L["admin.all"]</option>
+                @foreach (var level in Levels)
+                {
+                    <option value="@level">@L[$"level.{level}"]</option>
+                }
+            </select>
+
+            <input class="input grow" style="min-width:10rem" placeholder="@L["admin.search"]"
+                   @bind="_text" @bind:event="oninput" @onkeydown="OnSearchKey" />
+
+            <button class="btn btn--sm" @onclick="StartNew">@L["admin.new"]</button>
+        </div>
+    </section>
+
+    @if (_editing is not null)
+    {
+        <div class="modal" role="dialog" aria-modal="true" aria-label="@(_editing.Id is null ? L["admin.new"] : L["admin.edit"])"
+             @onclick="CloseEditor">
+        @* Clicks inside the panel must not reach the backdrop, or typing would close the form. *@
+        <section class="card card--taq modal__panel" @onclick:stopPropagation="true">
+            <span class="eyebrow">@(_editing.Id is null ? L["admin.new"] : L["admin.edit"])</span>
+            <button class="btn btn--ghost btn--sm btn--icon modal__close" @onclick="CloseEditor"
+                    title="@L["common.close"]" aria-label="@L["common.close"]">
+                <Icon Name="close" />
+            </button>
+
+            <div class="stack" style="margin-top:.9rem">
+                <div class="row" style="flex-wrap:wrap;gap:.5rem">
+                    <select class="select" style="width:auto" @bind="_editing.Lang">
+                        <option value="fa">@L["lang.fa"]</option>
+                        <option value="en">@L["lang.en"]</option>
+                        <option value="nl">@L["lang.nl"]</option>
+                    </select>
+                    <select class="select" style="width:auto" @bind="_editing.CategoryId">
+                        @foreach (var category in _categories)
+                        {
+                            <option value="@category.Id">@L.Name(category)</option>
+                        }
+                    </select>
+                    <select class="select" style="width:auto" @bind="_editing.Level">
+                        @foreach (var level in Levels)
+                {
+                    <option value="@level">@L[$"level.{level}"]</option>
+                }
+                    </select>
+                    <select class="select" style="width:auto" @bind="_editing.Status">
+                        <option value="pending">@L["admin.pending"]</option>
+                        <option value="approved">@L["admin.approved"]</option>
+                        <option value="rejected">@L["admin.rejected"]</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>@L["admin.prompt"]</label>
+                    <textarea class="textarea" rows="2" @bind="_editing.Prompt"></textarea>
+                </div>
+
+                <div class="field">
+                    <label>@L["admin.choices"] · @L["admin.correct"]</label>
+                    @for (var i = 0; i < 4; i++)
+                    {
+                        var index = i;
+                        <div class="row" style="margin-bottom:.4rem">
+                            <input type="radio" name="correct" checked="@(_editing.CorrectIndex == index)"
+                                   @onchange="() => _editing.CorrectIndex = index" aria-label="@($"Correct: {index + 1}")" />
+                            <input class="input grow" @bind="_editing.Choices[index]" />
+                        </div>
+                    }
+                </div>
+
+                <div class="field">
+                    <label>@L["admin.explanation"]</label>
+                    <input class="input" @bind="_editing.Explanation" />
+                </div>
+
+                <div class="field">
+                    <label>@L["admin.media"]</label>
+                    <div class="row">
+                        <InputFile OnChange="UploadAsync" class="input grow" accept="image/*,audio/*,video/*" />
+                        @if (!string.IsNullOrWhiteSpace(_editing.MediaUrl))
+                        {
+                            <span class="chip">@_editing.MediaKind</span>
+                            @* Detaching the media, not deleting the file — the upload stays on disk. *@
+                            <button class="btn btn--ghost btn--sm btn--icon" title="@L["admin.removeMedia"]"
+                                    aria-label="@L["admin.removeMedia"]"
+                                    @onclick="() => { _editing.MediaUrl = null; _editing.MediaKind = null; }">
+                                <Icon Name="close" />
+                            </button>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_editing.MediaUrl))
+                    {
+                        @* Previewed the same way whatever the kind — audio and video used to show nothing here. *@
+                        <MediaBlock Media="EditingMedia" Compact="true" Autoplay="false" Loop="false" />
+                    }
+                </div>
+
+                @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
+
+                <div class="row">
+                    <button class="btn" disabled="@_busy" @onclick="SaveAsync">@L["admin.save"]</button>
+                    <button class="btn btn--ghost" @onclick="CloseEditor">@L["admin.cancel"]</button>
+                </div>
+            </div>
+        </section>
+        </div>
+    }
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <Pager Total="_results?.Total ?? 0" Page="_pageNumber" PageSize="_pageSize"
+               PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
+
+        @if (_results is { Items.Count: 0 })
+        {
+            <p class="empty">@L["admin.noResults"]</p>
+        }
+
+        <div class="stack" style="margin-top:.75rem">
+            @foreach (var question in _results?.Items ?? [])
+            {
+                <article class="card card--flat @(question.Source == "ai" ? "card--ai" : null)">
+                    <div class="row row--between" style="gap:.5rem;flex-wrap:wrap">
+                        <div class="row" style="gap:.4rem;flex-wrap:wrap">
+                            @if (question.Source == "ai")
+                            {
+                                <span class="chip chip--ai">@L["admin.aiWritten"]</span>
+                            }
+                            <span class="chip" dir="ltr">@question.Lang</span>
+                            <span class="chip">@CategoryName(question.CategoryId)</span>
+                            <span class="chip">@L["level." + question.Level]</span>
+                            <span class="chip @StatusClass(question.Status)">@L["admin." + question.Status]</span>
+                            @if (question.TimesServed > 0)
+                            {
+                                <span class="chip faint">@L.Num(question.TimesCorrect)/@L.Num(question.TimesServed)</span>
+                            }
+                        </div>
+
+                        <div class="row" style="gap:.35rem">
+                            @if (question.Status != "approved")
+                            {
+                                <button class="btn btn--sm" @onclick="() => ApproveAsync(question.Id)">@L["admin.approve"]</button>
+                            }
+                            @if (question.Status != "rejected")
+                            {
+                                <button class="btn btn--ghost btn--sm" @onclick="() => RejectAsync(question.Id)">@L["admin.reject"]</button>
+                            }
+                            <button class="btn btn--ghost btn--sm" @onclick="() => Edit(question)">@L["admin.edit"]</button>
+                            <button class="btn btn--sm btn--icon btn--icon-danger" title="@L["admin.delete"]"
+                                    aria-label="@L["admin.delete"]" @onclick="() => DeleteAsync(question.Id)">
+                                <Icon Name="trash" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <p dir="auto" style="margin:.6rem 0 .4rem;font-weight:600">@question.Prompt</p>
+
+                    <MediaBlock Media="question.Media" Compact="true" Autoplay="false" Loop="false" />
+
+                    <div class="row" dir="auto" style="gap:.4rem;flex-wrap:wrap;font-size:var(--step--1);margin-top:.4rem">
+                        @for (var i = 0; i < question.Choices.Count; i++)
+                        {
+                            <span class="chip @(i == question.CorrectIndex ? "chip--win" : null)">@question.Choices[i]</span>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+
+        <Pager Total="_results?.Total ?? 0" Page="_pageNumber" PageSize="_pageSize"
+               PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
+    }
+</div>
+
+@code {
+    private static readonly int[] Levels = [1, 2, 3, 4, 5];
+
+    /// <summary>A category's display name, falling back to the slug for one that has since been deleted.</summary>
+    private string CategoryName(string id)
+        => _categories.FirstOrDefault(c => c.Id == id) is { } category ? L.Name(category) : id;
+
+    /// <summary>The media currently attached to the question being edited, if any.</summary>
+    private MediaDto? EditingMedia => string.IsNullOrWhiteSpace(_editing?.MediaUrl)
+        ? null
+        : new MediaDto(_editing.MediaKind ?? "image", _editing.MediaUrl!);
+
+    private readonly AskForm _ask = new();
+    private GenerationRunDto? _lastRun;
+    private bool _generating, _generatorReady;
+
+    private AdminQuestionPageDto? _results;
+    private List<CategoryDto> _categories = [];
+    private QuestionForm? _editing;
+    private string _lang = "", _category = "", _status = "", _text = "";
+    private int _level;
+    private int _pageNumber = 1;
+    private int _pageSize = 25;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task LoadAsync()
+    {
+        _categories = await Api.AdminCategoriesAsync() ?? [];
+        _ask.CategoryId = _categories.FirstOrDefault()?.Id ?? "";
+        _generatorReady = (await Api.DashboardAsync())?.GeneratorConfigured ?? false;
+
+        ReadFilters();
+        await FetchAsync();
+    }
+
+    /// <summary>The address bar is the source of truth, so a shared or reloaded link opens the same view.</summary>
+    private void ReadFilters()
+    {
+        _lang = QueryState.Read(Nav, "lang");
+        _category = QueryState.Read(Nav, "category");
+        _status = QueryState.Read(Nav, "status");
+        _text = QueryState.Read(Nav, "q");
+        _level = QueryState.ReadInt(Nav, "level", 0);
+        _pageNumber = Math.Max(1, QueryState.ReadInt(Nav, "page", 1));
+        _pageSize = QueryState.ReadInt(Nav, "size", 25) is var size && size is 25 or 50 or 100 ? size : 25;
+    }
+
+    private void WriteFilters() => QueryState.Write(Nav, new Dictionary<string, string?>
+    {
+        ["lang"] = _lang,
+        ["category"] = _category,
+        ["status"] = _status,
+        ["level"] = _level == 0 ? null : _level.ToString(),
+        ["q"] = _text.Trim(),
+        ["page"] = _pageNumber == 1 ? null : _pageNumber.ToString(),
+        ["size"] = _pageSize == 25 ? null : _pageSize.ToString()
+    });
+
+    private async Task GenerateAsync()
+    {
+        _generating = true;
+        _lastRun = null;
+
+        _lastRun = await Api.GenerateBucketAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level, _ask.Count))
+                   ?? new GenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now, 0, 0, 0, L["common.error"]);
+
+        _generating = false;
+        await ReloadAsync();
+    }
+
+    private async Task GenerateIllustratedAsync()
+    {
+        _generating = true;
+        _lastRun = null;
+
+        _lastRun = await Api.GenerateIllustratedAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level, _ask.Count))
+                   ?? new GenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now, 0, 0, 0, L["common.error"]);
+
+        _generating = false;
+        await ReloadAsync();
+    }
+
+    private async Task ShowPendingAsync()
+    {
+        _status = "pending";
+        _lang = _ask.Lang;
+        _category = _ask.CategoryId;
+        await ReloadAsync();
+    }
+
+    /// <summary>Changing a filter is a new search, so it starts again at page one.</summary>
+    private async Task ReloadAsync()
+    {
+        _pageNumber = 1;
+        await FetchAsync();
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _pageNumber = page;
+        await FetchAsync();
+    }
+
+    private async Task SetPageSizeAsync(int size)
+    {
+        // Keep the first row of the current page in view rather than jumping back to the start.
+        var firstRow = (_pageNumber - 1) * _pageSize;
+        _pageSize = size;
+        _pageNumber = firstRow / size + 1;
+
+        await FetchAsync();
+    }
+
+    /// <summary>
+    /// Approving or deleting the last row of the last page would otherwise leave you looking at an
+    /// empty page, so the page number is clamped to what actually exists and refetched.
+    /// </summary>
+    private async Task FetchAsync()
+    {
+        WriteFilters();
+        _results = await Api.AdminQuestionsAsync(Query());
+
+        if (_results is not null)
+        {
+            var pages = Math.Max(1, (int)Math.Ceiling(_results.Total / (double)_pageSize));
+            if (_pageNumber > pages)
+            {
+                _pageNumber = pages;
+                _results = await Api.AdminQuestionsAsync(Query());
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private string Query()
+    {
+        var parts = new List<string> { $"skip={(_pageNumber - 1) * _pageSize}", $"take={_pageSize}" };
+        if (_lang.Length > 0) parts.Add($"lang={_lang}");
+        if (_category.Length > 0) parts.Add($"category={_category}");
+        if (_status.Length > 0) parts.Add($"status={_status}");
+        if (_level > 0) parts.Add($"level={_level}");
+        if (_text.Trim().Length > 0) parts.Add($"text={Uri.EscapeDataString(_text.Trim())}");
+        return string.Join('&', parts);
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ReloadAsync();
+    }
+
+    private void StartNew()
+    {
+        _error = null;
+        _editing = new QuestionForm { CategoryId = _categories.FirstOrDefault()?.Id ?? "geography" };
+    }
+
+    private void Edit(AdminQuestionDto q)
+    {
+        _error = null;
+        _editing = QuestionForm.From(q);
+    }
+
+    private void CloseEditor()
+    {
+        _editing = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true; _error = null;
+
+        var saved = await Api.SaveQuestionAsync(_editing!.ToDto());
+        _busy = false;
+
+        if (saved is null) { _error = L["common.error"]; return; }
+
+        _editing = null;
+        await FetchAsync();
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        using var content = new MultipartFormDataContent();
+        // 20 MB matches the server's cap; anything larger is refused there anyway.
+        var stream = file.OpenReadStream(20 * 1024 * 1024);
+        content.Add(new StreamContent(stream), "file", file.Name);
+
+        var media = await Api.UploadAsync(content);
+        if (media is null) { _error = L["common.error"]; return; }
+
+        _editing!.MediaKind = media.Kind;
+        _editing.MediaUrl = media.Url;
+    }
+
+    private async Task ApproveAsync(string id) { await Api.ApproveAsync(id); await FetchAsync(); }
+    private async Task RejectAsync(string id) { await Api.RejectAsync(id); await FetchAsync(); }
+    private async Task DeleteAsync(string id) { await Api.DeleteQuestionAsync(id); await FetchAsync(); }
+
+    private static string? StatusClass(string status) => status switch
+    {
+        "approved" => "chip--win",
+        "rejected" => "chip--loss",
+        _ => null
+    };
+}

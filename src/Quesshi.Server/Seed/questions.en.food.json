@@ -1,0 +1,1211 @@
+[
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which country is pizza originally from?",
+  "c": [
+   "Italy",
+   "Greece",
+   "Spain",
+   "France"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is the main ingredient of guacamole?",
+  "c": [
+   "Avocado",
+   "Courgette",
+   "Pea",
+   "Broccoli"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which grain is used to make bread?",
+  "c": [
+   "Wheat",
+   "Rice",
+   "Maize",
+   "Barley"
+  ],
+  "a": 0,
+  "e": "Wheat is the usual one, though all four can be baked."
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is sushi traditionally wrapped in?",
+  "c": [
+   "Seaweed",
+   "Rice paper",
+   "Lettuce",
+   "Pastry"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which fruit is dried to make a raisin?",
+  "c": [
+   "Grape",
+   "Plum",
+   "Fig",
+   "Apricot"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What kind of food is cheddar?",
+  "c": [
+   "Cheese",
+   "Bread",
+   "Sausage",
+   "Wine"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which vegetable makes people cry when chopped?",
+  "c": [
+   "Onion",
+   "Carrot",
+   "Potato",
+   "Cabbage"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is the main ingredient of hummus?",
+  "c": [
+   "Chickpeas",
+   "Lentils",
+   "White beans",
+   "Peas"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which drink is made from crushed grapes?",
+  "c": [
+   "Wine",
+   "Beer",
+   "Cider",
+   "Whisky"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What colour is saffron when it stains rice?",
+  "c": [
+   "Golden yellow",
+   "Deep red",
+   "Green",
+   "Purple"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which meal is served in the morning?",
+  "c": [
+   "Breakfast",
+   "Dinner",
+   "Supper",
+   "Brunch"
+  ],
+  "a": 0,
+  "e": "Brunch is later and combines two meals."
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is the main ingredient of an omelette?",
+  "c": [
+   "Eggs",
+   "Flour",
+   "Milk",
+   "Cheese"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which country is famous for kebab and chelow?",
+  "c": [
+   "Iran",
+   "Japan",
+   "Mexico",
+   "Ireland"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is a spice made from dried, ground chilli called?",
+  "c": [
+   "Cayenne",
+   "Cinnamon",
+   "Nutmeg",
+   "Turmeric"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which cooking method uses boiling water?",
+  "c": [
+   "Boiling",
+   "Frying",
+   "Grilling",
+   "Roasting"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is butter made from?",
+  "c": [
+   "Cream",
+   "Flour",
+   "Oil",
+   "Egg"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which nut is used to make marzipan?",
+  "c": [
+   "Almond",
+   "Walnut",
+   "Pistachio",
+   "Hazelnut"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What is a baguette?",
+  "c": [
+   "A long French bread",
+   "A soft cheese",
+   "A stew",
+   "A pastry cream"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which spice is the most expensive by weight?",
+  "c": [
+   "Saffron",
+   "Vanilla",
+   "Cardamom",
+   "Black pepper"
+  ],
+  "a": 0,
+  "e": "It takes about 150,000 flowers to make a kilo."
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is the Persian herb stew with lamb and dried lime called?",
+  "c": [
+   "Ghormeh sabzi",
+   "Fesenjan",
+   "Gheymeh",
+   "Ash reshteh"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which acid gives lemons their sour taste?",
+  "c": [
+   "Citric acid",
+   "Acetic acid",
+   "Lactic acid",
+   "Malic acid"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is the main ingredient of fesenjan's sauce?",
+  "c": [
+   "Walnuts and pomegranate",
+   "Tomatoes and onion",
+   "Yoghurt and mint",
+   "Chickpeas and lime"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which country did croissants become famous in?",
+  "c": [
+   "France",
+   "Austria",
+   "Belgium",
+   "Switzerland"
+  ],
+  "a": 0,
+  "e": "The shape came from Vienna, but France made it its own."
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What does 'al dente' describe?",
+  "c": [
+   "Pasta cooked firm to the bite",
+   "Meat cooked rare",
+   "Bread left to rise",
+   "Fish steamed whole"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which part of the plant is cinnamon?",
+  "c": [
+   "The bark",
+   "The root",
+   "The seed",
+   "The flower"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is tahini made from?",
+  "c": [
+   "Sesame seeds",
+   "Sunflower seeds",
+   "Peanuts",
+   "Almonds"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which Iranian dish layers rice with a crisp golden crust?",
+  "c": [
+   "Tahdig",
+   "Kashk-e bademjan",
+   "Mirza ghasemi",
+   "Dolmeh"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which cheese is traditionally used on a Margherita pizza?",
+  "c": [
+   "Mozzarella",
+   "Cheddar",
+   "Parmesan",
+   "Gouda"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is the main flavouring in a pesto sauce?",
+  "c": [
+   "Basil",
+   "Parsley",
+   "Coriander",
+   "Mint"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which country invented tempura's frying technique before Japan adopted it?",
+  "c": [
+   "Portugal",
+   "China",
+   "Spain",
+   "Netherlands"
+  ],
+  "a": 0,
+  "e": "Portuguese missionaries brought it in the 16th century."
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is a soufflé leavened with?",
+  "c": [
+   "Whipped egg whites",
+   "Baking powder",
+   "Yeast",
+   "Sourdough starter"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which Persian soup contains noodles, herbs and kashk?",
+  "c": [
+   "Ash reshteh",
+   "Abgoosht",
+   "Soup-e jo",
+   "Eshkeneh"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is the process of cooking sugar until it browns called?",
+  "c": [
+   "Caramelisation",
+   "Fermentation",
+   "Emulsification",
+   "Coagulation"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which fish is used to make traditional gravlax?",
+  "c": [
+   "Salmon",
+   "Cod",
+   "Herring",
+   "Mackerel"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is a roux made from?",
+  "c": [
+   "Fat and flour",
+   "Butter and sugar",
+   "Egg and cream",
+   "Stock and wine"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which vegetable is the base of a classic ratatouille along with courgette and pepper?",
+  "c": [
+   "Aubergine",
+   "Potato",
+   "Carrot",
+   "Leek"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which Iranian dessert is a saffron rice pudding?",
+  "c": [
+   "Sholeh zard",
+   "Bastani",
+   "Faloodeh",
+   "Halva"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What does yeast produce that makes bread rise?",
+  "c": [
+   "Carbon dioxide",
+   "Oxygen",
+   "Nitrogen",
+   "Steam"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which country does paella come from?",
+  "c": [
+   "Spain",
+   "Portugal",
+   "Italy",
+   "Mexico"
+  ],
+  "a": 0,
+  "e": "Valencia, specifically."
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which reaction browns a steak and gives it flavour?",
+  "c": [
+   "The Maillard reaction",
+   "Caramelisation",
+   "Saponification",
+   "Gelatinisation"
+  ],
+  "a": 0,
+  "e": "It is a reaction between amino acids and reducing sugars."
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What is the fifth basic taste alongside sweet, salty, sour and bitter?",
+  "c": [
+   "Umami",
+   "Spicy",
+   "Metallic",
+   "Fatty"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which Iranian city is famous for its faloodeh?",
+  "c": [
+   "Shiraz",
+   "Isfahan",
+   "Yazd",
+   "Tabriz"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What is the difference between a stock and a broth, traditionally?",
+  "c": [
+   "Stock is made from bones, broth from meat",
+   "Stock is salted, broth is not",
+   "Stock is clear, broth is thick",
+   "Stock is vegetarian"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which flour has the highest protein content?",
+  "c": [
+   "Bread flour",
+   "Cake flour",
+   "Pastry flour",
+   "Plain flour"
+  ],
+  "a": 0,
+  "e": "More protein means more gluten and more chew."
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What is the emulsifier in mayonnaise?",
+  "c": [
+   "Egg yolk",
+   "Mustard seed",
+   "Vinegar",
+   "Olive oil"
+  ],
+  "a": 0,
+  "e": "Lecithin in the yolk does the work."
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which spice comes from the crocus flower's stigma?",
+  "c": [
+   "Saffron",
+   "Turmeric",
+   "Sumac",
+   "Paprika"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What temperature does water boil at, at sea level?",
+  "c": [
+   "100°C",
+   "90°C",
+   "110°C",
+   "120°C"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which Persian dish is made of aubergine, whey and mint?",
+  "c": [
+   "Kashk-e bademjan",
+   "Mirza ghasemi",
+   "Baghali polo",
+   "Halim"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What does blanching a vegetable involve?",
+  "c": [
+   "Brief boiling then ice water",
+   "Slow roasting",
+   "Curing in salt",
+   "Marinating in acid"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which type of pastry is used for baklava?",
+  "c": [
+   "Filo",
+   "Puff",
+   "Shortcrust",
+   "Choux"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What does 'sous vide' mean?",
+  "c": [
+   "Under vacuum",
+   "Slow fire",
+   "Over water",
+   "Without air"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which Iranian region is famous for its rice?",
+  "c": [
+   "Gilan and Mazandaran",
+   "Khuzestan",
+   "Kerman",
+   "Sistan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What gives sumac its sour flavour?",
+  "c": [
+   "Malic and citric acids",
+   "Acetic acid",
+   "Lactic acid",
+   "Tartaric acid"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which cut of beef is used for a classic steak tartare?",
+  "c": [
+   "Fillet",
+   "Brisket",
+   "Shin",
+   "Rib"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What is the Japanese fermented soybean paste called?",
+  "c": [
+   "Miso",
+   "Natto",
+   "Shoyu",
+   "Mirin"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which chemical makes chillies hot?",
+  "c": [
+   "Capsaicin",
+   "Piperine",
+   "Allicin",
+   "Menthol"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What does kneading dough develop?",
+  "c": [
+   "Gluten",
+   "Starch",
+   "Yeast",
+   "Sugar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which Persian stew uses split peas and dried lime with fried potato on top?",
+  "c": [
+   "Gheymeh",
+   "Ghormeh sabzi",
+   "Fesenjan",
+   "Khoresh-e karafs"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What is clarified butter with the milk solids browned called in Indian cooking?",
+  "c": [
+   "Ghee",
+   "Paneer",
+   "Malai",
+   "Dahi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "At what temperature does egg white begin to set?",
+  "c": [
+   "About 62°C",
+   "About 45°C",
+   "About 80°C",
+   "About 95°C"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What is the Scoville scale used to measure?",
+  "c": [
+   "Chilli heat",
+   "Salt content",
+   "Acidity",
+   "Sweetness"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which acid is produced by lactic fermentation in yoghurt?",
+  "c": [
+   "Lactic acid",
+   "Citric acid",
+   "Acetic acid",
+   "Butyric acid"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What does 'tempering' chocolate control?",
+  "c": [
+   "The crystal form of cocoa butter",
+   "The sugar content",
+   "The milk fat",
+   "The acidity"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which Iranian province is the heartland of saffron growing?",
+  "c": [
+   "Razavi Khorasan",
+   "Fars",
+   "Isfahan",
+   "Kurdistan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What is the mother sauce made from milk and roux?",
+  "c": [
+   "Béchamel",
+   "Velouté",
+   "Espagnole",
+   "Hollandaise"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which enzyme in pineapple stops gelatine from setting?",
+  "c": [
+   "Bromelain",
+   "Papain",
+   "Rennet",
+   "Amylase"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What is the traditional leavening in sourdough?",
+  "c": [
+   "Wild yeast and lactobacilli",
+   "Baker's yeast",
+   "Baking soda",
+   "Cream of tartar"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which Persian dish is a slow-cooked wheat and meat porridge eaten at breakfast?",
+  "c": [
+   "Halim",
+   "Abgoosht",
+   "Kalleh pacheh",
+   "Adasi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What does the term 'brunoise' describe?",
+  "c": [
+   "A very fine dice",
+   "A julienne cut",
+   "A slow braise",
+   "A sugar syrup stage"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which grape is used for traditional Champagne along with Chardonnay and Pinot Noir?",
+  "c": [
+   "Pinot Meunier",
+   "Merlot",
+   "Riesling",
+   "Sauvignon Blanc"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What is the collagen in meat converted into by long slow cooking?",
+  "c": [
+   "Gelatine",
+   "Keratin",
+   "Elastin",
+   "Albumin"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which Iranian sweet from Yazd is made with rosewater and pistachio?",
+  "c": [
+   "Baghlava-ye Yazdi",
+   "Gaz",
+   "Sohan",
+   "Pashmak"
+  ],
+  "a": 0,
+  "e": "Gaz is from Isfahan and Sohan from Qom."
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What is the hard-crack stage of sugar syrup, in temperature?",
+  "c": [
+   "About 150°C",
+   "About 110°C",
+   "About 130°C",
+   "About 180°C"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which culture's cuisine gave us the technique of confit?",
+  "c": [
+   "French",
+   "Italian",
+   "Spanish",
+   "Moroccan"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "What is the name for the emulsion breaking in a hollandaise?",
+  "c": [
+   "Splitting",
+   "Curdling",
+   "Seizing",
+   "Weeping"
+  ],
+  "a": 0,
+  "e": "Curdling is the word for dairy; a hollandaise splits."
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "Which compound gives coriander leaf its soapy taste to some people?",
+  "c": [
+   "Aldehydes",
+   "Esters",
+   "Ketones",
+   "Terpenoids"
+  ],
+  "a": 0,
+  "e": "A variation in the OR6A2 gene is linked to it."
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "What is transglutaminase used for in cooking?",
+  "c": [
+   "Binding proteins together",
+   "Thickening sauces",
+   "Clarifying stock",
+   "Emulsifying fats"
+  ],
+  "a": 0,
+  "e": "It is sometimes called meat glue."
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "Which Iranian dish is a rice cake baked with a saffron crust and served in wedges?",
+  "c": [
+   "Tahchin",
+   "Baghali polo",
+   "Zereshk polo",
+   "Adas polo"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "What is the term for the crystalline structure that makes tempered chocolate snap?",
+  "c": [
+   "Form V",
+   "Form I",
+   "Form III",
+   "Form VI"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "Which fruit contains an enzyme that tenderises meat and is used in Persian marinades?",
+  "c": [
+   "Kiwi",
+   "Quince",
+   "Pomegranate",
+   "Barberry"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "What is the Japanese term for the fifth-taste-rich dried bonito flakes?",
+  "c": [
+   "Katsuobushi",
+   "Kombu",
+   "Shiitake",
+   "Niboshi"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "What does the term 'gastrique' mean?",
+  "c": [
+   "A reduction of sugar and vinegar",
+   "A meat glaze",
+   "A whipped butter",
+   "A clarified stock"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "Which traditional Persian preserve is made from unripe grapes?",
+  "c": [
+   "Ab ghooreh",
+   "Rob-e anar",
+   "Serkeh",
+   "Torshi"
+  ],
+  "a": 0,
+  "e": "It is verjuice, used as a souring agent."
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "What causes rice to become sticky when cooked?",
+  "c": [
+   "Amylopectin",
+   "Amylose",
+   "Gluten",
+   "Pectin"
+  ],
+  "a": 0,
+  "e": "High-amylose rice stays separate."
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "Which fruit is yellow and peeled before eating?",
+  "c": [
+   "Banana",
+   "Apple",
+   "Cherry",
+   "Strawberry"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 1,
+  "q": "What drink is made from roasted beans?",
+  "c": [
+   "Coffee",
+   "Tea",
+   "Juice",
+   "Cocoa"
+  ],
+  "a": 0,
+  "e": "Cocoa comes from beans too, but coffee is the classic answer."
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "Which country drinks the most tea per person?",
+  "c": [
+   "Turkey",
+   "China",
+   "India",
+   "United Kingdom"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 2,
+  "q": "What is the Persian yoghurt drink with mint called?",
+  "c": [
+   "Doogh",
+   "Sharbat",
+   "Ayran",
+   "Lassi"
+  ],
+  "a": 0,
+  "e": "Ayran is the Turkish name for much the same drink."
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "Which vitamin is destroyed most easily by heat?",
+  "c": [
+   "Vitamin C",
+   "Vitamin A",
+   "Vitamin D",
+   "Vitamin E"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 3,
+  "q": "What is the Iranian breakfast dish of sheep's head and trotters called?",
+  "c": [
+   "Kalleh pacheh",
+   "Halim",
+   "Adasi",
+   "Eshkeneh"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "Which sugar is found in milk?",
+  "c": [
+   "Lactose",
+   "Fructose",
+   "Maltose",
+   "Sucrose"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 4,
+  "q": "What does 'deglazing' a pan mean?",
+  "c": [
+   "Adding liquid to lift the browned bits",
+   "Removing excess fat",
+   "Coating with oil",
+   "Wiping it clean"
+  ],
+  "a": 0,
+  "e": null
+ },
+ {
+  "cat": "food",
+  "level": 5,
+  "q": "Which compound gives aged cheese its crunchy crystals?",
+  "c": [
+   "Tyrosine",
+   "Casein",
+   "Lactose",
+   "Rennet"
+  ],
+  "a": 0,
+  "e": null
+ }
+]

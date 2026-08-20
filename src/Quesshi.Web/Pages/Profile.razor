@@ -1,0 +1,185 @@
+@page "/profile"
+@inherits PageBase
+
+<PageTitle>@L["nav.profile"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Loading || State.Me is null)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        var me = State.Me;
+
+        <header class="topbar">
+            <span class="avatar avatar--lg" style="background:@Ranks.Tint(me.AvatarSeed)">@Initial(me.DisplayName)</span>
+            <div class="grow">
+                <h1 style="font-size:var(--step-2)">@me.DisplayName</h1>
+                <div class="faint" dir="ltr" style="font-size:var(--step--1)">@me.Email</div>
+            </div>
+        </header>
+
+        <section class="card card--taq enter">
+            <span class="eyebrow">@L["profile.stats"]</span>
+            <div class="grid-2" style="margin-top:1rem">
+                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Wins)</div><div class="stat__label">@L["profile.wins"]</div></div>
+                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Losses)</div><div class="stat__label">@L["profile.losses"]</div></div>
+                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Draws)</div><div class="stat__label">@L["profile.draws"]</div></div>
+                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Streak)</div><div class="stat__label">@L["profile.streak"]</div></div>
+                <div class="stat"><div class="stat__value">@L.Num(me.Stats.BestStreak)</div><div class="stat__label">@L["profile.best"]</div></div>
+                <div class="stat"><div class="stat__value">@L.Num(me.Stats.TotalScore)</div><div class="stat__label">@L["profile.score"]</div></div>
+            </div>
+        </section>
+
+        @if (me.Accuracy.Count > 0)
+        {
+            <section class="card enter">
+                <span class="eyebrow">@L["profile.accuracy"]</span>
+                <div class="stack" style="margin-top:.9rem;gap:.7rem">
+                    @foreach (var (categoryId, accuracy) in me.Accuracy.OrderByDescending(a => a.Value))
+                    {
+                        <div>
+                            <div class="row row--between" style="font-size:var(--step--1)">
+                                <span>@CategoryName(categoryId)</span>
+                                <span class="numeral muted">@L.Num((int)Math.Round(accuracy * 100))%</span>
+                            </div>
+                            <div class="meter" style="margin-top:.3rem"><i style="width:@((int)Math.Round(accuracy * 100))%"></i></div>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+
+        <section class="card enter">
+            <span class="eyebrow">@L["profile.friends"]</span>
+
+            <div class="row" style="margin-top:.8rem">
+                <input class="input grow" placeholder="@L["profile.findFriends"]"
+                       @bind="_query" @bind:event="oninput" @onkeydown="OnSearchKey" />
+                <button class="btn btn--ghost btn--sm" @onclick="SearchAsync">@L["admin.search"]</button>
+            </div>
+
+            @if (_found.Count > 0)
+            {
+                <div class="stack" style="margin-top:.7rem;gap:.4rem">
+                    @foreach (var found in _found.Where(f => f.Id != me.Id && me.Friends.All(x => x.Id != f.Id)))
+                    {
+                        <div class="row">
+                            <span class="avatar" style="background:@Ranks.Tint(found.AvatarSeed)">@Initial(found.DisplayName)</span>
+                            <span class="grow">@found.DisplayName</span>
+                            <button class="btn btn--sm" @onclick="() => AddAsync(found.Id)">@L["profile.add"]</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="stack" style="margin-top:.9rem;gap:.4rem">
+                @if (me.Friends.Count == 0)
+                {
+                    <p class="faint" style="margin:0;font-size:var(--step--1)">@L["profile.noFriends"]</p>
+                }
+                @foreach (var friend in me.Friends)
+                {
+                    <div class="row">
+                        <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
+                        <span class="grow">@friend.DisplayName</span>
+                        <span class="numeral faint">@L.Num(friend.Score)</span>
+                        <button class="btn btn--ghost btn--sm btn--icon" title="@L["profile.remove"]"
+                                aria-label="@L["profile.remove"]" @onclick="() => RemoveAsync(friend.Id)">
+                            <Icon Name="close" />
+                        </button>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="card enter">
+            <span class="eyebrow">@L["profile.name"]</span>
+            <div class="stack" style="margin-top:.8rem">
+                <input class="input" maxlength="24" @bind="_name" />
+
+                <div class="field">
+                    <label for="lang">@L["profile.language"]</label>
+                    <select id="lang" class="select" @bind="_lang">
+                        <option value="fa">@L["lang.fa"]</option>
+                        <option value="en">@L["lang.en"]</option>
+                        <option value="nl">@L["lang.nl"]</option>
+                    </select>
+                </div>
+
+                <button class="btn btn--block" disabled="@_busy" @onclick="SaveAsync">
+                    @(_saved ? L["profile.saved"] : L["profile.save"])
+                </button>
+                <button class="btn btn--ghost btn--block btn--sm" @onclick="SignOutAsync">@L["profile.signOut"]</button>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private string _name = "";
+    private string _lang = "fa";
+    private string _query = "";
+    private List<FriendDto> _found = [];
+    private List<CategoryDto> _categories = [];
+    private bool _busy, _saved;
+
+    protected override async Task LoadAsync()
+    {
+        _name = State.Me?.DisplayName ?? "";
+        _lang = State.Me?.Lang ?? "fa";
+        _categories = await Api.CategoriesAsync() ?? [];
+    }
+
+    private string CategoryName(string id) => _categories.FirstOrDefault(c => c.Id == id)?.Name ?? id;
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (_query.Trim().Length < 2) { _found = []; return; }
+        _found = await Api.SearchPlayersAsync(_query.Trim()) ?? [];
+    }
+
+    private async Task AddAsync(string id)
+    {
+        if (await Api.AddFriendAsync(id)) await RefreshMeAsync();
+    }
+
+    private async Task RemoveAsync(string id)
+    {
+        if (await Api.RemoveFriendAsync(id)) await RefreshMeAsync();
+    }
+
+    private async Task RefreshMeAsync()
+    {
+        if (await Api.MeAsync() is { } me) State.SetMe(me);
+        _found = [];
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true; _saved = false;
+
+        if (await Api.SaveProfileAsync(_name.Trim(), _lang) is { } me)
+        {
+            State.SetMe(me);
+            await State.SetLangAsync(me.Lang);
+            _saved = true;
+        }
+
+        _busy = false;
+    }
+
+    private async Task SignOutAsync()
+    {
+        await State.SignOutAsync();
+        Nav.NavigateTo("/signin");
+    }
+}

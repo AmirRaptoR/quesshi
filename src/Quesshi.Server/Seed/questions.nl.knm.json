@@ -1,0 +1,2628 @@
+[
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is de hoofdstad van Nederland?",
+  "c": [
+   "Amsterdam",
+   "Den Haag",
+   "Rotterdam",
+   "Utrecht"
+  ],
+  "a": 0,
+  "e": "Amsterdam is de hoofdstad, maar de regering en het parlement zitten in Den Haag."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Welk nummer bel je in Nederland bij een noodgeval?",
+  "c": [
+   "112",
+   "911",
+   "144",
+   "0900-8844"
+  ],
+  "a": 0,
+  "e": "112 is voor spoed: politie, brandweer of ambulance. 0900-8844 is de politie zonder spoed."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Welke kleuren heeft de Nederlandse vlag?",
+  "c": [
+   "Rood, wit en blauw",
+   "Rood, wit en groen",
+   "Oranje, wit en blauw",
+   "Blauw, wit en rood met een ster"
+  ],
+  "a": 0,
+  "e": "Van boven naar beneden: rood, wit, blauw."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Welke kleur hoort bij het Nederlandse koningshuis?",
+  "c": [
+   "Oranje",
+   "Paars",
+   "Groen",
+   "Goud"
+  ],
+  "a": 0,
+  "e": "Het huis Oranje-Nassau; daarom draagt iedereen oranje op Koningsdag."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is de officiële taal van Nederland?",
+  "c": [
+   "Nederlands",
+   "Duits",
+   "Engels",
+   "Vlaams"
+  ],
+  "a": 0,
+  "e": "Nederlands. In Friesland is het Fries een tweede officiële taal."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoe heet de koning van Nederland?",
+  "c": [
+   "Willem-Alexander",
+   "Bernhard",
+   "Johan Friso",
+   "Constantijn"
+  ],
+  "a": 0,
+  "e": "Koning Willem-Alexander is koning sinds 2013."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wanneer is Koningsdag?",
+  "c": [
+   "27 april",
+   "30 april",
+   "5 mei",
+   "1 januari"
+  ],
+  "a": 0,
+  "e": "27 april, de verjaardag van koning Willem-Alexander."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat vieren Nederlanders op 5 mei?",
+  "c": [
+   "Bevrijdingsdag",
+   "Koningsdag",
+   "Kerstmis",
+   "Het begin van de zomer"
+  ],
+  "a": 0,
+  "e": "Bevrijdingsdag: het einde van de Duitse bezetting in 1945."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Met welk land deelt Nederland de langste landgrens?",
+  "c": [
+   "Duitsland",
+   "België",
+   "Frankrijk",
+   "Denemarken"
+  ],
+  "a": 0,
+  "e": "Duitsland ligt in het oosten, België in het zuiden."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Welke zee ligt aan de westkant van Nederland?",
+  "c": [
+   "De Noordzee",
+   "De Oostzee",
+   "De Middellandse Zee",
+   "De Zwarte Zee"
+  ],
+  "a": 0,
+  "e": "De Noordzee."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Waar ga je heen als je ziek bent en hulp nodig hebt?",
+  "c": [
+   "Naar de huisarts",
+   "Naar het gemeentehuis",
+   "Naar de politie",
+   "Naar de Belastingdienst"
+  ],
+  "a": 0,
+  "e": "De huisarts is in Nederland altijd de eerste stap in de zorg."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoe heet het vervoermiddel dat bijna iedereen in Nederland gebruikt?",
+  "c": [
+   "De fiets",
+   "De boot",
+   "De helikopter",
+   "De tram"
+  ],
+  "a": 0,
+  "e": "Nederland heeft meer fietsen dan inwoners."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is een 'gemeente'?",
+  "c": [
+   "Het bestuur van een stad of dorp",
+   "Een winkelketen",
+   "Een soort belasting",
+   "Een school"
+  ],
+  "a": 0,
+  "e": "Bij de gemeente regel je bijvoorbeeld je inschrijving en je paspoort."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat heb je nodig om online zaken met de overheid te regelen?",
+  "c": [
+   "DigiD",
+   "Een rijbewijs",
+   "Een bibliotheekpas",
+   "Een OV-chipkaart"
+  ],
+  "a": 0,
+  "e": "Met DigiD log je in bij de gemeente, de Belastingdienst en je zorgverzekeraar."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is de euro?",
+  "c": [
+   "Het geld van Nederland",
+   "Een Nederlandse feestdag",
+   "Een politieke partij",
+   "Een soort verzekering"
+  ],
+  "a": 0,
+  "e": "Nederland betaalt sinds 2002 met de euro."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoeveel provincies heeft Nederland?",
+  "c": [
+   "Twaalf",
+   "Zeven",
+   "Vijftien",
+   "Twintig"
+  ],
+  "a": 0,
+  "e": "Twaalf, van Groningen tot Limburg."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "In welke provincie ligt Amsterdam?",
+  "c": [
+   "Noord-Holland",
+   "Zuid-Holland",
+   "Utrecht",
+   "Flevoland"
+  ],
+  "a": 0,
+  "e": "Noord-Holland; Den Haag en Rotterdam liggen in Zuid-Holland."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Welke stad staat bekend om zijn grote haven?",
+  "c": [
+   "Rotterdam",
+   "Groningen",
+   "Maastricht",
+   "Arnhem"
+  ],
+  "a": 0,
+  "e": "De haven van Rotterdam is de grootste van Europa."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Waar werkt de Nederlandse regering?",
+  "c": [
+   "In Den Haag",
+   "In Amsterdam",
+   "In Rotterdam",
+   "In Utrecht"
+  ],
+  "a": 0,
+  "e": "Den Haag is de regeringsstad."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat betekent het als een winkel 'gesloten' is?",
+  "c": [
+   "Je kunt niet naar binnen",
+   "Er is uitverkoop",
+   "Het is er druk",
+   "Je moet aanbellen"
+  ],
+  "a": 0,
+  "e": "Gesloten betekent dicht."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoeveel dagen heeft een Nederlandse werkweek meestal?",
+  "c": [
+   "Vijf",
+   "Vier",
+   "Zes",
+   "Zeven"
+  ],
+  "a": 0,
+  "e": "Meestal maandag tot en met vrijdag."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is een 'weekend' in Nederland?",
+  "c": [
+   "Zaterdag en zondag",
+   "Vrijdag en zaterdag",
+   "Zondag en maandag",
+   "Alleen de zondag"
+  ],
+  "a": 0,
+  "e": "Zaterdag en zondag."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoe heet het papier waarop staat hoeveel je verdient?",
+  "c": [
+   "De loonstrook",
+   "De huurbon",
+   "Het paspoort",
+   "De zorgpas"
+  ],
+  "a": 0,
+  "e": "Op de loonstrook staat je brutoloon, de inhoudingen en je nettoloon."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Waar koop je medicijnen op recept?",
+  "c": [
+   "Bij de apotheek",
+   "Bij de bakker",
+   "Bij de gemeente",
+   "Bij de huisarts zelf"
+  ],
+  "a": 0,
+  "e": "De huisarts schrijft voor, de apotheek levert."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is een 'basisschool'?",
+  "c": [
+   "School voor kinderen van ongeveer 4 tot 12 jaar",
+   "Een school voor volwassenen",
+   "Een universiteit",
+   "Een school voor koken"
+  ],
+  "a": 0,
+  "e": "Daarna gaan kinderen naar de middelbare school."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat doet de politie?",
+  "c": [
+   "Zorgt voor veiligheid en handhaaft de wet",
+   "Regelt de belastingen",
+   "Geeft paspoorten uit",
+   "Bouwt huizen"
+  ],
+  "a": 0,
+  "e": "Bij spoed bel je 112, anders 0900-8844."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat betekent 'verplicht'?",
+  "c": [
+   "Het moet",
+   "Het mag",
+   "Het is gratis",
+   "Het is verboden"
+  ],
+  "a": 0,
+  "e": "Verplicht betekent dat je geen keuze hebt."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is de 'huur'?",
+  "c": [
+   "Het geld dat je elke maand voor je woning betaalt",
+   "De prijs van je boodschappen",
+   "Een belasting op auto's",
+   "Een soort verzekering"
+  ],
+  "a": 0,
+  "e": "Huur betaal je aan de verhuurder, meestal per maand."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is 'Sinterklaas'?",
+  "c": [
+   "Een feest in november en december",
+   "Een politieke partij",
+   "Een provincie",
+   "Een soort brood"
+  ],
+  "a": 0,
+  "e": "Pakjesavond is op 5 december."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoe begroet je iemand die je niet kent in een winkel?",
+  "c": [
+   "Goedemorgen of goedemiddag",
+   "Met een kus",
+   "Met je voornaam alleen",
+   "Je zegt niets"
+  ],
+  "a": 0,
+  "e": "Beleefd en kort; 'u' bij mensen die je niet kent."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat betekent het verkeersbord met een rode rand en een fiets erin?",
+  "c": [
+   "Fietsen mag hier niet",
+   "Fietsen moeten hier rijden",
+   "Hier staat een fietsenwinkel",
+   "Hier kun je je fiets stallen"
+  ],
+  "a": 0,
+  "e": "Een rode rand betekent een verbod."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Welke kant van de weg rijdt het verkeer in Nederland?",
+  "c": [
+   "Rechts",
+   "Links",
+   "In het midden",
+   "Dat mag je zelf kiezen"
+  ],
+  "a": 0,
+  "e": "Rechts, net als in de meeste Europese landen."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is een 'zorgverzekering'?",
+  "c": [
+   "Een verplichte verzekering voor medische kosten",
+   "Een verzekering voor je fiets",
+   "Een spaarrekening",
+   "Een pensioen"
+  ],
+  "a": 0,
+  "e": "Iedereen die in Nederland woont, moet er een hebben."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is het 'gemeentehuis'?",
+  "c": [
+   "Het gebouw waar je zaken met de gemeente regelt",
+   "Een museum",
+   "Een school",
+   "Het huis van de burgemeester"
+  ],
+  "a": 0,
+  "e": "Daar meld je bijvoorbeeld een verhuizing."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat moet je doen als je verhuist naar een andere stad?",
+  "c": [
+   "Je inschrijven bij de nieuwe gemeente",
+   "Een nieuw paspoort kopen",
+   "Een nieuwe naam kiezen",
+   "Niets"
+  ],
+  "a": 0,
+  "e": "Binnen vijf dagen na de verhuizing aangifte doen."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is 'werk zoeken'?",
+  "c": [
+   "Een baan proberen te vinden",
+   "Vakantie nemen",
+   "Naar school gaan",
+   "Verhuizen"
+  ],
+  "a": 0,
+  "e": "Bijvoorbeeld met sollicitatiebrieven of via het UWV."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Hoe heet het document waarmee je naar het buitenland kunt reizen?",
+  "c": [
+   "Het paspoort",
+   "De loonstrook",
+   "De zorgpas",
+   "De huurovereenkomst"
+  ],
+  "a": 0,
+  "e": "Een paspoort of, binnen Europa, een identiteitskaart."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Vanaf welke leeftijd ben je in Nederland volwassen?",
+  "c": [
+   "18 jaar",
+   "16 jaar",
+   "21 jaar",
+   "20 jaar"
+  ],
+  "a": 0,
+  "e": "Vanaf je achttiende mag je stemmen en teken je zelf contracten."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat is 'de winter' in Nederland meestal?",
+  "c": [
+   "Koud en nat",
+   "Heet en droog",
+   "Warm en zonnig",
+   "Er is geen winter"
+  ],
+  "a": 0,
+  "e": "December tot februari: koud, veel regen, soms sneeuw."
+ },
+ {
+  "cat": "knm",
+  "level": 1,
+  "q": "Wat betekent 'gratis'?",
+  "c": [
+   "Het kost geen geld",
+   "Het is duur",
+   "Het is verboden",
+   "Het is verplicht"
+  ],
+  "a": 0,
+  "e": "Gratis betekent kosteloos."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Naar wie ga je eerst als je een medisch probleem hebt dat geen spoed is?",
+  "c": [
+   "De huisarts",
+   "Het ziekenhuis",
+   "De specialist",
+   "De apotheek"
+  ],
+  "a": 0,
+  "e": "De huisarts verwijst je door als dat nodig is. Zonder verwijzing kom je niet bij een specialist."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'verwijsbrief'?",
+  "c": [
+   "Een brief van de huisarts waarmee je naar een specialist mag",
+   "Een brief van de gemeente over verhuizen",
+   "Een brief van je werkgever",
+   "Een rekening van het ziekenhuis"
+  ],
+  "a": 0,
+  "e": "Zonder verwijzing vergoedt de verzekering het specialistenbezoek meestal niet."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Tot welke leeftijd geldt in Nederland de leerplicht?",
+  "c": [
+   "Tot 16 jaar, daarna kwalificatieplicht tot 18",
+   "Tot 12 jaar",
+   "Tot 21 jaar",
+   "Er is geen leerplicht"
+  ],
+  "a": 0,
+  "e": "Leerplicht vanaf 5 jaar; tot je 18e moet je een startkwalificatie halen of naar school."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Vanaf welke leeftijd moeten kinderen in Nederland naar school?",
+  "c": [
+   "5 jaar",
+   "3 jaar",
+   "6 jaar",
+   "7 jaar"
+  ],
+  "a": 0,
+  "e": "De meeste kinderen gaan al met 4 jaar, maar verplicht is het vanaf 5."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is het UWV?",
+  "c": [
+   "De organisatie voor werkloosheids- en arbeidsongeschiktheidsuitkeringen",
+   "Een woningcorporatie",
+   "Een zorgverzekeraar",
+   "Een school"
+  ],
+  "a": 0,
+  "e": "Bij het UWV vraag je bijvoorbeeld een WW-uitkering aan."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'woningcorporatie'?",
+  "c": [
+   "Een organisatie die sociale huurwoningen verhuurt",
+   "Een makelaar die huizen verkoopt",
+   "Een bank voor hypotheken",
+   "Een afdeling van de politie"
+  ],
+  "a": 0,
+  "e": "Voor een sociale huurwoning schrijf je je meestal in en wacht je op een woning."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'huurtoeslag'?",
+  "c": [
+   "Een bijdrage van de overheid in je huur",
+   "Extra huur die je aan de verhuurder betaalt",
+   "Een lening voor je eerste huis",
+   "Een korting bij de supermarkt"
+  ],
+  "a": 0,
+  "e": "Je vraagt het aan bij de Belastingdienst; het hangt af van je inkomen en je huur."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Welke organisatie int in Nederland de belastingen?",
+  "c": [
+   "De Belastingdienst",
+   "Het UWV",
+   "De gemeente alleen",
+   "De Nederlandsche Bank"
+  ],
+  "a": 0,
+  "e": "De Belastingdienst regelt ook toeslagen zoals huur- en zorgtoeslag."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'zorgtoeslag'?",
+  "c": [
+   "Een bijdrage in de kosten van je zorgverzekering",
+   "Gratis medicijnen",
+   "Een extra verzekering",
+   "Een uitkering bij ziekte"
+  ],
+  "a": 0,
+  "e": "Voor mensen met een lager inkomen, aan te vragen bij de Belastingdienst."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is het 'eigen risico' in de zorgverzekering?",
+  "c": [
+   "Het bedrag dat je eerst zelf betaalt voordat de verzekering vergoedt",
+   "De premie die je maandelijks betaalt",
+   "Een boete voor te laat betalen",
+   "Het bedrag dat je terugkrijgt"
+  ],
+  "a": 0,
+  "e": "Bezoek aan de huisarts valt er niet onder."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wie betaalt je loon door als je ziek bent en een vast contract hebt?",
+  "c": [
+   "Je werkgever",
+   "De gemeente",
+   "De Belastingdienst",
+   "Niemand"
+  ],
+  "a": 0,
+  "e": "Meestal tot twee jaar, minimaal 70% van je loon."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'CAO'?",
+  "c": [
+   "Afspraken over loon en arbeidsvoorwaarden voor een hele branche",
+   "Een soort belasting",
+   "Een verblijfsvergunning",
+   "Een schooldiploma"
+  ],
+  "a": 0,
+  "e": "Collectieve arbeidsovereenkomst, afgesproken tussen werkgevers en vakbonden."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'vakbond'?",
+  "c": [
+   "Een organisatie die opkomt voor de belangen van werknemers",
+   "Een groep werkgevers",
+   "Een politieke partij",
+   "Een verzekeraar"
+  ],
+  "a": 0,
+  "e": "Vakbonden onderhandelen onder andere over de CAO."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'vakantiegeld'?",
+  "c": [
+   "Een jaarlijkse extra betaling, meestal in mei",
+   "Geld dat je zelf spaart voor de vakantie",
+   "Een uitkering bij ontslag",
+   "Een korting op vliegtickets"
+  ],
+  "a": 0,
+  "e": "Wettelijk minstens 8% van je jaarloon."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'proeftijd'?",
+  "c": [
+   "Een periode aan het begin van een baan waarin beide partijen snel kunnen stoppen",
+   "De tijd die je op vakantie mag",
+   "De eerste maand huur",
+   "Een stage zonder loon"
+  ],
+  "a": 0,
+  "e": "De proeftijd moet in het contract staan en is aan een maximum gebonden."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is het 'minimumloon'?",
+  "c": [
+   "Het laagste loon dat een werkgever wettelijk mag betalen",
+   "Het gemiddelde loon in Nederland",
+   "Het loon van een stagiair",
+   "Het bedrag van een uitkering"
+  ],
+  "a": 0,
+  "e": "Het bedrag wordt twee keer per jaar aangepast."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat betekent 'brutoloon'?",
+  "c": [
+   "Je loon vóór belastingen en premies",
+   "Je loon na aftrek van alles",
+   "Je vakantiegeld",
+   "Je pensioen"
+  ],
+  "a": 0,
+  "e": "Wat je op je rekening krijgt is het nettoloon."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Waar meld je een verhuizing binnen Nederland?",
+  "c": [
+   "Bij de gemeente waar je gaat wonen",
+   "Bij de politie",
+   "Bij het UWV",
+   "Bij je huisarts"
+  ],
+  "a": 0,
+  "e": "Doe dat uiterlijk vijf dagen na de verhuizing."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Hoe heet de basisregistratie waarin de gemeente je adres bijhoudt?",
+  "c": [
+   "De BRP",
+   "Het BSN-register",
+   "De CAO",
+   "Het kadaster"
+  ],
+  "a": 0,
+  "e": "Basisregistratie Personen; je BSN krijg je bij inschrijving."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'BSN'?",
+  "c": [
+   "Je burgerservicenummer, je persoonlijke nummer bij de overheid",
+   "Een bankrekeningnummer",
+   "Een huisnummer",
+   "Een verzekeringspolis"
+  ],
+  "a": 0,
+  "e": "Je hebt het nodig voor werk, zorg en belasting."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat doet een 'notaris'?",
+  "c": [
+   "Officiële akten opstellen, bijvoorbeeld bij een huis of een testament",
+   "Belastingaangifte doen",
+   "Woningen verhuren",
+   "Rijbewijzen uitgeven"
+  ],
+  "a": 0,
+  "e": "Bij een koopwoning of een testament is de notaris verplicht."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Waar kun je terecht om Nederlands te leren?",
+  "c": [
+   "Bij een taalschool of het inburgeringstraject",
+   "Bij de politie",
+   "Bij het UWV alleen",
+   "Bij de apotheek"
+  ],
+  "a": 0,
+  "e": "Gemeenten helpen inburgeraars bij het vinden van een cursus."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'inburgeren'?",
+  "c": [
+   "De taal en de samenleving leren kennen, met een examen aan het eind",
+   "Een huis kopen",
+   "Een uitkering aanvragen",
+   "Trouwen in Nederland"
+  ],
+  "a": 0,
+  "e": "Het examen bestaat onder andere uit taal en KNM."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Waar staat de afkorting KNM voor?",
+  "c": [
+   "Kennis van de Nederlandse Maatschappij",
+   "Koninklijke Nederlandse Maatschappij",
+   "Kort Nederlands Materiaal",
+   "Kennis en Naleving van Maatregelen"
+  ],
+  "a": 0,
+  "e": "Het onderdeel van het inburgeringsexamen over de Nederlandse samenleving."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Welke organisatie beslist over verblijfsvergunningen?",
+  "c": [
+   "De IND",
+   "Het UWV",
+   "De Belastingdienst",
+   "De gemeente"
+  ],
+  "a": 0,
+  "e": "Immigratie- en Naturalisatiedienst."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat doet een 'huisarts' als hij je niet zelf kan helpen?",
+  "c": [
+   "Hij verwijst je naar een specialist",
+   "Hij stuurt je naar de apotheek",
+   "Hij belt de politie",
+   "Hij sluit je dossier"
+  ],
+  "a": 0,
+  "e": "De huisarts is de poortwachter van de zorg."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is de 'huisartsenpost'?",
+  "c": [
+   "De plek voor huisartsenzorg 's avonds en in het weekend",
+   "De apotheek van het ziekenhuis",
+   "Een afdeling van de gemeente",
+   "Het kantoor van de zorgverzekeraar"
+  ],
+  "a": 0,
+  "e": "Bel altijd eerst; bij levensgevaar bel je 112."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat betekent 'op tijd komen' in de Nederlandse omgangsvorm?",
+  "c": [
+   "Precies op het afgesproken tijdstip aanwezig zijn",
+   "Een half uur later mag ook",
+   "Alleen bij werk belangrijk",
+   "Het maakt niet uit"
+  ],
+  "a": 0,
+  "e": "Te laat komen geldt als onbeleefd; afzeggen doe je van tevoren."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat doe je als je een afspraak bij de dokter niet kunt nakomen?",
+  "c": [
+   "Je belt op tijd af",
+   "Je komt gewoon niet",
+   "Je stuurt iemand anders",
+   "Je gaat een dag later"
+  ],
+  "a": 0,
+  "e": "Niet afgezegde afspraken worden vaak in rekening gebracht."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'sollicitatiebrief'?",
+  "c": [
+   "Een brief waarin je uitlegt waarom je een baan wilt",
+   "Een brief van de gemeente",
+   "Een opzegbrief",
+   "Een rekening"
+  ],
+  "a": 0,
+  "e": "Meestal samen met een cv."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'cv'?",
+  "c": [
+   "Een overzicht van je opleiding en werkervaring",
+   "Een verzekering",
+   "Een soort contract",
+   "Een uitkering"
+  ],
+  "a": 0,
+  "e": "Curriculum vitae."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'AOW'?",
+  "c": [
+   "Het staatspensioen vanaf de pensioenleeftijd",
+   "Een uitkering bij werkloosheid",
+   "Een studiebeurs",
+   "Een zorgverzekering"
+  ],
+  "a": 0,
+  "e": "Algemene Ouderdomswet; de leeftijd schuift mee met de levensverwachting."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'WW'?",
+  "c": [
+   "Een uitkering als je je baan verliest",
+   "Een uitkering voor ouderen",
+   "Een toeslag op je huur",
+   "Een verzekering voor je huis"
+  ],
+  "a": 0,
+  "e": "Je vraagt de WW aan bij het UWV."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'bijstand'?",
+  "c": [
+   "Een uitkering van de gemeente als je te weinig inkomen hebt",
+   "Een lening van de bank",
+   "Hulp van de buren",
+   "Een korting op je verzekering"
+  ],
+  "a": 0,
+  "e": "De gemeente voert de Participatiewet uit."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Waar scheid je in Nederland meestal je afval?",
+  "c": [
+   "In verschillende bakken, zoals papier, glas en gft",
+   "Alles in één zak",
+   "Alleen in de zomer",
+   "Op straat"
+  ],
+  "a": 0,
+  "e": "Regels verschillen per gemeente."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is 'statiegeld'?",
+  "c": [
+   "Geld dat je terugkrijgt als je een fles of blikje inlevert",
+   "Een boete voor afval",
+   "Belasting op verpakkingen",
+   "Een korting bij de kassa"
+  ],
+  "a": 0,
+  "e": "Op flessen en blikjes; je levert ze in bij de supermarkt."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat doe je als je fiets is gestolen?",
+  "c": [
+   "Aangifte doen bij de politie",
+   "Wachten tot hij terugkomt",
+   "Een nieuwe kopen zonder iets te melden",
+   "De gemeente bellen"
+  ],
+  "a": 0,
+  "e": "Aangifte kan vaak online; je hebt het framenummer nodig."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat betekent het als iemand 'u' tegen je zegt?",
+  "c": [
+   "Het is een beleefde vorm, meestal bij onbekenden of ouderen",
+   "Het is onbeleefd",
+   "Het betekent dat je te laat bent",
+   "Het is een scheldwoord"
+  ],
+  "a": 0,
+  "e": "'Je' is informeel, 'u' is formeel."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is een 'buurthuis'?",
+  "c": [
+   "Een plek in de wijk voor activiteiten en ontmoeting",
+   "Het huis van de buren",
+   "Een winkel",
+   "Een school"
+  ],
+  "a": 0,
+  "e": "Vaak taalcafés, hulp bij formulieren en activiteiten voor kinderen."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Wat is de 'Tweede Kamer'?",
+  "c": [
+   "Het gekozen parlement dat wetten controleert en maakt",
+   "Het bestuur van een gemeente",
+   "De rechtbank",
+   "Het kantoor van de koning"
+  ],
+  "a": 0,
+  "e": "De Tweede Kamer heeft 150 leden."
+ },
+ {
+  "cat": "knm",
+  "level": 2,
+  "q": "Hoe vaak zijn er normaal gesproken verkiezingen voor de Tweede Kamer?",
+  "c": [
+   "Elke vier jaar",
+   "Elk jaar",
+   "Elke twee jaar",
+   "Elke tien jaar"
+  ],
+  "a": 0,
+  "e": "Tenzij het kabinet eerder valt; dan komen er vervroegde verkiezingen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Hoeveel zetels heeft de Tweede Kamer?",
+  "c": [
+   "150",
+   "75",
+   "100",
+   "200"
+  ],
+  "a": 0,
+  "e": "150 zetels; de Eerste Kamer heeft er 75."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Hoe worden de leden van de Eerste Kamer gekozen?",
+  "c": [
+   "Door de leden van de Provinciale Staten",
+   "Rechtstreeks door alle kiezers",
+   "Door de Tweede Kamer",
+   "Door de koning benoemd"
+  ],
+  "a": 0,
+  "e": "Daarom zijn provinciale verkiezingen ook belangrijk voor de landelijke politiek."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wie benoemt in Nederland de burgemeester?",
+  "c": [
+   "De regering, op voordracht van de gemeenteraad",
+   "De inwoners bij verkiezingen",
+   "De koning persoonlijk",
+   "De provincie"
+  ],
+  "a": 0,
+  "e": "De burgemeester wordt bij koninklijk besluit benoemd, niet gekozen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat doet de gemeenteraad?",
+  "c": [
+   "De inwoners vertegenwoordigen en het gemeentebestuur controleren",
+   "Rechtszaken behandelen",
+   "Belastingaangifte controleren",
+   "Verblijfsvergunningen geven"
+  ],
+  "a": 0,
+  "e": "De gemeenteraad wordt elke vier jaar gekozen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is een 'coalitie'?",
+  "c": [
+   "Een samenwerking van partijen die samen een meerderheid vormen",
+   "Een oppositiepartij",
+   "Een vakbond",
+   "Een rechtbank"
+  ],
+  "a": 0,
+  "e": "Geen enkele partij haalt in Nederland alleen een meerderheid."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is de 'oppositie'?",
+  "c": [
+   "De partijen die niet in de regering zitten",
+   "De partijen die de regering vormen",
+   "De ambtenaren",
+   "De rechters"
+  ],
+  "a": 0,
+  "e": "De oppositie controleert de regering vanuit de Kamer."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat staat er in de Grondwet?",
+  "c": [
+   "De belangrijkste regels van de staat en de grondrechten",
+   "De prijzen van producten",
+   "De regels van het verkeer",
+   "De inhoud van CAO's"
+  ],
+  "a": 0,
+  "e": "Artikel 1 gaat over gelijke behandeling."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Waar gaat artikel 1 van de Grondwet over?",
+  "c": [
+   "Gelijke behandeling en het verbod op discriminatie",
+   "Vrijheid van godsdienst",
+   "Het recht op onderwijs",
+   "Het koningshuis"
+  ],
+  "a": 0,
+  "e": "Iedereen wordt in gelijke gevallen gelijk behandeld."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat betekent 'scheiding van kerk en staat'?",
+  "c": [
+   "De overheid bemoeit zich niet met godsdienst en godsdienst niet met het bestuur",
+   "Kerken betalen geen huur",
+   "Godsdienst is verboden",
+   "Alleen de koning mag gelovig zijn"
+  ],
+  "a": 0,
+  "e": "De overheid is neutraal in geloofszaken."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is 'vrijheid van meningsuiting'?",
+  "c": [
+   "Het recht om je mening te uiten, binnen de grenzen van de wet",
+   "Het recht om alles te zeggen zonder enige grens",
+   "Het recht om te zwijgen",
+   "Een regel die alleen voor journalisten geldt"
+  ],
+  "a": 0,
+  "e": "Discriminatie en opruiing blijven strafbaar."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Welke rechter behandelt de meeste gewone zaken in eerste aanleg?",
+  "c": [
+   "De rechtbank",
+   "De Hoge Raad",
+   "Het gerechtshof",
+   "Het Europees Hof"
+  ],
+  "a": 0,
+  "e": "Daarna kun je in hoger beroep bij het gerechtshof."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat betekent 'in hoger beroep gaan'?",
+  "c": [
+   "Je zaak nog een keer laten beoordelen door een hogere rechter",
+   "Een boete betalen",
+   "Aangifte doen",
+   "Een advocaat ontslaan"
+  ],
+  "a": 0,
+  "e": "Meestal bij het gerechtshof."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is 'de trias politica' in Nederland?",
+  "c": [
+   "De scheiding tussen wetgevende, uitvoerende en rechterlijke macht",
+   "De drie grootste partijen",
+   "De drie grote steden",
+   "Drie soorten belasting"
+  ],
+  "a": 0,
+  "e": "Zo houden de machten elkaar in evenwicht."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is de 'Randstad'?",
+  "c": [
+   "Het dichtbevolkte gebied met Amsterdam, Rotterdam, Den Haag en Utrecht",
+   "Een provincie",
+   "Een dorp bij de grens",
+   "Een natuurgebied"
+  ],
+  "a": 0,
+  "e": "Hier woont een groot deel van de bevolking."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is een 'polder'?",
+  "c": [
+   "Land dat is drooggelegd en door dijken wordt beschermd",
+   "Een soort dijk",
+   "Een haven",
+   "Een natuurpark in Limburg"
+  ],
+  "a": 0,
+  "e": "Een groot deel van Nederland ligt onder zeeniveau."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat doet een 'waterschap'?",
+  "c": [
+   "Het beheert dijken, waterpeil en waterkwaliteit",
+   "Het levert drinkwater aan huizen",
+   "Het bouwt bruggen",
+   "Het regelt de riolering van het huis"
+  ],
+  "a": 0,
+  "e": "Voor het waterschap zijn er aparte verkiezingen en een aparte belasting."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Waarom zijn de Deltawerken gebouwd?",
+  "c": [
+   "Om Nederland tegen overstromingen te beschermen",
+   "Om meer havens te maken",
+   "Om energie op te wekken",
+   "Om land aan Duitsland te verbinden"
+  ],
+  "a": 0,
+  "e": "Na de watersnoodramp van 1953."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "In welk jaar was de watersnoodramp in Zeeland?",
+  "c": [
+   "1953",
+   "1945",
+   "1963",
+   "1972"
+  ],
+  "a": 0,
+  "e": "In de nacht van 31 januari op 1 februari 1953 kwamen meer dan 1800 mensen om."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is de 'Tweede Wereldoorlog' voor Nederland begonnen?",
+  "c": [
+   "Met de Duitse inval in mei 1940",
+   "Met de aanval op Pearl Harbor",
+   "In 1914",
+   "In 1945"
+  ],
+  "a": 0,
+  "e": "Nederland capituleerde na het bombardement op Rotterdam."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat wordt op 4 mei herdacht?",
+  "c": [
+   "De slachtoffers van oorlogen sinds de Tweede Wereldoorlog",
+   "De bevrijding",
+   "De geboorte van de koning",
+   "Het einde van de Gouden Eeuw"
+  ],
+  "a": 0,
+  "e": "Om 20.00 uur zijn er twee minuten stilte."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat was de VOC?",
+  "c": [
+   "Een handelscompagnie uit de zeventiende eeuw",
+   "Een politieke partij",
+   "Een vakbond",
+   "Een verzekeraar"
+  ],
+  "a": 0,
+  "e": "De Verenigde Oost-Indische Compagnie, opgericht in 1602."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Hoe heet de periode waarin de Republiek economisch en cultureel bloeide?",
+  "c": [
+   "De Gouden Eeuw",
+   "De Verlichting",
+   "De Middeleeuwen",
+   "De Wederopbouw"
+  ],
+  "a": 0,
+  "e": "De zeventiende eeuw, met schilders als Rembrandt en Vermeer."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Welke schilder maakte 'De Nachtwacht'?",
+  "c": [
+   "Rembrandt van Rijn",
+   "Vincent van Gogh",
+   "Johannes Vermeer",
+   "Piet Mondriaan"
+  ],
+  "a": 0,
+  "e": "Het hangt in het Rijksmuseum in Amsterdam."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Welke Nederlandse schilder is bekend van 'Zonnebloemen'?",
+  "c": [
+   "Vincent van Gogh",
+   "Rembrandt",
+   "Frans Hals",
+   "Jan Steen"
+  ],
+  "a": 0,
+  "e": "Zijn werk hangt onder meer in het Van Gogh Museum."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wie was Anne Frank?",
+  "c": [
+   "Een Joods meisje dat ondergedoken zat en een dagboek schreef",
+   "Een schilder uit de Gouden Eeuw",
+   "Een koningin",
+   "Een politica"
+  ],
+  "a": 0,
+  "e": "Het Achterhuis in Amsterdam is nu een museum."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is 'verzuiling'?",
+  "c": [
+   "De vroegere indeling van de samenleving in levensbeschouwelijke groepen",
+   "Het bouwen van dijken",
+   "Een belastingstelsel",
+   "Een vorm van onderwijs"
+  ],
+  "a": 0,
+  "e": "Katholieken, protestanten, socialisten en liberalen hadden elk eigen scholen, kranten en omroepen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is het 'poldermodel'?",
+  "c": [
+   "Overleggen tot er een compromis is waar iedereen mee kan leven",
+   "Land droogleggen",
+   "Een systeem van belastingen",
+   "Een manier van bouwen"
+  ],
+  "a": 0,
+  "e": "Werkgevers, werknemers en overheid onderhandelen samen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat betekent 'gedogen'?",
+  "c": [
+   "Iets officieel verboden laten, maar niet vervolgen",
+   "Iets toestaan in de wet",
+   "Iets streng verbieden",
+   "Iets subsidiëren"
+  ],
+  "a": 0,
+  "e": "Bekend van het Nederlandse softdrugsbeleid."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Welke schooltypes bestaan er in het Nederlandse voortgezet onderwijs?",
+  "c": [
+   "VMBO, HAVO en VWO",
+   "Alleen HAVO en VWO",
+   "Alleen VMBO",
+   "Basis, midden en hoog"
+  ],
+  "a": 0,
+  "e": "Na het VWO kun je naar de universiteit, na de HAVO naar het HBO."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is een 'startkwalificatie'?",
+  "c": [
+   "Minimaal een diploma HAVO, VWO of MBO niveau 2",
+   "Een verklaring van goed gedrag",
+   "Een inburgeringsdiploma",
+   "Een rijbewijs"
+  ],
+  "a": 0,
+  "e": "Zonder startkwalificatie geldt de kwalificatieplicht tot je 18e."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is de 'ouderavond' op school?",
+  "c": [
+   "Een avond waarop ouders met leraren over hun kind praten",
+   "Een feest voor kinderen",
+   "Een vergadering van de gemeente",
+   "Een sportdag"
+  ],
+  "a": 0,
+  "e": "Deelname wordt op prijs gesteld; het contact met school is belangrijk."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is 'kinderbijslag'?",
+  "c": [
+   "Een bijdrage van de overheid in de kosten van kinderen",
+   "Een uitkering bij werkloosheid",
+   "Gratis kinderopvang",
+   "Een schoolboekenkorting"
+  ],
+  "a": 0,
+  "e": "De Sociale Verzekeringsbank betaalt het uit."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is de SVB?",
+  "c": [
+   "De Sociale Verzekeringsbank, die AOW en kinderbijslag uitbetaalt",
+   "Een gewone bank",
+   "Een verzekeraar voor auto's",
+   "Een school"
+  ],
+  "a": 0,
+  "e": "Het UWV doet de WW, de SVB de AOW en kinderbijslag."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is een 'verklaring omtrent het gedrag' (VOG)?",
+  "c": [
+   "Een bewijs dat je geen relevant strafblad hebt voor een bepaalde functie",
+   "Een diploma",
+   "Een verblijfsvergunning",
+   "Een medische verklaring"
+  ],
+  "a": 0,
+  "e": "Vaak nodig voor werk met kinderen of geld."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is het verschil tussen 'bruto' en 'netto'?",
+  "c": [
+   "Bruto is vóór aftrek van belasting en premies, netto erna",
+   "Bruto is per maand, netto per jaar",
+   "Er is geen verschil",
+   "Netto geldt alleen voor uitkeringen"
+  ],
+  "a": 0,
+  "e": "Op je loonstrook staan beide bedragen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wanneer doe je normaal gesproken belastingaangifte over het afgelopen jaar?",
+  "c": [
+   "In de eerste maanden van het nieuwe jaar",
+   "In december",
+   "In juli",
+   "Nooit, dat doet je werkgever"
+  ],
+  "a": 0,
+  "e": "De Belastingdienst stuurt een uitnodiging; vaak is er een vooraf ingevulde aangifte."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is een 'hypotheek'?",
+  "c": [
+   "Een lening om een huis te kopen, met het huis als onderpand",
+   "De huur van een woning",
+   "Een verzekering voor je huis",
+   "Een gemeentelijke belasting"
+  ],
+  "a": 0,
+  "e": "Je betaalt rente en lost af."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is de 'huurcommissie'?",
+  "c": [
+   "Een instantie die geschillen tussen huurder en verhuurder beoordeelt",
+   "Een afdeling van de politie",
+   "De vereniging van huiseigenaren",
+   "Een makelaarskantoor"
+  ],
+  "a": 0,
+  "e": "Bijvoorbeeld bij onenigheid over de huurprijs of onderhoud."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat is 'sociale huur'?",
+  "c": [
+   "Huurwoningen met een gereguleerde, lagere huurprijs",
+   "Woningen die je gratis krijgt",
+   "Woningen die je koopt van de gemeente",
+   "Tijdelijke vakantiewoningen"
+  ],
+  "a": 0,
+  "e": "Toegang hangt af van je inkomen; er zijn wachtlijsten."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Wat betekent 'discriminatie' volgens de Nederlandse wet?",
+  "c": [
+   "Mensen ongelijk behandelen op grond van bijvoorbeeld afkomst, geslacht of geloof",
+   "Iemand niet aardig vinden",
+   "Kritiek geven op de overheid",
+   "Een andere mening hebben"
+  ],
+  "a": 0,
+  "e": "Het is verboden en je kunt er melding van doen."
+ },
+ {
+  "cat": "knm",
+  "level": 3,
+  "q": "Waar kun je discriminatie melden?",
+  "c": [
+   "Bij een antidiscriminatiebureau of de politie",
+   "Alleen bij je werkgever",
+   "Bij de Belastingdienst",
+   "Nergens"
+  ],
+  "a": 0,
+  "e": "Elke gemeente heeft toegang tot een antidiscriminatievoorziening."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welke provincie heeft Assen als hoofdstad?",
+  "c": [
+   "Drenthe",
+   "Groningen",
+   "Overijssel",
+   "Friesland"
+  ],
+  "a": 0,
+  "e": "Groningen heeft Groningen, Overijssel heeft Zwolle, Friesland heeft Leeuwarden."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de hoofdstad van de provincie Gelderland?",
+  "c": [
+   "Arnhem",
+   "Nijmegen",
+   "Apeldoorn",
+   "Zutphen"
+  ],
+  "a": 0,
+  "e": "Nijmegen is groter bekend, maar Arnhem is de provinciehoofdstad."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welke provincie is als laatste ontstaan?",
+  "c": [
+   "Flevoland",
+   "Zeeland",
+   "Utrecht",
+   "Limburg"
+  ],
+  "a": 0,
+  "e": "Flevoland werd in 1986 een provincie, drooggelegd uit de Zuiderzee."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de hoofdstad van Friesland?",
+  "c": [
+   "Leeuwarden",
+   "Sneek",
+   "Drachten",
+   "Harlingen"
+  ],
+  "a": 0,
+  "e": "In het Fries: Ljouwert."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welke Nederlandse eilanden liggen in de Waddenzee?",
+  "c": [
+   "Texel, Vlieland, Terschelling, Ameland en Schiermonnikoog",
+   "Walcheren en Schouwen",
+   "Marken en Urk",
+   "Goeree en Overflakkee"
+  ],
+  "a": 0,
+  "e": "De Waddenzee staat op de Werelderfgoedlijst."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is het hoogste punt van Europees Nederland?",
+  "c": [
+   "De Vaalserberg in Limburg",
+   "De Utrechtse Heuvelrug",
+   "De Veluwe",
+   "De Sint-Pietersberg"
+  ],
+  "a": 0,
+  "e": "Ongeveer 322 meter, bij het drielandenpunt."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welke rivier stroomt door Rotterdam naar zee?",
+  "c": [
+   "De Nieuwe Maas",
+   "De IJssel",
+   "De Vecht",
+   "De Amstel"
+  ],
+  "a": 0,
+  "e": "Onderdeel van de Rijn-Maasdelta."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is het 'Binnenhof'?",
+  "c": [
+   "Het gebouwencomplex in Den Haag waar het parlement zetelt",
+   "Het paleis van de koning in Amsterdam",
+   "Een museum in Utrecht",
+   "Het gemeentehuis van Rotterdam"
+  ],
+  "a": 0,
+  "e": "Met de Ridderzaal, waar Prinsjesdag plaatsvindt."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat gebeurt er op Prinsjesdag?",
+  "c": [
+   "De koning leest de troonrede voor en het kabinet presenteert de begroting",
+   "De koning viert zijn verjaardag",
+   "De verkiezingen beginnen",
+   "De Eerste Kamer wordt gekozen"
+  ],
+  "a": 0,
+  "e": "De derde dinsdag van september."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wie is de voorzitter van de ministerraad?",
+  "c": [
+   "De minister-president",
+   "De koning",
+   "De voorzitter van de Tweede Kamer",
+   "De vicepremier"
+  ],
+  "a": 0,
+  "e": "De minister-president wordt ook wel premier genoemd."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat doet een 'informateur' na verkiezingen?",
+  "c": [
+   "Onderzoeken welke partijen samen een kabinet kunnen vormen",
+   "De stemmen tellen",
+   "De koning adviseren over wetten",
+   "De begroting controleren"
+  ],
+  "a": 0,
+  "e": "Daarna gaat een formateur het kabinet daadwerkelijk vormen."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is het 'regeerakkoord'?",
+  "c": [
+   "De afspraken waarop de coalitiepartijen samen gaan regeren",
+   "De grondwet",
+   "Het verkiezingsprogramma van één partij",
+   "Een verdrag met andere landen"
+  ],
+  "a": 0,
+  "e": "Het bepaalt de koers van het kabinet."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de Raad van State?",
+  "c": [
+   "Het hoogste adviesorgaan van de regering en bestuursrechter",
+   "De vergadering van ministers",
+   "De rechtbank voor strafzaken",
+   "Het bestuur van een provincie"
+  ],
+  "a": 0,
+  "e": "De koning is formeel voorzitter."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de Hoge Raad?",
+  "c": [
+   "De hoogste rechter in Nederland, die vooral toetst of het recht juist is toegepast",
+   "De vergadering van burgemeesters",
+   "Het hoogste adviesorgaan van de regering",
+   "Een Europese rechtbank"
+  ],
+  "a": 0,
+  "e": "De Hoge Raad behandelt cassatie, geen nieuwe feiten."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is een 'referendum'?",
+  "c": [
+   "Een volksraadpleging over een bepaald onderwerp",
+   "Een verkiezing van de Tweede Kamer",
+   "Een wetsvoorstel van de koning",
+   "Een uitspraak van de rechter"
+  ],
+  "a": 0,
+  "e": "In Nederland niet bindend en zelden gehouden."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat betekent de afkorting 'AWBZ' historisch gezien?",
+  "c": [
+   "Een oude wet voor langdurige zorg, opgevolgd door de Wlz",
+   "Een uitkering bij werkloosheid",
+   "Een woningwet",
+   "Een belastingregel"
+  ],
+  "a": 0,
+  "e": "Sinds 2015 is de zorg verdeeld over Wlz, Wmo en Zvw."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat regelt de Wmo?",
+  "c": [
+   "Ondersteuning thuis, geregeld door de gemeente",
+   "Het staatspensioen",
+   "De zorgverzekering",
+   "De kinderbijslag"
+  ],
+  "a": 0,
+  "e": "Wet maatschappelijke ondersteuning: bijvoorbeeld huishoudelijke hulp of een woningaanpassing."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wie voert de Participatiewet uit?",
+  "c": [
+   "De gemeente",
+   "Het UWV",
+   "De Belastingdienst",
+   "De SVB"
+  ],
+  "a": 0,
+  "e": "Daaronder valt onder andere de bijstand."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Hoe lang moet een werkgever het loon van een zieke werknemer doorbetalen?",
+  "c": [
+   "Maximaal twee jaar",
+   "Zes weken",
+   "Zes maanden",
+   "Vijf jaar"
+  ],
+  "a": 0,
+  "e": "Daarna kan de werknemer een WIA-uitkering aanvragen bij het UWV."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de WIA?",
+  "c": [
+   "Een uitkering voor wie na langdurige ziekte niet volledig kan werken",
+   "Een uitkering bij ontslag",
+   "Een studiefinanciering",
+   "Een pensioenregeling"
+  ],
+  "a": 0,
+  "e": "Wet werk en inkomen naar arbeidsvermogen."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is een 'transitievergoeding'?",
+  "c": [
+   "Een vergoeding bij ontslag door de werkgever",
+   "Het vakantiegeld",
+   "Een bonus bij een nieuw contract",
+   "Een verhuiskostenvergoeding"
+  ],
+  "a": 0,
+  "e": "De hoogte hangt af van hoe lang je in dienst was."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wie moet meestal toestemming geven voordat een werkgever iemand kan ontslaan?",
+  "c": [
+   "Het UWV of de kantonrechter",
+   "De gemeente",
+   "De vakbond",
+   "De Belastingdienst"
+  ],
+  "a": 0,
+  "e": "Bij bedrijfseconomisch ontslag het UWV, bij persoonlijke redenen de kantonrechter."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is een 'nulurencontract'?",
+  "c": [
+   "Een contract zonder vast aantal uren per week",
+   "Een contract voor onbepaalde tijd",
+   "Een stageovereenkomst",
+   "Een contract zonder loon"
+  ],
+  "a": 0,
+  "e": "Je wordt opgeroepen als er werk is; er gelden wel beschermende regels."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is 'zzp'er'?",
+  "c": [
+   "Een zelfstandige zonder personeel",
+   "Een werknemer met een vast contract",
+   "Een uitzendkracht",
+   "Een stagiair"
+  ],
+  "a": 0,
+  "e": "Een zzp'er regelt zelf belastingen, verzekeringen en pensioen."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de 'Kamer van Koophandel'?",
+  "c": [
+   "De organisatie waar je een bedrijf inschrijft",
+   "Een bank voor ondernemers",
+   "Een rechtbank voor bedrijven",
+   "Een vakbond"
+  ],
+  "a": 0,
+  "e": "Inschrijving in het Handelsregister is verplicht voor ondernemers."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de btw?",
+  "c": [
+   "Belasting over de toegevoegde waarde, verwerkt in de prijs van producten",
+   "Een gemeentelijke belasting op woningen",
+   "Een belasting op je loon",
+   "Een heffing van het waterschap"
+  ],
+  "a": 0,
+  "e": "De consument betaalt het, de ondernemer draagt het af."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de OZB?",
+  "c": [
+   "Een gemeentelijke belasting voor eigenaren van onroerend goed",
+   "Een belasting op salarissen",
+   "Een premie voor de zorgverzekering",
+   "Een heffing op benzine"
+  ],
+  "a": 0,
+  "e": "Onroerendezaakbelasting, gebaseerd op de WOZ-waarde."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is de 'WOZ-waarde'?",
+  "c": [
+   "De waarde die de gemeente aan een woning toekent voor de belasting",
+   "De verkoopprijs van een huis",
+   "De maximale huurprijs",
+   "De hypotheekrente"
+  ],
+  "a": 0,
+  "e": "Je krijgt er jaarlijks een beschikking over."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welk verdrag legde in 1648 het einde van de Tachtigjarige Oorlog vast?",
+  "c": [
+   "De Vrede van Münster",
+   "Het Verdrag van Utrecht",
+   "Het Verdrag van Maastricht",
+   "De Vrede van Wenen"
+  ],
+  "a": 0,
+  "e": "Spanje erkende toen de onafhankelijkheid van de Republiek."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wie wordt gezien als de leider van de Nederlandse Opstand tegen Spanje?",
+  "c": [
+   "Willem van Oranje",
+   "Michiel de Ruyter",
+   "Johan van Oldenbarnevelt",
+   "Karel V"
+  ],
+  "a": 0,
+  "e": "Willem van Oranje, ook wel de Vader des Vaderlands, werd in 1584 vermoord in Delft."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Waar gaat het Wilhelmus over?",
+  "c": [
+   "Willem van Oranje",
+   "De koning van nu",
+   "De zee",
+   "De bevrijding in 1945"
+  ],
+  "a": 0,
+  "e": "Het is een van de oudste volksliederen ter wereld."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "In welk jaar werd Nederland een koninkrijk onder Willem I?",
+  "c": [
+   "1815",
+   "1848",
+   "1795",
+   "1900"
+  ],
+  "a": 0,
+  "e": "Na de Franse tijd, na het Congres van Wenen."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat gebeurde er in 1848 in Nederland?",
+  "c": [
+   "Thorbecke herzag de Grondwet en beperkte de macht van de koning",
+   "Nederland werd bevrijd",
+   "De VOC werd opgericht",
+   "De Deltawerken begonnen"
+  ],
+  "a": 0,
+  "e": "Sindsdien is de regering verantwoording schuldig aan het parlement."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wanneer kregen vrouwen in Nederland actief kiesrecht?",
+  "c": [
+   "1919",
+   "1945",
+   "1900",
+   "1956"
+  ],
+  "a": 0,
+  "e": "Passief kiesrecht kwam in 1917, actief kiesrecht in 1919."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat was 'de Wederopbouw'?",
+  "c": [
+   "De periode van herstel na de Tweede Wereldoorlog",
+   "Het droogleggen van de Zuiderzee",
+   "De bouw van de Deltawerken",
+   "De uitbreiding van de VOC"
+  ],
+  "a": 0,
+  "e": "Met woningnood, industrialisatie en later gastarbeiders."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Waarom kwamen er in de jaren zestig gastarbeiders naar Nederland?",
+  "c": [
+   "Er was een tekort aan arbeidskrachten",
+   "Er was oorlog in Nederland",
+   "De regering wilde de bevolking laten groeien",
+   "Vanwege een verdrag met de VS"
+  ],
+  "a": 0,
+  "e": "Onder meer uit Turkije en Marokko."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welk land was tot 1975 een Nederlandse kolonie in Zuid-Amerika?",
+  "c": [
+   "Suriname",
+   "Indonesië",
+   "Curaçao",
+   "Zuid-Afrika"
+  ],
+  "a": 0,
+  "e": "Suriname werd op 25 november 1975 onafhankelijk."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Welke eilanden zijn landen binnen het Koninkrijk der Nederlanden?",
+  "c": [
+   "Aruba, Curaçao en Sint Maarten",
+   "Bonaire, Saba en Sint Eustatius",
+   "Texel en Vlieland",
+   "Suriname en Indonesië"
+  ],
+  "a": 0,
+  "e": "Bonaire, Saba en Sint Eustatius zijn bijzondere gemeenten van Nederland."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat is 'de Kinderombudsman'?",
+  "c": [
+   "Iemand die toeziet op de rechten van kinderen",
+   "Een kinderrechter",
+   "Een school­directeur",
+   "Een uitkeringsinstantie"
+  ],
+  "a": 0,
+  "e": "Onderdeel van de Nationale ombudsman."
+ },
+ {
+  "cat": "knm",
+  "level": 4,
+  "q": "Wat doet de Nationale ombudsman?",
+  "c": [
+   "Klachten van burgers over de overheid onderzoeken",
+   "Rechtszaken beslissen",
+   "Wetten maken",
+   "Belasting innen"
+  ],
+  "a": 0,
+  "e": "Een onafhankelijke instantie, benoemd door de Tweede Kamer."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Binnen hoeveel dagen moet je een verhuizing bij de gemeente melden?",
+  "c": [
+   "Uiterlijk vijf dagen na de verhuizing",
+   "Binnen 24 uur",
+   "Binnen een maand",
+   "Binnen drie maanden"
+  ],
+  "a": 0,
+  "e": "Aangifte mag ook vanaf vier weken vóór de verhuizing."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoeveel wettelijke vakantiedagen bouwt een fulltimer per jaar minimaal op?",
+  "c": [
+   "Viermaal het aantal werkdagen per week, dus twintig bij een vijfdaagse week",
+   "Tien dagen",
+   "Vijfentwintig dagen",
+   "Dat is niet wettelijk geregeld"
+  ],
+  "a": 0,
+  "e": "Bovenwettelijke dagen komen uit de CAO."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is het wettelijke minimumpercentage vakantiegeld?",
+  "c": [
+   "8% van het jaarloon",
+   "5% van het jaarloon",
+   "10% van het jaarloon",
+   "12% van het jaarloon"
+  ],
+  "a": 0,
+  "e": "Meestal uitbetaald in mei."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoe lang mag een proeftijd maximaal duren bij een contract van twee jaar of langer?",
+  "c": [
+   "Twee maanden",
+   "Eén maand",
+   "Drie maanden",
+   "Zes maanden"
+  ],
+  "a": 0,
+  "e": "Bij contracten korter dan twee jaar is het maximaal één maand; bij contracten tot zes maanden mag er geen proeftijd zijn."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoeveel tijdelijke contracten mag een werkgever in beginsel achter elkaar geven?",
+  "c": [
+   "Drie, binnen maximaal drie jaar",
+   "Twee, binnen twee jaar",
+   "Vijf, binnen vijf jaar",
+   "Onbeperkt"
+  ],
+  "a": 0,
+  "e": "Daarna ontstaat een contract voor onbepaalde tijd; de ketenregeling kan bij CAO afwijken."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welke opzegtermijn geldt standaard voor een werknemer die zelf ontslag neemt?",
+  "c": [
+   "Eén maand",
+   "Eén week",
+   "Drie maanden",
+   "Zes maanden"
+  ],
+  "a": 0,
+  "e": "Tenzij het contract of de CAO iets anders bepaalt."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is de maximale duur van een WW-uitkering?",
+  "c": [
+   "24 maanden",
+   "12 maanden",
+   "36 maanden",
+   "6 maanden"
+  ],
+  "a": 0,
+  "e": "De duur hangt af van je arbeidsverleden; het maximum is twee jaar."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoeveel leden telt de Eerste Kamer?",
+  "c": [
+   "75",
+   "150",
+   "50",
+   "100"
+  ],
+  "a": 0,
+  "e": "De Eerste Kamer kan wetten alleen aannemen of verwerpen, niet wijzigen."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is de kiesdrempel voor de Tweede Kamer in de praktijk?",
+  "c": [
+   "Eén zetel, ongeveer 0,67% van de stemmen",
+   "5% van de stemmen",
+   "10 zetels",
+   "Er is een drempel van 2%"
+  ],
+  "a": 0,
+  "e": "Het Nederlandse stelsel is evenredig, zonder formele drempel."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Vanaf welke leeftijd mag je stemmen voor de Tweede Kamer?",
+  "c": [
+   "18 jaar",
+   "16 jaar",
+   "21 jaar",
+   "17 jaar"
+  ],
+  "a": 0,
+  "e": "Actief kiesrecht vanaf achttien jaar."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wie mogen er stemmen bij gemeenteraadsverkiezingen?",
+  "c": [
+   "Ook niet-Nederlanders die legaal lang genoeg in Nederland wonen",
+   "Alleen Nederlanders",
+   "Alleen EU-burgers",
+   "Iedereen die in Nederland is"
+  ],
+  "a": 0,
+  "e": "Niet-EU-burgers moeten meestal vijf jaar legaal verblijf hebben."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoe lang moet je meestal onafgebroken in Nederland wonen voor naturalisatie?",
+  "c": [
+   "Vijf jaar",
+   "Twee jaar",
+   "Tien jaar",
+   "Één jaar"
+  ],
+  "a": 0,
+  "e": "Bij huwelijk of partnerschap met een Nederlander gelden kortere termijnen."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welk examenonderdeel hoort niet bij het inburgeringsexamen?",
+  "c": [
+   "Een rijvaardigheidstest",
+   "Kennis van de Nederlandse Maatschappij",
+   "Lezen en schrijven",
+   "Spreken en luisteren"
+  ],
+  "a": 0,
+  "e": "Ook Oriëntatie op de Nederlandse Arbeidsmarkt hoort erbij."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat betekent de afkorting ONA in het inburgeringstraject?",
+  "c": [
+   "Oriëntatie op de Nederlandse Arbeidsmarkt",
+   "Onderwijs en Nederlandse Achtergrond",
+   "Officiële Nederlandse Aanvraag",
+   "Opleiding Nederlands Algemeen"
+  ],
+  "a": 0,
+  "e": "Het gaat over werk zoeken en de arbeidsmarkt begrijpen."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welk taalniveau geldt onder de Wet inburgering 2021 als standaardniveau?",
+  "c": [
+   "B1",
+   "A1",
+   "A2",
+   "C1"
+  ],
+  "a": 0,
+  "e": "De oude wet ging uit van A2; sinds 2021 is B1 de standaardroute."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is de Wlz?",
+  "c": [
+   "De wet voor langdurige, zware zorg zoals het verpleeghuis",
+   "De zorgverzekeringswet",
+   "De wet voor huurtoeslag",
+   "De wet voor werkloosheid"
+  ],
+  "a": 0,
+  "e": "Wet langdurige zorg; de gemeente doet de Wmo, de verzekeraar de Zvw."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welke zorg valt niet onder het eigen risico?",
+  "c": [
+   "Bezoek aan de huisarts",
+   "Medicijnen op recept",
+   "Een MRI-scan",
+   "Bloedonderzoek in het ziekenhuis"
+  ],
+  "a": 0,
+  "e": "Huisartsenzorg, verloskundige zorg en kraamzorg zijn uitgezonderd."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat gebeurt er als je je zorgverzekeringspremie lang niet betaalt?",
+  "c": [
+   "Je komt in een wanbetalersregeling met een hogere premie via het CAK",
+   "Je verzekering stopt direct",
+   "De gemeente betaalt het",
+   "Er gebeurt niets"
+  ],
+  "a": 0,
+  "e": "Na zes maanden achterstand neemt het CAK de inning over."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is het CAK?",
+  "c": [
+   "De organisatie die eigen bijdragen voor zorg int",
+   "Een zorgverzekeraar",
+   "Een ziekenhuis",
+   "Een uitkeringsinstantie voor werklozen"
+  ],
+  "a": 0,
+  "e": "Onder meer voor Wmo- en Wlz-bijdragen."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is een 'euthanasieverklaring'?",
+  "c": [
+   "Een schriftelijk verzoek om levensbeëindiging onder strikte voorwaarden",
+   "Een orgaandonatieformulier",
+   "Een testament",
+   "Een volmacht voor je bankzaken"
+  ],
+  "a": 0,
+  "e": "Euthanasie is in Nederland onder strenge zorgvuldigheidseisen toegestaan."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat geldt sinds 2020 in Nederland rond orgaandonatie?",
+  "c": [
+   "Iedereen staat geregistreerd, tenzij je zelf een keuze vastlegt",
+   "Alleen wie zich aanmeldt is donor",
+   "Donatie is verboden",
+   "De gemeente beslist"
+  ],
+  "a": 0,
+  "e": "Het actieve donorregistratiesysteem: 'geen bezwaar' tenzij je anders aangeeft."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wanneer werd het homohuwelijk in Nederland opengesteld?",
+  "c": [
+   "2001",
+   "1998",
+   "2011",
+   "1985"
+  ],
+  "a": 0,
+  "e": "Nederland was het eerste land ter wereld dat dat deed."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is een 'geregistreerd partnerschap'?",
+  "c": [
+   "Een wettelijke verbintenis die veel op een huwelijk lijkt",
+   "Een samenlevingscontract bij de notaris",
+   "Een zakelijk contract",
+   "Een vorm van adoptie"
+  ],
+  "a": 0,
+  "e": "De verschillen met het huwelijk zijn klein, onder andere bij ontbinding."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat betekent 'gemeenschap van goederen' sinds 2018 voor nieuwe huwelijken?",
+  "c": [
+   "Alleen wat je tijdens het huwelijk opbouwt is gemeenschappelijk",
+   "Alles wordt gedeeld, ook wat je al had",
+   "Er wordt niets gedeeld",
+   "Alleen schulden worden gedeeld"
+  ],
+  "a": 0,
+  "e": "De beperkte gemeenschap van goederen; daarvoor was alles gemeenschappelijk."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoe heet de rechter die over kleine civiele zaken en arbeidszaken gaat?",
+  "c": [
+   "De kantonrechter",
+   "De officier van justitie",
+   "De raadsheer",
+   "De rechter-commissaris"
+  ],
+  "a": 0,
+  "e": "Bij de kantonrechter heb je geen advocaat nodig."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat doet het Openbaar Ministerie?",
+  "c": [
+   "Strafbare feiten vervolgen namens de staat",
+   "Rechtszaken beslissen",
+   "Wetten aannemen",
+   "Advocaten benoemen"
+  ],
+  "a": 0,
+  "e": "De officier van justitie eist straf; de rechter beslist."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is 'rechtsbijstand' voor mensen met een laag inkomen?",
+  "c": [
+   "Een toegevoegde advocaat, waarvan de overheid het grootste deel betaalt",
+   "Gratis advies van de politie",
+   "Een uitkering tijdens een rechtszaak",
+   "Een verzekering die verplicht is"
+  ],
+  "a": 0,
+  "e": "Je betaalt een eigen bijdrage; de Raad voor Rechtsbijstand beslist."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Hoeveel bedraagt de wettelijke bedenktijd bij de koop van een woning door een particulier?",
+  "c": [
+   "Drie dagen",
+   "Eén dag",
+   "Twee weken",
+   "Er is geen bedenktijd"
+  ],
+  "a": 0,
+  "e": "Drie dagen na ontvangst van de getekende koopakte."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is 'erfpacht'?",
+  "c": [
+   "Het recht om grond van een ander langdurig te gebruiken tegen een vergoeding",
+   "Een erfenis van een woning",
+   "Een hypotheekvorm",
+   "Een gemeentelijke belasting"
+  ],
+  "a": 0,
+  "e": "Komt onder andere in Amsterdam veel voor."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welke instantie houdt toezicht op de privacy en persoonsgegevens?",
+  "c": [
+   "De Autoriteit Persoonsgegevens",
+   "De Nationale ombudsman",
+   "De Raad van State",
+   "Het CBS"
+  ],
+  "a": 0,
+  "e": "Zij handhaaft onder meer de AVG."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat is het CBS?",
+  "c": [
+   "Het Centraal Bureau voor de Statistiek",
+   "Een zorgverzekeraar",
+   "De centrale bank",
+   "Een rechtbank"
+  ],
+  "a": 0,
+  "e": "Het levert de officiële statistieken over Nederland."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat doet De Nederlandsche Bank?",
+  "c": [
+   "Toezicht houden op banken en verzekeraars en meewerken aan het Europese monetaire beleid",
+   "Belasting innen",
+   "Persoonlijke rekeningen beheren",
+   "Wetten maken"
+  ],
+  "a": 0,
+  "e": "DNB maakt deel uit van het Europese Stelsel van Centrale Banken."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welk verdrag uit 1992 legde de basis voor de Europese Unie en werd in Nederland getekend?",
+  "c": [
+   "Het Verdrag van Maastricht",
+   "Het Verdrag van Rome",
+   "Het Verdrag van Lissabon",
+   "Het Schengenakkoord"
+  ],
+  "a": 0,
+  "e": "Het bracht onder andere de weg naar de euro."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat betekent het Schengengebied?",
+  "c": [
+   "Een gebied zonder systematische grenscontroles tussen deelnemende landen",
+   "De eurozone",
+   "De Europese Unie",
+   "Een handelsverdrag met de VS"
+  ],
+  "a": 0,
+  "e": "Nederland is deelnemer sinds de jaren negentig."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat was het 'Plakkaat van Verlatinghe' uit 1581?",
+  "c": [
+   "De verklaring waarin de Staten-Generaal de Spaanse koning afzwoeren",
+   "De grondwet van 1815",
+   "Het handvest van de VOC",
+   "Het vredesverdrag van Münster"
+  ],
+  "a": 0,
+  "e": "Vaak gezien als een vroege onafhankelijkheidsverklaring."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wie was Johan van Oldenbarnevelt?",
+  "c": [
+   "Een staatsman uit de Republiek die in 1619 werd onthoofd",
+   "Een schilder",
+   "Een admiraal",
+   "De eerste koning"
+  ],
+  "a": 0,
+  "e": "Zijn conflict met Maurits liep uit op zijn terechtstelling."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wie was Michiel de Ruyter?",
+  "c": [
+   "Een zeventiende-eeuwse admiraal",
+   "Een schilder uit de Gouden Eeuw",
+   "Een minister-president",
+   "Een ontdekkingsreiziger van de VOC"
+  ],
+  "a": 0,
+  "e": "Bekend van de Tocht naar Chatham in 1667."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "In welk jaar werd de Afsluitdijk voltooid?",
+  "c": [
+   "1932",
+   "1918",
+   "1945",
+   "1953"
+  ],
+  "a": 0,
+  "e": "Daarmee werd de Zuiderzee het IJsselmeer."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Wat was de 'Hongerwinter'?",
+  "c": [
+   "De winter van 1944-1945 met grote voedselschaarste in het westen",
+   "De winter van 1963 met strenge vorst",
+   "De crisis van de jaren dertig",
+   "Het eerste jaar na de bevrijding"
+  ],
+  "a": 0,
+  "e": "Duizenden mensen kwamen om van honger en kou."
+ },
+ {
+  "cat": "knm",
+  "level": 5,
+  "q": "Welke Nederlandse stad werd in mei 1940 zwaar gebombardeerd?",
+  "c": [
+   "Rotterdam",
+   "Utrecht",
+   "Groningen",
+   "Maastricht"
+  ],
+  "a": 0,
+  "e": "Het bombardement dwong Nederland tot capitulatie."
+ }
+]

@@ -1,0 +1,138 @@
+@page "/admin/accounts"
+@inherits AdminPageBase
+
+<PageTitle>@L["admin.accounts"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["admin.accounts"]</h1></header>
+    <AdminNav />
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <div class="scroll-x card card--flat">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>@L["admin.auth.username"]</th>
+                        <th>@L["auth.email"]</th>
+                        <th>@L["admin.status"]</th>
+                        <th>@L["admin.accounts.lastLogin"]</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var account in _accounts)
+                    {
+                        <tr>
+                            <td>
+                                <div class="row" style="gap:.4rem">
+                                    <strong dir="ltr">@account.Username</strong>
+                                    @if (account.Id == Admin.Admin!.Id) { <span class="chip chip--live">@L["result.you"]</span> }
+                                    @if (account.MustChangePassword) { <span class="chip">@L["admin.accounts.temporary"]</span> }
+                                </div>
+                            </td>
+                            <td dir="ltr" class="faint">@account.Email</td>
+                            <td>
+                                @if (account.IsLocked) { <span class="chip chip--loss">@L["admin.accounts.locked"]</span> }
+                                else if (account.IsActive) { <span class="chip chip--win">@L["admin.accounts.active"]</span> }
+                                else { <span class="chip">@L["admin.accounts.disabled"]</span> }
+                            </td>
+                            <td dir="ltr" class="faint">
+                                @(account.LastLoginAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? L["admin.accounts.never"])
+                            </td>
+                            <td>
+                                <div class="row" style="gap:.3rem;justify-content:flex-end">
+                                    @if (account.Id != Admin.Admin!.Id)
+                                    {
+                                        <button class="btn btn--ghost btn--sm" @onclick="() => SetActiveAsync(account, !account.IsActive)">
+                                            @(account.IsActive ? L["admin.accounts.disable"] : L["admin.accounts.enable"])
+                                        </button>
+                                        <button class="btn btn--sm btn--icon btn--icon-danger" title="@L["admin.delete"]"
+                                                aria-label="@L["admin.delete"]" @onclick="() => DeleteAsync(account)">
+                                            <Icon Name="trash" />
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <section class="card card--taq" style="margin-top:1.25rem">
+            <span class="eyebrow">@L["admin.accounts.new"]</span>
+
+            <div class="stack" style="margin-top:.9rem">
+                <div class="grid-2">
+                    <div class="field">
+                        <label>@L["admin.auth.username"]</label>
+                        <input class="input" dir="ltr" @bind="_new.Username" />
+                    </div>
+                    <div class="field">
+                        <label>@L["auth.email"]</label>
+                        <input class="input" dir="ltr" type="email" required @bind="_new.Email" />
+                        <span class="faint" style="font-size:var(--step--1)">@L["admin.auth.badEmail"]</span>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>@L["admin.auth.password"]</label>
+                    <input class="input" dir="ltr" type="password" autocomplete="new-password" @bind="_new.Password" />
+                    <span class="faint" style="font-size:var(--step--1)">@L["password.rules"] @L["admin.accounts.temporary"].</span>
+                </div>
+
+                @if (_message is not null) { <div class="notice notice--bad">@_message</div> }
+
+                <div class="row">
+                    <button class="btn" disabled="@_busy" @onclick="CreateAsync">@L["admin.accounts.new"]</button>
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private List<AdminAccountDto> _accounts = [];
+    private readonly NewAdminForm _new = new();
+    private string? _message;
+    private bool _busy;
+
+    protected override async Task LoadAsync() => _accounts = await Api.AccountsAsync() ?? [];
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _message = null;
+
+        var error = await Api.CreateAccountAsync(new CreateAdminDto(_new.Username.Trim(), _new.Email.Trim(), _new.Password));
+        _busy = false;
+
+        if (error is not null)
+        {
+            _message = error.Problems is { Count: > 0 }
+                ? string.Join(" ", error.Problems.Select(p => L[p]))
+                : L[error.Reason];
+            return;
+        }
+
+        _new.Username = _new.Email = _new.Password = "";
+        await LoadAsync();
+    }
+
+    private async Task SetActiveAsync(AdminAccountDto account, bool value)
+    {
+        await Api.SetAccountActiveAsync(account.Id, value);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(AdminAccountDto account)
+    {
+        if (!await Api.DeleteAccountAsync(account.Id)) _message = L["admin.auth.lastAdmin"];
+        await LoadAsync();
+    }
+}

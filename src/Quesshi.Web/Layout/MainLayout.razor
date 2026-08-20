@@ -1,0 +1,54 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppState State
+@inject Translator L
+@inject NavigationManager Nav
+
+@if (!State.Ready)
+{
+    <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+}
+else
+{
+    @Body
+
+    @* A guest has exactly one page; a row of tabs to places they cannot open is worse than no tabs. *@
+    @if (State.SignedIn && !State.IsGuest && !IsAdminArea)
+    {
+        <nav class="tabbar" aria-label="@L["app.name"]">
+            <NavLink class="tabbar__link" href="/play">
+                <span class="tabbar__icon" aria-hidden="true">◈</span>@L["nav.play"]
+            </NavLink>
+            <NavLink class="tabbar__link" href="/duels">
+                <span class="tabbar__icon" aria-hidden="true">⚔</span>@L["nav.matches"]
+            </NavLink>
+            <NavLink class="tabbar__link" href="/ranks">
+                <span class="tabbar__icon" aria-hidden="true">▲</span>@L["nav.ranks"]
+            </NavLink>
+            <NavLink class="tabbar__link" href="/profile">
+                <span class="tabbar__icon" aria-hidden="true">☾</span>@L["nav.profile"]
+            </NavLink>
+        </nav>
+    }
+}
+
+@code {
+    /// <summary>The admin panel has its own navigation; it should not wear the game's chrome.</summary>
+    private bool IsAdminArea => new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.Changed += StateHasChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        await State.InitialiseAsync();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => StateHasChanged();
+
+    public void Dispose()
+    {
+        State.Changed -= StateHasChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

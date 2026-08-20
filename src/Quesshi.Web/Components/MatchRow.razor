@@ -1,0 +1,52 @@
+@inject Translator L
+@inject NavigationManager Nav
+
+<button class="card card--flat row" style="width:100%;text-align:start;cursor:pointer" @onclick="Open">
+    <div style="width:3.1rem;flex:none">
+        <Shamseh Mine="@Mine" Theirs="@Theirs" Slots="@Match.Questions" HideTheirs="@(!Match.CanReveal)" Size="50" />
+    </div>
+
+    <div class="grow">
+        <div style="font-weight:700">@(Match.Opponent?.DisplayName ?? L["home.waiting"])</div>
+        <div class="faint" style="font-size:var(--step--1)">
+            @if (Match.Opponent is null)
+            {
+                <span dir="ltr">@Match.Code</span>
+            }
+            else
+            {
+                <span>@L.Num(Match.Me.Answered)/@L.Num(Match.Questions)</span>
+            }
+        </div>
+    </div>
+
+    <span class="chip @ChipClass">@Status</span>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public MatchSummaryDto Match { get; set; } = default!;
+
+    // The row shows how far each side has got, not what they answered — that stays hidden until the reveal.
+    private IReadOnlyList<bool?> Mine => Progress(Match.Me);
+    private IReadOnlyList<bool?> Theirs => Progress(Match.Opponent);
+
+    private IReadOnlyList<bool?> Progress(PlayerSideDto? side)
+        => side is null ? [] : [.. Enumerable.Range(0, Match.Questions).Select(i => i < side.Correct ? (bool?)true : i < side.Answered ? false : null)];
+
+    private string Status => Match.Outcome switch
+    {
+        "win" => L["result.win"],
+        "loss" => L["result.loss"],
+        "draw" => L["result.draw"],
+        _ => Match.CanPlay ? L["home.yourTurn"] : L["home.waiting"]
+    };
+
+    private string ChipClass => Match.Outcome switch
+    {
+        "win" => "chip--win",
+        "loss" => "chip--loss",
+        _ => Match.CanPlay ? "chip--live" : ""
+    };
+
+    private void Open() => Nav.NavigateTo(Match.CanPlay ? $"/play/{Match.Id}" : $"/duel/{Match.Id}");
+}

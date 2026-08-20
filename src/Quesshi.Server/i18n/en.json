@@ -1,0 +1,6 @@
+{
+  "email.otp.body": "Your sign-in code is {0}.\n\nIt expires in {1} minutes. If you didn't ask for it, ignore this message.",
+  "email.otp.subject": "Your Quesshi sign-in code",
+  "email.reset.body": "Hello {0},\n\nUse this link to set a new password:\n{1}\n\nIt expires in {2} minutes. If you didn't ask for it, ignore this message and nothing will change.",
+  "email.reset.subject": "Reset your Quesshi admin password"
+}

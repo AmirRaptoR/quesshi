@@ -1,0 +1,131 @@
+@page "/admin/categories"
+@inherits AdminPageBase
+
+<PageTitle>@L["admin.categories"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["admin.categories"]</h1></header>
+    <AdminNav />
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <div class="grid-3">
+            @foreach (var category in _categories)
+            {
+                <article class="card" style="border-inline-start:3px solid @category.Color">
+                    <div class="row row--between">
+                        <span style="font-size:var(--step-2)" aria-hidden="true">@category.Icon</span>
+                        <span class="chip @(category.IsActive ? "chip--win" : "chip--loss")">
+                            @(category.IsActive ? L["admin.active"] : L["admin.inactive"])
+                        </span>
+                    </div>
+
+                    <div style="margin-top:.6rem;font-weight:700">@category.NameFa</div>
+                    <div class="muted" dir="ltr">@category.NameEn</div>
+                    <div class="faint" dir="ltr" style="font-size:var(--step--1)">@category.Id</div>
+
+                    <div class="row" style="margin-top:.8rem;gap:.35rem">
+                        <button class="btn btn--ghost btn--sm" @onclick="() => Edit(category)">@L["admin.edit"]</button>
+
+                        @* An inactive category is hidden from players rather than paused, so it is an eye. *@
+                        <button class="btn btn--ghost btn--sm btn--icon" @onclick="() => ToggleAsync(category)"
+                                title="@ToggleLabel(category)" aria-label="@ToggleLabel(category)">
+                            <Icon Name="@(category.IsActive ? "eye" : "eye-off")" />
+                        </button>
+
+                        <button class="btn btn--sm btn--icon btn--icon-danger" @onclick="() => DeleteAsync(category.Id)"
+                                title="@L["admin.delete"]" aria-label="@L["admin.delete"]">
+                            <Icon Name="trash" />
+                        </button>
+                    </div>
+                </article>
+            }
+        </div>
+
+        <section class="card card--taq" style="margin-top:1.25rem">
+            <span class="eyebrow">@(_editing.Id.Length > 0 && _known ? L["admin.edit"] : L["admin.addCategory"])</span>
+
+            <div class="stack" style="margin-top:.9rem">
+                <div class="grid-2">
+                    <div class="field"><label>@L["admin.name"] (@L["lang.fa"])</label><input class="input" @bind="_editing.NameFa" /></div>
+                    <div class="field"><label>@L["admin.name"] (@L["lang.en"])</label><input class="input" dir="ltr" @bind="_editing.NameEn" /></div>
+                    <div class="field"><label>@L["admin.name"] (@L["lang.nl"])</label><input class="input" dir="ltr" @bind="_editing.NameNl" /></div>
+                    <div class="field"><label>@L["admin.colour"]</label><input class="input" type="color" @bind="_editing.Color" /></div>
+                </div>
+
+                <p class="faint" style="margin:0;font-size:var(--step--1)">@L["admin.categoryHint"]</p>
+
+                @if (_known)
+                {
+                    <p class="faint" dir="ltr" style="margin:0;font-size:var(--step--1)">@_editing.Id</p>
+                }
+
+                @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
+
+                <div class="row">
+                    <button class="btn" @onclick="SaveAsync">@L["admin.save"]</button>
+                    <button class="btn btn--ghost" @onclick="Reset">@L["admin.cancel"]</button>
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private List<CategoryDto> _categories = [];
+
+    private string ToggleLabel(CategoryDto category)
+        => category.IsActive ? L["admin.deactivate"] : L["admin.activate"];
+    private CategoryForm _editing = new();
+    private bool _known;
+    private string? _error;
+
+    protected override async Task LoadAsync() => _categories = await Api.AdminCategoriesAsync() ?? [];
+
+    private void Edit(CategoryDto category)
+    {
+        _editing = CategoryForm.From(category);
+        _known = true;
+    }
+
+    private void Reset()
+    {
+        _editing = new CategoryForm();
+        _known = false;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        // The id, the icon and the position are all derived server-side; only the English name is needed.
+        if (_editing.NameEn.Trim().Length == 0)
+        {
+            _error = L["common.error"];
+            return;
+        }
+
+        if (!await Api.SaveCategoryAsync(_editing.ToDto())) { _error = L["common.error"]; return; }
+
+        Reset();
+        await LoadAsync();
+    }
+
+    private async Task ToggleAsync(CategoryDto category)
+    {
+        await Api.SaveCategoryAsync(category with { IsActive = !category.IsActive });
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        // The server refuses while questions still point at it, which is the behaviour we want.
+        if (!await Api.DeleteCategoryAsync(id)) { _error = L["common.error"]; return; }
+        await LoadAsync();
+    }
+}

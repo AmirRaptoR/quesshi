@@ -1,0 +1,117 @@
+@page "/"
+@implements IDisposable
+@inject AppState State
+@inject Translator L
+@inject NavigationManager Nav
+
+@*
+    The public front door. Everything else in the game is behind the sign-in wall, so this is the
+    only page a stranger ever sees — it has to explain an asynchronous duel before asking for an
+    email address. Anyone already signed in is sent straight to the lobby instead.
+*@
+
+<PageTitle>@L["app.name"] — @L["app.tagline"]</PageTitle>
+
+<div class="shell" style="--shell:46rem">
+
+    <section class="hero enter">
+        <div class="hero__mark">
+            <Shamseh Mine="@Mine" Theirs="@Theirs" Ignite="true" Label="@L["app.name"]" />
+        </div>
+        <h1>@L["app.name"]</h1>
+        <p class="hero__lede">@L["landing.lede"]</p>
+
+        <div class="hero__cta">
+            <a class="btn" href="/signin?next=/play">@L["landing.cta"]</a>
+            <button class="btn btn--ghost" @onclick="() => _joining = !_joining">@L["landing.haveCode"]</button>
+        </div>
+        <p class="faint" style="margin-top:.7rem;font-size:var(--step--1)">@L["landing.ctaHint"]</p>
+
+        @if (_joining)
+        {
+            <div class="row enter" style="max-width:20rem;margin:1rem auto 0">
+                <input class="input grow" dir="ltr" maxlength="6" placeholder="@L["home.joinPlaceholder"]"
+                       aria-label="@L["home.joinPlaceholder"]" style="text-transform:uppercase"
+                       @bind="_code" @bind:event="oninput" @onkeydown="OnCodeKey" />
+                <button class="btn btn--gold" disabled="@(_code.Length < 4)" @onclick="Join">→</button>
+            </div>
+        }
+    </section>
+
+    <section class="section enter">
+        <span class="eyebrow">@L["landing.how"]</span>
+        <div class="card card--taq">
+            <div class="steps">
+                @foreach (var step in Steps)
+                {
+                    <div class="step">
+                        <div>
+                            <h3>@L[$"landing.{step}.title"]</h3>
+                            <p class="muted" style="margin:.2rem 0 0">@L[$"landing.{step}.body"]</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="section enter">
+        <span class="eyebrow">@L["landing.why"]</span>
+        <div class="grid-3" style="margin-top:.8rem">
+            @foreach (var feature in Features)
+            {
+                <div class="card card--flat">
+                    <h3 style="font-size:var(--step-0)">@L[$"landing.{feature}.title"]</h3>
+                    <p class="muted" style="margin:.3rem 0 0;font-size:var(--step--1)">@L[$"landing.{feature}.body"]</p>
+                </div>
+            }
+        </div>
+    </section>
+
+    <footer class="landing__foot enter">
+        <a class="btn btn--block" href="/signin?next=/play">@L["landing.cta"]</a>
+        <div class="row" style="justify-content:center;margin-top:1rem">
+            <LangToggle />
+            <a class="btn btn--ghost btn--sm" href="/signin?next=/play">@L["auth.title"]</a>
+        </div>
+        <p class="faint" style="margin-top:1.2rem;font-size:var(--step--1)">@L["landing.foot"]</p>
+    </footer>
+</div>
+
+@code {
+    // A duel caught mid-play: four of mine answered, two of theirs. The mark says what the game is.
+    private static readonly IReadOnlyList<bool?> Mine = [true, true, false, true, null, null];
+    private static readonly IReadOnlyList<bool?> Theirs = [true, false, null, null, null, null];
+
+    private static readonly string[] Steps = ["step1", "step2", "step3"];
+    private static readonly string[] Features = ["async", "bilingual", "speed", "guest"];
+
+    private bool _joining;
+    private string _code = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.Changed += StateHasChanged;
+        await State.InitialiseAsync();
+
+        // A guest belongs on their one duel; everybody else signed in belongs in the lobby.
+        if (State.IsGuest)
+        {
+            if (State.GuestMatchId is { Length: > 0 } id) Nav.NavigateTo($"/duel/{id}");
+        }
+        else if (State.SignedIn)
+        {
+            Nav.NavigateTo("/play");
+        }
+    }
+
+    private void OnCodeKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _code.Length >= 4) Join();
+    }
+
+    private void Join() => Nav.NavigateTo($"/join/{_code.Trim().ToUpperInvariant()}");
+
+
+    public void Dispose() => State.Changed -= StateHasChanged;
+}

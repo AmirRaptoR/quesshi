@@ -1,0 +1,36 @@
+@page "/duels"
+@inherits PageBase
+
+<PageTitle>@L["nav.matches"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    <header class="topbar"><h1 class="topbar__title">@L["nav.matches"]</h1></header>
+
+    @if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_matches.Count == 0)
+    {
+        <p class="empty">@L["home.noMatches"]</p>
+    }
+    else
+    {
+        <div class="stack">
+            @foreach (var match in _matches)
+            {
+                <div class="enter"><MatchRow Match="match" /></div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<MatchSummaryDto> _matches = [];
+
+    protected override async Task LoadAsync()
+    {
+        var all = await Api.MatchesAsync() ?? [];
+        _matches = [.. all.OrderByDescending(m => m.CanPlay).ThenByDescending(m => m.CreatedAt)];
+    }
+}

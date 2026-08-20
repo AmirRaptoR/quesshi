@@ -1,0 +1,57 @@
+@inject Translator L
+@* A question's image, audio or video. One component so the play screen and the review list
+   always present media the same way. *@
+@if (Media is { } media)
+{
+    <div class="media @(Compact ? "media--compact" : null)">
+        @switch (media.Kind)
+        {
+            case "image":
+                <img src="@media.Url" alt="" loading="lazy" />
+                break;
+            case "audio":
+                <audio controls preload="auto" src="@media.Url"></audio>
+                break;
+            case "video":
+                // Muted autoplay is the only kind browsers allow without a click. Controls stay
+                // visible so a clip that does carry sound can be unmuted.
+                <video controls playsinline muted autoplay="@Autoplay" loop="@Loop" src="@media.Url"></video>
+                break;
+        }
+
+        @if (!Compact && !string.IsNullOrWhiteSpace(Media.Attribution))
+        {
+            @* Not decoration: CC BY-SA requires the credit to travel with the picture. *@
+            <p class="media__credit" dir="auto">@Credit</p>
+            @if (Source is { } source)
+            {
+                @* The full URL is long enough to crowd out the question, so link the words instead. *@
+                <a class="media__credit media__source" href="@source" target="_blank" rel="noopener nofollow">@L["media.source"]</a>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public MediaDto? Media { get; set; }
+
+    /// <summary>A question video usually needs watching more than once.</summary>
+    [Parameter] public bool Loop { get; set; } = true;
+
+    [Parameter] public bool Autoplay { get; set; } = true;
+
+    /// <summary>Small enough to scan a list of questions without each row becoming a page.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>The provider packs the source link onto the end of the credit; show it as a link.</summary>
+    private string Credit => Split().Credit;
+    private string? Source => Split().Source;
+
+    private (string Credit, string? Source) Split()
+    {
+        var text = Media?.Attribution ?? "";
+        var marker = text.IndexOf(" — http", StringComparison.Ordinal);
+
+        return marker < 0 ? (text, null) : (text[..marker], text[(marker + 3)..].Trim());
+    }
+}

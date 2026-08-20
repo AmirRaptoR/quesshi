@@ -1,0 +1,20 @@
+@implements IDisposable
+@inject AppState State
+@inject Translator L
+
+@* Three languages, so this is a picker rather than the flip it used to be. *@
+<div class="segmented" role="group" aria-label="@L["lang.pick"]">
+    @foreach (var code in Translator.All)
+    {
+        var pick = code;
+        <button type="button" class="segmented__option @(L.Lang == pick ? "is-on" : null)"
+                aria-pressed="@((L.Lang == pick).ToString().ToLowerInvariant())"
+                @onclick="() => State.SetLangAsync(pick)">@L["lang." + pick]</button>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => State.Changed += StateHasChanged;
+
+    public void Dispose() => State.Changed -= StateHasChanged;
+}
