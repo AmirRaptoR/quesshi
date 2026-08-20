@@ -34,12 +34,16 @@ public static class MatchRules
     /// first slot to the last, so a hundred-question duel climbs in twenty-question steps and a
     /// ten-question one takes them two at a time.
     /// </summary>
-    public static Difficulty LevelForSlot(int slot, int total)
+    public static Difficulty LevelForSlot(int slot, int total, IReadOnlyList<Difficulty>? allowed = null)
     {
-        if (total <= 1) return Difficulty.Medium;
+        // Choosing levels narrows the ramp rather than fighting it: pick easy and hard, and the run
+        // spends its first half easy and its second half hard instead of climbing through all five.
+        var levels = allowed is { Count: > 0 } ? allowed : AllLevels;
 
-        var level = (int)Math.Round(1 + 4.0 * slot / (total - 1), MidpointRounding.AwayFromZero);
-        return (Difficulty)Math.Clamp(level, 1, 5);
+        if (total <= 1 || levels.Count == 1) return levels[levels.Count / 2];
+
+        var index = (int)Math.Round((levels.Count - 1.0) * slot / (total - 1), MidpointRounding.AwayFromZero);
+        return levels[Math.Clamp(index, 0, levels.Count - 1)];
     }
 
     /// <summary>Every level, low to high. Anything iterating difficulty should use this.</summary>

@@ -86,7 +86,7 @@ public sealed class MatchGrain(
 
         var correct = choiceIndex >= 0 && question.IsCorrect(choiceIndex);
         var wasOver = _match.IsOver;
-        var answer = _match.SubmitAnswer(playerId, slot, choiceIndex, correct, clock.Now);
+        var answer = _match.SubmitAnswer(playerId, slot, choiceIndex, correct, clock.Now, question.Level);
         await SaveAsync();
 
         question.RecordServed(correct);

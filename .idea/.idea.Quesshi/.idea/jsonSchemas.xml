@@ -14,6 +14,9 @@
                   <Item>
                     <option name="path" value="src/Quesshi.Server/appsettings.Development.json" />
                   </Item>
+                  <Item>
+                    <option name="path" value="src/Quesshi.Server/appsettings.json" />
+                  </Item>
                 </list>
               </option>
             </SchemaInfo>

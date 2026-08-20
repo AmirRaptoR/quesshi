@@ -13,8 +13,11 @@ namespace Quesshi.Application.UseCases;
 public sealed class QuestionSetBuilder(IQuestionRepository questions, ICategoryRepository categories)
 {
     public async Task<IReadOnlyList<Question>> BuildAsync(Language lang, IReadOnlyList<string>? preferred = null,
-        int? questionCount = null, CancellationToken ct = default)
+        int? questionCount = null, IReadOnlyList<Difficulty>? levels = null, CancellationToken ct = default)
     {
+        // Choosing levels is a promise, so it binds the fallbacks too: a thin bucket may cost you
+        // the category you asked for, but never hands you an easy question you said you did not want.
+        var allowed = levels is { Count: > 0 } ? [.. levels.Distinct().Order()] : MatchRules.AllLevels;
         var count = questionCount ?? MatchRules.QuestionsPerMatch;
         if (!MatchRules.IsValidCount(count)) count = MatchRules.QuestionsPerMatch;
 
@@ -28,11 +31,11 @@ public sealed class QuestionSetBuilder(IQuestionRepository questions, ICategoryR
         for (var slot = 0; slot < count; slot++)
         {
             var category = chosen[slot % chosen.Count];
-            var level = MatchRules.LevelForSlot(slot, count);
+            var level = MatchRules.LevelForSlot(slot, count, allowed);
 
             var question = await TakeAsync(lang, category.Id, level, used, ct)
-                        ?? await TakeAnyLevelAsync(lang, category.Id, used, ct)
-                        ?? await TakeAnywhereAsync(lang, active, used, ct)
+                        ?? await TakeAnyLevelAsync(lang, category.Id, allowed, used, ct)
+                        ?? await TakeAnywhereAsync(lang, active, allowed, used, ct)
                         ?? throw new NotEnoughQuestionsException(
                                $"Not enough approved {lang} questions to fill a match (got {picked.Count} of {count}).");
 
@@ -70,17 +73,19 @@ public sealed class QuestionSetBuilder(IQuestionRepository questions, ICategoryR
     private async Task<Question?> TakeAsync(Language lang, string categoryId, Difficulty level, HashSet<string> used, CancellationToken ct)
         => (await questions.SampleApprovedAsync(lang, categoryId, level, 1, used, ct)).FirstOrDefault();
 
-    private async Task<Question?> TakeAnyLevelAsync(Language lang, string categoryId, HashSet<string> used, CancellationToken ct)
+    private async Task<Question?> TakeAnyLevelAsync(Language lang, string categoryId,
+        IReadOnlyList<Difficulty> allowed, HashSet<string> used, CancellationToken ct)
     {
-        foreach (var level in MatchRules.AllLevels)
+        foreach (var level in allowed)
             if (await TakeAsync(lang, categoryId, level, used, ct) is { } q) return q;
         return null;
     }
 
-    private async Task<Question?> TakeAnywhereAsync(Language lang, List<Category> active, HashSet<string> used, CancellationToken ct)
+    private async Task<Question?> TakeAnywhereAsync(Language lang, List<Category> active,
+        IReadOnlyList<Difficulty> allowed, HashSet<string> used, CancellationToken ct)
     {
         foreach (var category in active.OrderBy(_ => Random.Shared.Next()))
-            if (await TakeAnyLevelAsync(lang, category.Id, used, ct) is { } q) return q;
+            if (await TakeAnyLevelAsync(lang, category.Id, allowed, used, ct) is { } q) return q;
         return null;
     }
 }

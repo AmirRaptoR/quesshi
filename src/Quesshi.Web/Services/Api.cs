@@ -29,8 +29,9 @@ public sealed class Api(HttpClient http)
     public Task<bool> RemoveFriendAsync(string id) => SendAsync(HttpMethod.Delete, $"api/friends/{id}");
 
     // --- play ---
-    public Task<MatchSummaryDto?> CreateMatchAsync(bool random, string? lang, List<string>? categories = null, int? questions = null)
-        => PostAsync<MatchSummaryDto>("api/matches", new { random, lang, categories, questions });
+    public Task<MatchSummaryDto?> CreateMatchAsync(bool random, string? lang, List<string>? categories = null,
+        int? questions = null, List<int>? levels = null)
+        => PostAsync<MatchSummaryDto>("api/matches", new { random, lang, categories, questions, levels });
     public Task<MatchSummaryDto?> JoinAsync(string code) => PostAsync<MatchSummaryDto>($"api/matches/join/{Uri.EscapeDataString(Code(code))}", new { });
     public Task<List<MatchSummaryDto>?> MatchesAsync() => GetAsync<List<MatchSummaryDto>>("api/matches");
     public Task<MatchDetailDto?> MatchAsync(string id) => GetAsync<MatchDetailDto>($"api/matches/{id}");

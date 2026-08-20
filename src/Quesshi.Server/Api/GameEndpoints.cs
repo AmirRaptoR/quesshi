@@ -120,7 +120,14 @@ public static class GameEndpoints
             List<Question> set;
             try
             {
-                set = [.. await builder.BuildAsync(lang, body.Categories, body.Questions)];
+                // Anything outside 1..5 is dropped rather than rejected: a nonsense level is the
+                // same request as no level at all.
+                var levels = body.Levels?
+                    .Where(l => l is >= 1 and <= 5)
+                    .Select(l => (Difficulty)l)
+                    .ToList();
+
+                set = [.. await builder.BuildAsync(lang, body.Categories, body.Questions, levels)];
             }
             catch (NotEnoughQuestionsException ex)
             {

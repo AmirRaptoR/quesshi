@@ -39,6 +39,24 @@
                 </div>
 
                 <div class="field" style="margin-top:.9rem">
+                    <label>@L["home.levels"]</label>
+                    <div class="picker">
+                        @foreach (var level in Levels)
+                        {
+                            var value = level;
+                            <button type="button" class="picker__chip @(_levels.Contains(value) ? "is-on" : null)"
+                                    style="--pick:var(--zaferan)" aria-pressed="@(_levels.Contains(value).ToString().ToLowerInvariant())"
+                                    @onclick="() => ToggleLevel(value)">
+                                @L["level." + value]
+                            </button>
+                        }
+                    </div>
+                    <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
+                        @(_levels.Count == 0 ? L["home.anyLevel"] : L.Format("home.pickedCount", L.Num(_levels.Count)))
+                    </p>
+                </div>
+
+                <div class="field" style="margin-top:.9rem">
                     <label>@L["home.categories"]</label>
                     <div class="picker">
                         @foreach (var category in _categories)
@@ -106,10 +124,14 @@
     /// <summary>Mirrors MatchRules.QuestionCountChoices; the server rejects anything else anyway.</summary>
     private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
 
+    /// <summary>Mirrors Difficulty. Nothing picked means the whole ramp, as with categories.</summary>
+    private static readonly int[] Levels = [1, 2, 3, 4, 5];
+
     private List<MatchSummaryDto> _active = [];
     private List<CategoryDto> _categories = [];
     private readonly HashSet<string> _picked = [];
-    private int _questions = 6;
+    private readonly HashSet<int> _levels = [];
+    private int _questions = QuestionCounts[0];
     private string _code = "";
     private string? _error;
     private bool _busy;
@@ -127,12 +149,18 @@
         if (!_picked.Remove(id)) _picked.Add(id);
     }
 
+    private void ToggleLevel(int level)
+    {
+        if (!_levels.Remove(level)) _levels.Add(level);
+    }
+
     private async Task StartAsync(bool random)
     {
         _busy = true; _error = null;
 
         // Nothing picked means "surprise me" — the server draws three categories itself.
-        var match = await Api.CreateMatchAsync(random, State.Lang, _picked.Count == 0 ? null : [.. _picked], _questions);
+        var match = await Api.CreateMatchAsync(random, State.Lang, _picked.Count == 0 ? null : [.. _picked], _questions,
+            _levels.Count == 0 ? null : [.. _levels.Order()]);
         _busy = false;
 
         if (match is null) { _error = L["common.error"]; return; }

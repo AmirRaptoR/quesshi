@@ -1,12 +1,20 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" translate="no" class="notranslate">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Quesshi</title>
     <base href="/" />
     <meta name="theme-color" content="#090E22" />
-    <meta name="description" content="Ask your friends. Persian and English trivia duels." />
+    <meta name="description" content="Ask your friends. Persian, English and Dutch trivia duels." />
+
+    <!--
+      Machine translation and Blazor cannot coexist. Translate replaces every text node with a
+      <font>-wrapped copy, and Blazor keeps writing to the original nodes it still holds references
+      to — which are now detached, so the interface silently stops updating. The app carries three
+      real languages in a picker instead; these two lines stop the browser offering the broken path.
+    -->
+    <meta name="google" content="notranslate" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="manifest" href="manifest.webmanifest" />

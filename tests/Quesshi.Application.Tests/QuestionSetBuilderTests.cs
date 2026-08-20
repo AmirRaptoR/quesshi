@@ -158,4 +158,28 @@ public class QuestionSetBuilderTests
             Assert.DoesNotContain(set, q => q.CategoryId == "banned");
         }
     }
+
+    [Fact]
+    public async Task Only_the_chosen_levels_are_served()
+    {
+        Stock(10, Language.En, "geography", "movies", "history");
+        var set = await Sut().BuildAsync(Language.En, questionCount: 10, levels: [Difficulty.Hard, Difficulty.VeryHard]);
+
+        Assert.All(set, q => Assert.Contains(q.Level, new[] { Difficulty.Hard, Difficulty.VeryHard }));
+    }
+
+    /// <summary>
+    /// The point of the confined fallback: asking for very hard and getting very easy would be a
+    /// worse answer than getting an error, because nothing on screen would say it happened.
+    /// </summary>
+    [Fact]
+    public async Task An_empty_chosen_level_refuses_rather_than_substituting_an_easier_one()
+    {
+        _categories.UpsertAsync(new Category("geography", "geography", "Geography", "*", "#fff"));
+        for (var i = 0; i < 20; i++)
+            await _questions.UpsertAsync(Q($"easy-{i}", Language.En, "geography", Difficulty.VeryEasy));
+
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(
+            () => Sut().BuildAsync(Language.En, questionCount: 10, levels: [Difficulty.VeryHard]));
+    }
 }

@@ -72,7 +72,8 @@ public sealed class Match
         return new ServedQuestion(run.NextSlot, _questionIds[run.NextSlot], now);
     }
 
-    public AnswerRecord SubmitAnswer(string playerId, int slot, int choiceIndex, bool correct, DateTimeOffset now)
+    public AnswerRecord SubmitAnswer(string playerId, int slot, int choiceIndex, bool correct, DateTimeOffset now,
+        Difficulty level = Difficulty.Medium)
     {
         RequireParticipant(playerId);
 
@@ -82,7 +83,7 @@ public sealed class Match
             throw new InvalidOperationException($"Expected an answer for question {run.NextSlot}, got {slot}.");
 
         var taken = now - servedAt;
-        var answer = new AnswerRecord(slot, choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime), taken.TotalSeconds);
+        var answer = new AnswerRecord(slot, choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds);
         run.Record(answer);
 
         TryResolve(now);

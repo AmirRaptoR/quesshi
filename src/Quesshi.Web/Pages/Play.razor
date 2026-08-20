@@ -23,7 +23,7 @@
                 <span aria-hidden="true">@_card.CategoryIcon</span> @_card.CategoryName
             </span>
             <span class="level" aria-label="@L["level." + _card.Level]">
-                @for (var i = 1; i <= 3; i++) { <i class="@(i <= _card.Level ? "on" : null)"></i> }
+                @for (var i = 1; i <= 5; i++) { <i class="@(i <= _card.Level ? "on" : null)"></i> }
             </span>
             <div class="topbar__spacer"></div>
             <span class="muted numeral">@L.Num(_card.Slot + 1) / @L.Num(_card.TotalSlots)</span>
