@@ -1,6 +1,11 @@
 {
-  "email.otp.body": "Your sign-in code is {0}.\n\nIt expires in {1} minutes. If you didn't ask for it, ignore this message.",
+  "email.otp.intro": "Enter this code to sign in. It is good for one sign-in only.",
+  "email.otp.note": "The code expires in {0} minutes. If you did not ask to sign in, ignore this message — nobody can use it without your inbox.",
   "email.otp.subject": "Your Quesshi sign-in code",
-  "email.reset.body": "Hello {0},\n\nUse this link to set a new password:\n{1}\n\nIt expires in {2} minutes. If you didn't ask for it, ignore this message and nothing will change.",
-  "email.reset.subject": "Reset your Quesshi admin password"
+  "email.otp.title": "Your sign-in code",
+  "email.reset.button": "Choose a new password",
+  "email.reset.intro": "Hello {0}. Use the button below to choose a new password for your admin account.",
+  "email.reset.note": "The link expires in {0} minutes and works once. If you did not ask for it, ignore this message and nothing will change.",
+  "email.reset.subject": "Reset your Quesshi admin password",
+  "email.reset.title": "Set a new password"
 }

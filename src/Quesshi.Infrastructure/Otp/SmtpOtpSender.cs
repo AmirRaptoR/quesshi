@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Mail;
 using Microsoft.Extensions.Logging;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
@@ -10,16 +8,17 @@ public sealed class SmtpOtpSender(SmtpOptions options, ITranslator translator, I
 {
     public async Task<string?> SendAsync(string email, string code, Language lang, CancellationToken ct = default)
     {
-        var subject = translator.Get(lang, "email.otp.subject");
-        var body = string.Format(translator.Get(lang, "email.otp.body"), code, OtpChallenge.Lifetime.TotalMinutes);
+        var minutes = OtpChallenge.Lifetime.TotalMinutes;
 
-        using var client = new SmtpClient(options.Host, options.Port) { EnableSsl = options.UseTls };
-        if (!string.IsNullOrEmpty(options.User))
-            client.Credentials = new NetworkCredential(options.User, options.Password);
+        var title = translator.Get(lang, "email.otp.title");
+        var intro = translator.Get(lang, "email.otp.intro");
+        var note = string.Format(translator.Get(lang, "email.otp.note"), minutes);
 
-        await client.SendMailAsync(new MailMessage(options.From, email, subject, body), ct);
+        await SmtpMail.SendAsync(options, email, translator.Get(lang, "email.otp.subject"),
+            EmailTemplate.Html(title, intro, EmailTemplate.Code(code), note, rtl: lang == Language.Fa),
+            EmailTemplate.PlainText(title, intro, code, note), ct);
+
         logger.LogInformation("Sent a sign-in code to {Email}", email);
-
         return null;
     }
 }

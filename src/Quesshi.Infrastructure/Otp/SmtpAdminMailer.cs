@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Mail;
 using Microsoft.Extensions.Logging;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
@@ -10,18 +8,20 @@ public sealed class SmtpAdminMailer(SmtpOptions options, ITranslator translator,
 {
     public async Task<string?> SendPasswordResetAsync(string email, string username, string resetLink, CancellationToken ct = default)
     {
-        // Administration is an English-language surface; the game is the bilingual one.
-        var subject = translator.Get(Language.En, "email.reset.subject");
-        var body = string.Format(translator.Get(Language.En, "email.reset.body"),
-            username, resetLink, PasswordResetToken.Lifetime.TotalMinutes);
+        // Administration is an English-language surface; the game is the multilingual one.
+        const Language lang = Language.En;
+        var minutes = PasswordResetToken.Lifetime.TotalMinutes;
 
-        using var client = new SmtpClient(options.Host, options.Port) { EnableSsl = options.UseTls };
-        if (!string.IsNullOrEmpty(options.User))
-            client.Credentials = new NetworkCredential(options.User, options.Password);
+        var title = translator.Get(lang, "email.reset.title");
+        var intro = string.Format(translator.Get(lang, "email.reset.intro"), username);
+        var note = string.Format(translator.Get(lang, "email.reset.note"), minutes);
+        var button = EmailTemplate.Button(resetLink, translator.Get(lang, "email.reset.button"));
 
-        await client.SendMailAsync(new MailMessage(options.From, email, subject, body), ct);
+        await SmtpMail.SendAsync(options, email, translator.Get(lang, "email.reset.subject"),
+            EmailTemplate.Html(title, intro, button, note, rtl: false),
+            EmailTemplate.PlainText(title, intro, resetLink, note), ct);
+
         logger.LogInformation("Sent a password reset to {Email}", email);
-
         return null;
     }
 }

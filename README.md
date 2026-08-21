@@ -62,8 +62,13 @@ code back to the browser. Locally the stack includes **Mailpit**, which catches 
 shows it at <http://localhost:8025>, so no address has to be real and no mailbox is needed. A
 deployment points `Smtp:Host` at a real server instead.
 
+Messages are HTML in the app's own palette with a plain-text alternative alongside, built for mail
+clients rather than browsers: tables, inline styles, and nothing loaded from anywhere, because
+images are blocked by default and Outlook renders with Word. Mailpit scores the result 91–92% across
+its 186 compatibility tests.
+
 ```bash
-dotnet test                   # 240 tests; only the grain tests need anything running, and they self-host
+dotnet test                   # 247 tests; only the grain tests need anything running, and they self-host
 ```
 
 To play against yourself, sign in as two addresses in two browser profiles, start a duel in one and
