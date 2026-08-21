@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
@@ -35,10 +36,22 @@ public sealed class Seeder(IQuestionRepository questions, ICategoryRepository ca
             foreach (var row in await ReadAsync<SeedRow>(file, ct))
             {
                 var id = StableId(lang, row);
-                if (await questions.GetAsync(id, ct) is not null) continue;
 
                 // The seed files always list the answer first; shuffle so players cannot just tap option one.
                 var (choices, correctIndex) = Shuffle(row.C, row.A, id);
+
+                if (await questions.GetAsync(id, ct) is { } existing)
+                {
+                    // The id is derived from the prompt alone, so a corrected set of choices carries the
+                    // same id and would otherwise never reach a bank that has already been seeded. Only
+                    // seeded questions are refreshed, so an admin's edits are not overwritten, and Edit
+                    // keeps the play counts and reports the question has collected.
+                    if (existing.Source != QuestionSource.Seed || !Differs(existing, row, choices, correctIndex)) continue;
+
+                    existing.Edit(lang, row.Cat, (Difficulty)row.Level, row.Q, choices, correctIndex, ToMedia(row.Media), row.E);
+                    batch.Add(existing);
+                    continue;
+                }
 
                 batch.Add(Question.Create(id, lang, row.Cat, (Difficulty)row.Level, row.Q, choices, correctIndex,
                     clock.Now, ToMedia(row.Media), row.E, QuestionSource.Seed, QuestionStatus.Approved));
@@ -67,16 +80,27 @@ public sealed class Seeder(IQuestionRepository questions, ICategoryRepository ca
             ? null
             : new MediaRef(kind, media.Url, media.Attribution);
 
-    /// <summary>Deterministic per question, so a reseed reproduces the same layout instead of reshuffling.</summary>
-    private static (List<string> Choices, int CorrectIndex) Shuffle(List<string> choices, int correct, string seed)
+    /// <summary>
+    /// Deterministic per question, so a reseed reproduces the same layout instead of reshuffling.
+    /// The seed is read out of the id's own hex rather than from GetHashCode, which .NET randomises
+    /// per process — that made the old "deterministic" shuffle a different shuffle on every start.
+    /// </summary>
+    public static (List<string> Choices, int CorrectIndex) Shuffle(List<string> choices, int correct, string seed)
     {
-        var rng = new Random(seed.GetHashCode(StringComparison.Ordinal));
+        var rng = new Random(unchecked((int)uint.Parse(seed[..8], NumberStyles.HexNumber, CultureInfo.InvariantCulture)));
         var indexed = choices.Select((text, i) => (text, isCorrect: i == correct))
             .OrderBy(_ => rng.Next())
             .ToList();
 
         return ([.. indexed.Select(x => x.text)], indexed.FindIndex(x => x.isCorrect));
     }
+
+    /// <summary>Whether anything a player would notice has changed since this row was last seeded.</summary>
+    private static bool Differs(Question existing, SeedRow row, List<string> choices, int correctIndex)
+        => existing.Level != (Difficulty)row.Level
+        || existing.CorrectIndex != correctIndex
+        || existing.Explanation != row.E
+        || !existing.Choices.SequenceEqual(choices);
 
     private static string StableId(Language lang, SeedRow row)
     {

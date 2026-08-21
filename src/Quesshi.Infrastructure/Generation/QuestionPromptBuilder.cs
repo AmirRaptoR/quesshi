@@ -31,7 +31,9 @@ public sealed class QuestionPromptBuilder
 
         Rules:
         - Exactly {MatchRules.ChoicesPerQuestion} choices per question, exactly one of them correct.
-        - The wrong choices must be plausible and of similar length to the right one — no giveaways.
+        - The wrong choices must be plausible and within a few characters of the right one in length,
+          and written in the same grammatical shape. A careful definition against three short
+          dismissals gives the answer away to anyone who cannot read the language at all.
         - Every question must have a single, checkable, uncontested answer.
         - No questions about current events, ages, or anything that changes over time.
         - Keep the prompt under 120 characters and each choice under 40.

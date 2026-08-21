@@ -45,7 +45,7 @@
   "c": [
    "Oranje",
    "Paars",
-   "Groen",
+   "Donkergroen",
    "Goud"
   ],
   "a": 0,
@@ -59,7 +59,7 @@
    "Nederlands",
    "Duits",
    "Engels",
-   "Vlaams"
+   "Vlaams-Nederlands"
   ],
   "a": 0,
   "e": "Nederlands. In Friesland is het Fries een tweede officiële taal."
@@ -72,7 +72,7 @@
    "Willem-Alexander",
    "Bernhard",
    "Johan Friso",
-   "Constantijn"
+   "Prins Constantijn"
   ],
   "a": 0,
   "e": "Koning Willem-Alexander is koning sinds 2013."
@@ -161,9 +161,9 @@
   "q": "Wat is een 'gemeente'?",
   "c": [
    "Het bestuur van een stad of dorp",
-   "Een winkelketen",
-   "Een soort belasting",
-   "Een school"
+   "Een landelijke keten van supermarkten",
+   "Een belasting op het bezit van een woning",
+   "Een school voor kinderen uit de buurt"
   ],
   "a": 0,
   "e": "Bij de gemeente regel je bijvoorbeeld je inschrijving en je paspoort."
@@ -213,7 +213,7 @@
   "q": "In welke provincie ligt Amsterdam?",
   "c": [
    "Noord-Holland",
-   "Zuid-Holland",
+   "Zuid-Holland-Noord",
    "Utrecht",
    "Flevoland"
   ],
@@ -251,10 +251,10 @@
   "level": 1,
   "q": "Wat betekent het als een winkel 'gesloten' is?",
   "c": [
-   "Je kunt niet naar binnen",
-   "Er is uitverkoop",
-   "Het is er druk",
-   "Je moet aanbellen"
+   "Je kunt er niet naar binnen",
+   "Er is die dag uitverkoop",
+   "Het is er op dat moment druk",
+   "Je moet eerst even aanbellen"
   ],
   "a": 0,
   "e": "Gesloten betekent dicht."
@@ -292,7 +292,7 @@
   "c": [
    "De loonstrook",
    "De huurbon",
-   "Het paspoort",
+   "Het paspoort met je gegevens",
    "De zorgpas"
   ],
   "a": 0,
@@ -316,10 +316,10 @@
   "level": 1,
   "q": "Wat is een 'basisschool'?",
   "c": [
-   "School voor kinderen van ongeveer 4 tot 12 jaar",
-   "Een school voor volwassenen",
-   "Een universiteit",
-   "Een school voor koken"
+   "Een school voor kinderen van vier tot twaalf",
+   "Een school voor volwassen nieuwkomers",
+   "Een instelling voor wetenschappelijk onderwijs",
+   "Een opleiding voor koks en bakkers"
   ],
   "a": 0,
   "e": "Daarna gaan kinderen naar de middelbare school."
@@ -329,10 +329,10 @@
   "level": 1,
   "q": "Wat doet de politie?",
   "c": [
-   "Zorgt voor veiligheid en handhaaft de wet",
-   "Regelt de belastingen",
-   "Geeft paspoorten uit",
-   "Bouwt huizen"
+   "Zorgen voor veiligheid en de wet handhaven",
+   "De belastingen innen namens het Rijk",
+   "Paspoorten en rijbewijzen uitgeven",
+   "Sociale huurwoningen bouwen en daarna beheren"
   ],
   "a": 0,
   "e": "Bij spoed bel je 112, anders 0900-8844."
@@ -355,10 +355,10 @@
   "level": 1,
   "q": "Wat is de 'huur'?",
   "c": [
-   "Het geld dat je elke maand voor je woning betaalt",
-   "De prijs van je boodschappen",
-   "Een belasting op auto's",
-   "Een soort verzekering"
+   "Het maandbedrag dat je voor je woning betaalt",
+   "Het maandbedrag dat je aan boodschappen kwijt bent",
+   "De jaarlijkse belasting op het bezit van een auto",
+   "De premie voor een verzekering op je inboedel"
   ],
   "a": 0,
   "e": "Huur betaal je aan de verhuurder, meestal per maand."
@@ -369,9 +369,9 @@
   "q": "Wat is 'Sinterklaas'?",
   "c": [
    "Een feest in november en december",
-   "Een politieke partij",
-   "Een provincie",
-   "Een soort brood"
+   "Een politieke partij uit het zuiden",
+   "Een provincie in het noorden van het land",
+   "Een soort brood dat je in de winter eet"
   ],
   "a": 0,
   "e": "Pakjesavond is op 5 december."
@@ -381,10 +381,10 @@
   "level": 1,
   "q": "Hoe begroet je iemand die je niet kent in een winkel?",
   "c": [
-   "Goedemorgen of goedemiddag",
-   "Met een kus",
-   "Met je voornaam alleen",
-   "Je zegt niets"
+   "Met goedemorgen of goedemiddag",
+   "Met drie kussen op de wang",
+   "Met alleen je eigen voornaam",
+   "Je zegt bij binnenkomst niets"
   ],
   "a": 0,
   "e": "Beleefd en kort; 'u' bij mensen die je niet kent."
@@ -421,9 +421,9 @@
   "q": "Wat is een 'zorgverzekering'?",
   "c": [
    "Een verplichte verzekering voor medische kosten",
-   "Een verzekering voor je fiets",
-   "Een spaarrekening",
-   "Een pensioen"
+   "Een vrijwillige verzekering voor je fiets",
+   "Een spaarrekening voor onverwachte medische uitgaven",
+   "Een pensioen dat je zelf bij elkaar spaart"
   ],
   "a": 0,
   "e": "Iedereen die in Nederland woont, moet er een hebben."
@@ -433,10 +433,10 @@
   "level": 1,
   "q": "Wat is het 'gemeentehuis'?",
   "c": [
-   "Het gebouw waar je zaken met de gemeente regelt",
-   "Een museum",
-   "Een school",
-   "Het huis van de burgemeester"
+   "Het gebouw waar je gemeentezaken regelt",
+   "Het gebouw waar de stad kunst tentoonstelt",
+   "Het gebouw waar kinderen naar school gaan",
+   "Het woonhuis van de burgemeester"
   ],
   "a": 0,
   "e": "Daar meld je bijvoorbeeld een verhuizing."
@@ -447,9 +447,9 @@
   "q": "Wat moet je doen als je verhuist naar een andere stad?",
   "c": [
    "Je inschrijven bij de nieuwe gemeente",
-   "Een nieuw paspoort kopen",
-   "Een nieuwe naam kiezen",
-   "Niets"
+   "Een nieuw paspoort laten aanmaken",
+   "Je achternaam laten wijzigen",
+   "Niets, dat regelt de verhuizer voor je"
   ],
   "a": 0,
   "e": "Binnen vijf dagen na de verhuizing aangifte doen."
@@ -459,10 +459,10 @@
   "level": 1,
   "q": "Wat is 'werk zoeken'?",
   "c": [
-   "Een baan proberen te vinden",
-   "Vakantie nemen",
-   "Naar school gaan",
-   "Verhuizen"
+   "Proberen een betaalde baan te vinden",
+   "Een periode vrij nemen van je werk",
+   "Een opleiding volgen aan een hogeschool",
+   "Naar een andere gemeente verhuizen"
   ],
   "a": 0,
   "e": "Bijvoorbeeld met sollicitatiebrieven of via het UWV."
@@ -514,7 +514,7 @@
    "Het kost geen geld",
    "Het is duur",
    "Het is verboden",
-   "Het is verplicht"
+   "Het is voor iedereen verplicht"
   ],
   "a": 0,
   "e": "Gratis betekent kosteloos."
@@ -537,10 +537,10 @@
   "level": 2,
   "q": "Wat is een 'verwijsbrief'?",
   "c": [
-   "Een brief van de huisarts waarmee je naar een specialist mag",
-   "Een brief van de gemeente over verhuizen",
-   "Een brief van je werkgever",
-   "Een rekening van het ziekenhuis"
+   "Een brief van de huisarts voor de specialist",
+   "Een brief van de gemeente over je verhuizing",
+   "Een brief van je werkgever over je contract",
+   "Een brief van het ziekenhuis met een rekening"
   ],
   "a": 0,
   "e": "Zonder verwijzing vergoedt de verzekering het specialistenbezoek meestal niet."
@@ -550,10 +550,10 @@
   "level": 2,
   "q": "Tot welke leeftijd geldt in Nederland de leerplicht?",
   "c": [
-   "Tot 16 jaar, daarna kwalificatieplicht tot 18",
-   "Tot 12 jaar",
-   "Tot 21 jaar",
-   "Er is geen leerplicht"
+   "Tot zestien jaar, daarna kwalificatieplicht",
+   "Tot twaalf jaar, daarna is school vrijwillig",
+   "Tot eenentwintig jaar, zonder uitzondering",
+   "Er bestaat in Nederland geen leerplicht"
   ],
   "a": 0,
   "e": "Leerplicht vanaf 5 jaar; tot je 18e moet je een startkwalificatie halen of naar school."
@@ -576,10 +576,10 @@
   "level": 2,
   "q": "Wat is het UWV?",
   "c": [
-   "De organisatie voor werkloosheids- en arbeidsongeschiktheidsuitkeringen",
-   "Een woningcorporatie",
-   "Een zorgverzekeraar",
-   "Een school"
+   "De instantie voor werkloosheidsuitkeringen",
+   "Een landelijke woningcorporatie voor huurders",
+   "Een grote zorgverzekeraar",
+   "Een school voor volwassenen"
   ],
   "a": 0,
   "e": "Bij het UWV vraag je bijvoorbeeld een WW-uitkering aan."
@@ -590,9 +590,9 @@
   "q": "Wat is een 'woningcorporatie'?",
   "c": [
    "Een organisatie die sociale huurwoningen verhuurt",
-   "Een makelaar die huizen verkoopt",
-   "Een bank voor hypotheken",
-   "Een afdeling van de politie"
+   "Een makelaar die koopwoningen verkoopt",
+   "Een bank die hypotheken aan particuliere kopers verstrekt",
+   "Een afdeling van de gemeentelijke overheid"
   ],
   "a": 0,
   "e": "Voor een sociale huurwoning schrijf je je meestal in en wacht je op een woning."
@@ -628,10 +628,10 @@
   "level": 2,
   "q": "Wat is 'zorgtoeslag'?",
   "c": [
-   "Een bijdrage in de kosten van je zorgverzekering",
-   "Gratis medicijnen",
-   "Een extra verzekering",
-   "Een uitkering bij ziekte"
+   "Een bijdrage in de premie van je zorgverzekering",
+   "Medicijnen die je gratis bij de apotheek krijgt",
+   "Een aanvullende verzekering voor de tandarts",
+   "Een uitkering zolang je door ziekte niet werkt"
   ],
   "a": 0,
   "e": "Voor mensen met een lager inkomen, aan te vragen bij de Belastingdienst."
@@ -641,10 +641,10 @@
   "level": 2,
   "q": "Wat is het 'eigen risico' in de zorgverzekering?",
   "c": [
-   "Het bedrag dat je eerst zelf betaalt voordat de verzekering vergoedt",
-   "De premie die je maandelijks betaalt",
-   "Een boete voor te laat betalen",
-   "Het bedrag dat je terugkrijgt"
+   "Het bedrag dat je eerst zelf moet betalen",
+   "Het bedrag dat je maandelijks aan premie betaalt",
+   "Het bedrag dat je als boete krijgt bij achterstand",
+   "Het bedrag dat je aan het eind terugkrijgt"
   ],
   "a": 0,
   "e": "Bezoek aan de huisarts valt er niet onder."
@@ -667,10 +667,10 @@
   "level": 2,
   "q": "Wat is een 'CAO'?",
   "c": [
-   "Afspraken over loon en arbeidsvoorwaarden voor een hele branche",
-   "Een soort belasting",
-   "Een verblijfsvergunning",
-   "Een schooldiploma"
+   "Afspraken over loon voor een hele branche",
+   "Een belasting op het loon van werknemers",
+   "Een vergunning om hier te mogen verblijven",
+   "Een diploma van het beroepsonderwijs"
   ],
   "a": 0,
   "e": "Collectieve arbeidsovereenkomst, afgesproken tussen werkgevers en vakbonden."
@@ -680,10 +680,10 @@
   "level": 2,
   "q": "Wat is een 'vakbond'?",
   "c": [
-   "Een organisatie die opkomt voor de belangen van werknemers",
-   "Een groep werkgevers",
-   "Een politieke partij",
-   "Een verzekeraar"
+   "Een organisatie voor de belangen van werknemers",
+   "Een organisatie voor de belangen van werkgevers",
+   "Een partij die meedoet aan de verkiezingen",
+   "Een verzekeraar voor arbeidsongeschiktheid"
   ],
   "a": 0,
   "e": "Vakbonden onderhandelen onder andere over de CAO."
@@ -694,9 +694,9 @@
   "q": "Wat is 'vakantiegeld'?",
   "c": [
    "Een jaarlijkse extra betaling, meestal in mei",
-   "Geld dat je zelf spaart voor de vakantie",
-   "Een uitkering bij ontslag",
-   "Een korting op vliegtickets"
+   "Geld dat je zelf voor je reis opzij zet",
+   "Een uitkering die je na ontslag ontvangt",
+   "Een korting op vliegtickets buiten het hoogseizoen"
   ],
   "a": 0,
   "e": "Wettelijk minstens 8% van je jaarloon."
@@ -706,10 +706,10 @@
   "level": 2,
   "q": "Wat is een 'proeftijd'?",
   "c": [
-   "Een periode aan het begin van een baan waarin beide partijen snel kunnen stoppen",
-   "De tijd die je op vakantie mag",
-   "De eerste maand huur",
-   "Een stage zonder loon"
+   "Een beginperiode waarin beiden snel kunnen stoppen",
+   "Een eerste maand waarin je nog geen loon ontvangt",
+   "Een vakantieperiode die je vooraf opneemt",
+   "Een stage die meetelt voor je diploma"
   ],
   "a": 0,
   "e": "De proeftijd moet in het contract staan en is aan een maximum gebonden."
@@ -719,10 +719,10 @@
   "level": 2,
   "q": "Wat is het 'minimumloon'?",
   "c": [
-   "Het laagste loon dat een werkgever wettelijk mag betalen",
-   "Het gemiddelde loon in Nederland",
-   "Het loon van een stagiair",
-   "Het bedrag van een uitkering"
+   "Het laagste loon dat wettelijk is toegestaan",
+   "Het gemiddelde loon van alle Nederlanders",
+   "De vergoeding die een stagiair gewoonlijk krijgt",
+   "Het bedrag van een uitkering bij werkloosheid"
   ],
   "a": 0,
   "e": "Het bedrag wordt twee keer per jaar aangepast."
@@ -733,9 +733,9 @@
   "q": "Wat betekent 'brutoloon'?",
   "c": [
    "Je loon vóór belastingen en premies",
-   "Je loon na aftrek van alles",
-   "Je vakantiegeld",
-   "Je pensioen"
+   "Je loon na aftrek van alle inhoudingen",
+   "Je jaarlijkse extra betaling in mei",
+   "Het bedrag dat je later als pensioen krijgt"
   ],
   "a": 0,
   "e": "Wat je op je rekening krijgt is het nettoloon."
@@ -746,9 +746,9 @@
   "q": "Waar meld je een verhuizing binnen Nederland?",
   "c": [
    "Bij de gemeente waar je gaat wonen",
-   "Bij de politie",
-   "Bij het UWV",
-   "Bij je huisarts"
+   "Bij het politiebureau in je nieuwe wijk",
+   "Bij het UWV in je nieuwe woonplaats",
+   "Bij de huisarts waar je stond ingeschreven"
   ],
   "a": 0,
   "e": "Doe dat uiterlijk vijf dagen na de verhuizing."
@@ -771,10 +771,10 @@
   "level": 2,
   "q": "Wat is een 'BSN'?",
   "c": [
-   "Je burgerservicenummer, je persoonlijke nummer bij de overheid",
-   "Een bankrekeningnummer",
-   "Een huisnummer",
-   "Een verzekeringspolis"
+   "Je persoonlijke nummer bij de overheid",
+   "Je persoonlijke nummer bij de bank",
+   "Je huisnummer in de basisregistratie",
+   "Je polisnummer bij de zorgverzekeraar"
   ],
   "a": 0,
   "e": "Je hebt het nodig voor werk, zorg en belasting."
@@ -784,10 +784,10 @@
   "level": 2,
   "q": "Wat doet een 'notaris'?",
   "c": [
-   "Officiële akten opstellen, bijvoorbeeld bij een huis of een testament",
-   "Belastingaangifte doen",
-   "Woningen verhuren",
-   "Rijbewijzen uitgeven"
+   "Officiële akten opstellen, zoals bij een woning",
+   "Belastingaangifte doen voor particuliere klanten",
+   "Woningen verhuren namens de eigenaar",
+   "Rijbewijzen en paspoorten uitgeven"
   ],
   "a": 0,
   "e": "Bij een koopwoning of een testament is de notaris verplicht."
@@ -798,9 +798,9 @@
   "q": "Waar kun je terecht om Nederlands te leren?",
   "c": [
    "Bij een taalschool of het inburgeringstraject",
-   "Bij de politie",
-   "Bij het UWV alleen",
-   "Bij de apotheek"
+   "Bij het politiebureau in je eigen wijk",
+   "Uitsluitend bij het UWV via je uitkering",
+   "Bij de apotheek waar je je medicijnen ophaalt"
   ],
   "a": 0,
   "e": "Gemeenten helpen inburgeraars bij het vinden van een cursus."
@@ -810,10 +810,10 @@
   "level": 2,
   "q": "Wat is 'inburgeren'?",
   "c": [
-   "De taal en de samenleving leren kennen, met een examen aan het eind",
-   "Een huis kopen",
-   "Een uitkering aanvragen",
-   "Trouwen in Nederland"
+   "De taal en de samenleving leren kennen",
+   "Een eerste eigen woning kopen",
+   "Een uitkering aanvragen bij de gemeente",
+   "In Nederland trouwen met een partner"
   ],
   "a": 0,
   "e": "Het examen bestaat onder andere uit taal en KNM."
@@ -825,7 +825,7 @@
   "c": [
    "Kennis van de Nederlandse Maatschappij",
    "Koninklijke Nederlandse Maatschappij",
-   "Kort Nederlands Materiaal",
+   "Kerncijfers Nederlandse Migratie",
    "Kennis en Naleving van Maatregelen"
   ],
   "a": 0,
@@ -849,10 +849,10 @@
   "level": 2,
   "q": "Wat doet een 'huisarts' als hij je niet zelf kan helpen?",
   "c": [
-   "Hij verwijst je naar een specialist",
-   "Hij stuurt je naar de apotheek",
-   "Hij belt de politie",
-   "Hij sluit je dossier"
+   "Hij verwijst je door naar een specialist",
+   "Hij stuurt je rechtstreeks naar de apotheek",
+   "Hij schakelt de politie voor je in",
+   "Hij sluit je dossier en schrijft je uit"
   ],
   "a": 0,
   "e": "De huisarts is de poortwachter van de zorg."
@@ -862,10 +862,10 @@
   "level": 2,
   "q": "Wat is de 'huisartsenpost'?",
   "c": [
-   "De plek voor huisartsenzorg 's avonds en in het weekend",
-   "De apotheek van het ziekenhuis",
-   "Een afdeling van de gemeente",
-   "Het kantoor van de zorgverzekeraar"
+   "De huisartsenzorg 's avonds en in het weekend",
+   "De apotheek die bij het ziekenhuis hoort",
+   "De afdeling van de gemeente voor zorgvragen",
+   "Het kantoor waar je zorgverzekeraar zit"
   ],
   "a": 0,
   "e": "Bel altijd eerst; bij levensgevaar bel je 112."
@@ -876,9 +876,9 @@
   "q": "Wat betekent 'op tijd komen' in de Nederlandse omgangsvorm?",
   "c": [
    "Precies op het afgesproken tijdstip aanwezig zijn",
-   "Een half uur later mag ook",
-   "Alleen bij werk belangrijk",
-   "Het maakt niet uit"
+   "Een half uur na het afgesproken tijdstip komen",
+   "Alleen bij werkafspraken op de klok letten",
+   "Komen op het moment dat het jou die dag het beste uitkomt"
   ],
   "a": 0,
   "e": "Te laat komen geldt als onbeleefd; afzeggen doe je van tevoren."
@@ -901,10 +901,10 @@
   "level": 2,
   "q": "Wat is een 'sollicitatiebrief'?",
   "c": [
-   "Een brief waarin je uitlegt waarom je een baan wilt",
-   "Een brief van de gemeente",
-   "Een opzegbrief",
-   "Een rekening"
+   "Een brief waarin je uitlegt waarom je de baan wilt",
+   "Een brief waarin de gemeente je voor een gesprek uitnodigt",
+   "Een brief waarin je je baan opzegt",
+   "Een brief waarin een rekening staat"
   ],
   "a": 0,
   "e": "Meestal samen met een cv."
@@ -914,10 +914,10 @@
   "level": 2,
   "q": "Wat is een 'cv'?",
   "c": [
-   "Een overzicht van je opleiding en werkervaring",
-   "Een verzekering",
-   "Een soort contract",
-   "Een uitkering"
+   "Een overzicht van opleiding en werkervaring",
+   "Een verzekering tegen arbeidsongeschiktheid",
+   "Een contract tussen werkgever en werknemer",
+   "Een uitkering tijdens het zoeken naar werk"
   ],
   "a": 0,
   "e": "Curriculum vitae."
@@ -928,9 +928,9 @@
   "q": "Wat is 'AOW'?",
   "c": [
    "Het staatspensioen vanaf de pensioenleeftijd",
-   "Een uitkering bij werkloosheid",
-   "Een studiebeurs",
-   "Een zorgverzekering"
+   "De uitkering na het verlies van je baan",
+   "De beurs voor studerende jongeren",
+   "De verplichte verzekering voor medische zorgkosten"
   ],
   "a": 0,
   "e": "Algemene Ouderdomswet; de leeftijd schuift mee met de levensverwachting."
@@ -940,10 +940,10 @@
   "level": 2,
   "q": "Wat is 'WW'?",
   "c": [
-   "Een uitkering als je je baan verliest",
-   "Een uitkering voor ouderen",
-   "Een toeslag op je huur",
-   "Een verzekering voor je huis"
+   "Een uitkering na het verlies van je baan",
+   "Een uitkering vanaf de pensioenleeftijd",
+   "Een bijdrage in de huur van je woning",
+   "Een verzekering tegen schade aan je huis"
   ],
   "a": 0,
   "e": "Je vraagt de WW aan bij het UWV."
@@ -953,10 +953,10 @@
   "level": 2,
   "q": "Wat is 'bijstand'?",
   "c": [
-   "Een uitkering van de gemeente als je te weinig inkomen hebt",
-   "Een lening van de bank",
-   "Hulp van de buren",
-   "Een korting op je verzekering"
+   "Een uitkering van de gemeente bij te weinig inkomen",
+   "Een lening van de bank wanneer je te weinig inkomen hebt",
+   "Praktische hulp van buren en familie",
+   "Een korting op de premie van je verzekering"
   ],
   "a": 0,
   "e": "De gemeente voert de Participatiewet uit."
@@ -966,10 +966,10 @@
   "level": 2,
   "q": "Waar scheid je in Nederland meestal je afval?",
   "c": [
-   "In verschillende bakken, zoals papier, glas en gft",
-   "Alles in één zak",
-   "Alleen in de zomer",
-   "Op straat"
+   "In aparte bakken voor papier, glas en gft",
+   "In één zak voor al het huisvuil samen",
+   "In aparte bakken, maar alleen in de zomer",
+   "Op straat, waar de gemeente het ophaalt"
   ],
   "a": 0,
   "e": "Regels verschillen per gemeente."
@@ -979,10 +979,10 @@
   "level": 2,
   "q": "Wat is 'statiegeld'?",
   "c": [
-   "Geld dat je terugkrijgt als je een fles of blikje inlevert",
-   "Een boete voor afval",
-   "Belasting op verpakkingen",
-   "Een korting bij de kassa"
+   "Geld dat je terugkrijgt bij het inleveren",
+   "Een boete voor afval op straat gooien",
+   "Een belasting op plastic verpakkingen",
+   "Een korting die de kassa automatisch geeft"
   ],
   "a": 0,
   "e": "Op flessen en blikjes; je levert ze in bij de supermarkt."
@@ -1005,10 +1005,10 @@
   "level": 2,
   "q": "Wat betekent het als iemand 'u' tegen je zegt?",
   "c": [
-   "Het is een beleefde vorm, meestal bij onbekenden of ouderen",
-   "Het is onbeleefd",
-   "Het betekent dat je te laat bent",
-   "Het is een scheldwoord"
+   "Het is beleefd, bij onbekenden of ouderen",
+   "Het is onbeleefd en licht neerbuigend",
+   "Het betekent dat je te laat gekomen bent",
+   "Het is een ouderwets scheldwoord"
   ],
   "a": 0,
   "e": "'Je' is informeel, 'u' is formeel."
@@ -1018,10 +1018,10 @@
   "level": 2,
   "q": "Wat is een 'buurthuis'?",
   "c": [
-   "Een plek in de wijk voor activiteiten en ontmoeting",
-   "Het huis van de buren",
-   "Een winkel",
-   "Een school"
+   "Een plek in de wijk voor activiteiten",
+   "Het huis van de buren naast je woning",
+   "Een winkel voor dagelijkse boodschappen",
+   "Een school voor kinderen uit de wijk"
   ],
   "a": 0,
   "e": "Vaak taalcafés, hulp bij formulieren en activiteiten voor kinderen."
@@ -1031,10 +1031,10 @@
   "level": 2,
   "q": "Wat is de 'Tweede Kamer'?",
   "c": [
-   "Het gekozen parlement dat wetten controleert en maakt",
-   "Het bestuur van een gemeente",
-   "De rechtbank",
-   "Het kantoor van de koning"
+   "Het gekozen parlement dat wetten maakt",
+   "Het dagelijks bestuur van een gemeente",
+   "De rechtbank voor bestuurlijke zaken",
+   "Het kantoor van de koning in Den Haag"
   ],
   "a": 0,
   "e": "De Tweede Kamer heeft 150 leden."
@@ -1071,9 +1071,9 @@
   "q": "Hoe worden de leden van de Eerste Kamer gekozen?",
   "c": [
    "Door de leden van de Provinciale Staten",
-   "Rechtstreeks door alle kiezers",
-   "Door de Tweede Kamer",
-   "Door de koning benoemd"
+   "Rechtstreeks door alle kiesgerechtigden",
+   "Door de leden van de Tweede Kamer",
+   "Door de koning op voordracht van de premier"
   ],
   "a": 0,
   "e": "Daarom zijn provinciale verkiezingen ook belangrijk voor de landelijke politiek."
@@ -1084,9 +1084,9 @@
   "q": "Wie benoemt in Nederland de burgemeester?",
   "c": [
    "De regering, op voordracht van de gemeenteraad",
-   "De inwoners bij verkiezingen",
-   "De koning persoonlijk",
-   "De provincie"
+   "De inwoners, bij aparte gemeenteverkiezingen",
+   "De koning, in overleg met zijn ministers",
+   "Het provinciebestuur, na overleg met de raad"
   ],
   "a": 0,
   "e": "De burgemeester wordt bij koninklijk besluit benoemd, niet gekozen."
@@ -1096,10 +1096,10 @@
   "level": 3,
   "q": "Wat doet de gemeenteraad?",
   "c": [
-   "De inwoners vertegenwoordigen en het gemeentebestuur controleren",
-   "Rechtszaken behandelen",
-   "Belastingaangifte controleren",
-   "Verblijfsvergunningen geven"
+   "De inwoners vertegenwoordigen en het bestuur controleren",
+   "Rechtszaken tussen inwoners behandelen",
+   "De belastingaangiften van alle inwoners jaarlijks controleren",
+   "Verblijfsvergunningen aan nieuwkomers geven"
   ],
   "a": 0,
   "e": "De gemeenteraad wordt elke vier jaar gekozen."
@@ -1109,10 +1109,10 @@
   "level": 3,
   "q": "Wat is een 'coalitie'?",
   "c": [
-   "Een samenwerking van partijen die samen een meerderheid vormen",
-   "Een oppositiepartij",
-   "Een vakbond",
-   "Een rechtbank"
+   "Partijen die samen een meerderheid vormen",
+   "Een partij die buiten de regering blijft",
+   "Een bond die opkomt voor werknemers",
+   "Een rechtbank voor bestuurszaken"
   ],
   "a": 0,
   "e": "Geen enkele partij haalt in Nederland alleen een meerderheid."
@@ -1123,9 +1123,9 @@
   "q": "Wat is de 'oppositie'?",
   "c": [
    "De partijen die niet in de regering zitten",
-   "De partijen die de regering vormen",
-   "De ambtenaren",
-   "De rechters"
+   "De partijen die samen de regering vormen",
+   "De ambtenaren die het beleid uitvoeren",
+   "De rechters die wetten moeten toepassen"
   ],
   "a": 0,
   "e": "De oppositie controleert de regering vanuit de Kamer."
@@ -1135,10 +1135,10 @@
   "level": 3,
   "q": "Wat staat er in de Grondwet?",
   "c": [
-   "De belangrijkste regels van de staat en de grondrechten",
-   "De prijzen van producten",
-   "De regels van het verkeer",
-   "De inhoud van CAO's"
+   "De regels van de staat en de grondrechten",
+   "De prijzen van producten en diensten",
+   "De regels voor het verkeer op de weg",
+   "De afspraken over loon en werktijden in een branche"
   ],
   "a": 0,
   "e": "Artikel 1 gaat over gelijke behandeling."
@@ -1149,9 +1149,9 @@
   "q": "Waar gaat artikel 1 van de Grondwet over?",
   "c": [
    "Gelijke behandeling en het verbod op discriminatie",
-   "Vrijheid van godsdienst",
-   "Het recht op onderwijs",
-   "Het koningshuis"
+   "Vrijheid van godsdienst en van levensovertuiging",
+   "Het recht op onderwijs voor ieder kind",
+   "De positie van het koningshuis in de staat"
   ],
   "a": 0,
   "e": "Iedereen wordt in gelijke gevallen gelijk behandeld."
@@ -1161,10 +1161,10 @@
   "level": 3,
   "q": "Wat betekent 'scheiding van kerk en staat'?",
   "c": [
-   "De overheid bemoeit zich niet met godsdienst en godsdienst niet met het bestuur",
-   "Kerken betalen geen huur",
-   "Godsdienst is verboden",
-   "Alleen de koning mag gelovig zijn"
+   "De overheid en de godsdienst bemoeien zich niet met elkaar",
+   "Kerken hoeven geen huur of onroerendezaakbelasting te betalen",
+   "Godsdienst is in het openbaar verboden",
+   "Alleen het koningshuis mag een geloof belijden"
   ],
   "a": 0,
   "e": "De overheid is neutraal in geloofszaken."
@@ -1174,10 +1174,10 @@
   "level": 3,
   "q": "Wat is 'vrijheid van meningsuiting'?",
   "c": [
-   "Het recht om je mening te uiten, binnen de grenzen van de wet",
-   "Het recht om alles te zeggen zonder enige grens",
-   "Het recht om te zwijgen",
-   "Een regel die alleen voor journalisten geldt"
+   "Je mening uiten binnen de grenzen van de wet",
+   "Alles zeggen wat je wilt, zonder enige grens",
+   "Zwijgen wanneer de overheid iets van je vraagt",
+   "Een recht dat alleen voor journalisten geldt"
   ],
   "a": 0,
   "e": "Discriminatie en opruiing blijven strafbaar."
@@ -1200,10 +1200,10 @@
   "level": 3,
   "q": "Wat betekent 'in hoger beroep gaan'?",
   "c": [
-   "Je zaak nog een keer laten beoordelen door een hogere rechter",
-   "Een boete betalen",
-   "Aangifte doen",
-   "Een advocaat ontslaan"
+   "Je zaak opnieuw laten beoordelen door een hogere rechter",
+   "Je boete in maandelijkse termijnen betalen bij het CJIB",
+   "Aangifte doen van een strafbaar feit",
+   "Je advocaat vervangen tijdens de zaak"
   ],
   "a": 0,
   "e": "Meestal bij het gerechtshof."
@@ -1213,10 +1213,10 @@
   "level": 3,
   "q": "Wat is 'de trias politica' in Nederland?",
   "c": [
-   "De scheiding tussen wetgevende, uitvoerende en rechterlijke macht",
-   "De drie grootste partijen",
-   "De drie grote steden",
-   "Drie soorten belasting"
+   "De scheiding van wetgeving, bestuur en rechtspraak",
+   "De drie grootste partijen die in de Tweede Kamer zitten",
+   "De drie grootste steden van de Randstad",
+   "De drie soorten belasting op inkomen"
   ],
   "a": 0,
   "e": "Zo houden de machten elkaar in evenwicht."
@@ -1226,10 +1226,10 @@
   "level": 3,
   "q": "Wat is de 'Randstad'?",
   "c": [
-   "Het dichtbevolkte gebied met Amsterdam, Rotterdam, Den Haag en Utrecht",
-   "Een provincie",
-   "Een dorp bij de grens",
-   "Een natuurgebied"
+   "Het gebied Amsterdam, Rotterdam, Den Haag, Utrecht",
+   "Een provincie in het westen van het land bij de kust",
+   "Een grensdorp in het zuiden van Limburg",
+   "Een beschermd natuurgebied bij de kust"
   ],
   "a": 0,
   "e": "Hier woont een groot deel van de bevolking."
@@ -1239,10 +1239,10 @@
   "level": 3,
   "q": "Wat is een 'polder'?",
   "c": [
-   "Land dat is drooggelegd en door dijken wordt beschermd",
-   "Een soort dijk",
-   "Een haven",
-   "Een natuurpark in Limburg"
+   "Drooggelegd land dat dijken beschermen",
+   "Een dijk die de zee moet tegenhouden",
+   "Een haven waar zeeschepen aanleggen",
+   "Een natuurpark in het zuiden van Limburg"
   ],
   "a": 0,
   "e": "Een groot deel van Nederland ligt onder zeeniveau."
@@ -1253,9 +1253,9 @@
   "q": "Wat doet een 'waterschap'?",
   "c": [
    "Het beheert dijken, waterpeil en waterkwaliteit",
-   "Het levert drinkwater aan huizen",
-   "Het bouwt bruggen",
-   "Het regelt de riolering van het huis"
+   "Het levert het drinkwater bij mensen thuis",
+   "Het bouwt bruggen en tunnels over het water",
+   "Het onderhoudt de riolering binnen en onder je woning"
   ],
   "a": 0,
   "e": "Voor het waterschap zijn er aparte verkiezingen en een aparte belasting."
@@ -1265,10 +1265,10 @@
   "level": 3,
   "q": "Waarom zijn de Deltawerken gebouwd?",
   "c": [
-   "Om Nederland tegen overstromingen te beschermen",
-   "Om meer havens te maken",
-   "Om energie op te wekken",
-   "Om land aan Duitsland te verbinden"
+   "Om het land tegen overstromingen te beschermen",
+   "Om meer havens voor zeeschepen te maken",
+   "Om met stromend water energie op te wekken",
+   "Om een vaste verbinding met Duitsland te maken"
   ],
   "a": 0,
   "e": "Na de watersnoodramp van 1953."
@@ -1292,9 +1292,9 @@
   "q": "Wat is de 'Tweede Wereldoorlog' voor Nederland begonnen?",
   "c": [
    "Met de Duitse inval in mei 1940",
-   "Met de aanval op Pearl Harbor",
-   "In 1914",
-   "In 1945"
+   "Met de aanval op Pearl Harbor in 1941",
+   "Met de mobilisatie van het leger in 1914",
+   "Met de bevrijding van het zuiden in 1945"
   ],
   "a": 0,
   "e": "Nederland capituleerde na het bombardement op Rotterdam."
@@ -1304,10 +1304,10 @@
   "level": 3,
   "q": "Wat wordt op 4 mei herdacht?",
   "c": [
-   "De slachtoffers van oorlogen sinds de Tweede Wereldoorlog",
-   "De bevrijding",
-   "De geboorte van de koning",
-   "Het einde van de Gouden Eeuw"
+   "De slachtoffers van oorlogen sinds 1940",
+   "De bevrijding van de Duitse bezetting",
+   "De geboortedag van de huidige koning",
+   "Het einde van de zeventiende eeuw"
   ],
   "a": 0,
   "e": "Om 20.00 uur zijn er twee minuten stilte."
@@ -1318,9 +1318,9 @@
   "q": "Wat was de VOC?",
   "c": [
    "Een handelscompagnie uit de zeventiende eeuw",
-   "Een politieke partij",
-   "Een vakbond",
-   "Een verzekeraar"
+   "Een politieke partij uit de negentiende eeuw",
+   "Een vakbond uit de vroege twintigste eeuw",
+   "Een verzekeraar uit de Gouden Eeuw"
   ],
   "a": 0,
   "e": "De Verenigde Oost-Indische Compagnie, opgericht in 1602."
@@ -1345,7 +1345,7 @@
   "c": [
    "Rembrandt van Rijn",
    "Vincent van Gogh",
-   "Johannes Vermeer",
+   "Johannes Vermeer van Delft",
    "Piet Mondriaan"
   ],
   "a": 0,
@@ -1357,7 +1357,7 @@
   "q": "Welke Nederlandse schilder is bekend van 'Zonnebloemen'?",
   "c": [
    "Vincent van Gogh",
-   "Rembrandt",
+   "Rembrandt van Rijn",
    "Frans Hals",
    "Jan Steen"
   ],
@@ -1369,10 +1369,10 @@
   "level": 3,
   "q": "Wie was Anne Frank?",
   "c": [
-   "Een Joods meisje dat ondergedoken zat en een dagboek schreef",
-   "Een schilder uit de Gouden Eeuw",
-   "Een koningin",
-   "Een politica"
+   "Een meisje dat ondergedoken een dagboek schreef",
+   "Een schilderes uit de Gouden Eeuw",
+   "Een koningin uit het huis Oranje-Nassau voor de oorlog",
+   "Een politica uit de wederopbouwjaren"
   ],
   "a": 0,
   "e": "Het Achterhuis in Amsterdam is nu een museum."
@@ -1382,10 +1382,10 @@
   "level": 3,
   "q": "Wat is 'verzuiling'?",
   "c": [
-   "De vroegere indeling van de samenleving in levensbeschouwelijke groepen",
-   "Het bouwen van dijken",
-   "Een belastingstelsel",
-   "Een vorm van onderwijs"
+   "De vroegere indeling in levensbeschouwelijke groepen",
+   "Het aanleggen van dijken rond nieuw land",
+   "Een stelsel van gemeentelijke belastingen op woningen",
+   "Een vorm van onderwijs op de basisschool"
   ],
   "a": 0,
   "e": "Katholieken, protestanten, socialisten en liberalen hadden elk eigen scholen, kranten en omroepen."
@@ -1395,10 +1395,10 @@
   "level": 3,
   "q": "Wat is het 'poldermodel'?",
   "c": [
-   "Overleggen tot er een compromis is waar iedereen mee kan leven",
-   "Land droogleggen",
-   "Een systeem van belastingen",
-   "Een manier van bouwen"
+   "Overleggen tot er een werkbaar compromis is",
+   "Land droogleggen en bewoonbaar maken",
+   "Een stelsel van belastingen op inkomen en vermogen",
+   "Een manier van bouwen op slappe grond"
   ],
   "a": 0,
   "e": "Werkgevers, werknemers en overheid onderhandelen samen."
@@ -1408,10 +1408,10 @@
   "level": 3,
   "q": "Wat betekent 'gedogen'?",
   "c": [
-   "Iets officieel verboden laten, maar niet vervolgen",
-   "Iets toestaan in de wet",
-   "Iets streng verbieden",
-   "Iets subsidiëren"
+   "Iets verboden laten, maar niet vervolgen",
+   "Iets uitdrukkelijk toestaan in de wet",
+   "Iets streng verbieden en zwaar bestraffen",
+   "Iets stimuleren met geld van de overheid"
   ],
   "a": 0,
   "e": "Bekend van het Nederlandse softdrugsbeleid."
@@ -1434,10 +1434,10 @@
   "level": 3,
   "q": "Wat is een 'startkwalificatie'?",
   "c": [
-   "Minimaal een diploma HAVO, VWO of MBO niveau 2",
-   "Een verklaring van goed gedrag",
-   "Een inburgeringsdiploma",
-   "Een rijbewijs"
+   "Een diploma havo, vwo of mbo niveau 2",
+   "Een verklaring omtrent het gedrag van de gemeente",
+   "Een behaald inburgeringsdiploma",
+   "Een geldig rijbewijs categorie B"
   ],
   "a": 0,
   "e": "Zonder startkwalificatie geldt de kwalificatieplicht tot je 18e."
@@ -1447,10 +1447,10 @@
   "level": 3,
   "q": "Wat is de 'ouderavond' op school?",
   "c": [
-   "Een avond waarop ouders met leraren over hun kind praten",
-   "Een feest voor kinderen",
-   "Een vergadering van de gemeente",
-   "Een sportdag"
+   "Een avond waarop ouders met leraren praten",
+   "Een avond waarop kinderen een feest hebben",
+   "Een avond waarop de gemeente vergadert",
+   "Een avond waarop de school sport organiseert"
   ],
   "a": 0,
   "e": "Deelname wordt op prijs gesteld; het contact met school is belangrijk."
@@ -1460,10 +1460,10 @@
   "level": 3,
   "q": "Wat is 'kinderbijslag'?",
   "c": [
-   "Een bijdrage van de overheid in de kosten van kinderen",
-   "Een uitkering bij werkloosheid",
-   "Gratis kinderopvang",
-   "Een schoolboekenkorting"
+   "Een bijdrage in de kosten van kinderen",
+   "Een uitkering na het verlies van je baan",
+   "Kinderopvang die de overheid gratis aanbiedt",
+   "Een korting op de schoolboeken van je kind"
   ],
   "a": 0,
   "e": "De Sociale Verzekeringsbank betaalt het uit."
@@ -1473,10 +1473,10 @@
   "level": 3,
   "q": "Wat is de SVB?",
   "c": [
-   "De Sociale Verzekeringsbank, die AOW en kinderbijslag uitbetaalt",
-   "Een gewone bank",
-   "Een verzekeraar voor auto's",
-   "Een school"
+   "De bank die AOW en kinderbijslag uitbetaalt",
+   "Een gewone bank voor betaalrekeningen",
+   "Een verzekeraar voor auto's, woningen en inboedel",
+   "Een school voor beroepsonderwijs"
   ],
   "a": 0,
   "e": "Het UWV doet de WW, de SVB de AOW en kinderbijslag."
@@ -1486,10 +1486,10 @@
   "level": 3,
   "q": "Wat is een 'verklaring omtrent het gedrag' (VOG)?",
   "c": [
-   "Een bewijs dat je geen relevant strafblad hebt voor een bepaalde functie",
-   "Een diploma",
-   "Een verblijfsvergunning",
-   "Een medische verklaring"
+   "Bewijs dat je geen relevant strafblad hebt",
+   "Bewijs dat je een opleiding hebt afgerond",
+   "Bewijs dat je hier legaal mag verblijven",
+   "Bewijs dat je medisch geschikt bent"
   ],
   "a": 0,
   "e": "Vaak nodig voor werk met kinderen of geld."
@@ -1499,10 +1499,10 @@
   "level": 3,
   "q": "Wat is het verschil tussen 'bruto' en 'netto'?",
   "c": [
-   "Bruto is vóór aftrek van belasting en premies, netto erna",
-   "Bruto is per maand, netto per jaar",
-   "Er is geen verschil",
-   "Netto geldt alleen voor uitkeringen"
+   "Bruto is vóór belasting en premies, netto erna",
+   "Bruto is het maandbedrag, netto het jaarbedrag",
+   "Er bestaat tussen die twee geen echt verschil",
+   "Netto geldt alleen voor mensen met een uitkering"
   ],
   "a": 0,
   "e": "Op je loonstrook staan beide bedragen."
@@ -1513,9 +1513,9 @@
   "q": "Wanneer doe je normaal gesproken belastingaangifte over het afgelopen jaar?",
   "c": [
    "In de eerste maanden van het nieuwe jaar",
-   "In december",
-   "In juli",
-   "Nooit, dat doet je werkgever"
+   "In december, vlak voor het jaar afloopt",
+   "In juli, halverwege het volgende jaar",
+   "Nooit, want je werkgever regelt dat voor je"
   ],
   "a": 0,
   "e": "De Belastingdienst stuurt een uitnodiging; vaak is er een vooraf ingevulde aangifte."
@@ -1525,10 +1525,10 @@
   "level": 3,
   "q": "Wat is een 'hypotheek'?",
   "c": [
-   "Een lening om een huis te kopen, met het huis als onderpand",
-   "De huur van een woning",
-   "Een verzekering voor je huis",
-   "Een gemeentelijke belasting"
+   "Een lening met de woning als onderpand",
+   "Een maandbedrag voor het huren van een woning",
+   "Een verzekering tegen schade aan je woning",
+   "Een gemeentelijke belasting op je woning"
   ],
   "a": 0,
   "e": "Je betaalt rente en lost af."
@@ -1538,10 +1538,10 @@
   "level": 3,
   "q": "Wat is de 'huurcommissie'?",
   "c": [
-   "Een instantie die geschillen tussen huurder en verhuurder beoordeelt",
-   "Een afdeling van de politie",
-   "De vereniging van huiseigenaren",
-   "Een makelaarskantoor"
+   "Een instantie die huurgeschillen beoordeelt",
+   "Een afdeling van de landelijke politie",
+   "De vereniging van eigenaren van een gedeeld pand",
+   "Een makelaarskantoor voor huurwoningen"
   ],
   "a": 0,
   "e": "Bijvoorbeeld bij onenigheid over de huurprijs of onderhoud."
@@ -1551,10 +1551,10 @@
   "level": 3,
   "q": "Wat is 'sociale huur'?",
   "c": [
-   "Huurwoningen met een gereguleerde, lagere huurprijs",
-   "Woningen die je gratis krijgt",
-   "Woningen die je koopt van de gemeente",
-   "Tijdelijke vakantiewoningen"
+   "Huurwoningen met een gereguleerde lagere prijs",
+   "Woningen die de gemeente gratis beschikbaar stelt",
+   "Woningen die je van de gemeente kunt kopen",
+   "Woningen die je tijdelijk voor vakantie huurt"
   ],
   "a": 0,
   "e": "Toegang hangt af van je inkomen; er zijn wachtlijsten."
@@ -1564,10 +1564,10 @@
   "level": 3,
   "q": "Wat betekent 'discriminatie' volgens de Nederlandse wet?",
   "c": [
-   "Mensen ongelijk behandelen op grond van bijvoorbeeld afkomst, geslacht of geloof",
-   "Iemand niet aardig vinden",
-   "Kritiek geven op de overheid",
-   "Een andere mening hebben"
+   "Ongelijk behandelen om afkomst of geloof",
+   "Iemand onaardig vinden en dat zeggen",
+   "Kritiek geven op de landelijke overheid",
+   "Een andere mening hebben dan de rest"
   ],
   "a": 0,
   "e": "Het is verboden en je kunt er melding van doen."
@@ -1578,9 +1578,9 @@
   "q": "Waar kun je discriminatie melden?",
   "c": [
    "Bij een antidiscriminatiebureau of de politie",
-   "Alleen bij je werkgever",
-   "Bij de Belastingdienst",
-   "Nergens"
+   "Uitsluitend bij je eigen werkgever",
+   "Bij het kantoor van de Belastingdienst in je regio",
+   "Nergens, want melden is niet mogelijk"
   ],
   "a": 0,
   "e": "Elke gemeente heeft toegang tot een antidiscriminatievoorziening."
@@ -1619,7 +1619,7 @@
    "Flevoland",
    "Zeeland",
    "Utrecht",
-   "Limburg"
+   "Zuid-Limburg"
   ],
   "a": 0,
   "e": "Flevoland werd in 1986 een provincie, drooggelegd uit de Zuiderzee."
@@ -1632,7 +1632,7 @@
    "Leeuwarden",
    "Sneek",
    "Drachten",
-   "Harlingen"
+   "Franeker"
   ],
   "a": 0,
   "e": "In het Fries: Ljouwert."
@@ -1642,10 +1642,10 @@
   "level": 4,
   "q": "Welke Nederlandse eilanden liggen in de Waddenzee?",
   "c": [
-   "Texel, Vlieland, Terschelling, Ameland en Schiermonnikoog",
-   "Walcheren en Schouwen",
-   "Marken en Urk",
-   "Goeree en Overflakkee"
+   "Texel, Vlieland, Terschelling en Ameland",
+   "Walcheren, Schouwen en Noord-Beveland",
+   "Marken, Urk en Schokland in het IJsselmeer",
+   "Goeree, Overflakkee en Voorne-Putten"
   ],
   "a": 0,
   "e": "De Waddenzee staat op de Werelderfgoedlijst."
@@ -1657,7 +1657,7 @@
   "c": [
    "De Vaalserberg in Limburg",
    "De Utrechtse Heuvelrug",
-   "De Veluwe",
+   "De Veluwezoom in Gelderland",
    "De Sint-Pietersberg"
   ],
   "a": 0,
@@ -1681,10 +1681,10 @@
   "level": 4,
   "q": "Wat is het 'Binnenhof'?",
   "c": [
-   "Het gebouwencomplex in Den Haag waar het parlement zetelt",
-   "Het paleis van de koning in Amsterdam",
-   "Een museum in Utrecht",
-   "Het gemeentehuis van Rotterdam"
+   "Het complex in Den Haag waar het parlement zetelt",
+   "Het paleis van de koning aan de Dam in hartje Amsterdam",
+   "Het grootste kunstmuseum van de stad Utrecht",
+   "Het gemeentehuis van de havenstad Rotterdam"
   ],
   "a": 0,
   "e": "Met de Ridderzaal, waar Prinsjesdag plaatsvindt."
@@ -1694,10 +1694,10 @@
   "level": 4,
   "q": "Wat gebeurt er op Prinsjesdag?",
   "c": [
-   "De koning leest de troonrede voor en het kabinet presenteert de begroting",
-   "De koning viert zijn verjaardag",
-   "De verkiezingen beginnen",
-   "De Eerste Kamer wordt gekozen"
+   "De troonrede en de begroting worden gepresenteerd",
+   "De koning viert zijn verjaardag met het land",
+   "De verkiezingen voor de Tweede Kamer gaan van start",
+   "De leden van de Eerste Kamer worden gekozen"
   ],
   "a": 0,
   "e": "De derde dinsdag van september."
@@ -1720,10 +1720,10 @@
   "level": 4,
   "q": "Wat doet een 'informateur' na verkiezingen?",
   "c": [
-   "Onderzoeken welke partijen samen een kabinet kunnen vormen",
-   "De stemmen tellen",
-   "De koning adviseren over wetten",
-   "De begroting controleren"
+   "Onderzoeken welke partijen samen kunnen regeren",
+   "De uitgebrachte stemmen in elke gemeente natellen",
+   "De koning adviseren over nieuwe wetten",
+   "De begroting van het kabinet controleren"
   ],
   "a": 0,
   "e": "Daarna gaat een formateur het kabinet daadwerkelijk vormen."
@@ -1733,10 +1733,10 @@
   "level": 4,
   "q": "Wat is het 'regeerakkoord'?",
   "c": [
-   "De afspraken waarop de coalitiepartijen samen gaan regeren",
-   "De grondwet",
-   "Het verkiezingsprogramma van één partij",
-   "Een verdrag met andere landen"
+   "De afspraken waarop coalitiepartijen regeren",
+   "De belangrijkste regels van de staat",
+   "Het programma waarmee één partij campagne voert",
+   "Het verdrag tussen Nederland en andere landen"
   ],
   "a": 0,
   "e": "Het bepaalt de koers van het kabinet."
@@ -1746,10 +1746,10 @@
   "level": 4,
   "q": "Wat is de Raad van State?",
   "c": [
-   "Het hoogste adviesorgaan van de regering en bestuursrechter",
-   "De vergadering van ministers",
-   "De rechtbank voor strafzaken",
-   "Het bestuur van een provincie"
+   "Het hoogste adviesorgaan en bestuursrechter",
+   "De wekelijkse vergadering van alle ministers",
+   "De rechtbank die strafzaken behandelt",
+   "Het dagelijks bestuur van een provincie"
   ],
   "a": 0,
   "e": "De koning is formeel voorzitter."
@@ -1759,10 +1759,10 @@
   "level": 4,
   "q": "Wat is de Hoge Raad?",
   "c": [
-   "De hoogste rechter in Nederland, die vooral toetst of het recht juist is toegepast",
-   "De vergadering van burgemeesters",
+   "De hoogste rechter, die toetst op toepassing van recht",
+   "De vergadering van alle burgemeesters van Nederland samen",
    "Het hoogste adviesorgaan van de regering",
-   "Een Europese rechtbank"
+   "De Europese rechtbank voor mensenrechten"
   ],
   "a": 0,
   "e": "De Hoge Raad behandelt cassatie, geen nieuwe feiten."
@@ -1772,10 +1772,10 @@
   "level": 4,
   "q": "Wat is een 'referendum'?",
   "c": [
-   "Een volksraadpleging over een bepaald onderwerp",
-   "Een verkiezing van de Tweede Kamer",
-   "Een wetsvoorstel van de koning",
-   "Een uitspraak van de rechter"
+   "Een volksraadpleging over één onderwerp",
+   "Een verkiezing voor de leden van de Tweede Kamer",
+   "Een wetsvoorstel dat de koning zelf indient",
+   "Een bindende uitspraak van de hoogste rechter"
   ],
   "a": 0,
   "e": "In Nederland niet bindend en zelden gehouden."
@@ -1785,10 +1785,10 @@
   "level": 4,
   "q": "Wat betekent de afkorting 'AWBZ' historisch gezien?",
   "c": [
-   "Een oude wet voor langdurige zorg, opgevolgd door de Wlz",
-   "Een uitkering bij werkloosheid",
-   "Een woningwet",
-   "Een belastingregel"
+   "Een oude wet voor langdurige zorg",
+   "Een oude wet voor werkloosheid",
+   "Een oude wet voor sociale huurwoningen",
+   "Een oude regel voor loonbelasting"
   ],
   "a": 0,
   "e": "Sinds 2015 is de zorg verdeeld over Wlz, Wmo en Zvw."
@@ -1798,10 +1798,10 @@
   "level": 4,
   "q": "Wat regelt de Wmo?",
   "c": [
-   "Ondersteuning thuis, geregeld door de gemeente",
-   "Het staatspensioen",
-   "De zorgverzekering",
-   "De kinderbijslag"
+   "Ondersteuning thuis via de gemeente",
+   "Het staatspensioen vanaf de AOW-leeftijd",
+   "De verplichte verzekering voor medische zorg",
+   "De bijdrage in de kosten van kinderen"
   ],
   "a": 0,
   "e": "Wet maatschappelijke ondersteuning: bijvoorbeeld huishoudelijke hulp of een woningaanpassing."
@@ -1825,9 +1825,9 @@
   "q": "Hoe lang moet een werkgever het loon van een zieke werknemer doorbetalen?",
   "c": [
    "Maximaal twee jaar",
-   "Zes weken",
-   "Zes maanden",
-   "Vijf jaar"
+   "Maximaal zes weken",
+   "Maximaal zes maanden",
+   "Maximaal vijf jaar"
   ],
   "a": 0,
   "e": "Daarna kan de werknemer een WIA-uitkering aanvragen bij het UWV."
@@ -1837,10 +1837,10 @@
   "level": 4,
   "q": "Wat is de WIA?",
   "c": [
-   "Een uitkering voor wie na langdurige ziekte niet volledig kan werken",
-   "Een uitkering bij ontslag",
-   "Een studiefinanciering",
-   "Een pensioenregeling"
+   "Een uitkering na langdurige ziekte",
+   "Een uitkering direct na ontslag",
+   "Een beurs voor studerende jongeren",
+   "Een pensioen voor werkende ouderen"
   ],
   "a": 0,
   "e": "Wet werk en inkomen naar arbeidsvermogen."
@@ -1851,9 +1851,9 @@
   "q": "Wat is een 'transitievergoeding'?",
   "c": [
    "Een vergoeding bij ontslag door de werkgever",
-   "Het vakantiegeld",
-   "Een bonus bij een nieuw contract",
-   "Een verhuiskostenvergoeding"
+   "De jaarlijkse extra betaling in de maand mei",
+   "Een bonus die je bij een nieuw contract krijgt",
+   "Een vergoeding voor de kosten van verhuizen"
   ],
   "a": 0,
   "e": "De hoogte hangt af van hoe lang je in dienst was."
@@ -1864,9 +1864,9 @@
   "q": "Wie moet meestal toestemming geven voordat een werkgever iemand kan ontslaan?",
   "c": [
    "Het UWV of de kantonrechter",
-   "De gemeente",
-   "De vakbond",
-   "De Belastingdienst"
+   "De gemeente waar het bedrijf staat",
+   "De vakbond van de werknemer",
+   "De Belastingdienst in die regio"
   ],
   "a": 0,
   "e": "Bij bedrijfseconomisch ontslag het UWV, bij persoonlijke redenen de kantonrechter."
@@ -1877,9 +1877,9 @@
   "q": "Wat is een 'nulurencontract'?",
   "c": [
    "Een contract zonder vast aantal uren per week",
-   "Een contract voor onbepaalde tijd",
-   "Een stageovereenkomst",
-   "Een contract zonder loon"
+   "Een contract voor onbepaalde tijd met vaste uren",
+   "Een overeenkomst voor een stage bij een bedrijf",
+   "Een contract waarbij helemaal geen loon geldt"
   ],
   "a": 0,
   "e": "Je wordt opgeroepen als er werk is; er gelden wel beschermende regels."
@@ -1902,10 +1902,10 @@
   "level": 4,
   "q": "Wat is de 'Kamer van Koophandel'?",
   "c": [
-   "De organisatie waar je een bedrijf inschrijft",
-   "Een bank voor ondernemers",
-   "Een rechtbank voor bedrijven",
-   "Een vakbond"
+   "De instantie waar je een bedrijf inschrijft",
+   "De bank die ondernemers leningen verstrekt",
+   "De rechtbank voor geschillen tussen bedrijven",
+   "De vakbond voor zelfstandige ondernemers"
   ],
   "a": 0,
   "e": "Inschrijving in het Handelsregister is verplicht voor ondernemers."
@@ -1915,10 +1915,10 @@
   "level": 4,
   "q": "Wat is de btw?",
   "c": [
-   "Belasting over de toegevoegde waarde, verwerkt in de prijs van producten",
+   "Een belasting die in de prijs is verwerkt",
    "Een gemeentelijke belasting op woningen",
-   "Een belasting op je loon",
-   "Een heffing van het waterschap"
+   "Een belasting op het loon van werknemers",
+   "Een heffing van het plaatselijke waterschap"
   ],
   "a": 0,
   "e": "De consument betaalt het, de ondernemer draagt het af."
@@ -1928,10 +1928,10 @@
   "level": 4,
   "q": "Wat is de OZB?",
   "c": [
-   "Een gemeentelijke belasting voor eigenaren van onroerend goed",
-   "Een belasting op salarissen",
-   "Een premie voor de zorgverzekering",
-   "Een heffing op benzine"
+   "Een gemeentelijke belasting op onroerend goed",
+   "Een landelijke belasting op salarissen",
+   "Een verplichte premie voor de zorgverzekering",
+   "Een landelijke heffing op benzine en diesel"
   ],
   "a": 0,
   "e": "Onroerendezaakbelasting, gebaseerd op de WOZ-waarde."
@@ -1941,10 +1941,10 @@
   "level": 4,
   "q": "Wat is de 'WOZ-waarde'?",
   "c": [
-   "De waarde die de gemeente aan een woning toekent voor de belasting",
-   "De verkoopprijs van een huis",
-   "De maximale huurprijs",
-   "De hypotheekrente"
+   "De waarde die de gemeente aan een woning toekent",
+   "De prijs waarvoor een huis is verkocht",
+   "De hoogste huur die gevraagd mag worden",
+   "De rente die je elke maand over je hypotheek betaalt"
   ],
   "a": 0,
   "e": "Je krijgt er jaarlijks een beschikking over."
@@ -2006,10 +2006,10 @@
   "level": 4,
   "q": "Wat gebeurde er in 1848 in Nederland?",
   "c": [
-   "Thorbecke herzag de Grondwet en beperkte de macht van de koning",
-   "Nederland werd bevrijd",
-   "De VOC werd opgericht",
-   "De Deltawerken begonnen"
+   "Thorbecke herzag de Grondwet ingrijpend",
+   "Nederland werd bevrijd van de bezetter",
+   "De VOC werd opgericht voor de handel",
+   "De bouw van de Deltawerken begon"
   ],
   "a": 0,
   "e": "Sindsdien is de regering verantwoording schuldig aan het parlement."
@@ -2032,10 +2032,10 @@
   "level": 4,
   "q": "Wat was 'de Wederopbouw'?",
   "c": [
-   "De periode van herstel na de Tweede Wereldoorlog",
-   "Het droogleggen van de Zuiderzee",
-   "De bouw van de Deltawerken",
-   "De uitbreiding van de VOC"
+   "De periode van herstel na de oorlog",
+   "Het droogleggen van de hele Zuiderzee",
+   "De aanleg van de Deltawerken in Zeeland",
+   "De uitbreiding van de handel van de VOC"
   ],
   "a": 0,
   "e": "Met woningnood, industrialisatie en later gastarbeiders."
@@ -2085,9 +2085,9 @@
   "q": "Wat is 'de Kinderombudsman'?",
   "c": [
    "Iemand die toeziet op de rechten van kinderen",
-   "Een kinderrechter",
-   "Een school­directeur",
-   "Een uitkeringsinstantie"
+   "Een rechter die zaken rond kinderen behandelt",
+   "De directeur van een grote basisschool",
+   "De instantie die kinderbijslag uitbetaalt"
   ],
   "a": 0,
   "e": "Onderdeel van de Nationale ombudsman."
@@ -2097,10 +2097,10 @@
   "level": 4,
   "q": "Wat doet de Nationale ombudsman?",
   "c": [
-   "Klachten van burgers over de overheid onderzoeken",
-   "Rechtszaken beslissen",
-   "Wetten maken",
-   "Belasting innen"
+   "Klachten over de overheid onderzoeken",
+   "Rechtszaken tussen burgers beslissen",
+   "Wetten voorbereiden voor het parlement",
+   "Belasting innen namens het Rijk"
   ],
   "a": 0,
   "e": "Een onafhankelijke instantie, benoemd door de Tweede Kamer."
@@ -2111,9 +2111,9 @@
   "q": "Binnen hoeveel dagen moet je een verhuizing bij de gemeente melden?",
   "c": [
    "Uiterlijk vijf dagen na de verhuizing",
-   "Binnen 24 uur",
-   "Binnen een maand",
-   "Binnen drie maanden"
+   "Uiterlijk één dag na de verhuizing",
+   "Uiterlijk één maand na de verhuizing",
+   "Uiterlijk drie maanden na de verhuizing"
   ],
   "a": 0,
   "e": "Aangifte mag ook vanaf vier weken vóór de verhuizing."
@@ -2123,10 +2123,10 @@
   "level": 5,
   "q": "Hoeveel wettelijke vakantiedagen bouwt een fulltimer per jaar minimaal op?",
   "c": [
-   "Viermaal het aantal werkdagen per week, dus twintig bij een vijfdaagse week",
-   "Tien dagen",
-   "Vijfentwintig dagen",
-   "Dat is niet wettelijk geregeld"
+   "Twintig dagen bij een vijfdaagse werkweek",
+   "Tien dagen bij een vijfdaagse werkweek",
+   "Vijfentwintig dagen bij elke werkweek",
+   "Dat is helemaal niet wettelijk geregeld"
   ],
   "a": 0,
   "e": "Bovenwettelijke dagen komen uit de CAO."
@@ -2163,9 +2163,9 @@
   "q": "Hoeveel tijdelijke contracten mag een werkgever in beginsel achter elkaar geven?",
   "c": [
    "Drie, binnen maximaal drie jaar",
-   "Twee, binnen twee jaar",
-   "Vijf, binnen vijf jaar",
-   "Onbeperkt"
+   "Twee, binnen maximaal twee jaar",
+   "Vijf, binnen maximaal vijf jaar",
+   "Onbeperkt, zolang er werk is"
   ],
   "a": 0,
   "e": "Daarna ontstaat een contract voor onbepaalde tijd; de ketenregeling kan bij CAO afwijken."
@@ -2214,10 +2214,10 @@
   "level": 5,
   "q": "Wat is de kiesdrempel voor de Tweede Kamer in de praktijk?",
   "c": [
-   "Eén zetel, ongeveer 0,67% van de stemmen",
-   "5% van de stemmen",
-   "10 zetels",
-   "Er is een drempel van 2%"
+   "Eén zetel, ongeveer 0,67 procent",
+   "Vijf procent van de uitgebrachte stemmen",
+   "Tien zetels van de honderdvijftig",
+   "Twee procent van de uitgebrachte stemmen"
   ],
   "a": 0,
   "e": "Het Nederlandse stelsel is evenredig, zonder formele drempel."
@@ -2240,10 +2240,10 @@
   "level": 5,
   "q": "Wie mogen er stemmen bij gemeenteraadsverkiezingen?",
   "c": [
-   "Ook niet-Nederlanders die legaal lang genoeg in Nederland wonen",
-   "Alleen Nederlanders",
-   "Alleen EU-burgers",
-   "Iedereen die in Nederland is"
+   "Ook niet-Nederlanders die hier lang genoeg wonen",
+   "Uitsluitend mensen met de Nederlandse nationaliteit",
+   "Uitsluitend Nederlanders en andere EU-burgers",
+   "Iedereen die zich op dat moment in Nederland bevindt"
   ],
   "a": 0,
   "e": "Niet-EU-burgers moeten meestal vijf jaar legaal verblijf hebben."
@@ -2280,9 +2280,9 @@
   "q": "Wat betekent de afkorting ONA in het inburgeringstraject?",
   "c": [
    "Oriëntatie op de Nederlandse Arbeidsmarkt",
-   "Onderwijs en Nederlandse Achtergrond",
-   "Officiële Nederlandse Aanvraag",
-   "Opleiding Nederlands Algemeen"
+   "Onderwijs en Nederlandse Achtergronden",
+   "Officiële Nederlandse Aanvraagprocedure",
+   "Opleiding Nederlands voor Algemeen gebruik"
   ],
   "a": 0,
   "e": "Het gaat over werk zoeken en de arbeidsmarkt begrijpen."
@@ -2305,10 +2305,10 @@
   "level": 5,
   "q": "Wat is de Wlz?",
   "c": [
-   "De wet voor langdurige, zware zorg zoals het verpleeghuis",
-   "De zorgverzekeringswet",
-   "De wet voor huurtoeslag",
-   "De wet voor werkloosheid"
+   "De wet voor langdurige, zware zorg",
+   "De wet voor de gewone zorgverzekering",
+   "De wet voor huurtoeslag en huurbescherming",
+   "De wet voor uitkeringen bij werkloosheid"
   ],
   "a": 0,
   "e": "Wet langdurige zorg; de gemeente doet de Wmo, de verzekeraar de Zvw."
@@ -2331,10 +2331,10 @@
   "level": 5,
   "q": "Wat gebeurt er als je je zorgverzekeringspremie lang niet betaalt?",
   "c": [
-   "Je komt in een wanbetalersregeling met een hogere premie via het CAK",
-   "Je verzekering stopt direct",
-   "De gemeente betaalt het",
-   "Er gebeurt niets"
+   "Je komt bij het CAK in een wanbetalersregeling",
+   "Je verzekering stopt onmiddellijk en volledig",
+   "De gemeente neemt de betaling van je over",
+   "Er gebeurt niets, want de premie vervalt"
   ],
   "a": 0,
   "e": "Na zes maanden achterstand neemt het CAK de inning over."
@@ -2344,10 +2344,10 @@
   "level": 5,
   "q": "Wat is het CAK?",
   "c": [
-   "De organisatie die eigen bijdragen voor zorg int",
-   "Een zorgverzekeraar",
-   "Een ziekenhuis",
-   "Een uitkeringsinstantie voor werklozen"
+   "De instantie die eigen bijdragen voor zorg int",
+   "De grootste zorgverzekeraar van het land",
+   "Een academisch ziekenhuis in de Randstad",
+   "De instantie die werkloosheidsuitkeringen betaalt"
   ],
   "a": 0,
   "e": "Onder meer voor Wmo- en Wlz-bijdragen."
@@ -2357,10 +2357,10 @@
   "level": 5,
   "q": "Wat is een 'euthanasieverklaring'?",
   "c": [
-   "Een schriftelijk verzoek om levensbeëindiging onder strikte voorwaarden",
-   "Een orgaandonatieformulier",
-   "Een testament",
-   "Een volmacht voor je bankzaken"
+   "Een verzoek om levensbeëindiging onder voorwaarden",
+   "Een formulier voor donatie van je organen",
+   "Een testament over je bezit na je dood",
+   "Een volmacht voor je bankzaken bij langdurige ziekte"
   ],
   "a": 0,
   "e": "Euthanasie is in Nederland onder strenge zorgvuldigheidseisen toegestaan."
@@ -2370,10 +2370,10 @@
   "level": 5,
   "q": "Wat geldt sinds 2020 in Nederland rond orgaandonatie?",
   "c": [
-   "Iedereen staat geregistreerd, tenzij je zelf een keuze vastlegt",
-   "Alleen wie zich aanmeldt is donor",
-   "Donatie is verboden",
-   "De gemeente beslist"
+   "Iedereen staat geregistreerd tenzij je anders kiest",
+   "Alleen wie zich actief aanmeldt is donor",
+   "Donatie van organen is geheel verboden",
+   "De gemeente van inschrijving beslist het na je dood"
   ],
   "a": 0,
   "e": "Het actieve donorregistratiesysteem: 'geen bezwaar' tenzij je anders aangeeft."
@@ -2396,10 +2396,10 @@
   "level": 5,
   "q": "Wat is een 'geregistreerd partnerschap'?",
   "c": [
-   "Een wettelijke verbintenis die veel op een huwelijk lijkt",
-   "Een samenlevingscontract bij de notaris",
-   "Een zakelijk contract",
-   "Een vorm van adoptie"
+   "Een wettelijke verbintenis die op een huwelijk lijkt",
+   "Een samenlevingscontract dat je bij de notaris laat opstellen",
+   "Een zakelijk contract tussen twee ondernemers",
+   "Een vorm van adoptie door twee partners"
   ],
   "a": 0,
   "e": "De verschillen met het huwelijk zijn klein, onder andere bij ontbinding."
@@ -2409,10 +2409,10 @@
   "level": 5,
   "q": "Wat betekent 'gemeenschap van goederen' sinds 2018 voor nieuwe huwelijken?",
   "c": [
-   "Alleen wat je tijdens het huwelijk opbouwt is gemeenschappelijk",
-   "Alles wordt gedeeld, ook wat je al had",
-   "Er wordt niets gedeeld",
-   "Alleen schulden worden gedeeld"
+   "Alleen wat je tijdens het huwelijk opbouwt is gedeeld",
+   "Alles is gedeeld, ook wat je vooraf bezat",
+   "Er wordt tussen partners helemaal niets gedeeld",
+   "Alleen de schulden die beide partners maken zijn gedeeld"
   ],
   "a": 0,
   "e": "De beperkte gemeenschap van goederen; daarvoor was alles gemeenschappelijk."
@@ -2436,9 +2436,9 @@
   "q": "Wat doet het Openbaar Ministerie?",
   "c": [
    "Strafbare feiten vervolgen namens de staat",
-   "Rechtszaken beslissen",
-   "Wetten aannemen",
-   "Advocaten benoemen"
+   "Uitspraak doen in strafzaken en geschillen",
+   "Wetten aannemen namens de kiezers",
+   "Advocaten benoemen voor verdachten"
   ],
   "a": 0,
   "e": "De officier van justitie eist straf; de rechter beslist."
@@ -2448,10 +2448,10 @@
   "level": 5,
   "q": "Wat is 'rechtsbijstand' voor mensen met een laag inkomen?",
   "c": [
-   "Een toegevoegde advocaat, waarvan de overheid het grootste deel betaalt",
-   "Gratis advies van de politie",
-   "Een uitkering tijdens een rechtszaak",
-   "Een verzekering die verplicht is"
+   "Een advocaat die de overheid grotendeels betaalt",
+   "Gratis juridisch advies aan de politiebalie",
+   "Een uitkering zolang je rechtszaak duurt",
+   "Een verzekering die voor iedere inwoner verplicht is"
   ],
   "a": 0,
   "e": "Je betaalt een eigen bijdrage; de Raad voor Rechtsbijstand beslist."
@@ -2474,10 +2474,10 @@
   "level": 5,
   "q": "Wat is 'erfpacht'?",
   "c": [
-   "Het recht om grond van een ander langdurig te gebruiken tegen een vergoeding",
-   "Een erfenis van een woning",
-   "Een hypotheekvorm",
-   "Een gemeentelijke belasting"
+   "Het recht grond van een ander langdurig te gebruiken",
+   "Het recht een woning van familie te erven",
+   "Een hypotheekvorm waarbij je maandelijks niets aflost",
+   "Een jaarlijkse belasting van de gemeente"
   ],
   "a": 0,
   "e": "Komt onder andere in Amsterdam veel voor."
@@ -2490,7 +2490,7 @@
    "De Autoriteit Persoonsgegevens",
    "De Nationale ombudsman",
    "De Raad van State",
-   "Het CBS"
+   "Het Centraal Bureau voor de Statistiek"
   ],
   "a": 0,
   "e": "Zij handhaaft onder meer de AVG."
@@ -2501,9 +2501,9 @@
   "q": "Wat is het CBS?",
   "c": [
    "Het Centraal Bureau voor de Statistiek",
-   "Een zorgverzekeraar",
-   "De centrale bank",
-   "Een rechtbank"
+   "Het Centraal Bureau voor Sociale Zaken",
+   "De centrale bank van het koninkrijk",
+   "De rechtbank voor bestuurlijke geschillen"
   ],
   "a": 0,
   "e": "Het levert de officiële statistieken over Nederland."
@@ -2513,10 +2513,10 @@
   "level": 5,
   "q": "Wat doet De Nederlandsche Bank?",
   "c": [
-   "Toezicht houden op banken en verzekeraars en meewerken aan het Europese monetaire beleid",
-   "Belasting innen",
-   "Persoonlijke rekeningen beheren",
-   "Wetten maken"
+   "Toezicht houden op banken en verzekeraars",
+   "Belasting innen voor de Rijksoverheid",
+   "Betaalrekeningen beheren voor particulieren",
+   "Wetten maken over het geldverkeer"
   ],
   "a": 0,
   "e": "DNB maakt deel uit van het Europese Stelsel van Centrale Banken."
@@ -2528,7 +2528,7 @@
   "c": [
    "Het Verdrag van Maastricht",
    "Het Verdrag van Rome",
-   "Het Verdrag van Lissabon",
+   "Het Verdrag van Lissabon uit 2007",
    "Het Schengenakkoord"
   ],
   "a": 0,
@@ -2539,10 +2539,10 @@
   "level": 5,
   "q": "Wat betekent het Schengengebied?",
   "c": [
-   "Een gebied zonder systematische grenscontroles tussen deelnemende landen",
-   "De eurozone",
-   "De Europese Unie",
-   "Een handelsverdrag met de VS"
+   "Een gebied zonder vaste grenscontroles",
+   "Het gebied waar met de euro wordt betaald",
+   "Alle lidstaten van de Europese Unie",
+   "Een handelsverdrag met de Verenigde Staten"
   ],
   "a": 0,
   "e": "Nederland is deelnemer sinds de jaren negentig."
@@ -2552,10 +2552,10 @@
   "level": 5,
   "q": "Wat was het 'Plakkaat van Verlatinghe' uit 1581?",
   "c": [
-   "De verklaring waarin de Staten-Generaal de Spaanse koning afzwoeren",
-   "De grondwet van 1815",
-   "Het handvest van de VOC",
-   "Het vredesverdrag van Münster"
+   "De verklaring waarin de Spaanse koning werd afgezworen",
+   "De grondwet die koning Willem I in 1815 liet opstellen",
+   "Het handvest waarmee de VOC werd opgericht",
+   "Het vredesverdrag dat in Münster werd getekend"
   ],
   "a": 0,
   "e": "Vaak gezien als een vroege onafhankelijkheidsverklaring."
@@ -2565,10 +2565,10 @@
   "level": 5,
   "q": "Wie was Johan van Oldenbarnevelt?",
   "c": [
-   "Een staatsman uit de Republiek die in 1619 werd onthoofd",
-   "Een schilder",
-   "Een admiraal",
-   "De eerste koning"
+   "Een staatsman die in 1619 werd onthoofd",
+   "Een schilder uit de zeventiende-eeuwse Republiek",
+   "Een admiraal uit de Gouden Eeuw",
+   "De eerste koning van Nederland"
   ],
   "a": 0,
   "e": "Zijn conflict met Maurits liep uit op zijn terechtstelling."
@@ -2604,10 +2604,10 @@
   "level": 5,
   "q": "Wat was de 'Hongerwinter'?",
   "c": [
-   "De winter van 1944-1945 met grote voedselschaarste in het westen",
-   "De winter van 1963 met strenge vorst",
-   "De crisis van de jaren dertig",
-   "Het eerste jaar na de bevrijding"
+   "De winter van 1944-1945 met voedselschaarste",
+   "De winter van 1963 met wekenlange strenge vorst",
+   "De economische crisis van de jaren dertig",
+   "Het eerste volle jaar na de bevrijding"
   ],
   "a": 0,
   "e": "Duizenden mensen kwamen om van honger en kou."
