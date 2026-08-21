@@ -39,12 +39,23 @@ rings, because a ray thinner than the line around it is not a scoreboard.
 ## Run it
 
 ```bash
-podman compose up -d          # or: docker compose up -d   — Mongo + Redis
-dotnet run --project src/Quesshi.Server
+docker compose up -d --build     # podman compose works the same
 ```
 
-Then open <http://localhost:5010>. One process serves everything: the API, the Blazor bundle and the
-Orleans silo.
+Then open <http://localhost:5010>. That is the whole application: the ASP.NET host with the Orleans
+silo inside it, plus MongoDB and Redis. One image — the API, the Blazor bundle and the silo all live
+in the same process, so there is nothing else to containerise.
+
+Everything that differs between a laptop and a server lives in `.env`; copy `.env.example` and
+adjust. With no `.env` at all you get a working local stack.
+
+To run it without containers — useful when you want a debugger attached — start the two stores and
+run the host directly:
+
+```bash
+docker compose up -d mongo redis
+dotnet run --project src/Quesshi.Server        # http://localhost:5010
+```
 
 With no SMTP host configured the app is in **dev sign-in mode** — the one-time code is printed to the
 log *and* shown on the sign-in screen, so you can sign in as any address without a mail server. The
@@ -52,7 +63,7 @@ app refuses to start in Production in that state unless you explicitly accept it
 anyone can sign in as anyone.
 
 ```bash
-dotnet test                   # 212 tests; only the grain tests need anything running, and they self-host
+dotnet test                   # 228 tests; only the grain tests need anything running, and they self-host
 ```
 
 To play against yourself, sign in as two addresses in two browser profiles, start a duel in one and
@@ -204,6 +215,18 @@ Everything is optional; the app runs with none of it.
 
 Put local values in `appsettings.Development.json` or user secrets. **Do not commit keys** —
 `appsettings.Development.json` and `appsettings.Local.json` are gitignored for exactly that reason.
+
+## Deployment
+
+The same `compose.yaml`, with a different `.env`. `deploy/deploy.sh` runs the tests, rsyncs the
+working tree, builds the image **on the server** and switches over; a failed health check rolls back
+to the previous image on its own. Building there rather than here needs no registry, no
+cross-compilation and nothing pushed anywhere — the trade is a slower deploy on modest hardware.
+
+Databases, uploaded media and `appsettings.Production.json` are named in the server's `.env` and live
+outside the source tree, so a deploy never touches them. The volume names are pinned literally rather
+than left to the compose project prefix, because docker and podman disagree about prefixing and the
+wrong guess starts the app against an empty database that looks perfectly healthy.
 
 ## Built with
 

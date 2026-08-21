@@ -1,0 +1,65 @@
+# The whole application: the ASP.NET host with the Orleans silo inside it, and the two stores.
+#
+#   docker compose up -d --build      (podman compose works the same)
+#
+# One file for a laptop and for the server; everything that differs between them lives in .env,
+# which is why there is a .env.example next to this and no second compose file.
+name: quesshi
+
+services:
+  app:
+    build: .
+    image: quesshi:${TAG:-local}
+    container_name: quesshi-app
+    depends_on: [mongo, redis]
+    restart: unless-stopped
+
+    # Loopback by default: on the server a Cloudflare tunnel is the only way in, and on a laptop
+    # there is no reason to publish the app to the rest of the network either.
+    ports: ["${APP_BIND:-127.0.0.1}:${APP_PORT:-5010}:8080"]
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ENVIRONMENT:-Development}
+      ConnectionStrings__Mongo: mongodb://mongo:27017
+      ConnectionStrings__Redis: redis:6379
+
+    # Runs as the host user so bind-mounted uploads stay writable and owned by a real account.
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+
+    volumes:
+      # Secrets and per-deployment settings stay outside the image, as they did outside the release.
+      - ${CONFIG_FILE:-./src/Quesshi.Server/appsettings.Development.json}:/app/appsettings.${ENVIRONMENT:-Development}.json:ro
+      # Uploaded media and Wikipedia pictures outlive any image.
+      - ${MEDIA_DIR:-./.media}/uploads:/app/wwwroot/media/uploads
+      - ${MEDIA_DIR:-./.media}/sourced:/app/wwwroot/media/sourced
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  mongo:
+    # A Pi 4 is ARMv8-A and MongoDB 5+ requires ARMv8.2-A; even 4.4.30 dies with SIGILL there.
+    # 4.4.18 is the build that machine is known to run. A laptop can use anything.
+    image: ${MONGO_IMAGE:-mongo:7}
+    container_name: quesshi-mongo
+    restart: unless-stopped
+    volumes: ["quesshi-mongo:/data/db"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: quesshi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["quesshi-redis:/data"]
+
+# Pinned by literal name rather than left to the project prefix, because docker and podman disagree
+# about prefixing and the wrong guess starts the app against an empty database that looks fine.
+# Whatever a machine already uses goes in its .env.
+volumes:
+  quesshi-mongo:
+    name: ${MONGO_VOLUME:-quesshi-mongo}
+  quesshi-redis:
+    name: ${REDIS_VOLUME:-quesshi-redis}
