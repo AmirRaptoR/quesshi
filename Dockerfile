@@ -19,6 +19,13 @@ RUN dotnet publish src/Quesshi.Server/Quesshi.Server.csproj -c Release -o /app -
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
+
+# The runtime image carries neither curl nor wget, so the compose healthcheck had nothing to probe
+# with and reported a perfectly healthy app as unhealthy.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app .
 
 # Uploaded media and pictures fetched from Wikipedia are bind-mounted over these, so they must
