@@ -641,3 +641,8 @@ a  { color: var(--firouzeh); text-decoration: none; }
 }
 .shamseh__arc--right { stroke: var(--zaferan); }
 .shamseh__arc--wrong { stroke: rgb(212 66 92 / 0.55); }
+
+/* A category with no questions in the chosen language is shown, not hidden: knowing it exists and
+   is empty is more useful than wondering where it went. */
+.picker__chip:disabled { opacity: 0.35; cursor: not-allowed; }
+.picker__chip:disabled:hover { border-color: var(--line); color: var(--sadaf-2); }

@@ -38,6 +38,19 @@
                     </div>
                 </div>
 
+                <div class="field">
+                    <label>@L["lang.pick"]</label>
+                    <div class="segmented" role="group" aria-label="@L["lang.pick"]">
+                        @foreach (var code in Translator.All)
+                        {
+                            var pick = code;
+                            <button type="button" class="segmented__option @(_lang == pick ? "is-on" : null)"
+                                    aria-pressed="@((_lang == pick).ToString().ToLowerInvariant())"
+                                    @onclick="() => ChooseLang(pick)">@L["lang." + pick]</button>
+                        }
+                    </div>
+                </div>
+
                 <div class="field" style="margin-top:.9rem">
                     <label>@L["home.levels"]</label>
                     <div class="picker">
@@ -62,8 +75,11 @@
                         @foreach (var category in _categories)
                         {
                             var id = category.Id;
+                            var playable = Playable(category);
                             <button type="button" class="picker__chip @(_picked.Contains(id) ? "is-on" : null)"
-                                    style="--pick:@category.Color" aria-pressed="@(_picked.Contains(id).ToString().ToLowerInvariant())"
+                                    style="--pick:@category.Color" disabled="@(!playable)"
+                                    title="@(playable ? null : L["home.noneInLanguage"])"
+                                    aria-pressed="@(_picked.Contains(id).ToString().ToLowerInvariant())"
                                     @onclick="() => Toggle(id)">
                                 <span aria-hidden="true">@category.Icon</span> @category.Name
                             </button>
@@ -133,15 +149,31 @@
     private readonly HashSet<int> _levels = [];
     private int _questions = QuestionCounts[0];
     private string _code = "";
+    private string _lang = "";
     private string? _error;
     private bool _busy;
 
     protected override async Task LoadAsync()
     {
+        // The duel's language starts as the one you read the app in, and is then yours to change:
+        // studying for a Dutch exam should not mean switching your whole profile to Dutch.
+        _lang = State.Lang;
         _categories = await Api.CategoriesAsync() ?? [];
 
         var all = await Api.MatchesAsync() ?? [];
         _active = [.. all.Where(m => m.State is "awaitingopponent" or "inprogress").OrderByDescending(m => m.CanPlay).Take(8)];
+    }
+
+    /// <summary>Whether this category holds anything in the language the duel will be played in.</summary>
+    private bool Playable(CategoryDto category) => category.Langs is null || category.Langs.Contains(_lang);
+
+    private void ChooseLang(string lang)
+    {
+        _lang = lang;
+
+        // A category that cannot be played in the new language stops being a choice, so drop it
+        // rather than silently sending it and having the server refuse the whole duel.
+        _picked.RemoveWhere(id => _categories.FirstOrDefault(c => c.Id == id) is { } c && !Playable(c));
     }
 
     private void Toggle(string id)
@@ -159,7 +191,7 @@
         _busy = true; _error = null;
 
         // Nothing picked means "surprise me" — the server draws three categories itself.
-        var match = await Api.CreateMatchAsync(random, State.Lang, _picked.Count == 0 ? null : [.. _picked], _questions,
+        var match = await Api.CreateMatchAsync(random, _lang, _picked.Count == 0 ? null : [.. _picked], _questions,
             _levels.Count == 0 ? null : [.. _levels.Order()]);
         _busy = false;
 

@@ -37,6 +37,20 @@ public static class Mappers
     public static CategoryDto ToDto(this Category c, Language lang)
         => new(c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl);
 
+    /// <summary>
+    /// Which languages each category can actually be played in, keyed by category id. One approved
+    /// question is enough: the client only needs to know whether to offer it, not how deep it is.
+    /// </summary>
+    public static Dictionary<string, List<string>> PlayableLanguages(IEnumerable<BucketCount> buckets)
+        => buckets
+            .Where(b => b.Approved > 0)
+            .GroupBy(b => b.CategoryId)
+            .ToDictionary(g => g.Key, g => g.Select(b => b.Lang.Code()).Distinct().Order().ToList());
+
+    /// <summary>The same, plus which languages the category holds approved questions in.</summary>
+    public static CategoryDto ToDto(this Category c, Language lang, IReadOnlyCollection<string> langs)
+        => new(c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl, [.. langs]);
+
     public static AdminQuestionDto ToAdminDto(this Question q) => new(
         q.Id, q.Lang.Code(), q.CategoryId, (int)q.Level, q.Prompt, [.. q.Choices], q.CorrectIndex, q.Explanation,
         q.Status.ToString().ToLowerInvariant(), q.Source.ToString().ToLowerInvariant(),

@@ -182,4 +182,36 @@ public class QuestionSetBuilderTests
         await Assert.ThrowsAsync<NotEnoughQuestionsException>(
             () => Sut().BuildAsync(Language.En, questionCount: 10, levels: [Difficulty.VeryHard]));
     }
+
+    /// <summary>
+    /// The bug this guards: a Persian profile picking the Dutch-only KNM category was handed ten
+    /// Persian questions about birds and DNA, because the last fallback ignored the choice and drew
+    /// from the whole bank. Asking for one category and getting another is a different duel wearing
+    /// the right label, and nothing on screen says so.
+    /// </summary>
+    [Fact]
+    public async Task A_named_category_with_nothing_in_your_language_refuses_rather_than_substituting()
+    {
+        Stock(10, Language.Fa, "geography", "nature", "science");
+        _categories.UpsertAsync(new Category("knm", "knm", "knm", "*", "#fff"));
+        foreach (var level in MatchRules.AllLevels)
+            for (var i = 0; i < 10; i++)
+                await _questions.UpsertAsync(Q($"nl-{level}-{i}", Language.Nl, "knm", level));
+
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(
+            () => Sut().BuildAsync(Language.Fa, ["knm"], questionCount: 10));
+    }
+
+    [Fact]
+    public async Task A_named_category_still_falls_back_within_the_ones_you_named()
+    {
+        Stock(10, Language.En, "geography", "movies");
+
+        // Nothing at all in "movies" at the very hardest level, so the run has to lean on geography
+        // — but never on a category the player did not ask for.
+        var set = await Sut().BuildAsync(Language.En, ["geography", "movies"], questionCount: 20);
+
+        Assert.Equal(20, set.Count);
+        Assert.All(set, q => Assert.Contains(q.CategoryId, new[] { "geography", "movies" }));
+    }
 }

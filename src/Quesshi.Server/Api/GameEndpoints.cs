@@ -50,11 +50,18 @@ public static class GameEndpoints
             return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board)));
         });
 
-        api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx, IPlayerRepository players) =>
+        api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx,
+            IPlayerRepository players, IQuestionRepository questions) =>
         {
             var me = await players.GetAsync(ctx.User.PlayerId()!);
             var lang = me?.Lang ?? Language.Fa;
-            return (await categories.AllAsync()).Where(c => c.IsActive).Select(c => c.ToDto(lang)).ToList();
+
+            var playable = Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+
+            return (await categories.AllAsync())
+                .Where(c => c.IsActive)
+                .Select(c => c.ToDto(lang, playable.GetValueOrDefault(c.Id, [])))
+                .ToList();
         });
 
         // --- friends -----------------------------------------------------------------

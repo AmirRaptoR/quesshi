@@ -167,6 +167,7 @@
   "home.levels": "Difficulty",
   "home.newDuel": "New duel",
   "home.noMatches": "No duels yet. Start one.",
+  "home.noneInLanguage": "No questions in this language yet.",
   "home.pickedCount": "{0} picked",
   "home.random": "Random opponent",
   "home.randomHint": "Whoever is waiting",

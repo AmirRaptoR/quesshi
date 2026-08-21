@@ -15,8 +15,9 @@ public sealed class QuestionSetBuilder(IQuestionRepository questions, ICategoryR
     public async Task<IReadOnlyList<Question>> BuildAsync(Language lang, IReadOnlyList<string>? preferred = null,
         int? questionCount = null, IReadOnlyList<Difficulty>? levels = null, CancellationToken ct = default)
     {
-        // Choosing levels is a promise, so it binds the fallbacks too: a thin bucket may cost you
-        // the category you asked for, but never hands you an easy question you said you did not want.
+        // Choosing is a promise, and it binds the fallbacks. Asking for one category and being handed
+        // ten questions from another is not a thin bucket quietly coping, it is a different duel with
+        // the right label on it — and nothing on screen would say so.
         var allowed = levels is { Count: > 0 } ? [.. levels.Distinct().Order()] : MatchRules.AllLevels;
         var count = questionCount ?? MatchRules.QuestionsPerMatch;
         if (!MatchRules.IsValidCount(count)) count = MatchRules.QuestionsPerMatch;
@@ -25,6 +26,9 @@ public sealed class QuestionSetBuilder(IQuestionRepository questions, ICategoryR
         if (active.Count == 0) throw new NotEnoughQuestionsException("There are no active categories.");
 
         var chosen = ChooseCategories(active, preferred);
+
+        // Named categories are the only ones in play; unnamed means the whole bank is fair game.
+        var fallbackTo = preferred is { Count: > 0 } ? chosen : active;
         var picked = new List<Question>(count);
         var used = new HashSet<string>();
 
@@ -35,9 +39,10 @@ public sealed class QuestionSetBuilder(IQuestionRepository questions, ICategoryR
 
             var question = await TakeAsync(lang, category.Id, level, used, ct)
                         ?? await TakeAnyLevelAsync(lang, category.Id, allowed, used, ct)
-                        ?? await TakeAnywhereAsync(lang, active, allowed, used, ct)
+                        ?? await TakeAnywhereAsync(lang, fallbackTo, allowed, used, ct)
                         ?? throw new NotEnoughQuestionsException(
-                               $"Not enough approved {lang} questions to fill a match (got {picked.Count} of {count}).");
+                               $"Not enough approved {lang} questions in {string.Join(", ", fallbackTo.Select(c => c.Id))} " +
+                               $"to fill a match (got {picked.Count} of {count}).");
 
             picked.Add(question);
             used.Add(question.Id);

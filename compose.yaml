@@ -46,12 +46,16 @@ services:
     image: ${MONGO_IMAGE:-mongo:7}
     container_name: quesshi-mongo
     restart: unless-stopped
+    # Published on loopback so the host can reach them too: running the app under a debugger while
+    # the stores stay in containers is the normal way to work on this.
+    ports: ["${DB_BIND:-127.0.0.1}:${MONGO_PORT:-27017}:27017"]
     volumes: ["quesshi-mongo:/data/db"]
 
   redis:
     image: redis:7-alpine
     container_name: quesshi-redis
     restart: unless-stopped
+    ports: ["${DB_BIND:-127.0.0.1}:${REDIS_PORT:-6379}:6379"]
     command: ["redis-server", "--appendonly", "yes"]
     volumes: ["quesshi-redis:/data"]
 
