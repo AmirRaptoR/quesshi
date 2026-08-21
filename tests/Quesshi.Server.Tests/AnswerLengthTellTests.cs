@@ -32,17 +32,18 @@ public class AnswerLengthTellTests
         "questions.fa.science.json", "questions.fa.technology.json"
     ];
 
-    public static TheoryData<string> SeedFiles()
+    /// <summary>
+    /// One fact over every file rather than a case each, because a bank may ship with no seed
+    /// question files at all — and a theory with no data is an error rather than a pass.
+    /// </summary>
+    [Fact]
+    public void Picking_the_longest_option_is_no_better_than_guessing()
     {
-        var data = new TheoryData<string>();
         foreach (var path in Directory.EnumerateFiles(Folder, "questions.*.json").Order())
-            data.Add(Path.GetFileName(path));
-        return data;
+            Check(Path.GetFileName(path));
     }
 
-    [Theory]
-    [MemberData(nameof(SeedFiles))]
-    public void Picking_the_longest_option_is_no_better_than_guessing(string file)
+    private static void Check(string file)
     {
         var rows = JsonSerializer.Deserialize<List<SeedRow>>(File.ReadAllText(Path.Combine(Folder, file)), Json)!;
 

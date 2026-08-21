@@ -6,6 +6,9 @@ Two players get the same questions in the same order. Whoever plays first waits,
 notification is the game. Trilingual from the ground up — Persian, English and Dutch, each with its
 own question bank rather than a machine translation of someone else's.
 
+It ships with no questions: you generate them, or write them, or seed your own. The interface,
+however, is fully translated into all three.
+
 <p align="center">
   <img src="docs/screenshots/landing.jpg" width="49%" alt="The landing page in English" />
   <img src="docs/screenshots/landing-fa.jpg" width="49%" alt="The same page in Persian, right to left" />
@@ -122,14 +125,23 @@ blocklist of obvious choices. Hashing is ASP.NET Identity's PBKDF2, not hand-rol
 
 ## The question bank
 
-2,244 hand-written questions ship with the app — 1,000 Persian, 1,042 English and 202 Dutch — across
-thirteen categories, seeded on first start and re-seeded idempotently after that. The Dutch bank is
-**KNM**, for the Dutch civic-integration exam; the other twelve are Persian and English.
+The app ships with **no questions**. Seeding creates the thirteen categories and, on an empty
+database, one administrator — everything else is yours to fill.
 
-Beyond that, **Admin → Generate now** asks a model through OpenRouter to top up any
-`(language, category, level)` bucket that has fallen below target. A category is only topped up in
-languages it already has questions in, so adding a language does not silently commission a whole new
-bank in it. The same run can happen nightly if `Generation:Nightly` is on; it ships off.
+Questions arrive two ways. **Admin → Generate now** asks a model through OpenRouter to top up any
+`(language, category, level)` bucket below target; a category is only topped up in languages it
+already has questions in, so adding a language does not silently commission a whole new bank in it.
+The same run can happen nightly if `Generation:Nightly` is on; it ships off. Admins also write and
+edit questions by hand in `/admin/questions`.
+
+Dropping `questions.<lang>*.json` files into `src/Quesshi.Server/Seed/` seeds them on the next
+start, and re-seeding is idempotent: a question's id is derived from its language, category and
+prompt, and a row whose choices or explanation have changed is refreshed in place, keeping the play
+counts and reports it has collected. Two rules are enforced on any such file — every category it
+touches must be stocked at all five difficulty levels, and neither the longest nor the shortest
+option may hold the answer more often than guessing would. That second one is easy to break by
+accident: writing the right answer as a careful definition and the wrong ones as three quick
+dismissals lets a player win without reading the question at all.
 
 ### Not writing the same question twice
 
@@ -139,11 +151,11 @@ Three layers, cheapest first:
    *aspect* — `inception|director` — and the store refuses a second one. "Wie regisseerde Inception?"
    and "Inception werd geregisseerd door wie?" share no words at all and collide correctly. The same
    topic may exist once per language, because the same fact is a fair question in each.
-2. **Wording comparison** for everything with no topic, including the whole seed bank.
-   `PromptFingerprint` normalises case, punctuation, Persian spelling variants (`ي`/`ی`, `ك`/`ک`, the
-   zero-width non-joiner, Arabic-Indic digits), drops question scaffolding words, and compares the
-   content words that remain by containment rather than by Jaccard — a short question wholly inside a
-   longer one is still the same question.
+2. **Wording comparison** for anything with no topic. `PromptFingerprint` normalises case,
+   punctuation, Persian spelling variants (`ي`/`ی`, `ك`/`ک`, the zero-width non-joiner, Arabic-Indic
+   digits), drops question scaffolding words, and compares the content words that remain by
+   containment rather than by Jaccard — a short question wholly inside a longer one is still the
+   same question.
 3. **The batch checks against itself**, not just against the stored bank.
 
 The ceiling is marked in the source: layer 2 matches wording, not meaning, and the upgrade is
