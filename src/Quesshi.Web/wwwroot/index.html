@@ -63,9 +63,11 @@
       };
     </script>
     <script>
-      // A new deploy replaces the service worker under us; reload once so the running tab
-      // picks it up instead of quietly staying on the old bundle.
+      // The worker is what makes the app installable, and a new deploy replaces it under us;
+      // reload once so the running tab picks it up instead of quietly staying on the old bundle.
       if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js');
+
         let reloading = false;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           if (reloading) return;
