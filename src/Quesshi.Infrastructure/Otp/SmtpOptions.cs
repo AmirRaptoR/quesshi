@@ -8,6 +8,9 @@ public sealed class SmtpOptions
     public string? Password { get; set; }
     public string From { get; set; } = "no-reply@quesshi.app";
 
-    /// <summary>Development only: hand the code back to the browser instead of mailing it.</summary>
-    public bool Echo { get; set; }
+    /// <summary>
+    /// Off only for a local catcher such as Mailpit, which speaks plain SMTP on the loopback of a
+    /// machine you already trust. Any host that leaves the machine wants this on.
+    /// </summary>
+    public bool UseTls { get; set; } = true;
 }

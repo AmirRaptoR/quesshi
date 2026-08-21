@@ -36,10 +36,10 @@ public static class AdminAuthEndpoints
         group.MapPost("/forgot", async (AdminForgotDto body, AdminAuthService service, HttpContext ctx) =>
         {
             var resetPage = $"{ctx.Request.Scheme}://{ctx.Request.Host}/admin/reset";
-            var devLink = await service.RequestResetAsync(body.UsernameOrEmail ?? "", resetPage);
+            await service.RequestResetAsync(body.UsernameOrEmail ?? "", resetPage);
 
             // Always the same answer: whether the account exists is not ours to disclose.
-            return Results.Ok(new AdminForgotSentDto(true, devLink));
+            return Results.Ok(new AdminForgotSentDto(true));
         });
 
         group.MapPost("/reset", async (AdminResetDto body, AdminAuthService service) =>

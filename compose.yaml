@@ -23,6 +23,13 @@ services:
       ConnectionStrings__Mongo: mongodb://mongo:27017
       ConnectionStrings__Redis: redis:6379
 
+      # Sign-in codes and reset links are always mailed. Locally that is Mailpit, which accepts
+      # anything and shows it in a browser, so no address has to be real and nothing is echoed back
+      # to the caller. A server overrides all three from its own settings file.
+      Smtp__Host: ${SMTP_HOST:-mailpit}
+      Smtp__Port: ${SMTP_PORT:-1025}
+      Smtp__UseTls: ${SMTP_TLS:-false}
+
     # Runs as the host user so bind-mounted uploads stay writable and owned by a real account.
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
 
@@ -39,6 +46,18 @@ services:
       timeout: 3s
       retries: 12
       start_period: 40s
+
+  # Catches every mail the app sends and shows it at http://localhost:8025 — no mailbox, no
+  # provider, and no reason for the app to ever hand a sign-in code back to the browser.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: quesshi-mailpit
+    restart: unless-stopped
+    # No profile: profiles are opt-in, and a stack whose sign-in needs mail must not depend on
+    # remembering a flag. A server points the app at its own SMTP server and leaves this idle.
+    ports:
+      - "${DB_BIND:-127.0.0.1}:${MAILPIT_UI_PORT:-8025}:8025"
+      - "${DB_BIND:-127.0.0.1}:${MAILPIT_SMTP_PORT:-1025}:1025"
 
   mongo:
     # A Pi 4 is ARMv8-A and MongoDB 5+ requires ARMv8.2-A; even 4.4.30 dies with SIGILL there.

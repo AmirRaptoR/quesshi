@@ -49,10 +49,6 @@
                         <p class="muted" style="margin-top:.4rem" dir="ltr">@_email</p>
                     </div>
 
-                    @if (_devCode is not null)
-                    {
-                        <div class="notice notice--good">@L["auth.devcode"] <strong dir="ltr">@_devCode</strong></div>
-                    }
 
                     <input class="input code-input" inputmode="numeric" maxlength="6" dir="ltr" autocomplete="one-time-code"
                            @bind="_code" @bind:event="oninput" @onkeydown="OnCodeKey" />
@@ -91,7 +87,6 @@
     private string _email = "";
     private string _code = "";
     private string? _error;
-    private string? _devCode;
     private bool _busy;
     private AuthConfigDto? _config;
     private DotNetObjectReference<SignIn>? _self;
@@ -160,7 +155,6 @@
 
         if (sent is null) { _error = L["auth.badEmail"]; return; }
 
-        _devCode = sent.DevCode;
         _code = "";
         _stage = Stage.Code;
     }

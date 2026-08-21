@@ -57,13 +57,13 @@ docker compose up -d mongo redis
 dotnet run --project src/Quesshi.Server        # http://localhost:5010
 ```
 
-With no SMTP host configured the app is in **dev sign-in mode** — the one-time code is printed to the
-log *and* shown on the sign-in screen, so you can sign in as any address without a mail server. The
-app refuses to start in Production in that state unless you explicitly accept it, because it means
-anyone can sign in as anyone.
+Sign-in codes and password resets are always mailed — there is no mode in which the app hands a
+code back to the browser. Locally the stack includes **Mailpit**, which catches every message and
+shows it at <http://localhost:8025>, so no address has to be real and no mailbox is needed. A
+deployment points `Smtp:Host` at a real server instead.
 
 ```bash
-dotnet test                   # 228 tests; only the grain tests need anything running, and they self-host
+dotnet test                   # 240 tests; only the grain tests need anything running, and they self-host
 ```
 
 To play against yourself, sign in as two addresses in two browser profiles, start a duel in one and

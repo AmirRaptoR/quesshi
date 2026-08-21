@@ -15,13 +15,13 @@ public sealed class SmtpAdminMailer(SmtpOptions options, ITranslator translator,
         var body = string.Format(translator.Get(Language.En, "email.reset.body"),
             username, resetLink, PasswordResetToken.Lifetime.TotalMinutes);
 
-        using var client = new SmtpClient(options.Host, options.Port) { EnableSsl = true };
+        using var client = new SmtpClient(options.Host, options.Port) { EnableSsl = options.UseTls };
         if (!string.IsNullOrEmpty(options.User))
             client.Credentials = new NetworkCredential(options.User, options.Password);
 
         await client.SendMailAsync(new MailMessage(options.From, email, subject, body), ct);
         logger.LogInformation("Sent a password reset to {Email}", email);
 
-        return options.Echo ? resetLink : null;
+        return null;
     }
 }

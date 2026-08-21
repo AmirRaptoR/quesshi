@@ -1,4 +1,4 @@
 namespace Quesshi.Shared;
 
-/// <summary>DevCode is filled in only when the server is using the development sign-in sender.</summary>
-public sealed record OtpSentDto(bool Sent, string? DevCode);
+/// <summary>Always reports sent, whether or not the address is one anybody reads.</summary>
+public sealed record OtpSentDto(bool Sent);

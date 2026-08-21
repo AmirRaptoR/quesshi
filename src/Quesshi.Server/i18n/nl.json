@@ -1,0 +1,6 @@
+{
+  "email.otp.body": "Je inlogcode is {0}.\n\nDe code verloopt over {1} minuten. Heb je er niet om gevraagd, negeer dit bericht dan.",
+  "email.otp.subject": "Je Quesshi-inlogcode",
+  "email.reset.body": "Hallo {0},\n\nGebruik deze link om een nieuw wachtwoord in te stellen:\n{1}\n\nDe link verloopt over {2} minuten. Heb je er niet om gevraagd, negeer dit bericht dan; er verandert niets.",
+  "email.reset.subject": "Stel je Quesshi-beheerderswachtwoord opnieuw in"
+}

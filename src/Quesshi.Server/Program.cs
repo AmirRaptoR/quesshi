@@ -94,18 +94,10 @@ imageOptions.StorageRoot = Path.Combine(builder.Environment.WebRootPath ?? "wwwr
 builder.Services.AddSingleton(imageOptions);
 builder.Services.AddSingleton<IQuestionImageProvider, WikipediaImageProvider>();
 
-// No SMTP host means the sign-in code is handed back to the caller instead of mailed.
-if (string.IsNullOrWhiteSpace(smtpOptions.Host))
-{
-    builder.Services.AddSingleton<IOtpSender, ConsoleOtpSender>();
-    builder.Services.AddSingleton<IAdminMailer, ConsoleAdminMailer>();
-    authOptions.DevOtp = true;
-}
-else
-{
-    builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
-    builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
-}
+// Codes and reset links are mailed, everywhere, with no exception for development: a local catcher
+// such as Mailpit gives you the mail without a mailbox, which is what the echo used to be for.
+builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
+builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
 
 // --- application ---------------------------------------------------------------------
 builder.Services.AddSingleton<AuthService>();
@@ -154,14 +146,15 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
-// The Blazor bundle is fingerprinted at build time, so it is served from the asset manifest
-// (MapStaticAssets) rather than off disk. UseStaticFiles stays for media uploaded at runtime.
-if (authOptions.DevOtp && !app.Environment.IsDevelopment())
+if (string.IsNullOrWhiteSpace(smtpOptions.Host))
 {
     app.Logger.LogWarning(
-        "INSECURE SIGN-IN IS ENABLED: one-time codes are returned in the API response, so anybody can " +
-        "sign in as anybody. Configure Smtp:Host and clear Auth:AllowInsecureDevSignIn to close this.");
+        "No Smtp:Host is configured, so sign-in codes and password resets cannot be delivered and " +
+        "nobody can sign in. Bring up the mailpit service, or point Smtp:Host at a real server.");
 }
+
+// The Blazor bundle is fingerprinted at build time, so it is served from the asset manifest
+// (MapStaticAssets) rather than off disk. UseStaticFiles stays for media uploaded at runtime.
 
 // Nothing here is fingerprinted, so with no Cache-Control a CDN in front invents one — often
 // hours for .css, which serves a stale stylesheet after a deploy and fails the service worker's
@@ -285,15 +278,6 @@ if (args is ["approve-ai", ..])
     return 0;
 }
 
-// Handing the one-time code back in the response is fine on a laptop and catastrophic in the open,
-// so leaving it on outside Development has to be a decision rather than a drift. Checked here, not
-// at start-up, so maintenance commands above still work on a production machine.
-if (authOptions.DevOtp && !app.Environment.IsDevelopment() && !authOptions.AllowInsecureDevSignIn)
-{
-    throw new InvalidOperationException(
-        "Smtp:Host is not configured, so sign-in codes would be returned in the HTTP response and anyone " +
-        "could sign in as anyone. Configure SMTP, or set Auth:AllowInsecureDevSignIn=true to accept that.");
-}
 
 app.Run();
 return 0;

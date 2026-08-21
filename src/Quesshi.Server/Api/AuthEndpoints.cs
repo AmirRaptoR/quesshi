@@ -15,14 +15,17 @@ public static class AuthEndpoints
         var group = app.MapGroup("/api/auth");
 
         group.MapGet("/config", (AuthOptions auth) =>
-            new AuthConfigDto(!string.IsNullOrWhiteSpace(auth.GoogleClientId), auth.DevOtp, auth.GoogleClientId));
+            new AuthConfigDto(!string.IsNullOrWhiteSpace(auth.GoogleClientId), auth.GoogleClientId));
 
         group.MapPost("/otp/request", async (OtpRequestDto body, AuthService service) =>
         {
             if (!EmailAddress.LooksValid(body.Email)) return Results.BadRequest(new { error = "invalid_email" });
 
-            var devCode = await service.RequestOtpAsync(body.Email, body.Lang.ToLanguage());
-            return Results.Ok(new OtpSentDto(true, devCode));
+            await service.RequestOtpAsync(body.Email, body.Lang.ToLanguage());
+
+            // Always "sent", whether or not that address has an account: saying otherwise turns this
+            // endpoint into a way to ask which addresses are registered.
+            return Results.Ok(new OtpSentDto(true));
         });
 
         group.MapPost("/otp/verify", async (OtpVerifyDto body, AuthService service, TokenIssuer tokens) =>

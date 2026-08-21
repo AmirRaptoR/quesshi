@@ -1,3 +1,3 @@
 namespace Quesshi.Shared;
 
-public sealed record AuthConfigDto(bool GoogleEnabled, bool DevOtp, string? GoogleClientId);
+public sealed record AuthConfigDto(bool GoogleEnabled, string? GoogleClientId);

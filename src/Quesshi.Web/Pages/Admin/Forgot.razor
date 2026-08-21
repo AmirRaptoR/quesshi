@@ -27,14 +27,6 @@
                 else
                 {
                     <div class="notice notice--good">@L["admin.auth.sentIfExists"]</div>
-
-                    @if (!string.IsNullOrWhiteSpace(_sent.DevLink))
-                    {
-                        <div class="notice">
-                            @L["admin.auth.devLink"]
-                            <a href="@_sent.DevLink" dir="ltr" style="word-break:break-all">@_sent.DevLink</a>
-                        </div>
-                    }
                 }
 
                 <a class="btn btn--ghost btn--block btn--sm" href="/admin/login">@L["admin.auth.backToLogin"]</a>
@@ -56,7 +48,7 @@
     private async Task SendAsync()
     {
         _busy = true;
-        _sent = await Api.ForgotAsync(_handle.Trim()) ?? new AdminForgotSentDto(true, null);
+        _sent = await Api.ForgotAsync(_handle.Trim()) ?? new AdminForgotSentDto(true);
         _busy = false;
     }
 }
