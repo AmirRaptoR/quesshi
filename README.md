@@ -213,7 +213,9 @@ the frames into WebM. Nothing here depends on a stock-media licence.
 
 ## Configuration
 
-Everything is optional; the app runs with none of it.
+Almost everything is optional; a development machine runs with none of it. The exception is mail:
+anything that is not `Development` must either configure `Smtp:Host` or ask for
+`Smtp:LogInsteadOfSending`, and refuses to start with neither.
 
 | Setting                       | What it does                                                                             |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
