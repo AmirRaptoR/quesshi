@@ -57,10 +57,20 @@ docker compose up -d mongo redis
 dotnet run --project src/Quesshi.Server        # http://localhost:5010
 ```
 
-Sign-in codes and password resets are always mailed — there is no mode in which the app hands a
-code back to the browser. Locally the stack includes **Mailpit**, which catches every message and
-shows it at <http://localhost:8025>, so no address has to be real and no mailbox is needed. A
-deployment points `Smtp:Host` at a real server instead.
+There is no mode in which the app hands a sign-in code back to the browser. Locally the stack
+includes **Mailpit**, which catches every message and shows it at <http://localhost:8025>, so no
+address has to be real and no mailbox is needed. A deployment points `Smtp:Host` at a real server
+instead.
+
+Set `SMTP_HOST=` empty and a development machine has no mail at all: the code and any reset link are
+written to the app's log, where `docker compose logs -f app` finds them. The code still never travels
+back to whoever asked for it, because an endpoint that returns the code it has just issued is a way
+to sign in as anyone.
+
+Anywhere that is not `Development`, an empty host is treated as a mistake and the app refuses to
+start, because a server that has quietly lost its `Smtp:Host` and one that meant to log its codes
+look identical from the inside and only one of them is fine. A deployment that really does want the
+log says so with `Smtp:LogInsteadOfSending`, and then lives with credentials in its log.
 
 Messages are HTML in the app's own palette with a plain-text alternative alongside, built for mail
 clients rather than browsers: tables, inline styles, and nothing loaded from anywhere, because
@@ -203,11 +213,14 @@ the frames into WebM. Nothing here depends on a stock-media licence.
 
 ## Configuration
 
-Everything is optional; the app runs with none of it.
+Almost everything is optional; a development machine runs with none of it. The exception is mail:
+anything that is not `Development` must either configure `Smtp:Host` or ask for
+`Smtp:LogInsteadOfSending`, and refuses to start with neither.
 
 | Setting                       | What it does                                                                             |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `Smtp:Host`                   | Mails the sign-in code instead of showing it. **Set this before going live.**             |
+| `Smtp:Host`                   | Where mail goes. Empty is development-only. **Set this before going live.**               |
+| `Smtp:LogInsteadOfSending`    | Log the code rather than send it, outside Development. Puts credentials in the log.       |
 | `Jwt:Key`                     | Signing key for player tokens. Random per start otherwise, so restarts sign everyone out. |
 | `AdminAuth:Key`               | Signing key for admin tokens. **Separate from `Jwt:Key` on purpose.**                     |
 | `AdminAuth:SessionHours`      | How long an admin session lasts. Default 8.                                               |
