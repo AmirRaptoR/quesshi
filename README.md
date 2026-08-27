@@ -57,10 +57,15 @@ docker compose up -d mongo redis
 dotnet run --project src/Quesshi.Server        # http://localhost:5010
 ```
 
-Sign-in codes and password resets are always mailed — there is no mode in which the app hands a
-code back to the browser. Locally the stack includes **Mailpit**, which catches every message and
-shows it at <http://localhost:8025>, so no address has to be real and no mailbox is needed. A
-deployment points `Smtp:Host` at a real server instead.
+There is no mode in which the app hands a sign-in code back to the browser. Locally the stack
+includes **Mailpit**, which catches every message and shows it at <http://localhost:8025>, so no
+address has to be real and no mailbox is needed. A deployment points `Smtp:Host` at a real server
+instead.
+
+Set `SMTP_HOST=` empty and there is no mail at all: the code and any reset link are written to the
+app's log, where `docker compose logs -f app` finds them. That is for a development machine that
+wants nothing in the loop — the code still never travels back to whoever asked for it, because an
+endpoint that returns the code it has just issued is a way to sign in as anyone.
 
 Messages are HTML in the app's own palette with a plain-text alternative alongside, built for mail
 clients rather than browsers: tables, inline styles, and nothing loaded from anywhere, because
@@ -207,7 +212,7 @@ Everything is optional; the app runs with none of it.
 
 | Setting                       | What it does                                                                             |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `Smtp:Host`                   | Mails the sign-in code instead of showing it. **Set this before going live.**             |
+| `Smtp:Host`                   | Where mail goes. Empty logs the sign-in code instead of sending it. **Set this before going live.** |
 | `Jwt:Key`                     | Signing key for player tokens. Random per start otherwise, so restarts sign everyone out. |
 | `AdminAuth:Key`               | Signing key for admin tokens. **Separate from `Jwt:Key` on purpose.**                     |
 | `AdminAuth:SessionHours`      | How long an admin session lasts. Default 8.                                               |

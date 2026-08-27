@@ -94,10 +94,21 @@ imageOptions.StorageRoot = Path.Combine(builder.Environment.WebRootPath ?? "wwwr
 builder.Services.AddSingleton(imageOptions);
 builder.Services.AddSingleton<IQuestionImageProvider, WikipediaImageProvider>();
 
-// Codes and reset links are mailed, everywhere, with no exception for development: a local catcher
-// such as Mailpit gives you the mail without a mailbox, which is what the echo used to be for.
-builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
-builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
+// Codes and reset links are mailed wherever an SMTP host is configured; a local catcher such as
+// Mailpit gives you the mail without a mailbox. With no host at all — a development machine that
+// wants no mail in the loop — they go to the log instead, which is the only other place a developer
+// can read them. Neither sender hands the value back to the caller: that is what the echo was, and
+// an endpoint returning the code it has just issued signs in as anyone who has an address.
+if (string.IsNullOrWhiteSpace(smtpOptions.Host))
+{
+    builder.Services.AddSingleton<IOtpSender, LoggingOtpSender>();
+    builder.Services.AddSingleton<IAdminMailer, LoggingAdminMailer>();
+}
+else
+{
+    builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
+    builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
+}
 
 // --- application ---------------------------------------------------------------------
 builder.Services.AddSingleton<AuthService>();
@@ -149,8 +160,9 @@ var app = builder.Build();
 if (string.IsNullOrWhiteSpace(smtpOptions.Host))
 {
     app.Logger.LogWarning(
-        "No Smtp:Host is configured, so sign-in codes and password resets cannot be delivered and " +
-        "nobody can sign in. Bring up the mailpit service, or point Smtp:Host at a real server.");
+        "No Smtp:Host is configured, so sign-in codes and password resets are written to this log " +
+        "rather than sent. That is a development machine; a deployment points Smtp:Host at a real " +
+        "server, or brings up the mailpit service to catch the mail locally.");
 }
 
 // The Blazor bundle is fingerprinted at build time, so it is served from the asset manifest
