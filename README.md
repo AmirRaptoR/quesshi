@@ -62,10 +62,15 @@ includes **Mailpit**, which catches every message and shows it at <http://localh
 address has to be real and no mailbox is needed. A deployment points `Smtp:Host` at a real server
 instead.
 
-Set `SMTP_HOST=` empty and there is no mail at all: the code and any reset link are written to the
-app's log, where `docker compose logs -f app` finds them. That is for a development machine that
-wants nothing in the loop — the code still never travels back to whoever asked for it, because an
-endpoint that returns the code it has just issued is a way to sign in as anyone.
+Set `SMTP_HOST=` empty and a development machine has no mail at all: the code and any reset link are
+written to the app's log, where `docker compose logs -f app` finds them. The code still never travels
+back to whoever asked for it, because an endpoint that returns the code it has just issued is a way
+to sign in as anyone.
+
+Anywhere that is not `Development`, an empty host is treated as a mistake and the app refuses to
+start, because a server that has quietly lost its `Smtp:Host` and one that meant to log its codes
+look identical from the inside and only one of them is fine. A deployment that really does want the
+log says so with `Smtp:LogInsteadOfSending`, and then lives with credentials in its log.
 
 Messages are HTML in the app's own palette with a plain-text alternative alongside, built for mail
 clients rather than browsers: tables, inline styles, and nothing loaded from anywhere, because
@@ -212,7 +217,8 @@ Everything is optional; the app runs with none of it.
 
 | Setting                       | What it does                                                                             |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `Smtp:Host`                   | Where mail goes. Empty logs the sign-in code instead of sending it. **Set this before going live.** |
+| `Smtp:Host`                   | Where mail goes. Empty is development-only. **Set this before going live.**               |
+| `Smtp:LogInsteadOfSending`    | Log the code rather than send it, outside Development. Puts credentials in the log.       |
 | `Jwt:Key`                     | Signing key for player tokens. Random per start otherwise, so restarts sign everyone out. |
 | `AdminAuth:Key`               | Signing key for admin tokens. **Separate from `Jwt:Key` on purpose.**                     |
 | `AdminAuth:SessionHours`      | How long an admin session lasts. Default 8.                                               |

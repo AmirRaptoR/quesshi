@@ -95,19 +95,31 @@ builder.Services.AddSingleton(imageOptions);
 builder.Services.AddSingleton<IQuestionImageProvider, WikipediaImageProvider>();
 
 // Codes and reset links are mailed wherever an SMTP host is configured; a local catcher such as
-// Mailpit gives you the mail without a mailbox. With no host at all — a development machine that
-// wants no mail in the loop — they go to the log instead, which is the only other place a developer
-// can read them. Neither sender hands the value back to the caller: that is what the echo was, and
-// an endpoint returning the code it has just issued signs in as anyone who has an address.
-if (string.IsNullOrWhiteSpace(smtpOptions.Host))
+// Mailpit gives you the mail without a mailbox. A machine that wants no mail in the loop can have
+// them written to the log instead, but it has to say so — Smtp:LogInsteadOfSending, or simply being
+// a development machine. A server that has merely lost its Smtp:Host looks identical from here, and
+// the difference between the two is a log full of credentials, so the third case refuses to start.
+//
+// Neither sender hands the value back to the caller: that is what the echo was, and an endpoint
+// returning the code it has just issued signs in as anyone who has an address.
+switch (smtpOptions.Delivery(builder.Environment.IsDevelopment()))
 {
-    builder.Services.AddSingleton<IOtpSender, LoggingOtpSender>();
-    builder.Services.AddSingleton<IAdminMailer, LoggingAdminMailer>();
-}
-else
-{
-    builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
-    builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
+    case MailDelivery.Smtp:
+        builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
+        builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
+        break;
+
+    case MailDelivery.Log:
+        builder.Services.AddSingleton<IOtpSender, LoggingOtpSender>();
+        builder.Services.AddSingleton<IAdminMailer, LoggingAdminMailer>();
+        break;
+
+    default:
+        throw new InvalidOperationException(
+            $"No Smtp:Host is configured and this is not a development machine, so a sign-in code " +
+            $"has nowhere to go. Set Smtp:Host to deliver mail, or Smtp:LogInsteadOfSending to true " +
+            $"to write codes to the log instead — which is a development convenience and puts live " +
+            $"credentials in {builder.Environment.EnvironmentName} logs.");
 }
 
 // --- application ---------------------------------------------------------------------
@@ -157,12 +169,12 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
-if (string.IsNullOrWhiteSpace(smtpOptions.Host))
+if (smtpOptions.Delivery(app.Environment.IsDevelopment()) == MailDelivery.Log)
 {
     app.Logger.LogWarning(
         "No Smtp:Host is configured, so sign-in codes and password resets are written to this log " +
-        "rather than sent. That is a development machine; a deployment points Smtp:Host at a real " +
-        "server, or brings up the mailpit service to catch the mail locally.");
+        "rather than sent. Anyone who can read these logs can sign in as anyone. A deployment " +
+        "points Smtp:Host at a real server, or brings up the mailpit service to catch mail locally.");
 }
 
 // The Blazor bundle is fingerprinted at build time, so it is served from the asset manifest
