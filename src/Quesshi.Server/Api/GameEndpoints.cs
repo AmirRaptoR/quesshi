@@ -187,18 +187,9 @@ public static class GameEndpoints
             return Results.Ok(new { reported = true, alreadyReported = !accepted });
         });
 
-        api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players, IGrainFactory grains) =>
-        {
-            var meId = ctx.User.PlayerId()!;
-            var rows = await archive.ForPlayerAsync(meId, 40);
-
-            var summaries = new List<MatchSummaryDto>();
-            foreach (var row in rows)
-                if (await SummaryAsync(grains.GetGrain<IMatchGrain>(row.Id), meId, players) is { } summary)
-                    summaries.Add(summary);
-
-            return summaries;
-        });
+        api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
+            IGrainFactory grains, bool? active, int? take) =>
+            await ListMatchesAsync(ctx.User.PlayerId()!, active ?? false, take, archive, players, grains));
 
         api.MapGet("/matches/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
@@ -253,6 +244,47 @@ public static class GameEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         }).WithMetadata(new AllowGuest());
+    }
+
+    /// <summary>How many archived matches the list will ever look at.</summary>
+    private const int MatchListLimit = 40;
+
+    internal static async Task<List<MatchSummaryDto>> ListMatchesAsync(string meId, bool activeOnly, int? take,
+        IMatchArchive archive, IPlayerRepository players, IGrainFactory grains)
+    {
+        var rows = await archive.ForPlayerAsync(meId, MatchListLimit);
+        if (activeOnly)
+            rows = [.. rows.Where(r => r.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
+
+        // Asked all at once, so the wait is the slowest single activation rather than the sum of
+        // forty. Redaction still happens inside each grain, per player, exactly as it did before.
+        var views = await Task.WhenAll(rows.Select(r => grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId)));
+        var live = views.OfType<MatchView>().ToList();
+
+        // The row was only a way of finding the duel. A grain is written before it is indexed, so a
+        // duel that has just been resolved can still be filed as in progress; where the two
+        // disagree the grain is the one to believe, and the archive filter above merely saves
+        // activating grains that were already finished long ago.
+        if (activeOnly)
+            live = [.. live.Where(v => (MatchState)v.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
+
+        // Who to name is read from the views, not from the archive rows that found them. A grain
+        // persists itself before it is mirrored into Mongo, so a duel joined a moment ago has an
+        // opponent the row does not know about yet — and taking the ids from the row would render
+        // that opponent as an em dash. One query either way.
+        var names = (await players.GetManyAsync([.. live
+                .SelectMany(v => new[] { v.ChallengerId, v.OpponentId })
+                .OfType<string>().Distinct()]))
+            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
+
+        var summaries = live.Select(v => v.ToSummary(meId, id => names.TryGetValue(id, out var found) ? found : ("—", id)));
+
+        // A caller that says how many it will show gets that many. Playable first and newest after,
+        // which is the order both pages already put them in, so cutting the list here cannot hide a
+        // duel that is waiting on this player behind one that is not.
+        return take is { } n
+            ? [.. summaries.OrderByDescending(s => s.CanPlay).ThenByDescending(s => s.CreatedAt).Take(n)]
+            : [.. summaries];
     }
 
     private static bool IsIn(MatchView v, string playerId) => v.ChallengerId == playerId || v.OpponentId == playerId;

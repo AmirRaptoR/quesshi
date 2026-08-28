@@ -160,8 +160,11 @@
         _lang = State.Lang;
         _categories = await Api.CategoriesAsync() ?? [];
 
-        var all = await Api.MatchesAsync() ?? [];
-        _active = [.. all.Where(m => m.State is "awaitingopponent" or "inprogress").OrderByDescending(m => m.CanPlay).Take(8)];
+        // Only the duels still in play: this used to fetch the last forty and throw thirty-two away,
+        // which cost a grain activation each. The eight shown are still chosen here, so a duel you
+        // can play still outranks one you are waiting on.
+        var active = await Api.MatchesAsync(activeOnly: true, take: 8) ?? [];
+        _active = [.. active.OrderByDescending(m => m.CanPlay)];
     }
 
     /// <summary>Whether this category holds anything in the language the duel will be played in.</summary>

@@ -28,4 +28,9 @@
     <Content Update="i18n\**;Seed\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The match-list handler is internal; its test needs to call it without widening the API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quesshi.Server.Tests" />
+  </ItemGroup>
+
 </Project>
