@@ -6,6 +6,9 @@ namespace Quesshi.Application.Tests;
 public sealed class InMemoryPlayers : IPlayerRepository
 {
     public readonly List<Player> Items = [];
+    public Task<IReadOnlyList<Player>> GetManyAsync(IReadOnlyList<string> ids, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<Player>>([.. Items.Where(p => ids.Contains(p.Id))]);
+
     public Task<Player?> GetAsync(string id, CancellationToken ct = default) => Task.FromResult(Items.FirstOrDefault(p => p.Id == id));
     public Task<Player?> GetByEmailAsync(string email, CancellationToken ct = default)
         => Task.FromResult(Items.FirstOrDefault(p => p.Email == email.Trim().ToLowerInvariant()));

@@ -187,18 +187,9 @@ public static class GameEndpoints
             return Results.Ok(new { reported = true, alreadyReported = !accepted });
         });
 
-        api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players, IGrainFactory grains) =>
-        {
-            var meId = ctx.User.PlayerId()!;
-            var rows = await archive.ForPlayerAsync(meId, 40);
-
-            var summaries = new List<MatchSummaryDto>();
-            foreach (var row in rows)
-                if (await SummaryAsync(grains.GetGrain<IMatchGrain>(row.Id), meId, players) is { } summary)
-                    summaries.Add(summary);
-
-            return summaries;
-        });
+        api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
+            IGrainFactory grains, bool? active) =>
+            await ListMatchesAsync(ctx.User.PlayerId()!, active ?? false, archive, players, grains));
 
         api.MapGet("/matches/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
@@ -253,6 +244,31 @@ public static class GameEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         }).WithMetadata(new AllowGuest());
+    }
+
+    /// <summary>How many archived matches the list will ever look at.</summary>
+    private const int MatchListLimit = 40;
+
+    internal static async Task<List<MatchSummaryDto>> ListMatchesAsync(string meId, bool activeOnly,
+        IMatchArchive archive, IPlayerRepository players, IGrainFactory grains)
+    {
+        var rows = await archive.ForPlayerAsync(meId, MatchListLimit);
+        if (activeOnly)
+            rows = [.. rows.Where(r => r.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
+
+        // The archive already names both sides of every duel, so every name the page shows can be
+        // fetched in one query, before a single grain is touched.
+        var names = (await players.GetManyAsync([.. rows
+                .SelectMany(r => new[] { r.ChallengerId, r.OpponentId })
+                .OfType<string>().Distinct()]))
+            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
+
+        // Asked all at once, so the wait is the slowest single activation rather than the sum of
+        // forty. Redaction still happens inside each grain, per player, exactly as it did before.
+        var views = await Task.WhenAll(rows.Select(r => grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId)));
+
+        return [.. views.OfType<MatchView>()
+            .Select(v => v.ToSummary(meId, id => names.TryGetValue(id, out var found) ? found : ("—", id)))];
     }
 
     private static bool IsIn(MatchView v, string playerId) => v.ChallengerId == playerId || v.OpponentId == playerId;

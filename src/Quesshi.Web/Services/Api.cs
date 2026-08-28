@@ -33,7 +33,9 @@ public sealed class Api(HttpClient http)
         int? questions = null, List<int>? levels = null)
         => PostAsync<MatchSummaryDto>("api/matches", new { random, lang, categories, questions, levels });
     public Task<MatchSummaryDto?> JoinAsync(string code) => PostAsync<MatchSummaryDto>($"api/matches/join/{Uri.EscapeDataString(Code(code))}", new { });
-    public Task<List<MatchSummaryDto>?> MatchesAsync() => GetAsync<List<MatchSummaryDto>>("api/matches");
+    /// <summary>The duels page wants them all; the home page wants only the ones still being played.</summary>
+    public Task<List<MatchSummaryDto>?> MatchesAsync(bool activeOnly = false)
+        => GetAsync<List<MatchSummaryDto>>(activeOnly ? "api/matches?active=true" : "api/matches");
     public Task<MatchDetailDto?> MatchAsync(string id) => GetAsync<MatchDetailDto>($"api/matches/{id}");
     public Task<AnswerResultDto?> AnswerAsync(string id, int slot, int choice) => PostAsync<AnswerResultDto>($"api/matches/{id}/answer", new { slot, choiceIndex = choice });
 
