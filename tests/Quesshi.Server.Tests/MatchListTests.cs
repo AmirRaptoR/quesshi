@@ -161,6 +161,24 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         Assert.Contains(active, m => m.Id == "act-m2");
     }
 
+    [Fact]
+    public async Task An_opponent_the_archive_has_not_caught_up_with_is_still_named()
+    {
+        await SeedAsync(1, resolved: 0, "lag");
+        var me = MeOf("lag");
+
+        // A grain persists itself before it is mirrored into Mongo, so this is the state the list
+        // can genuinely observe between the two writes: the duel has an opponent, the row does not.
+        var row = Shared.Archive.Items.Single(m => m.Id == "lag-m0");
+        await Shared.Archive.SaveAsync(row with { OpponentId = null, OpponentScore = 0, State = MatchState.AwaitingOpponent });
+
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, Shared.Archive, Shared.Players, Grains);
+
+        var mine = list.Single(m => m.Id == "lag-m0");
+        Assert.NotNull(mine.Opponent);
+        Assert.Equal("Sara", mine.Opponent!.DisplayName);
+    }
+
     /// <summary>
     /// The number the issue asks for. Each fake store call sleeps a millisecond, standing in for a
     /// round trip, so the comparison is between one shape and the other rather than between two
@@ -175,26 +193,39 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         Shared.Players.DelayMs = 1;
         try
         {
-            await SequentialListAsync(me);                                                     // warm
-            var before = Stopwatch.StartNew();
-            await SequentialListAsync(me);
-            before.Stop();
+            var before = await MedianMillisecondsAsync(() => SequentialListAsync(me));
+            var after = await MedianMillisecondsAsync(() =>
+                GameEndpoints.ListMatchesAsync(me, false, Shared.Archive, Shared.Players, Grains));
 
-            await GameEndpoints.ListMatchesAsync(me, false, Shared.Archive, Shared.Players, Grains);   // warm
-            var after = Stopwatch.StartNew();
-            await GameEndpoints.ListMatchesAsync(me, false, Shared.Archive, Shared.Players, Grains);
-            after.Stop();
-
-            var ratio = (double)before.ElapsedMilliseconds / Math.Max(after.ElapsedMilliseconds, 1);
-            output.WriteLine($"40 duels, 1ms per store round trip: sequential {before.ElapsedMilliseconds}ms, "
-                + $"batched {after.ElapsedMilliseconds}ms, {ratio:F1}x");
+            var ratio = before / Math.Max(after, 1);
+            output.WriteLine($"40 duels, 1ms per store round trip: sequential {before}ms, "
+                + $"batched {after}ms, {ratio:F1}x");
             Assert.True(ratio >= 5,
-                $"sequential {before.ElapsedMilliseconds}ms vs batched {after.ElapsedMilliseconds}ms = {ratio:F1}x, wanted 5x");
+                $"sequential {before}ms vs batched {after}ms = {ratio:F1}x, wanted 5x");
         }
         finally
         {
             Shared.Archive.DelayMs = 0;
             Shared.Players.DelayMs = 0;
         }
+    }
+
+    /// <summary>
+    /// Runs the thing four times and takes the median of the last three. A shared test cluster and a
+    /// loaded machine both make single measurements jumpy; the shape being measured does not change.
+    /// </summary>
+    private static async Task<double> MedianMillisecondsAsync(Func<Task> run)
+    {
+        await run();                       // warm
+        var samples = new List<long>();
+        for (var i = 0; i < 3; i++)
+        {
+            var watch = Stopwatch.StartNew();
+            await run();
+            watch.Stop();
+            samples.Add(watch.ElapsedMilliseconds);
+        }
+        samples.Sort();
+        return samples[1];
     }
 }

@@ -256,19 +256,21 @@ public static class GameEndpoints
         if (activeOnly)
             rows = [.. rows.Where(r => r.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
 
-        // The archive already names both sides of every duel, so every name the page shows can be
-        // fetched in one query, before a single grain is touched.
-        var names = (await players.GetManyAsync([.. rows
-                .SelectMany(r => new[] { r.ChallengerId, r.OpponentId })
-                .OfType<string>().Distinct()]))
-            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
-
         // Asked all at once, so the wait is the slowest single activation rather than the sum of
         // forty. Redaction still happens inside each grain, per player, exactly as it did before.
         var views = await Task.WhenAll(rows.Select(r => grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId)));
+        var live = views.OfType<MatchView>().ToList();
 
-        return [.. views.OfType<MatchView>()
-            .Select(v => v.ToSummary(meId, id => names.TryGetValue(id, out var found) ? found : ("—", id)))];
+        // Who to name is read from the views, not from the archive rows that found them. A grain
+        // persists itself before it is mirrored into Mongo, so a duel joined a moment ago has an
+        // opponent the row does not know about yet — and taking the ids from the row would render
+        // that opponent as an em dash. One query either way.
+        var names = (await players.GetManyAsync([.. live
+                .SelectMany(v => new[] { v.ChallengerId, v.OpponentId })
+                .OfType<string>().Distinct()]))
+            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
+
+        return [.. live.Select(v => v.ToSummary(meId, id => names.TryGetValue(id, out var found) ? found : ("—", id)))];
     }
 
     private static bool IsIn(MatchView v, string playerId) => v.ChallengerId == playerId || v.OpponentId == playerId;
