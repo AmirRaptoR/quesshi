@@ -96,7 +96,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         Shared.Archive.ResetCounters();
         Shared.Players.ResetCounters();
 
-        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, Shared.Archive, Shared.Players, Grains);
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
         Assert.True(list.Count >= 26, $"expected at least 26 duels, got {list.Count}");
         Assert.Equal(1, Shared.Archive.Queries);
@@ -110,7 +110,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         var me = MeOf("eq");
 
         var expected = await SequentialListAsync(me);
-        var actual = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, Shared.Archive, Shared.Players, Grains);
+        var actual = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
         Assert.Equal(expected.Count, actual.Count);
         Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
@@ -125,7 +125,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         var served = await grain.ServeNextAsync(me);
         await grain.AnswerAsync(me, served!.Slot, 0);
 
-        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, Shared.Archive, Shared.Players, Grains);
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
         var mine = list.Single(m => m.Id == "live-m0");
         Assert.Equal(1, mine.Me.Answered);
@@ -141,7 +141,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         var grain = Grains.GetGrain<IMatchGrain>("hide-m0");
         await PlayAsync(grain, RivalOf("hide"), correctCount: 6);
 
-        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, Shared.Archive, Shared.Players, Grains);
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
         var mine = list.Single(m => m.Id == "hide-m0");
         Assert.False(mine.CanReveal);
@@ -154,7 +154,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         await SeedAsync(4, resolved: 2, "act");
         var me = MeOf("act");
 
-        var active = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, Shared.Archive, Shared.Players, Grains);
+        var active = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, take: null, Shared.Archive, Shared.Players, Grains);
 
         Assert.All(active, m => Assert.True(m.State is "awaitingopponent" or "inprogress", $"got state {m.State}"));
         Assert.DoesNotContain(active, m => m.Id == "act-m0");
@@ -172,11 +172,48 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         var row = Shared.Archive.Items.Single(m => m.Id == "lag-m0");
         await Shared.Archive.SaveAsync(row with { OpponentId = null, OpponentScore = 0, State = MatchState.AwaitingOpponent });
 
-        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, Shared.Archive, Shared.Players, Grains);
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
         var mine = list.Single(m => m.Id == "lag-m0");
         Assert.NotNull(mine.Opponent);
         Assert.Equal("Sara", mine.Opponent!.DisplayName);
+    }
+
+    [Fact]
+    public async Task A_duel_resolved_since_it_was_indexed_is_not_offered_as_active()
+    {
+        await SeedAsync(1, resolved: 1, "stale");
+        var me = MeOf("stale");
+
+        // The other half of the same race: the grain is resolved, the row has not caught up.
+        var row = Shared.Archive.Items.Single(m => m.Id == "stale-m0");
+        await Shared.Archive.SaveAsync(row with { State = MatchState.InProgress });
+
+        var active = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, take: null, Shared.Archive, Shared.Players, Grains);
+
+        Assert.DoesNotContain(active, m => m.Id == "stale-m0");
+    }
+
+    [Fact]
+    public async Task Asking_for_eight_gets_eight_with_the_playable_ones_first()
+    {
+        await SeedAsync(12, resolved: 0, "take");
+        var me = MeOf("take");
+
+        // Four duels where this player has already had their turn: still in progress, but waiting on
+        // the other side rather than on them. Eight remain that they can actually pick up.
+        for (var i = 0; i < 4; i++)
+            await PlayAsync(Grains.GetGrain<IMatchGrain>($"take-m{i}"), me, correctCount: 3);
+
+        var all = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, take: null, Shared.Archive, Shared.Players, Grains);
+        Assert.Equal(12, all.Count);
+        Assert.Equal(8, all.Count(m => m.CanPlay));
+
+        var eight = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, take: 8, Shared.Archive, Shared.Players, Grains);
+
+        Assert.Equal(8, eight.Count);
+        // The cut keeps the eight this player can play, not the eight that happen to be newest.
+        Assert.All(eight, m => Assert.True(m.CanPlay, $"{m.Id} cannot be played but survived the cut"));
     }
 
     /// <summary>
@@ -195,7 +232,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         {
             var before = await MedianMillisecondsAsync(() => SequentialListAsync(me));
             var after = await MedianMillisecondsAsync(() =>
-                GameEndpoints.ListMatchesAsync(me, false, Shared.Archive, Shared.Players, Grains));
+                GameEndpoints.ListMatchesAsync(me, false, null, Shared.Archive, Shared.Players, Grains));
 
             var ratio = before / Math.Max(after, 1);
             output.WriteLine($"40 duels, 1ms per store round trip: sequential {before}ms, "
