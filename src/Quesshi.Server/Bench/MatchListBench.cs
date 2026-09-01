@@ -330,8 +330,12 @@ internal static class MatchListBench
         {
             var matchId = MatchId(prefix, i);
             var found = false;
-            await foreach (var _ in server.KeysAsync(db.Database, pattern: $"*{matchId}*", pageSize: 50))
+            // The wildcard pattern only narrows candidates: unpadded ids mean "bench-heavy-m1" is a
+            // substring of "bench-heavy-m10".."bench-heavy-m19" too, so every candidate key still
+            // needs an exact-id check before it counts as this match's state.
+            await foreach (var key in server.KeysAsync(db.Database, pattern: $"*{matchId}*", pageSize: 50))
             {
+                if (!ContainsExactId((string)key!, matchId)) continue;
                 found = true;
                 break;
             }
@@ -342,6 +346,30 @@ internal static class MatchListBench
             throw new InvalidOperationException($"[bench] {missing.Count} of {count} seeded \"{prefix}\" matches " +
                 $"have no grain state in Redis (database {db.Database}): {string.Join(", ", missing.Take(5))}" +
                 $"{(missing.Count > 5 ? ", ..." : "")}. Run \"bench-matches seed\" again.");
+    }
+
+    /// <summary>
+    /// True if <paramref name="id"/> occurs in <paramref name="key"/> as a whole token — not merely
+    /// as a substring of a longer id. Guards against exactly the collision above: an unpadded id like
+    /// "bench-heavy-m1" is a textual substring of "bench-heavy-m10", "bench-heavy-m11", etc., so a
+    /// bare <c>Contains</c> would report a missing match as present whenever a numerically-adjacent
+    /// one exists.
+    /// </summary>
+    internal static bool ContainsExactId(string key, string id)
+    {
+        var from = 0;
+        while (true)
+        {
+            var idx = key.IndexOf(id, from, StringComparison.Ordinal);
+            if (idx < 0) return false;
+
+            var before = idx == 0 || !char.IsLetterOrDigit(key[idx - 1]);
+            var afterPos = idx + id.Length;
+            var after = afterPos >= key.Length || !char.IsLetterOrDigit(key[afterPos]);
+            if (before && after) return true;
+
+            from = idx + 1;
+        }
     }
 
     /// <summary>

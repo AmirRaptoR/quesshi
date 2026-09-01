@@ -248,9 +248,12 @@ export Mongo__Database=quesshi_bench                                # never the 
 export ConnectionStrings__Redis=localhost:6379,defaultDatabase=1    # a dedicated Redis database
 export Orleans__ClusterId=quesshi-bench                             # never the default "quesshi"
 export ASPNETCORE_URLS=http://127.0.0.1:0                           # ephemeral port; not served over HTTP
+export ASPNETCORE_ENVIRONMENT=Development                           # --no-launch-profile below skips launchSettings.json, which normally sets this
 
-dotnet run --project src/Quesshi.Server -- bench-matches seed       # writes the accounts, then exits
-dotnet run --project src/Quesshi.Server -- bench-matches measure    # a fresh process, so grains start cold
+# --no-launch-profile: launchSettings.json's applicationUrl otherwise overrides ASPNETCORE_URLS
+# above and binds :5010, which fails outright if the real app is already running on this machine.
+dotnet run --project src/Quesshi.Server --no-launch-profile -- bench-matches seed       # writes the accounts, then exits
+dotnet run --project src/Quesshi.Server --no-launch-profile -- bench-matches measure    # a fresh process, so grains start cold
 ```
 
 Both commands refuse to run against the default database name or Orleans cluster id, because seeding

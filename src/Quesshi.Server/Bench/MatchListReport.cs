@@ -110,9 +110,13 @@ internal static class MatchListReport
         sb.AppendLine("export ConnectionStrings__Redis=localhost:6379,defaultDatabase=1   # a dedicated index");
         sb.AppendLine("export Orleans__ClusterId=quesshi-bench        # never the default \"quesshi\"");
         sb.AppendLine("export ASPNETCORE_URLS=http://127.0.0.1:0      # ephemeral port; HTTP is not used");
+        sb.AppendLine("export ASPNETCORE_ENVIRONMENT=Development      # --no-launch-profile below skips launchSettings.json, which normally sets this");
         sb.AppendLine();
-        sb.AppendLine("dotnet run --project src/Quesshi.Server -- bench-matches seed      # writes the accounts, exits");
-        sb.AppendLine("dotnet run --project src/Quesshi.Server -- bench-matches measure   # a fresh process; times it");
+        sb.AppendLine("# --no-launch-profile: otherwise launchSettings.json's applicationUrl overrides");
+        sb.AppendLine("# ASPNETCORE_URLS above and binds :5010, which fails outright if the real app is");
+        sb.AppendLine("# already running on this machine.");
+        sb.AppendLine("dotnet run --project src/Quesshi.Server --no-launch-profile -- bench-matches seed      # writes the accounts, exits");
+        sb.AppendLine("dotnet run --project src/Quesshi.Server --no-launch-profile -- bench-matches measure   # a fresh process; times it");
         sb.AppendLine("```");
         sb.AppendLine();
         sb.AppendLine("### Isolation");
