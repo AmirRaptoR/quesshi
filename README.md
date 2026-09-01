@@ -234,6 +234,32 @@ anything that is not `Development` must either configure `Smtp:Host` or ask for
 Put local values in `appsettings.Development.json` or user secrets. **Do not commit keys** —
 `appsettings.Development.json` and `appsettings.Local.json` are gitignored for exactly that reason.
 
+## Measuring `GET /api/matches`
+
+`docs/match-list-measurement.md` records what the match list actually costs a player with a long
+history versus a fresh account, against real Mongo and Redis — not the fake stores `dotnet test`
+uses. Re-run it after a change that touches `GameEndpoints.ListMatchesAsync`, `MongoMatchArchive` or
+`MatchGrain`:
+
+```bash
+docker compose up -d mongo redis
+
+export Mongo__Database=quesshi_bench                                # never the default "quesshi"
+export ConnectionStrings__Redis=localhost:6379,defaultDatabase=1    # a dedicated Redis database
+export Orleans__ClusterId=quesshi-bench                             # never the default "quesshi"
+export ASPNETCORE_URLS=http://127.0.0.1:0                           # ephemeral port; not served over HTTP
+export ASPNETCORE_ENVIRONMENT=Development                           # --no-launch-profile below skips launchSettings.json, which normally sets this
+
+# --no-launch-profile: launchSettings.json's applicationUrl otherwise overrides ASPNETCORE_URLS
+# above and binds :5010, which fails outright if the real app is already running on this machine.
+dotnet run --project src/Quesshi.Server --no-launch-profile -- bench-matches seed       # writes the accounts, then exits
+dotnet run --project src/Quesshi.Server --no-launch-profile -- bench-matches measure    # a fresh process, so grains start cold
+```
+
+Both commands refuse to run against the default database name or Orleans cluster id, because seeding
+writes real player, question and match documents — **never point this at a database anyone is
+using.** See `docs/match-list-measurement.md` for what each figure means and how it was attributed.
+
 ## Deployment
 
 The same `compose.yaml`, with a different `.env`. `deploy/deploy.sh` runs the tests, rsyncs the

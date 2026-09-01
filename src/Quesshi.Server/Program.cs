@@ -302,10 +302,36 @@ if (args is ["approve-ai", ..])
     return 0;
 }
 
+// `dotnet run --project src/Quesshi.Server -- bench-matches seed|measure`
+// The harness for issue #4: what GET /api/matches costs against real Mongo and Redis. See
+// docs/match-list-measurement.md. Unlike add-admin/approve-ai above, this needs the silo running
+// (it calls grains), so it starts the host and stops it again rather than falling through to Run.
+if (args is ["bench-matches", var benchSubcommand, ..])
+{
+    await app.StartAsync();
+    try
+    {
+        return benchSubcommand switch
+        {
+            "seed" => await Quesshi.Server.Bench.MatchListBench.SeedAsync(app.Services),
+            "measure" => await Quesshi.Server.Bench.MatchListBench.MeasureAsync(app.Services),
+            _ => Fail($"Unknown bench-matches subcommand \"{benchSubcommand}\". Use \"seed\" or \"measure\".")
+        };
+    }
+    finally
+    {
+        await app.StopAsync();
+    }
+}
 
 app.Run();
 return 0;
 
+static int Fail(string message)
+{
+    Console.Error.WriteLine(message);
+    return 1;
+}
 
 public partial class Program
 {
