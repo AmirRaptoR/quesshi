@@ -14,7 +14,11 @@
         }
     </header>
 
-    @if (Loading)
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }

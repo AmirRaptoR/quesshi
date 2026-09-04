@@ -282,5 +282,7 @@
   "result.shareHint": "Stuur deze link. Ze kunnen spelen zonder account.",
   "result.them": "Zij",
   "result.win": "Je hebt gewonnen",
-  "result.you": "Jij"
+  "result.you": "Jij",
+  "session.unconfirmed.body": "We konden je sessie niet bevestigen. Je bent nog steeds ingelogd — controleer je verbinding en probeer het opnieuw.",
+  "session.unconfirmed.title": "Sessie niet bevestigd"
 }

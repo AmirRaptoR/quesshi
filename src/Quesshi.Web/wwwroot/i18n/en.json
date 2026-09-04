@@ -282,5 +282,7 @@
   "result.shareHint": "Send this link. They can play without an account.",
   "result.them": "Them",
   "result.win": "You won",
-  "result.you": "You"
+  "result.you": "You",
+  "session.unconfirmed.body": "We couldn't confirm your session. Your sign-in is still safe — check your connection and try again.",
+  "session.unconfirmed.title": "Session unconfirmed"
 }

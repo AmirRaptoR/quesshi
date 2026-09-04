@@ -12,7 +12,11 @@
         <button class="btn btn--sm" @onclick="ReloadAsync">@L["admin.search"]</button>
     </div>
 
-    @if (Loading)
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }

@@ -6,7 +6,11 @@
 <div class="shell">
     <header class="topbar"><h1 class="topbar__title">@L["nav.matches"]</h1></header>
 
-    @if (Loading)
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }
