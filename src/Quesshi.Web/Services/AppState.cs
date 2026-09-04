@@ -12,12 +12,21 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     private const string LangKey = "quesshi.lang";
     private const string GuestMatchKey = "quesshi.guestMatch";
 
+    private int _generation;
+    private bool _retrying;
+
     public string? Token { get; private set; }
     public MeDto? Me { get; private set; }
     public string Lang { get; private set; } = "fa";
     public bool Ready { get; private set; }
 
     public bool SignedIn => Token is not null && Me is not null;
+
+    /// <summary>A token is held but the identity call hasn't confirmed it — a retry, not a sign-in wall.</summary>
+    public bool Unconfirmed => Ready && Token is not null && Me is null;
+
+    /// <summary>A retry is already in flight; offering a second one would race the first.</summary>
+    public bool Retrying => _retrying;
 
     /// <summary>Signed in, but only for one duel. Everything else in the app is closed to them.</summary>
     public bool IsGuest => Me?.IsGuest == true;
@@ -41,20 +50,59 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
         if (!string.IsNullOrWhiteSpace(token))
         {
             Apply(token);
-            try
-            {
-                Me = await http.GetFromJsonAsync<MeDto>("api/me");
-                if (Me is not null) Lang = Me.Lang;
-            }
-            catch
-            {
-                // An expired or revoked token is not an error worth showing; just sign out quietly.
-                await SignOutAsync();
-            }
+            await CheckIdentityAsync();
         }
 
         Ready = true;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Re-runs the identity call for a token that was retained after an inconclusive failure. Separate
+    /// from <see cref="InitialiseAsync"/>, which returns immediately once <see cref="Ready"/> is set.
+    /// </summary>
+    public async Task RetryIdentityAsync()
+    {
+        if (_retrying || Token is null) return;
+
+        _retrying = true;
+        Changed?.Invoke();
+        try
+        {
+            await CheckIdentityAsync();
+        }
+        finally
+        {
+            _retrying = false;
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// The one place that decides what an identity call's outcome means for the token: only a 401
+    /// discards it (see <see cref="IdentityCheck"/>). Everything else — including a successful call
+    /// whose body is JSON <c>null</c> — leaves it in place and <see cref="Me"/> unset.
+    /// </summary>
+    private async Task CheckIdentityAsync()
+    {
+        var generation = _generation;
+        MeDto? me;
+        try
+        {
+            me = await http.GetFromJsonAsync<MeDto>("api/me");
+        }
+        catch (Exception ex)
+        {
+            if (generation != _generation) return; // signed out while this call was in flight
+            if (IdentityCheck.Classify(ex) == IdentityOutcome.Discard) await SignOutAsync();
+            return;
+        }
+
+        if (generation != _generation) return; // signed out while this call was in flight
+        if (me is null) return; // identity unconfirmed, not an error — retain the token and retry later
+
+        Me = me;
+        Lang = me.Lang;
     }
 
     public async Task SignInAsync(AuthResultDto result)
@@ -80,6 +128,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
 
     public async Task SignOutAsync()
     {
+        _generation++; // orphans any identity check still in flight; it must not resurrect this session
         Token = null;
         Me = null;
         http.DefaultRequestHeaders.Authorization = null;
