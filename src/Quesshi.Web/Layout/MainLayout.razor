@@ -1,12 +1,17 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject AppState State
+@inject AdminState Admin
 @inject Translator L
 @inject NavigationManager Nav
 
-@if (!State.Ready)
+@if (!State.Ready || (IsAdminArea && !Admin.Ready))
 {
     <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+}
+else if (!IsAuthRoute && (IsAdminArea ? Admin.Unconfirmed : State.Unconfirmed))
+{
+    <SessionUnconfirmed Busy="@(IsAdminArea ? Admin.Retrying : State.Retrying)" OnRetry="RetryIdentityAsync" />
 }
 else
 {
@@ -36,19 +41,43 @@ else
     /// <summary>The admin panel has its own navigation; it should not wear the game's chrome.</summary>
     private bool IsAdminArea => new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The sign-in forms live behind this same layout and must render even while a retained token sits
+    /// unconfirmed — that is how a player or admin gets back in without the wall bouncing them first.
+    /// </summary>
+    private bool IsAuthRoute
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+            return path.Equals("/signin", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("/admin/login", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         State.Changed += StateHasChanged;
+        Admin.Changed += StateHasChanged;
         Nav.LocationChanged += OnLocationChanged;
         await State.InitialiseAsync();
+        if (IsAdminArea) await Admin.InitialiseAsync();
     }
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => StateHasChanged();
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // A client-side navigation into the admin area needs AdminState initialised too — this layout
+        // is created once per app load, so OnInitializedAsync alone would miss that transition.
+        if (IsAdminArea && !Admin.Ready) await Admin.InitialiseAsync();
+        else StateHasChanged();
+    }
+
+    private Task RetryIdentityAsync() => IsAdminArea ? Admin.RetryIdentityAsync() : State.RetryIdentityAsync();
 
     public void Dispose()
     {
         State.Changed -= StateHasChanged;
+        Admin.Changed -= StateHasChanged;
         Nav.LocationChanged -= OnLocationChanged;
     }
 }

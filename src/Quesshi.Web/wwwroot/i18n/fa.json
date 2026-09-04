@@ -282,5 +282,7 @@
   "result.shareHint": "این لینک را بفرست. بدون حساب کاربری هم می‌تواند بازی کند.",
   "result.them": "حریف",
   "result.win": "بردی",
-  "result.you": "تو"
+  "result.you": "تو",
+  "session.unconfirmed.body": "نتوانستیم نشست تو را تأیید کنیم. ورودت هنوز معتبر است — اتصال را بررسی کن و دوباره امتحان کن.",
+  "session.unconfirmed.title": "نشست تأیید نشد"
 }

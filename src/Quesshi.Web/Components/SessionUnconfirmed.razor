@@ -1,0 +1,20 @@
+@inject Translator L
+
+@* Shown instead of the page when a token is held but the startup identity call couldn't confirm it —
+   never a sign-out, always a retry. See issue #6. *@
+<div class="shell">
+    <div class="empty">
+        <h2>@L["session.unconfirmed.title"]</h2>
+        <p class="muted">@L["session.unconfirmed.body"]</p>
+        <button class="btn btn--ghost" disabled="@Busy" @onclick="RetryAsync">
+            @(Busy ? L["common.loading"] : L["common.retry"])
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+
+    private Task RetryAsync() => OnRetry.InvokeAsync();
+}
