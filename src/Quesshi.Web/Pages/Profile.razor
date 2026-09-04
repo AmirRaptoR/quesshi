@@ -4,7 +4,11 @@
 <PageTitle>@L["nav.profile"] · @L["app.name"]</PageTitle>
 
 <div class="shell">
-    @if (Loading || State.Me is null)
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading || State.Me is null)
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }
