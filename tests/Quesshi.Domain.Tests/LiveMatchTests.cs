@@ -314,6 +314,15 @@ public class LiveMatchTests
         Assert.Throws<InvalidOperationException>(() => m.Answer("u-stranger", 0, 0, true, m.CurrentRound!.StartedAt));
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(4)]
+    public void A_choice_index_outside_the_valid_range_is_rejected(int choiceIndex)
+    {
+        var m = InRound0();
+        Assert.Throws<InvalidOperationException>(() => m.Answer(Challenger, 0, choiceIndex, true, m.CurrentRound!.StartedAt));
+    }
+
     [Fact]
     public void An_answer_arriving_after_the_round_closed_is_rejected()
     {

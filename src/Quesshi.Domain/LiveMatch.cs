@@ -112,6 +112,8 @@ public sealed class LiveMatch
             throw new InvalidOperationException($"Expected an answer for round {round.Slot}, got {slot}.");
         if (round.HasAnswered(playerId))
             throw new InvalidOperationException("You have already answered this round.");
+        if (choiceIndex < 0 || choiceIndex >= MatchRules.ChoicesPerQuestion)
+            throw new InvalidOperationException($"Choice {choiceIndex} is out of range.");
 
         var taken = now - round.StartedAt;
         var answer = new LiveAnswer(choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds);
