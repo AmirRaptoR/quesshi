@@ -101,11 +101,15 @@ public sealed class LiveMatch
     public LiveAnswer Answer(string playerId, int slot, int choiceIndex, bool correct, DateTimeOffset now,
         Difficulty level = Difficulty.Medium)
     {
+        // Settle the clock first: real time has passed whether or not this particular call turns
+        // out to be valid, so a rejected answer still leaves behind whatever this advanced — the
+        // caller must persist that even when the rest of this method throws. Because a Question's
+        // close already waits out MatchRules.NetworkGrace (see StepOnce), this never closes a round
+        // out from under an answer that arrives inside the grace window; it only catches one that
+        // arrives after it.
+        Advance(now);
         RequireParticipant(playerId);
 
-        // Advance is not called here: composing "settle the clock, then judge the answer" is the
-        // grain's job (it calls Advance on every tick and before every answer). This method only
-        // has to refuse an answer against a phase that has already moved on.
         if (Phase != LivePhase.Question || CurrentRound is not { } round)
             throw new InvalidOperationException("There is no question open to answer.");
         if (slot != round.Slot)

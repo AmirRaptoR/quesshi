@@ -335,6 +335,21 @@ public class LiveMatchTests
     }
 
     [Fact]
+    public void A_late_answer_settles_the_clock_first_even_when_it_is_then_rejected()
+    {
+        var m = InRound0();
+        var closesAt = PastGrace(m.PhaseEndsAt!.Value);
+
+        // A non-participant's answer is always rejected, but the leading Advance it triggers is not
+        // undone: real time passed regardless of whether this particular call was valid.
+        Assert.Throws<InvalidOperationException>(() => m.Answer("u-stranger", 0, 0, true, closesAt));
+
+        Assert.Equal(LivePhase.Reveal, m.Phase);
+        Assert.Equal(-1, m.Rounds[0].Answers[Challenger].ChoiceIndex);
+        Assert.Equal(-1, m.Rounds[0].Answers[Opponent].ChoiceIndex);
+    }
+
+    [Fact]
     public void An_answer_inside_the_network_grace_window_still_scores()
     {
         var m = InRound0();
