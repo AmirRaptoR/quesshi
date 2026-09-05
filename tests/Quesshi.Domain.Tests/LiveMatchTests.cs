@@ -26,6 +26,14 @@ public class LiveMatchTests
         return m;
     }
 
+    /// <summary>
+    /// The first instant that actually closes a question at <paramref name="questionDeadline"/> — one
+    /// tick past <see cref="MatchRules.NetworkGrace"/>, since the grace window keeps the round open
+    /// through the deadline itself.
+    /// </summary>
+    private static DateTimeOffset PastGrace(DateTimeOffset questionDeadline)
+        => questionDeadline + MatchRules.NetworkGrace + TimeSpan.FromTicks(1);
+
     // ---- Shape ----
 
     [Fact]
@@ -44,6 +52,15 @@ public class LiveMatchTests
 
         var csproj = File.ReadAllText(Path.Combine(dir!.FullName, "src", "Quesshi.Domain", "Quesshi.Domain.csproj"));
         Assert.DoesNotContain("PackageReference", csproj);
+    }
+
+    [Fact]
+    public void IsOver_names_resolved_forfeited_abandoned_and_no_contest()
+    {
+        var snapshot = new LiveMatchSnapshot(
+            "lm", Challenger, Opponent, [.. Ten], MatchState.Forfeited, LivePhase.Over, null,
+            [], new Dictionary<string, int>(), T0, T0, null, false, null);
+        Assert.True(LiveMatch.FromSnapshot(snapshot).IsOver);
     }
 
     // ---- Create ----
@@ -84,6 +101,32 @@ public class LiveMatchTests
     }
 
     [Fact]
+    public void An_unjoined_lobby_expires_into_no_contest_with_no_rounds()
+    {
+        var m = NewMatch();
+        var beforeExpiry = T0 + LiveRules.LobbyExpires - TimeSpan.FromSeconds(1);
+        Assert.False(m.Advance(beforeExpiry));
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+
+        var atExpiry = T0 + LiveRules.LobbyExpires;
+        Assert.True(m.Advance(atExpiry));
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(LivePhase.Over, m.Phase);
+        Assert.Null(m.WinnerId);
+        Assert.False(m.IsDraw);
+        Assert.Empty(m.Rounds);
+    }
+
+    [Fact]
+    public void Join_advances_the_clock_first_so_an_expired_lobby_cannot_be_joined()
+    {
+        var m = NewMatch();
+        var atExpiry = T0 + LiveRules.LobbyExpires;
+        Assert.Throws<InvalidOperationException>(() => m.Join(Opponent, atExpiry));
+        Assert.Equal(MatchState.NoContest, m.State);
+    }
+
+    [Fact]
     public void Advance_past_the_countdown_opens_round_zero()
     {
         var m = Joined();
@@ -102,7 +145,7 @@ public class LiveMatchTests
     {
         var m = InRound0();
         var deadline = m.PhaseEndsAt!.Value;
-        Assert.True(m.Advance(deadline));
+        Assert.True(m.Advance(PastGrace(deadline)));
 
         Assert.Equal(LivePhase.Reveal, m.Phase);
         Assert.Equal(deadline + LiveRules.RevealTime, m.PhaseEndsAt);
@@ -116,10 +159,24 @@ public class LiveMatchTests
     }
 
     [Fact]
+    public void A_question_does_not_close_at_or_before_the_deadline_plus_network_grace()
+    {
+        var m = InRound0();
+        var deadline = m.PhaseEndsAt!.Value;
+
+        Assert.False(m.Advance(deadline));
+        Assert.False(m.Advance(deadline + MatchRules.NetworkGrace));
+        Assert.Equal(LivePhase.Question, m.Phase);
+
+        Assert.True(m.Advance(PastGrace(deadline)));
+        Assert.Equal(LivePhase.Reveal, m.Phase);
+    }
+
+    [Fact]
     public void Advance_past_a_reveal_opens_the_next_round()
     {
         var m = InRound0();
-        m.Advance(m.PhaseEndsAt!.Value); // -> reveal
+        m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // -> reveal
         var revealEnds = m.PhaseEndsAt!.Value;
 
         Assert.True(m.Advance(revealEnds));
@@ -262,9 +319,10 @@ public class LiveMatchTests
     {
         var m = InRound0();
         var deadline = m.PhaseEndsAt!.Value;
-        m.Advance(deadline); // closes the round -> reveal
+        var closesAt = PastGrace(deadline);
+        m.Advance(closesAt); // closes the round -> reveal
 
-        Assert.Throws<InvalidOperationException>(() => m.Answer(Challenger, 0, 0, true, deadline + TimeSpan.FromSeconds(1)));
+        Assert.Throws<InvalidOperationException>(() => m.Answer(Challenger, 0, 0, true, closesAt + TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -275,6 +333,19 @@ public class LiveMatchTests
         var lateButGraced = round.StartedAt + MatchRules.QuestionTime + MatchRules.NetworkGrace - TimeSpan.FromMilliseconds(1);
         var answer = m.Answer(Challenger, 0, 0, true, lateButGraced);
         Assert.True(answer.Score > 0);
+    }
+
+    [Fact]
+    public void An_answer_arriving_exactly_at_the_grace_boundary_scores_with_no_speed_bonus()
+    {
+        var m = InRound0();
+        var round = m.CurrentRound!;
+        var atGraceBoundary = round.StartedAt + MatchRules.QuestionTime + MatchRules.NetworkGrace;
+
+        var answer = m.Answer(Challenger, 0, 0, true, atGraceBoundary);
+
+        Assert.Equal(Scoring.Score(true, atGraceBoundary - round.StartedAt, MatchRules.QuestionTime, Difficulty.Medium), answer.Score);
+        Assert.Equal((int)Math.Round(MatchRules.BaseScore * Scoring.Weight(Difficulty.Medium)), answer.Score);
     }
 
     // ---- Abandonment and no-contest ----
@@ -297,7 +368,7 @@ public class LiveMatchTests
             if (m.IsOver) break;
             var roundStart = m.CurrentRound!.StartedAt;
             m.Answer(Challenger, m.CurrentRound.Slot, 0, true, roundStart);
-            m.Advance(m.PhaseEndsAt!.Value); // closes the round: opponent misses again
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // closes the round: opponent misses again
         }
 
         Assert.Equal(MatchState.Abandoned, m.State);
@@ -314,7 +385,7 @@ public class LiveMatchTests
         {
             var roundStart = m.CurrentRound!.StartedAt;
             m.Answer(Challenger, m.CurrentRound.Slot, 0, true, roundStart);
-            m.Advance(m.PhaseEndsAt!.Value); // opponent misses -> reveal
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // opponent misses -> reveal
         }
 
         void OpenNextRound() => m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
@@ -359,7 +430,7 @@ public class LiveMatchTests
         {
             m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
             if (m.IsOver) break;
-            m.Advance(m.PhaseEndsAt!.Value); // closes it: both silent
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // closes it: both silent
         }
 
         Assert.Equal(MatchState.NoContest, m.State);
@@ -388,7 +459,7 @@ public class LiveMatchTests
         {
             var roundStart = m.CurrentRound!.StartedAt;
             m.Answer(Challenger, m.CurrentRound.Slot, 0, true, roundStart);
-            m.Advance(m.PhaseEndsAt!.Value); // closes round: opponent misses (or abandons, on the 3rd)
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // closes round: opponent misses (or abandons, on the 3rd)
             if (m.IsOver) break;
             m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
         }

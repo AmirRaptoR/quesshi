@@ -36,7 +36,7 @@ public sealed class LiveMatch
     /// <summary>The player who was recorded as having abandoned the duel, if it ended that way.</summary>
     public string? AbandonedBy { get; private set; }
 
-    public bool IsOver => State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
+    public bool IsOver => State is MatchState.Resolved or MatchState.Forfeited or MatchState.Abandoned or MatchState.NoContest;
 
     /// <summary>The round currently open for answers or being revealed, or null before the first one starts.</summary>
     public LiveRound? CurrentRound => _rounds.Count == 0 ? null : _rounds[^1];
@@ -61,6 +61,10 @@ public sealed class LiveMatch
     public void Join(string playerId, DateTimeOffset now)
     {
         if (playerId == ChallengerId) throw new InvalidOperationException("You cannot join your own challenge.");
+
+        // Settle the clock first: a lobby nobody joined in time is already NoContest, and must not
+        // be resurrected into a duel just because nobody had ticked it yet.
+        Advance(now);
         if (State != MatchState.AwaitingOpponent) throw new InvalidOperationException("This challenge has already been taken.");
 
         OpponentId = playerId;
@@ -152,7 +156,27 @@ public sealed class LiveMatch
     private bool StepOnce(DateTimeOffset now)
     {
         if (IsOver) return false;
-        if (PhaseEndsAt is not { } endsAt || now < endsAt) return false;
+
+        // The lobby has no PhaseEndsAt of its own — nobody has joined to start a countdown — so its
+        // deadline is derived from CreatedAt instead.
+        if (Phase == LivePhase.Lobby)
+        {
+            if (now < CreatedAt + LiveRules.LobbyExpires) return false;
+            FinishNoContest(now);
+            return true;
+        }
+
+        if (PhaseEndsAt is not { } endsAt) return false;
+
+        // Every other deadline expires the instant now reaches it. A Question's close is the one
+        // exception: MatchRules.NetworkGrace is tolerance on top of the deadline clients see, not
+        // extra time on the schedule, so the round stays open through the grace window and only
+        // closes once now is strictly past it — matching the boundary Scoring.Score already uses.
+        if (Phase == LivePhase.Question)
+        {
+            if (now <= endsAt + MatchRules.NetworkGrace) return false;
+        }
+        else if (now < endsAt) return false;
 
         switch (Phase)
         {
