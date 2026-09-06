@@ -8,10 +8,22 @@ public sealed class RedisLeaderboard(IConnectionMultiplexer redis) : ILeaderboar
 {
     private const string Key = "quesshi:leaderboard";
 
+    // A read-then-write from .NET could race two penalties past the floor; a Lua script is one
+    // round trip Redis runs to completion without another client's command interleaving.
+    private const string PenaliseScript = """
+        local current = tonumber(redis.call('ZSCORE', KEYS[1], ARGV[1]) or '0')
+        local floored = math.max(0, current - tonumber(ARGV[2]))
+        redis.call('ZADD', KEYS[1], floored, ARGV[1])
+        return floored
+        """;
+
     private IDatabase Db => redis.GetDatabase();
 
     public Task AddAsync(string playerId, long delta, CancellationToken ct = default)
         => Db.SortedSetIncrementAsync(Key, playerId, delta);
+
+    public Task PenaliseAsync(string playerId, long amount, CancellationToken ct = default)
+        => Db.ScriptEvaluateAsync(PenaliseScript, [Key], [(RedisValue)playerId, (RedisValue)amount]);
 
     public async Task<IReadOnlyList<LeaderboardEntry>> TopAsync(int count, CancellationToken ct = default)
     {

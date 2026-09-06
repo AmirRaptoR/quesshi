@@ -8,9 +8,21 @@ namespace Quesshi.Server.Tests;
 public sealed class FakeLeaderboard : ILeaderboard
 {
     public readonly Dictionary<string, long> Scores = [];
+    private readonly Lock _gate = new();
+
     public Task AddAsync(string playerId, long delta, CancellationToken ct = default)
     {
         Scores[playerId] = Scores.GetValueOrDefault(playerId) + delta;
+        return Task.CompletedTask;
+    }
+
+    // Locked for the same reason RedisLeaderboard reaches for a Lua script: a bare read-then-write
+    // lets two concurrent penalties both read the score before either writes it back, and one of
+    // them wins for nothing.
+    public Task PenaliseAsync(string playerId, long amount, CancellationToken ct = default)
+    {
+        lock (_gate)
+            Scores[playerId] = Math.Max(0, Scores.GetValueOrDefault(playerId) - amount);
         return Task.CompletedTask;
     }
     public Task<IReadOnlyList<LeaderboardEntry>> TopAsync(int count, CancellationToken ct = default)
