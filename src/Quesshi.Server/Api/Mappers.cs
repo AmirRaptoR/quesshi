@@ -101,4 +101,39 @@ public static class Mappers
             mine, theirs, v.WinnerId, v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
             v.QuestionIds.Count);
     }
+
+    /// <summary>
+    /// The list's view of a live duel, built straight off its archive row rather than through a
+    /// grain: the row is mirrored on start and on end (<c>LiveMatchSettlement</c>), so it already
+    /// holds every field the list needs. A live duel is never <c>CanPlay</c> — it advances on its own
+    /// clock whether or not this player is looking — so the row offers Rejoin instead of Play.
+    /// </summary>
+    public static MatchSummaryDto ToLiveSummary(this ArchivedMatch m, string me, Func<string, (string Name, string Avatar)> lookup)
+    {
+        var otherId = m.ChallengerId == me ? m.OpponentId : m.ChallengerId;
+        var (myScore, otherScore) = m.ChallengerId == me
+            ? (m.ChallengerScore, m.OpponentScore)
+            : (m.OpponentScore, m.ChallengerScore);
+
+        var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
+
+        var (myName, myAvatar) = lookup(me);
+        var mine = new PlayerSideDto(me, myName, myAvatar, myScore, 0, 0, over);
+
+        PlayerSideDto? theirs = null;
+        if (otherId is not null)
+        {
+            var (name, avatar) = lookup(otherId);
+            theirs = new PlayerSideDto(otherId, name, avatar, otherScore, 0, 0, over);
+        }
+
+        var outcome = !over ? "pending"
+            : m.IsDraw ? "draw"
+            : m.WinnerId == me ? "win"
+            : m.WinnerId is null ? "draw" : "loss";
+
+        return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), m.State.ToString().ToLowerInvariant(),
+            mine, theirs, m.WinnerId, m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
+            m.QuestionIds.Count, IsLive: true);
+    }
 }
