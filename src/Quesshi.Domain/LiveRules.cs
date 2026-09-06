@@ -20,4 +20,24 @@ public static class LiveRules
 
     /// <summary>A gap this long with nobody answering means the process was away, not that both players went quiet.</summary>
     public static readonly TimeSpan StaleAfter = MatchRules.QuestionTime * 2;
+
+    /// <summary>How far back an abandonment still counts against a player. Tuned after watching real behaviour.</summary>
+    public static readonly TimeSpan AbandonmentWindow = TimeSpan.FromDays(7);
+
+    /// <summary>What the second abandonment in the window costs; the first is always free.</summary>
+    public const int AbandonmentPenaltyBase = 200;
+
+    /// <summary>However many times a player has quit in the window, the penalty climbs no higher than this.</summary>
+    public const int AbandonmentPenaltyCap = 1000;
+
+    /// <summary>
+    /// The cost of the <paramref name="occurrenceInWindow"/>-th abandonment within <see cref="AbandonmentWindow"/>,
+    /// counting this one: free the first time, <see cref="AbandonmentPenaltyBase"/> the second, doubling every
+    /// time after that and capped at <see cref="AbandonmentPenaltyCap"/>.
+    /// </summary>
+    public static int AbandonmentPenalty(int occurrenceInWindow) => occurrenceInWindow switch
+    {
+        <= 1 => 0,
+        _ => (int)Math.Min(AbandonmentPenaltyCap, (long)AbandonmentPenaltyBase << (occurrenceInWindow - 2))
+    };
 }
