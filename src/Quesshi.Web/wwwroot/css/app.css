@@ -256,6 +256,7 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .chip--win  { color: var(--zaferan); border-color: rgb(232 168 58 / 0.4); background: rgb(232 168 58 / 0.12); }
 .chip--loss { color: var(--anaar);   border-color: rgb(212 66 92 / 0.4);  background: rgb(212 66 92 / 0.12); }
 .chip--live { color: var(--firouzeh); }
+.chip--live-tag { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); background: rgb(47 191 176 / 0.12); }
 
 .level {
   display: inline-flex;
