@@ -21,13 +21,25 @@ however, is fully translated into all three.
 
 ## How a duel works
 
+Both kinds of duel share the same question set, scoring and difficulty ramp; the clock and what you
+can see of the other player are the only things that differ.
+
 - **Ten to a hundred questions.** Three categories in rotation, or pick your own.
 - **Four choices, exactly one correct.** Twenty seconds each, timed by the server.
 - **`100 × correct + up to 60 speed bonus`**, the bonus decaying linearly to zero at the buzzer.
 - **Difficulty ramps** across the run — five levels spread evenly from the first slot to the last,
   so a ten-question duel climbs two levels at a time and a hundred-question one climbs in twenties.
-- **You cannot see the other player's answers**, or their score, until your own run is finished.
-- **A duel nobody answers for 48 hours is forfeited.**
+- **Asynchronous, the default: you cannot see the other player's answers**, or their score, until
+  your own run is finished — a duel nobody answers for 48 hours is forfeited. **Live is the
+  opposite by design:** both scores update in front of you as the round is played, because you are
+  both playing it at the same instant.
+
+A live duel puts both of you on one shared clock instead of two separate runs. The same question
+lands for both players at once; the round closes the moment the second of you answers, or at the
+buzzer, whichever comes first; a fixed three-second reveal follows and there is no Next button — the
+clock moves you both on together. Three rounds in a row with no answer from you loses you the duel;
+if neither of you answers three rounds running, it's a no-contest and nothing goes on the
+leaderboard.
 
 The scoreboard is a *shamseh*, the twelve-ray Persian rosette: half the rays are yours and half are
 theirs, one per question, saffron for right and pomegranate for wrong. The star only completes when
