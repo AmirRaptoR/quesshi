@@ -10,4 +10,5 @@ public sealed record LiveViewDto(
     string Id, string ChallengerId, string? OpponentId, string State, string Phase,
     DateTimeOffset? PhaseEndsAt, DateTimeOffset ServerNow, int RoundIndex, int TotalRounds,
     List<LivePlayerViewDto> Players, List<LiveRoundResultViewDto> Rounds,
-    string? WinnerId, bool IsDraw, string? AbandonedBy, DateTimeOffset CreatedAt, DateTimeOffset? EndedAt);
+    string? WinnerId, bool IsDraw, string? AbandonedBy, DateTimeOffset CreatedAt, DateTimeOffset? EndedAt,
+    string Code = "");

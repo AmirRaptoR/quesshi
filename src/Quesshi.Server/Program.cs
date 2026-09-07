@@ -183,6 +183,7 @@ app.MapStaticAssets();
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
 app.MapAuth();
 app.MapGame();
+app.MapLive();
 app.MapAdminAuth();
 app.MapAdminAccounts();
 app.MapAdmin();
