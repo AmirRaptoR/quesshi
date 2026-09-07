@@ -33,14 +33,17 @@ public static class LiveEndpoints
         });
 
         api.MapPost("", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains, QuestionSetBuilder builder,
-            IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IClock clock) =>
-            await CreateAsync(body, ctx.User.PlayerId()!, grains, builder, ids, archive, players, clock));
+            IIdFactory ids, IMatchArchive archive, IPlayerRepository players,
+            IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
+            await CreateAsync(body, ctx.User.PlayerId()!, grains, builder, ids, archive, players, questions, categories, clock));
 
-        api.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains, IMatchArchive archive, IClock clock) =>
-            await JoinAsync(code, ctx.User.PlayerId()!, grains, archive, clock)).WithMetadata(new AllowGuest());
+        api.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains, IMatchArchive archive,
+            IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
+            await JoinAsync(code, ctx.User.PlayerId()!, grains, archive, players, questions, categories, clock)).WithMetadata(new AllowGuest());
 
-        api.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains, IClock clock) =>
-            await GetAsync(id, ctx.User.PlayerId()!, grains, clock)).WithMetadata(new AllowGuest());
+        api.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
+            IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
+            await GetAsync(id, ctx.User.PlayerId()!, grains, players, questions, categories, clock)).WithMetadata(new AllowGuest());
 
         api.MapDelete("/{id}", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await CancelAsync(id, ctx.User.PlayerId()!, grains));
@@ -50,7 +53,8 @@ public static class LiveEndpoints
     /// Extracted so a test can drive it directly, the same way <see cref="GameEndpoints.JoinMatchAsync"/> is.
     /// </summary>
     internal static async Task<IResult> CreateAsync(CreateMatchDto body, string meId, IGrainFactory grains,
-        QuestionSetBuilder builder, IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IClock clock)
+        QuestionSetBuilder builder, IIdFactory ids, IMatchArchive archive, IPlayerRepository players,
+        IQuestionRepository questions, ICategoryRepository categories, IClock clock)
     {
         // The random queue and friend challenges are #15's; this endpoint only ever seats a friend
         // who follows the code.
@@ -91,13 +95,15 @@ public static class LiveEndpoints
             var matchId = ids.NewId();
             var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
             var view = await grain.CreateAsync(code, (int)lang, meId, [.. set.Select(q => q.Id)]);
-            return Results.Ok(view.ToDto(clock.Now));
+            var lookup = await players.LiveLookupAsync(view);
+            return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
         }
 
         return Results.Problem("Could not allocate a share code.", statusCode: 503);
     }
 
-    internal static async Task<IResult> JoinAsync(string code, string meId, IGrainFactory grains, IMatchArchive archive, IClock clock)
+    internal static async Task<IResult> JoinAsync(string code, string meId, IGrainFactory grains, IMatchArchive archive,
+        IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock)
     {
         var found = await archive.ByCodeAsync(code);
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
@@ -106,19 +112,27 @@ public static class LiveEndpoints
         var grain = grains.GetGrain<ILiveMatchGrain>(found.Id);
         var result = (LiveJoinResult)await grain.JoinAsync(meId);
 
-        return result switch
-        {
-            LiveJoinResult.Joined or LiveJoinResult.AlreadyIn => Results.Ok((await grain.GetAsync(meId))!.ToDto(clock.Now)),
-            LiveJoinResult.SelfJoin => Results.BadRequest(new { error = "self_join" }),
-            LiveJoinResult.Expired => Results.BadRequest(new { error = "lobby_expired" }),
-            _ => Results.BadRequest(new { error = "cannot_join" }) // Taken, Unknown
-        };
+        if (result is not (LiveJoinResult.Joined or LiveJoinResult.AlreadyIn))
+            return result switch
+            {
+                LiveJoinResult.SelfJoin => Results.BadRequest(new { error = "self_join" }),
+                LiveJoinResult.Expired => Results.BadRequest(new { error = "lobby_expired" }),
+                _ => Results.BadRequest(new { error = "cannot_join" }) // Taken, Unknown
+            };
+
+        var view = (await grain.GetAsync(meId))!;
+        var lookup = await players.LiveLookupAsync(view);
+        return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
     }
 
-    internal static async Task<IResult> GetAsync(string id, string meId, IGrainFactory grains, IClock clock)
+    internal static async Task<IResult> GetAsync(string id, string meId, IGrainFactory grains,
+        IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock)
     {
         var view = await grains.GetGrain<ILiveMatchGrain>(id).GetAsync(meId);
-        return view is null ? Results.NotFound() : Results.Ok(view.ToDto(clock.Now));
+        if (view is null) return Results.NotFound();
+
+        var lookup = await players.LiveLookupAsync(view);
+        return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
     }
 
     internal static async Task<IResult> CancelAsync(string id, string meId, IGrainFactory grains)

@@ -23,6 +23,10 @@ public sealed class LiveClient : IAsyncDisposable
     public event Action<OpponentPresenceDto>? OpponentLeft;
     public event Action<OpponentPresenceDto>? OpponentBack;
 
+    /// <summary>The #13 contract addition: fires once, on the first answer of a round, so the
+    /// question phase can show "they have answered" without polling.</summary>
+    public event Action<OpponentAnsweredDto>? OpponentAnswered;
+
     /// <summary>
     /// Server time minus local time, captured once from the <c>ServerNow</c> of the first
     /// <see cref="LiveViewDto"/> a connection receives. Because every deadline the hub sends is
@@ -47,6 +51,7 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<LiveEndedDto>("Ended", ended => Ended?.Invoke(ended));
         _connection.On<OpponentPresenceDto>("OpponentLeft", p => OpponentLeft?.Invoke(p));
         _connection.On<OpponentPresenceDto>("OpponentBack", p => OpponentBack?.Invoke(p));
+        _connection.On<OpponentAnsweredDto>("OpponentAnswered", a => OpponentAnswered?.Invoke(a));
     }
 
     internal HubConnection Connection => _connection;
