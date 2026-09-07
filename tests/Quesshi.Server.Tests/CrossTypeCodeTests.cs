@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
@@ -114,6 +115,22 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         Assert.DoesNotContain(opponentRequests, r => r.GrainInterface == typeof(IMatchGrain) && r.Key == id);
     }
 
+    /// <summary>
+    /// Regression coverage for issue #34: <see cref="ValueOf"/> used to read a null-forgiven
+    /// <c>GetProperty("Value")</c> and throw a bare <see cref="NullReferenceException"/> that named
+    /// neither the result shape nor its status code, for any minimal-API result without a public
+    /// <c>Value</c> property — <c>ProblemHttpResult</c> among them.
+    /// </summary>
+    [Fact]
+    public void ValueOf_on_a_result_with_no_public_Value_property_names_the_shape_it_received()
+    {
+        var result = Results.Problem("unavailable", statusCode: 503);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ValueOf(result));
+
+        Assert.Contains("ProblemHttpResult", ex.Message);
+    }
+
     private static readonly TokenIssuer Issuer = new(new JwtOptions
     {
         Key = "a-test-signing-key-long-enough-to-use", Issuer = "quesshi", Audience = "quesshi", Days = 1
@@ -132,5 +149,18 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         return (string)value.GetType().GetProperty("error")!.GetValue(value)!;
     }
 
-    internal static object ValueOf(object result) => result.GetType().GetProperty("Value")!.GetValue(result)!;
+    internal static object ValueOf(object result)
+    {
+        var type = result.GetType();
+        var value = type.GetProperty("Value")?.GetValue(result);
+        if (value is not null) return value;
+
+        // Several minimal-API result shapes (ProblemHttpResult, NotFound, UnauthorizedHttpResult, the
+        // parameterless Ok) expose no public Value property at all — reflection returns null rather
+        // than throwing, which a bare `!` used to hide behind a NullReferenceException naming neither
+        // the shape nor why it has nothing to read. Name both instead.
+        var statusCode = type.GetProperty("StatusCode")?.GetValue(result);
+        throw new InvalidOperationException(
+            $"{type.Name} (StatusCode={statusCode}) has no public Value property to read via reflection.");
+    }
 }
