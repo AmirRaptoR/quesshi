@@ -1,15 +1,26 @@
-# Quesshi — bilingual async trivia duels
+# Quesshi — bilingual trivia duels
 
 ## Context
 
-Greenfield. A multiplayer question game for **scattered friends** — people who know each other
-but are never online at the same moment. That fact drives everything: matches are
-**asynchronous turn-based duels**, not live rooms. Nobody waits for anybody; the notification
-*is* the game ("Amir scored 480 — your turn").
+Greenfield. A multiplayer question game for **scattered friends** — people who know each other but
+aren't reliably online at the same moment. That drove the original design: matches were
+**asynchronous turn-based duels**, and the notification *is* the game ("Amir scored 480 — your
+turn"). **Live duels** (#8) added a second match type for the moments both friends actually are
+online together: same question, same clock, no waiting.
+
+Live duels are a separate aggregate from `Match` rather than a mode flag on it. The two have
+different state machines — a phase clock with rounds and a fixed reveal step, versus one deadline
+per player with no notion of "round" at all — different storage lifetimes (a live duel's grain is
+gone the moment it ends; an async one keeps a reminder ticking toward its 48-hour forfeit), and
+different failure modes (a live duel can go stale mid-round if the process restarts; an async one
+has no "mid-round" to be caught in). Branching one `Match` on an `IsLive` flag would have run that
+branch through most of the state machine, the persistence and the notifications; two aggregates pay
+for that separation with a little duplication of what they share (question set, scoring, difficulty
+ramp) instead. See #8 for the epic and #9 for the domain state machine that made the split concrete.
 
 | Decision | Choice |
 |---|---|
-| Format | Async duel; both players get the identical question set |
+| Format | Two duel types on the same question format — asynchronous (the default) and live; both players always get the identical question set |
 | Platform | Web only, installable PWA (native later via MAUI Blazor Hybrid, same Razor components) |
 | Client | Blazor WebAssembly PWA |
 | Backend | ASP.NET Core + Microsoft Orleans (co-hosted silo) |
