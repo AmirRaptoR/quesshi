@@ -26,6 +26,10 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
     public TokenIssuer PlayerTokenIssuer { get; } = new(new JwtOptions { Key = PlayerSigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 });
     public AdminTokenIssuer AdminTokenIssuer { get; } = new(new AdminAuthOptions { Key = AdminSigningKey, Issuer = "quesshi" });
 
+    /// <summary>Its own disjoint id range — see <see cref="LiveApiTestHost"/>'s matching field for why a
+    /// zero-seeded <c>FakeIdFactory</c> per host is not safe once more than one host exists.</summary>
+    private static int _idSeed = 10_000_000;
+
     private readonly IHost _host = new HostBuilder()
         .ConfigureWebHost(web =>
         {
@@ -53,7 +57,7 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<IPlayerRepository>(LiveShared.Players);
                 services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
                 services.AddSingleton<IClock>(new TimeProviderClock(LiveShared.TimeProvider));
-                services.AddSingleton<IIdFactory>(new FakeIdFactory());
+                services.AddSingleton<IIdFactory>(new FakeIdFactory(Interlocked.Add(ref _idSeed, 100_000)));
                 services.AddSingleton<IGenerationLog, FakeGenerationLog>();
                 services.AddSingleton<IAiSpendLog, FakeAiSpendLog>();
                 services.AddSingleton<IQuestionGenerator, FakeQuestionGenerator>();

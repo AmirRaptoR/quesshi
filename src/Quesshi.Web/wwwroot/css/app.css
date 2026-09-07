@@ -654,3 +654,18 @@ a  { color: var(--firouzeh); text-decoration: none; }
    is empty is more useful than wondering where it went. */
 .picker__chip:disabled { opacity: 0.35; cursor: not-allowed; }
 .picker__chip:disabled:hover { border-color: var(--line); color: var(--sadaf-2); }
+
+/* --- live duel bar: option A, a row above the topbar ---------------------- */
+/* justify-content:space-between plus plain DOM order is already direction-aware — "mine" sits at
+   the reading-start edge and "theirs" at the reading-end edge in both ltr and rtl, no second rule. */
+.duelbar { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-block-end: 0.9rem; }
+.duelbar__side { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.duelbar__side--theirs { flex-direction: row-reverse; }
+.duelbar__name { font-weight: 700; font-size: var(--step--1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 6rem; }
+.duelbar__score { font-size: var(--step-1); }
+.duelbar__score--mine { color: var(--zaferan); }
+
+/* --- live answers: locked (chosen, outcome still withheld) ---------------- */
+.answer--locked { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
+
+.live-code { font-size: var(--step-2); font-weight: 800; letter-spacing: .25em; color: var(--firouzeh); }

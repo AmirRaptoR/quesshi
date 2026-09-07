@@ -61,7 +61,8 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
             false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
 
-        var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Clock);
+        var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Players,
+            LiveShared.Questions, LiveShared.Categories, Shared.Clock);
 
         Assert.Equal(400, StatusOf(result));
         Assert.Equal("not_a_live_code", ErrorOf(result));

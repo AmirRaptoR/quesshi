@@ -53,8 +53,9 @@ public static class AuthEndpoints
         // /api/live/join/{code} cannot serve them. Becoming a guest and taking the lobby seat are
         // one call here too — the join itself is what validates the code before any Player exists.
         group.MapPost("/guest/live/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
-            IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock) =>
-            await GuestJoinLiveAsync(code, body, archive, players, grains, tokens, ids, clock));
+            IPlayerRepository players, IGrainFactory grains, IQuestionRepository questions, ICategoryRepository categories,
+            TokenIssuer tokens, IIdFactory ids, IClock clock) =>
+            await GuestJoinLiveAsync(code, body, archive, players, grains, questions, categories, tokens, ids, clock));
 
         group.MapPost("/google", async (GoogleSignInDto body, AuthOptions auth, AuthService service,
             TokenIssuer tokens, IHttpClientFactory http, ILoggerFactory logs) =>
@@ -126,7 +127,8 @@ public static class AuthEndpoints
     /// record behind the same way the async path promises.
     /// </summary>
     internal static async Task<IResult> GuestJoinLiveAsync(string code, GuestJoinDto body, IMatchArchive archive,
-        IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock)
+        IPlayerRepository players, IGrainFactory grains, IQuestionRepository questions, ICategoryRepository categories,
+        TokenIssuer tokens, IIdFactory ids, IClock clock)
     {
         var name = body.Name?.Trim() ?? "";
         if (name.Length is < 2 or > 24) return Results.BadRequest(new { error = "name_length" });
@@ -149,8 +151,13 @@ public static class AuthEndpoints
 
         await players.UpsertAsync(guest);
 
-        var view = await grain.GetAsync(guest.Id);
-        return Results.Ok(new GuestLiveResultDto(tokens.Issue(guest), guest.ToMeDto([]), view!.ToDto(clock.Now)));
+        var view = (await grain.GetAsync(guest.Id))!;
+        var challenger = await players.GetAsync(view.ChallengerId);
+        var lookup = (string id) => id == guest.Id
+            ? (guest.DisplayName, guest.AvatarSeed)
+            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id);
+        return Results.Ok(new GuestLiveResultDto(tokens.Issue(guest), guest.ToMeDto([]),
+            await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup)));
     }
 
     /// <summary>

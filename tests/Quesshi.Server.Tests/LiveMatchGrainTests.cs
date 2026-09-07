@@ -522,6 +522,26 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     }
 
     [Fact]
+    public async Task AnswerAsync_notifies_OpponentAnswered_once_for_the_first_answer_only()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
+        await grain.JoinAsync(Sara);
+        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        await WaitForEventAsync(id, "RoundStarted", 1);
+
+        Assert.True(await grain.AnswerAsync(Amir, 0, 0));
+        await WaitForEventAsync(id, "OpponentAnswered", 1);
+        var (slot, playerId) = ((int, string))LiveShared.Notifier.EventsFor(id).Single(e => e.Kind == "OpponentAnswered").Payload;
+        Assert.Equal(0, slot);
+        Assert.Equal(Amir, playerId);
+
+        Assert.True(await grain.AnswerAsync(Sara, 0, 1)); // closes the round -> Reveal
+        await WaitForEventAsync(id, "RoundRevealed", 1);
+        Assert.Single(LiveShared.Notifier.EventsFor(id), e => e.Kind == "OpponentAnswered"); // still just the one
+    }
+
+    [Fact]
     public async Task GetAsync_returns_a_complete_view_for_a_participant_in_every_phase()
     {
         var grain = NewGrain(out _, out var questionIds);
