@@ -62,7 +62,14 @@ public sealed class MongoContext
         await Matches.Indexes.CreateManyAsync(
         [
             new CreateIndexModel<MatchDoc>(Builders<MatchDoc>.IndexKeys.Ascending(m => m.ChallengerId).Descending(m => m.CreatedAt)),
-            new CreateIndexModel<MatchDoc>(Builders<MatchDoc>.IndexKeys.Ascending(m => m.OpponentId).Descending(m => m.CreatedAt))
+            new CreateIndexModel<MatchDoc>(Builders<MatchDoc>.IndexKeys.Ascending(m => m.OpponentId).Descending(m => m.CreatedAt)),
+
+            // Async and live duels share this one collection and one code namespace
+            // (IIdFactory.NewMatchCode() for both), so this index — not a promise in application
+            // code — is what makes a collision impossible: the database rejects the second insert
+            // outright rather than letting two duels answer to the same code.
+            new CreateIndexModel<MatchDoc>(Builders<MatchDoc>.IndexKeys.Ascending(m => m.Code),
+                new CreateIndexOptions { Unique = true })
         ], ct);
     }
 }
