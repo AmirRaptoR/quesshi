@@ -54,6 +54,20 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Live_join_refuses_an_async_code_and_touches_no_live_match_grain()
+    {
+        var asyncId = Guid.NewGuid().ToString("N");
+        var asyncCode = $"ASYNC-{asyncId}".ToUpperInvariant();
+        Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
+            false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
+
+        var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Clock);
+
+        Assert.Equal(400, StatusOf(result));
+        Assert.Equal("not_a_live_code", ErrorOf(result));
+    }
+
+    [Fact]
     public async Task Invite_reports_live_correctly_for_both_kinds()
     {
         var liveId = Guid.NewGuid().ToString("N");

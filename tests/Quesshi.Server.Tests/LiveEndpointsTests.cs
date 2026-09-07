@@ -4,6 +4,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Api;
+using Quesshi.Server.Auth;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
@@ -271,6 +272,94 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
         var result = await LiveEndpoints.CancelAsync(created.Id, Amir, Grains);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+    }
+
+    private static readonly TokenIssuer Issuer = new(new JwtOptions
+    {
+        Key = "a-live-guest-test-signing-key-long-enough", Issuer = "quesshi", Audience = "quesshi", Days = 1
+    });
+
+    [Fact]
+    public async Task Guest_join_by_link_creates_a_guest_and_seats_them_in_one_call()
+    {
+        var ids = NewIds();
+        var created = ViewOf(await CreateAsync(ids));
+        var playersBefore = LiveShared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("Newcomer"),
+            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (GuestLiveResultDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("countdown", dto.Live.Phase);
+        Assert.Equal(playersBefore + 1, LiveShared.Players.Items.Count);
+
+        // The guest holding that token may now GET their own duel and join by code (already-joined -> idempotent).
+        var view = await LiveEndpoints.GetAsync(created.Id, dto.Me.Id, Grains, Clock);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(view));
+    }
+
+    [Fact]
+    public async Task Guest_join_refuses_a_name_outside_2_to_24_characters_and_creates_no_player()
+    {
+        var ids = NewIds();
+        var created = ViewOf(await CreateAsync(ids));
+        var playersBefore = LiveShared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("x"),
+            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("name_length", CrossTypeCodeTests.ErrorOf(result));
+        Assert.Equal(playersBefore, LiveShared.Players.Items.Count);
+    }
+
+    [Fact]
+    public async Task Guest_join_on_an_unknown_code_creates_no_player()
+    {
+        var ids = NewIds();
+        var playersBefore = LiveShared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinLiveAsync("NO-SUCH-CODE", new GuestJoinDto("Newcomer"),
+            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal(playersBefore, LiveShared.Players.Items.Count);
+    }
+
+    [Fact]
+    public async Task Guest_join_on_a_taken_lobby_refuses_and_creates_no_player()
+    {
+        var ids = NewIds();
+        var created = ViewOf(await CreateAsync(ids));
+        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        var playersBefore = LiveShared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("Newcomer"),
+            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("cannot_join", CrossTypeCodeTests.ErrorOf(result));
+        Assert.Equal(playersBefore, LiveShared.Players.Items.Count);
+    }
+
+    [Fact]
+    public async Task Guest_join_on_an_expired_lobby_refuses_and_creates_no_player()
+    {
+        var ids = NewIds();
+        var created = ViewOf(await CreateAsync(ids));
+
+        LiveShared.TimeProvider.Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
+        await Grains.GetGrain<ILiveMatchGrain>(created.Id).GetAsync(Amir);
+        await WaitUntilAsync(() => LiveShared.Archive.Items.First(m => m.Id == created.Id).State == MatchState.NoContest);
+        var playersBefore = LiveShared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("Newcomer"),
+            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("lobby_expired", CrossTypeCodeTests.ErrorOf(result));
+        Assert.Equal(playersBefore, LiveShared.Players.Items.Count);
     }
 
     private static async Task WaitUntilAsync(Func<bool> ready, int timeoutMs = 5000)
