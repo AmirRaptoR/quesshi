@@ -340,10 +340,14 @@ public static class GameEndpoints
     /// <summary>Internal so a test can call it directly, the same way <see cref="ListMatchesAsync"/> is.</summary>
     internal static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board, IPresence presence)
     {
+        // One round trip for every friend's presence, not one per friend — the same shape IPresence
+        // documents for the random queue and friend challenges.
+        var online = await presence.OnlineAsync(me.Friends);
+
         var friends = new List<FriendDto>();
         foreach (var id in me.Friends)
             if (await players.GetAsync(id) is { } f)
-                friends.Add(new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, presence.IsOnline(f.Id)));
+                friends.Add(new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id)));
 
         return [.. friends.OrderByDescending(f => f.Score)];
     }

@@ -9,9 +9,11 @@ public class FriendsOfAsyncTests
 {
     private sealed class FixedPresence(HashSet<string> online) : IPresence
     {
-        public void Connected(string playerId, string connectionId) { }
-        public void Disconnected(string playerId, string connectionId) { }
-        public bool IsOnline(string playerId) => online.Contains(playerId);
+        public Task MarkOnlineAsync(string playerId, TimeSpan ttl, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MarkOfflineAsync(string playerId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyCollection<string>> OnlineAsync(IReadOnlyCollection<string> playerIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyCollection<string>>([.. playerIds.Where(online.Contains)]);
     }
 
     [Fact]
