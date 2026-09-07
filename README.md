@@ -93,11 +93,13 @@ images are blocked by default and Outlook renders with Word. Mailpit scores the 
 its 186 compatibility tests.
 
 ```bash
-dotnet test                   # 247 tests; only the grain tests need anything running, and they self-host
+dotnet test                   # 445 tests; only the grain tests need anything running, and they self-host
 ```
 
-To play against yourself, sign in as two addresses in two browser profiles, start a duel in one and
-join with the code in the other.
+To play against yourself, sign in as two addresses in two browser profiles. For an asynchronous
+duel, start one in either profile and answer both runs whenever you like. For a live one, start it
+in one profile and join with the code in the other — both browsers then sit on the same round at
+the same time.
 
 ### The admin panel
 
