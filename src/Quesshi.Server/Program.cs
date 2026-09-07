@@ -45,6 +45,12 @@ builder.UseOrleans(silo =>
     var nightly = builder.Configuration.GetValue("Generation:Nightly", false);
     silo.AddStartupTask(async (services, ct) =>
         await services.GetRequiredService<IGrainFactory>().GetGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly));
+
+    // Seeds, never overwrites: a runtime toggle through POST /api/admin/live/enabled must survive
+    // the next restart, so this only ever writes into a grain that has never persisted a value.
+    var liveEnabled = builder.Configuration.GetValue("Live:Enabled", true);
+    silo.AddStartupTask(async (services, ct) =>
+        await services.GetRequiredService<IGrainFactory>().GetGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled));
 });
 
 // --- configuration objects -----------------------------------------------------------

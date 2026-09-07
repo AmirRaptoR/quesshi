@@ -230,6 +230,7 @@ anything that is not `Development` must either configure `Smtp:Host` or ask for
 | `OpenRouter:Model`            | Any model id OpenRouter serves, e.g. `google/gemini-2.5-flash`.                            |
 | `Generation:Nightly`          | Runs the top-up every night. Off by default; the admin button works regardless.           |
 | `Generation:AutoApprove`      | Publish generated questions immediately instead of parking them for review.               |
+| `Live:Enabled`                | Whether a new live duel can start. On by default. Toggle at runtime from the admin dashboard; a duel already in flight always finishes. |
 
 Put local values in `appsettings.Development.json` or user secrets. **Do not commit keys** —
 `appsettings.Development.json` and `appsettings.Local.json` are gitignored for exactly that reason.

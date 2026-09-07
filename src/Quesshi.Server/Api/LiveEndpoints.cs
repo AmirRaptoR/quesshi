@@ -15,6 +15,14 @@ public static class LiveEndpoints
     /// </summary>
     private sealed class AllowGuest;
 
+    /// <summary>
+    /// Opt-in marker for the kill switch: only an endpoint that would start a new live duel carries
+    /// this, so <c>GET</c>/<c>DELETE</c> keep working while <c>Live:Enabled</c> is off and a duel
+    /// already in flight can still finish. The presence/random-queue sub-issue's own entry points
+    /// only need to add this marker.
+    /// </summary>
+    internal sealed class RequiresLiveEnabled;
+
     /// <summary>How many fresh codes a create will try before giving up. Collisions are
     /// astronomically unlikely (31^6 codes shared with every async match ever created) — this is a
     /// bound on a failure mode, not a number expected to matter in practice.</summary>
@@ -32,12 +40,25 @@ public static class LiveEndpoints
                 : await next(context);
         });
 
+        api.AddEndpointFilter(static async (context, next) =>
+        {
+            var gated = context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<RequiresLiveEnabled>() is not null;
+            if (!gated) return await next(context);
+
+            var grains = context.HttpContext.RequestServices.GetRequiredService<IGrainFactory>();
+            var enabled = await grains.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync();
+            return enabled ? await next(context) : Results.Json(new { error = "live_disabled" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        });
+
         api.MapPost("", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains, QuestionSetBuilder builder,
             IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IClock clock) =>
-            await CreateAsync(body, ctx.User.PlayerId()!, grains, builder, ids, archive, players, clock));
+            await CreateAsync(body, ctx.User.PlayerId()!, grains, builder, ids, archive, players, clock))
+            .WithMetadata(new RequiresLiveEnabled());
 
         api.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains, IMatchArchive archive, IClock clock) =>
-            await JoinAsync(code, ctx.User.PlayerId()!, grains, archive, clock)).WithMetadata(new AllowGuest());
+            await JoinAsync(code, ctx.User.PlayerId()!, grains, archive, clock))
+            .WithMetadata(new AllowGuest())
+            .WithMetadata(new RequiresLiveEnabled());
 
         api.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains, IClock clock) =>
             await GetAsync(id, ctx.User.PlayerId()!, grains, clock)).WithMetadata(new AllowGuest());
