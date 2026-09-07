@@ -258,8 +258,10 @@ public static class GameEndpoints
 
         // A live duel has no equivalent to IMatchGrain to ask — it is mirrored into its archive row on
         // start and on end (LiveMatchSettlement), and that row already carries everything the list
-        // needs. Only an async duel is worth activating a grain for.
-        var liveRows = rows.Where(r => r.IsLive).ToList();
+        // needs. Only an async duel is worth activating a grain for. A no-contest live duel changed
+        // nothing and has no result to show, so it is left out entirely — it stays in the archive and
+        // is still findable by code, just not in this list.
+        var liveRows = rows.Where(r => r.IsLive && r.State != MatchState.NoContest).ToList();
         var asyncRows = rows.Where(r => !r.IsLive).ToList();
 
         // Asked all at once, so the wait is the slowest single activation rather than the sum of

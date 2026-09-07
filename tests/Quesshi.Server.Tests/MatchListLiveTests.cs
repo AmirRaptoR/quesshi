@@ -69,4 +69,22 @@ public class MatchListLiveTests(ClusterFixture fixture)
         Assert.Equal("livecap-async", one[0].Id);
         Assert.True(one[0].CanPlay);
     }
+
+    [Fact]
+    public async Task A_no_contest_live_duel_is_left_out_of_the_list_entirely()
+    {
+        const string me = "p-livenc-me";
+        const string rival = "p-livenc-rival";
+        await Shared.Players.UpsertAsync(Player.Register(me, $"{me}@example.com", "Amir", Language.En, Shared.Clock.Now));
+        await Shared.Players.UpsertAsync(Player.Register(rival, $"{rival}@example.com", "Sara", Language.En, Shared.Clock.Now));
+
+        await Shared.Archive.SaveAsync(new ArchivedMatch(
+            "livenc-1", "livenc-1", Language.En, me, rival, WinnerId: null, IsDraw: false,
+            ChallengerScore: 0, OpponentScore: 0, MatchState.NoContest, Shared.Clock.Now, EndedAt: Shared.Clock.Now,
+            QuestionIds: [], IsLive: true));
+
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
+
+        Assert.DoesNotContain(list, m => m.Id == "livenc-1");
+    }
 }

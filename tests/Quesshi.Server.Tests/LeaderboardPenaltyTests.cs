@@ -55,4 +55,19 @@ public class LeaderboardPenaltyTests
 
         Assert.Equal(9_000, board.Scores["p-floor-sum"]);
     }
+
+    /// <summary>
+    /// A player who never had a leaderboard entry — a guest, or anyone penalised before ever earning
+    /// a point — must not gain one just by being penalised. That would put an abandoning guest on the
+    /// ladder by way of a punishment, exactly what keeping guests off it in the first place prevents.
+    /// </summary>
+    [Fact]
+    public async Task Penalising_a_player_with_no_entry_creates_none()
+    {
+        var board = new FakeLeaderboard();
+
+        await board.PenaliseAsync("p-floor-ghost", 200);
+
+        Assert.False(board.Scores.ContainsKey("p-floor-ghost"));
+    }
 }

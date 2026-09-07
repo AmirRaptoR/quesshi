@@ -54,5 +54,5 @@
         _ => Match.CanPlay ? "chip--live" : ""
     };
 
-    private void Open() => Nav.NavigateTo(Match.CanPlay ? $"/play/{Match.Id}" : $"/duel/{Match.Id}");
+    private void Open() => Nav.NavigateTo(Match.IsLive ? $"/live/{Match.Id}" : Match.CanPlay ? $"/play/{Match.Id}" : $"/duel/{Match.Id}");
 }

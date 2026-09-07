@@ -18,11 +18,15 @@ public sealed class FakeLeaderboard : ILeaderboard
 
     // Locked for the same reason RedisLeaderboard reaches for a Lua script: a bare read-then-write
     // lets two concurrent penalties both read the score before either writes it back, and one of
-    // them wins for nothing.
+    // them wins for nothing. A player with no entry stays without one — same as the Redis script's
+    // ZSCORE-returns-nil check — so penalising can never be how a missing member joins the board.
     public Task PenaliseAsync(string playerId, long amount, CancellationToken ct = default)
     {
         lock (_gate)
-            Scores[playerId] = Math.Max(0, Scores.GetValueOrDefault(playerId) - amount);
+        {
+            if (Scores.TryGetValue(playerId, out var current))
+                Scores[playerId] = Math.Max(0, current - amount);
+        }
         return Task.CompletedTask;
     }
     public Task<IReadOnlyList<LeaderboardEntry>> TopAsync(int count, CancellationToken ct = default)

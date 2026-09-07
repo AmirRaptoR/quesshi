@@ -58,9 +58,9 @@ public sealed class Player
         var s = Stats;
         Stats = outcome switch
         {
-            MatchOutcome.Win => s with { Wins = s.Wins + 1, Streak = s.Streak + 1, BestStreak = Math.Max(s.BestStreak, s.Streak + 1), TotalScore = Math.Max(0, s.TotalScore + score) },
-            MatchOutcome.Loss => s with { Losses = s.Losses + 1, Streak = 0, TotalScore = Math.Max(0, s.TotalScore + score) },
-            _ => s with { Draws = s.Draws + 1, TotalScore = Math.Max(0, s.TotalScore + score) }
+            MatchOutcome.Win => s with { Wins = s.Wins + 1, Streak = s.Streak + 1, BestStreak = Math.Max(s.BestStreak, s.Streak + 1), TotalScore = s.TotalScore + score },
+            MatchOutcome.Loss => s with { Losses = s.Losses + 1, Streak = 0, TotalScore = s.TotalScore + score },
+            _ => s with { Draws = s.Draws + 1, TotalScore = s.TotalScore + score }
         };
     }
 
@@ -76,7 +76,7 @@ public sealed class Player
         _abandonments.Add(now);
 
         var penalty = LiveRules.AbandonmentPenalty(_abandonments.Count);
-        if (penalty > 0) Stats = Stats with { TotalScore = Math.Max(0, Stats.TotalScore - penalty) };
+        if (penalty > 0) Stats = Stats with { TotalScore = Stats.TotalScore - penalty };
         return penalty;
     }
 

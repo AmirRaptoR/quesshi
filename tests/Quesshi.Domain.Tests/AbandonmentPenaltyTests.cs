@@ -1,13 +1,13 @@
 using Quesshi.Domain;
 
-namespace Quesshi.Application.Tests;
+namespace Quesshi.Domain.Tests;
 
 /// <summary>
 /// The escalating cost of walking away from a live duel: free once, then steeper each time within a
 /// rolling 7-day window. <see cref="Player.RecordAbandonment"/> is pure domain — no grain, no store —
-/// so these fakes only need to prove the number that comes back and what it does to a player's own
-/// score; the leaderboard side of the same penalty is covered in Quesshi.Server.Tests, where an
-/// actual grain and archive exist to settle a duel against.
+/// so these container-free tests only need to prove the number that comes back and what it does to a
+/// player's own score; the leaderboard side of the same penalty is covered in Quesshi.Server.Tests,
+/// where an actual grain and archive exist to settle a duel against.
 /// </summary>
 public class AbandonmentPenaltyTests
 {
@@ -56,6 +56,27 @@ public class AbandonmentPenaltyTests
         Assert.Equal(0, player.RecordAbandonment(Day0.AddDays(8)));
         // A ninth-day repeat, still within a week of the second, is the second offence.
         Assert.Equal(200, player.RecordAbandonment(Day0.AddDays(9)));
+    }
+
+    [Fact]
+    public void An_abandonment_exactly_seven_days_old_has_already_rolled_off()
+    {
+        var player = Player.Register("p1", "a@example.com", "Amir", Language.En, Day0);
+
+        Assert.Equal(0, player.RecordAbandonment(Day0));
+        // Exactly one window later: "at > now - window" is false when they're equal, so this one is
+        // strictly outside and does not count — a first offence again, not a second.
+        Assert.Equal(0, player.RecordAbandonment(Day0 + LiveRules.AbandonmentWindow));
+    }
+
+    [Fact]
+    public void An_abandonment_a_moment_inside_the_window_still_counts()
+    {
+        var player = Player.Register("p1", "a@example.com", "Amir", Language.En, Day0);
+
+        Assert.Equal(0, player.RecordAbandonment(Day0));
+        // A second short of a full window: still strictly inside, so this is the costly second.
+        Assert.Equal(200, player.RecordAbandonment(Day0 + LiveRules.AbandonmentWindow - TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
