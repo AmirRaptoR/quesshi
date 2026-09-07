@@ -158,6 +158,82 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     }
 
     [Fact]
+    public async Task CreateAsync_mirrors_the_duel_into_the_archive_so_its_code_can_be_resolved()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        var view = await grain.CreateAsync("MIRROR1", (int)Language.En, Amir, questionIds);
+
+        var row = await LiveShared.Archive.ByCodeAsync("MIRROR1");
+        Assert.NotNull(row);
+        Assert.Equal(id, row!.Id);
+        Assert.True(row.IsLive);
+        Assert.Equal(Amir, row.ChallengerId);
+        Assert.Equal(MatchState.AwaitingOpponent, row.State);
+        Assert.Equal(view.Id, row.Id);
+    }
+
+    [Fact]
+    public async Task JoinAsync_mirrors_the_opponent_into_the_archive()
+    {
+        var grain = NewGrain(out _, out var questionIds);
+        await grain.CreateAsync("MIRROR2", (int)Language.En, Amir, questionIds);
+        Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Sara));
+
+        var row = await LiveShared.Archive.ByCodeAsync("MIRROR2");
+        Assert.NotNull(row);
+        Assert.Equal(Sara, row!.OpponentId);
+        Assert.Equal(MatchState.InProgress, row.State);
+    }
+
+    [Fact]
+    public async Task Expiry_mirrors_no_contest_into_the_archive_and_notifies_ended_exactly_once()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        await grain.CreateAsync("MIRROR3", (int)Language.En, Amir, questionIds);
+
+        Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
+        await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
+        await WaitForEventAsync(id, "Ended", 1);
+
+        var row = await LiveShared.Archive.ByCodeAsync("MIRROR3");
+        Assert.Equal(MatchState.NoContest, row!.State);
+        Assert.Single(LiveShared.Notifier.EventsFor(id), e => e.Kind == "Ended");
+    }
+
+    // ---- Cancel ----
+
+    [Fact]
+    public async Task CancelAsync_by_the_challenger_in_the_lobby_ends_the_duel_and_notifies_once()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        await grain.CreateAsync("CANCEL1", (int)Language.En, Amir, questionIds);
+
+        Assert.True(await grain.CancelAsync(Amir));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.NoContest, view!.State);
+        await WaitForEventAsync(id, "Ended", 1);
+        Assert.Single(LiveShared.Notifier.EventsFor(id), e => e.Kind == "Ended");
+    }
+
+    [Fact]
+    public async Task CancelAsync_by_anyone_else_or_once_the_duel_has_left_the_lobby_is_refused()
+    {
+        var strangerGrain = NewGrain(out _, out var strangerIds);
+        await strangerGrain.CreateAsync("CANCEL2", (int)Language.En, Amir, strangerIds);
+        Assert.False(await strangerGrain.CancelAsync(Stranger));
+        Assert.False(await strangerGrain.CancelAsync(Sara)); // not seated at all, still refused
+
+        var joinedGrain = NewGrain(out _, out var joinedIds);
+        await joinedGrain.CreateAsync("CANCEL3", (int)Language.En, Amir, joinedIds);
+        await joinedGrain.JoinAsync(Sara);
+        Assert.False(await joinedGrain.CancelAsync(Amir)); // no longer in the lobby
+
+        var stillLobby = await strangerGrain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, stillLobby!.State);
+    }
+
+    [Fact]
     public async Task CreateAsync_registers_a_reminder_so_an_unjoined_lobby_expires_even_across_a_deactivation()
     {
         var grain = NewGrain(out var id, out var questionIds);
