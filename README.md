@@ -1,10 +1,13 @@
 # Quesshi · کوئیشی
 
-**Asynchronous trivia duels for friends who are never online at the same time.**
+**Trivia duels for friends — play a round whenever you're free, or start a live one and answer
+together, right now.**
 
-Two players get the same questions in the same order. Whoever plays first waits, and the
-notification is the game. Trilingual from the ground up — Persian, English and Dutch, each with its
-own question bank rather than a machine translation of someone else's.
+The default is asynchronous: two players get the same questions in the same order, whoever plays
+first waits, and the notification is the game. A **live** duel is the second mode, for when you're
+both online at once — same question, same clock, both scores visible as they happen. Trilingual
+from the ground up — Persian, English and Dutch, each with its own question bank rather than a
+machine translation of someone else's.
 
 It ships with no questions: you generate them, or write them, or seed your own. The interface,
 however, is fully translated into all three.
