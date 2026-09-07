@@ -26,4 +26,15 @@ public class LiveOutcomeTextTests
 
         Assert.Equal(keys.Count, keys.Distinct().Count());
     }
+
+    [Theory]
+    [InlineData("resolved", "me", false, null, LiveOutcome.Won)]
+    [InlineData("resolved", "them", false, null, LiveOutcome.Lost)]
+    [InlineData("resolved", null, true, null, LiveOutcome.Draw)]
+    [InlineData("abandoned", null, false, "them", LiveOutcome.AbandonedByThem)]
+    [InlineData("abandoned", null, false, "me", LiveOutcome.AbandonedByYou)]
+    [InlineData("nocontest", null, false, null, LiveOutcome.NoContest)]
+    public void Resolve_reads_the_wire_state_from_the_viewers_own_side(
+        string state, string? winnerId, bool isDraw, string? abandonedBy, LiveOutcome expected)
+        => Assert.Equal(expected, LiveOutcomeText.Resolve(state, winnerId, isDraw, abandonedBy, "me"));
 }

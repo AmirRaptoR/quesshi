@@ -21,4 +21,16 @@ public static class LiveOutcomeText
         LiveOutcome.NoContest => "live.end.noContest",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, null)
     };
+
+    /// <summary>
+    /// The viewer-relative <see cref="LiveOutcome"/> for a finished duel's wire state. <c>state</c>
+    /// is the lower-cased <c>MatchState</c> the DTO carries; <c>Forfeited</c> never reaches here — a
+    /// live duel never sets it (<c>LiveMatch</c> only ever resolves, abandons or no-contests).
+    /// </summary>
+    public static LiveOutcome Resolve(string state, string? winnerId, bool isDraw, string? abandonedBy, string meId) => state switch
+    {
+        "abandoned" => abandonedBy == meId ? LiveOutcome.AbandonedByYou : LiveOutcome.AbandonedByThem,
+        "nocontest" => LiveOutcome.NoContest,
+        _ => isDraw ? LiveOutcome.Draw : winnerId == meId ? LiveOutcome.Won : LiveOutcome.Lost
+    };
 }
