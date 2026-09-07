@@ -72,6 +72,20 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         Assert.False(asyncInvite.Live);
     }
 
+    [Fact]
+    public async Task A_live_row_does_not_appear_in_the_async_match_list_for_either_player()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var code = $"LIVE-{id}".ToUpperInvariant();
+        Shared.Archive.Items.Add(LiveRow(id, code, "p-live-challenger") with { OpponentId = "p-live-opponent" });
+
+        var challengerRows = await GameEndpoints.ListMatchesAsync("p-live-challenger", false, null, Shared.Archive, Shared.Players, Grains);
+        var opponentRows = await GameEndpoints.ListMatchesAsync("p-live-opponent", false, null, Shared.Archive, Shared.Players, Grains);
+
+        Assert.DoesNotContain(challengerRows, r => r.Id == id);
+        Assert.DoesNotContain(opponentRows, r => r.Id == id);
+    }
+
     private static readonly TokenIssuer Issuer = new(new JwtOptions
     {
         Key = "a-test-signing-key-long-enough-to-use", Issuer = "quesshi", Audience = "quesshi", Days = 1
