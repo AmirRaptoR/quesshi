@@ -1,13 +1,10 @@
 @page "/live/{MatchId}"
 @inherits PageBase
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject Func<string, LiveClient> ClientFactory
 
-@*
-    Placeholder: the five-phase live play screen is #13. This lands only enough to prove the
-    create/join/cancel/expiry path all the way through — the duel's phase and both players, from
-    GET /api/live/{id} and nothing more.
-*@
-
-<PageTitle>@L["app.name"]</PageTitle>
+<PageTitle>@L["live.title"] · @L["app.name"]</PageTitle>
 
 <div class="shell">
     @if (Unconfirmed)
@@ -18,39 +15,418 @@
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }
-    else if (_live is null)
+    else if (_refused || _view is null)
     {
         <div class="empty">
-            <p>@L["common.error"]</p>
+            <p>@(_refused ? L["live.refused"] : L["common.error"])</p>
             <a class="btn btn--ghost" href="/">@L["common.back"]</a>
         </div>
     }
     else
     {
-        <section class="card card--taq enter" style="text-align:center">
-            <span class="eyebrow">@_live.Phase</span>
+        var body = LivePhaseSelector.Select(_view.Phase);
 
-            <div class="row row--between" style="margin-top:1rem">
-                <div style="text-align:start">
-                    <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
-                    <div style="font-weight:700">@(_live.ChallengerId == State.Me?.Id ? State.Me.DisplayName : _live.OpponentId)</div>
+        @if (_reconnecting)
+        {
+            <p class="notice notice--bad enter" role="status">@L["live.reconnecting"]</p>
+        }
+
+        @if (body == LiveBody.Lobby)
+        {
+            <section class="card card--taq enter" style="text-align:center">
+                <span class="eyebrow">@L["live.lobby.waiting"]</span>
+                <p class="faint" style="margin-top:.5rem">@LobbyExpiry</p>
+            </section>
+
+            <section class="card card--flat enter">
+                <span class="eyebrow">@L["result.share"]</span>
+                <div class="row" style="margin-top:.7rem">
+                    <code class="grow live-code" dir="ltr">@_view.Code</code>
+                    <button class="btn btn--ghost btn--sm" @onclick="CopyAsync">
+                        @(_copied ? L["result.copied"] : L["result.copyLink"])
+                    </button>
                 </div>
-                <div style="text-align:end">
-                    <div class="faint" style="font-size:var(--step--1)">@L["result.them"]</div>
-                    <div style="font-weight:700">@((_live.ChallengerId == State.Me?.Id ? _live.OpponentId : _live.ChallengerId) ?? "—")</div>
+                <p class="faint" dir="ltr" style="margin:.5rem 0 0;font-size:var(--step--1);word-break:break-all">@ShareLink</p>
+                <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["result.shareHint"]</p>
+            </section>
+
+            <button class="btn btn--ghost btn--block enter" style="margin-top:1rem" @onclick="CancelLobbyAsync">@L["live.lobby.cancel"]</button>
+        }
+        else if (body == LiveBody.Countdown)
+        {
+            <section class="card card--taq enter" style="text-align:center">
+                <div class="row row--between" style="margin-top:.5rem">
+                    <div class="stack" style="justify-items:center;gap:.35rem">
+                        <span class="avatar avatar--lg" style="background:@Ranks.Tint(_view.ChallengerAvatar)">@Initial(_view.ChallengerName)</span>
+                        <span dir="auto">@_view.ChallengerName</span>
+                    </div>
+                    <div class="stack" style="justify-items:center;gap:.35rem">
+                        <span class="avatar avatar--lg" style="background:@Ranks.Tint(_view.OpponentAvatar ?? "")">@Initial(_view.OpponentName ?? "?")</span>
+                        <span dir="auto">@(_view.OpponentName ?? "—")</span>
+                    </div>
                 </div>
+                <p class="faint" style="margin-top:1rem">@L["live.countdown.starting"]</p>
+                <p class="numeral" style="font-size:var(--step-4);margin-top:.5rem">@L.Num(CountdownDigit)</p>
+            </section>
+        }
+        else if (body == LiveBody.Question)
+        {
+            var card = _view.CurrentCard;
+
+            @if (card is null)
+            {
+                <div class="empty"><p>@L["common.error"]</p></div>
+            }
+            else
+            {
+                <DuelBar View="_view" MeId="MeId" />
+
+                <header class="topbar">
+                    <span class="chip" style="border-color:@(card.CategoryColor + "66")">
+                        <span aria-hidden="true">@card.CategoryIcon</span> @card.CategoryName
+                    </span>
+                    <span class="level" aria-label="@L["level." + card.Level]">
+                        @for (var i = 1; i <= 5; i++) { <i class="@(i <= card.Level ? "on" : null)"></i> }
+                    </span>
+                    <div class="topbar__spacer"></div>
+                    <span class="muted numeral">@L.Num(card.Slot + 1) / @L.Num(card.TotalRounds)</span>
+                    <Ring EndsAt="card.EndsAt" Skew="Skew" Total="(int)(card.EndsAt - card.StartedAt).TotalSeconds" Size="38" />
+                </header>
+
+                <section class="card card--taq enter" @key="card.Slot">
+                    <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@card.Prompt</h1>
+
+                    <MediaBlock Media="card.Media" />
+
+                    <div class="answers">
+                        @for (var i = 0; i < card.Choices.Count; i++)
+                        {
+                            var index = i;
+                            <button class="answer @(_myChoice == index ? "answer--locked" : null)"
+                                    disabled="@(_locked || TimeUp)" @onclick="() => ChooseAsync(index)">
+                                <span class="answer__key" aria-hidden="true">@Keys[index]</span>
+                                <span class="grow" dir="auto">@card.Choices[index]</span>
+                            </button>
+                        }
+                    </div>
+                </section>
+
+                <p class="empty enter" style="margin-top:.7rem">
+                    @if (_locked)
+                    {
+                        @(_opponentAnswered ? L["live.question.theyAnswered"] : L["live.question.waitingForThem"])
+                    }
+                    else if (TimeUp)
+                    {
+                        @L["play.timeUp"]
+                    }
+                    else if (_opponentAnswered)
+                    {
+                        @L["live.question.theyAnswered"]
+                    }
+                    else
+                    {
+                        @L["live.question.locked"]
+                    }
+                </p>
+
+                @if (!_opponentOnline)
+                {
+                    <p class="notice notice--bad enter">@L["live.opponentAway"]</p>
+                }
+            }
+        }
+        else if (body == LiveBody.Reveal)
+        {
+            var card = _view.CurrentCard;
+            var round = CurrentRound;
+
+            @if (card is null || round is null)
+            {
+                <div class="empty"><p>@L["common.error"]</p></div>
+            }
+            else
+            {
+                var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
+                var theirs = round.Answers.FirstOrDefault(a => a.PlayerId == TheirId);
+
+                <DuelBar View="_view" MeId="MeId" />
+
+                <header class="topbar">
+                    <span class="chip" style="border-color:@(card.CategoryColor + "66")">
+                        <span aria-hidden="true">@card.CategoryIcon</span> @card.CategoryName
+                    </span>
+                    <span class="level" aria-label="@L["level." + card.Level]">
+                        @for (var i = 1; i <= 5; i++) { <i class="@(i <= card.Level ? "on" : null)"></i> }
+                    </span>
+                    <div class="topbar__spacer"></div>
+                    <span class="muted numeral">@L.Num(card.Slot + 1) / @L.Num(card.TotalRounds)</span>
+                    <Ring EndsAt="_view.PhaseEndsAt" Skew="Skew" Total="RevealSeconds" Size="38" />
+                </header>
+
+                <section class="card card--taq enter" @key="card.Slot">
+                    <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@card.Prompt</h1>
+
+                    <MediaBlock Media="card.Media" Loop="false" Autoplay="false" />
+
+                    <div class="answers">
+                        @for (var i = 0; i < card.Choices.Count; i++)
+                        {
+                            var index = i;
+                            <div class="stack" style="gap:.3rem">
+                                <button class="answer @RevealClassFor(index, round.CorrectIndex, mine?.ChoiceIndex)" disabled>
+                                    <span class="answer__key" aria-hidden="true">@Keys[index]</span>
+                                    <span class="grow" dir="auto">@card.Choices[index]</span>
+                                    @if (index == round.CorrectIndex) { <span aria-hidden="true">✓</span> }
+                                </button>
+                                <div class="row" style="gap:.35rem">
+                                    @if (mine?.ChoiceIndex == index) { <span class="chip chip--live">@L["result.you"]</span> }
+                                    @if (theirs?.ChoiceIndex == index) { <span class="chip">@L["result.them"]</span> }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                <section class="card card--flat enter" style="margin-top:.85rem">
+                    <div class="row row--between">
+                        <span class="numeral" style="color:var(--zaferan)">@L["result.you"]: +@L.Num(mine?.Score ?? 0)</span>
+                        <span class="numeral">@L["result.them"]: +@L.Num(theirs?.Score ?? 0)</span>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_view.CurrentExplanation))
+                    {
+                        <p class="muted" dir="auto" style="margin:.6rem 0 0;font-size:var(--step--1)">@_view.CurrentExplanation</p>
+                    }
+                </section>
+            }
+        }
+        else
+        {
+            <section class="card card--taq enter" style="text-align:center">
+                <span class="eyebrow">@L[LiveOutcomeText.HeadlineKey(Outcome)]</span>
+
+                <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
+                    <Shamseh Mine="RaysFor(MeId)" Theirs="RaysFor(TheirId)" Slots="_view.TotalRounds" Ignite="true"
+                             Centre="@L.Num(_view.Players.FirstOrDefault(p => p.PlayerId == MeId)?.Score ?? 0)" />
+                </div>
+
+                <div class="row row--between" style="margin-top:1rem">
+                    <div style="text-align:start">
+                        <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
+                        <div class="numeral" style="font-size:var(--step-2);color:var(--zaferan)">@L.Num(_view.Players.FirstOrDefault(p => p.PlayerId == MeId)?.Score ?? 0)</div>
+                    </div>
+                    <div style="text-align:end">
+                        <div class="faint" style="font-size:var(--step--1)">@(_view.ChallengerId == MeId ? _view.OpponentName : _view.ChallengerName)</div>
+                        <div class="numeral" style="font-size:var(--step-2)">@L.Num(_view.Players.FirstOrDefault(p => p.PlayerId == TheirId)?.Score ?? 0)</div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="stack enter" style="margin-top:1.2rem">
+                @if (State.IsGuest)
+                {
+                    <a class="btn btn--ghost btn--block" href="/signin">@L["result.keepScore"]</a>
+                    <p class="faint" style="margin:-.4rem 0 0;text-align:center;font-size:var(--step--1)">@L["result.guestHint"]</p>
+                }
+                else
+                {
+                    <a class="btn btn--ghost btn--block" href="/">@L["result.again"]</a>
+                }
             </div>
-        </section>
+        }
     }
 </div>
 
 @code {
+    private static readonly string[] Keys = ["A", "B", "C", "D"];
+
+    /// <summary>Mirrors <c>LiveRules.RevealTime</c> (Domain, 3s) — the Web project has no reference
+    /// to Domain, so this is the ring's denominator for the reveal countdown, not a second source
+    /// of truth: the server's <c>PhaseEndsAt</c> is what actually ends the phase.</summary>
+    private const int RevealSeconds = 3;
+
     [Parameter] public string MatchId { get; set; } = "";
 
-    /// <summary>The one lobby a guest was invited into.</summary>
+    /// <summary>A guest may join a live duel by code, per #12 — playing is the whole reason a guest exists.</summary>
     protected override bool AllowsGuest => true;
 
-    private LiveViewDto? _live;
+    private LiveClient? _client;
+    private LiveViewDto? _view;
+    private bool _refused;
+    private bool _reconnecting;
 
-    protected override async Task LoadAsync() => _live = await Api.LiveAsync(MatchId);
+    private bool _locked;
+    private int? _myChoice;
+    private bool _opponentAnswered;
+    private bool _opponentOnline = true;
+    private bool _copied;
+
+    private Timer? _ticker;
+
+    private string MeId => State.Me!.Id;
+
+    protected override async Task LoadAsync()
+    {
+        _client = ClientFactory("/hub/live");
+        _client.RoundStarted += OnRoundStarted;
+        _client.RoundRevealed += OnRoundRevealed;
+        _client.Ended += OnEnded;
+        _client.OpponentLeft += p => OnPresence(p, online: false);
+        _client.OpponentBack += p => OnPresence(p, online: true);
+        _client.OpponentAnswered += OnOpponentAnswered;
+        _client.Connection.Reconnecting += _ => Toggle(true);
+        _client.Connection.Reconnected += _ => Toggle(false);
+        _client.Connection.Closed += _ => Toggle(true);
+
+        try
+        {
+            await _client.StartAsync();
+            _view = await _client.JoinAsync(MatchId);
+        }
+        catch
+        {
+            // The socket isn't up yet, or the hub refused us — either way #13's shell falls back
+            // to the same catch-up read GET /api/live/{id} serves; a genuine non-participant is
+            // refused by both paths alike.
+            _view = await Api.LiveAsync(MatchId);
+        }
+
+        _refused = _view is null;
+        _ticker = new Timer(_ => InvokeAsync(StateHasChanged), null, 250, 250);
+    }
+
+    private Task Toggle(bool reconnecting)
+    {
+        _reconnecting = reconnecting;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // --- server pushes: the only way _view ever changes -----------------------------------------
+
+    private void OnRoundStarted(LiveRoundCardDto card)
+    {
+        if (_view is null) return;
+
+        List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(card.Slot), new(card.Slot, card.QuestionId, card.StartedAt, null, [])];
+        _view = _view with { Phase = "question", PhaseEndsAt = card.EndsAt, RoundIndex = card.Slot, CurrentCard = card, CurrentExplanation = null, Rounds = rounds };
+        _locked = false;
+        _myChoice = null;
+        _opponentAnswered = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRoundRevealed(LiveRoundRevealDto reveal)
+    {
+        if (_view?.CurrentCard is not { } card) return;
+
+        List<LiveRoundAnswerViewDto> answers = [.. reveal.Players.Select(p => new LiveRoundAnswerViewDto(p.PlayerId, true, p.ChoiceIndex, p.Correct, p.RoundScore))];
+        List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(reveal.Slot), new(reveal.Slot, card.QuestionId, card.StartedAt, reveal.CorrectIndex, answers)];
+        List<LivePlayerViewDto> players = [.. _view.Players.Select(p =>
+        {
+            var mine = reveal.Players.FirstOrDefault(r => r.PlayerId == p.PlayerId);
+            return mine is null ? p : p with { Score = mine.TotalScore, Correct = p.Correct + (mine.Correct ? 1 : 0) };
+        })];
+
+        _view = _view with { Phase = "reveal", PhaseEndsAt = reveal.EndsAt, CurrentExplanation = reveal.Explanation, Rounds = rounds, Players = players };
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnEnded(LiveEndedDto ended)
+    {
+        if (_view is null) return;
+
+        List<LivePlayerViewDto> players = [.. _view.Players.Select(p =>
+        {
+            var final = ended.Scores.FirstOrDefault(s => s.PlayerId == p.PlayerId);
+            return final is null ? p : p with { Score = final.Score, Correct = final.Correct };
+        })];
+
+        _view = _view with { Phase = "over", State = ended.State, WinnerId = ended.WinnerId, IsDraw = ended.IsDraw, AbandonedBy = ended.AbandonedBy, Players = players };
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnOpponentAnswered(OpponentAnsweredDto a)
+    {
+        if (a.PlayerId == MeId) return;
+        _opponentAnswered = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPresence(OpponentPresenceDto p, bool online)
+    {
+        if (p.PlayerId == MeId) return; // that push is about my own connection, not theirs
+        _opponentOnline = online;
+        InvokeAsync(StateHasChanged);
+    }
+
+    // --- actions ----------------------------------------------------------------------------------
+
+    private async Task ChooseAsync(int index)
+    {
+        if (_locked || TimeUp || _view?.CurrentCard is null || _client is null) return;
+
+        _locked = true;
+        _myChoice = index;
+        StateHasChanged();
+
+        try { await _client.AnswerAsync(MatchId, _view.RoundIndex, index); }
+        catch { /* rejected as late or duplicate — the reveal that follows is authoritative */ }
+    }
+
+    private async Task CancelLobbyAsync()
+    {
+        await Api.CancelLiveAsync(MatchId);
+        Nav.NavigateTo("/");
+    }
+
+    private async Task CopyAsync()
+    {
+        _copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
+        StateHasChanged();
+    }
+
+    // --- derived state ------------------------------------------------------------------------------
+
+    private bool TimeUp => _view?.CurrentCard is { } c && DateTimeOffset.UtcNow + Skew >= c.EndsAt;
+    private TimeSpan Skew => _client?.Skew ?? TimeSpan.Zero;
+    private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_view!.Code}";
+
+    private string LobbyExpiry => _view?.LobbyEndsAt is { } endsAt
+        ? L.Format("live.lobby.expiresIn", L.Num(RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew)))
+        : "";
+
+    private int CountdownDigit => _view?.PhaseEndsAt is { } endsAt
+        ? RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew)
+        : 0;
+
+    private string? TheirId => _view!.ChallengerId == MeId ? _view.OpponentId : _view.ChallengerId;
+
+    private LiveRoundResultViewDto? CurrentRound =>
+        _view is not null && _view.RoundIndex < _view.Rounds.Count ? _view.Rounds[_view.RoundIndex] : null;
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    private LiveOutcome Outcome => LiveOutcomeText.Resolve(_view!.State, _view.WinnerId, _view.IsDraw, _view.AbandonedBy, MeId);
+
+    private static string? RevealClassFor(int index, int? correctIndex, int? myChoice)
+    {
+        if (index == correctIndex) return "answer--right";
+        if (index == myChoice) return "answer--wrong";
+        return "answer--dim";
+    }
+
+    private IReadOnlyList<bool?> RaysFor(string? playerId) => playerId is null || _view is null
+        ? []
+        : [.. _view.Rounds.Select(r => r.Answers.FirstOrDefault(a => a.PlayerId == playerId) is { Answered: true } a ? a.Correct : (bool?)null)];
+
+    public async ValueTask DisposeAsync()
+    {
+        _ticker?.Dispose();
+        if (_client is not null)
+        {
+            try { await _client.LeaveAsync(); } catch { /* the connection may already be gone */ }
+            await _client.DisposeAsync();
+        }
+    }
 }
