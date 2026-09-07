@@ -29,13 +29,13 @@ public static class GameEndpoints
         });
 
         // --- profile -----------------------------------------------------------------
-        api.MapGet("/me", async (HttpContext ctx, IPlayerRepository players, ILeaderboard board) =>
+        api.MapGet("/me", async (HttpContext ctx, IPlayerRepository players, ILeaderboard board, IPresence presence) =>
         {
             var me = await players.GetAsync(ctx.User.PlayerId()!);
-            return me is null ? Results.Unauthorized() : Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board)));
+            return me is null ? Results.Unauthorized() : Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPut("/me", async (UpdateProfileDto body, HttpContext ctx, IPlayerRepository players, ILeaderboard board) =>
+        api.MapPut("/me", async (UpdateProfileDto body, HttpContext ctx, IPlayerRepository players, ILeaderboard board, IPresence presence) =>
         {
             var me = await players.GetAsync(ctx.User.PlayerId()!);
             if (me is null) return Results.Unauthorized();
@@ -47,7 +47,7 @@ public static class GameEndpoints
             me.SetLanguage(body.Lang.ToLanguage());
             await players.UpsertAsync(me);
 
-            return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board)));
+            return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
         });
 
         api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx,
@@ -85,8 +85,9 @@ public static class GameEndpoints
             return Results.Ok();
         });
 
+        // Search results are candidates to add, not yet friends — online status has no meaning here.
         api.MapGet("/players/search", async (string? q, IPlayerRepository players) =>
-            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore)).ToList());
+            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false)).ToList());
 
         // --- leaderboards ------------------------------------------------------------
         api.MapGet("/leaderboard", async (ILeaderboard board, IPlayerRepository players) =>
@@ -336,12 +337,12 @@ public static class GameEndpoints
     private static MediaDto? ToMediaDto(MediaRef media)
         => media.Kind == MediaKind.None ? null : new MediaDto(media.Kind.ToString().ToLowerInvariant(), media.Url, media.Attribution);
 
-    private static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board)
+    private static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board, IPresence presence)
     {
         var friends = new List<FriendDto>();
         foreach (var id in me.Friends)
             if (await players.GetAsync(id) is { } f)
-                friends.Add(new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore));
+                friends.Add(new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, presence.IsOnline(f.Id)));
 
         return [.. friends.OrderByDescending(f => f.Score)];
     }
