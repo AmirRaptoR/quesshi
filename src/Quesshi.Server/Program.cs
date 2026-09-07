@@ -66,6 +66,11 @@ builder.Services.AddSingleton(mongoOptions);
 // --- infrastructure ------------------------------------------------------------------
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
+
+// The live-duel hub lands with #10 (ILiveMatchGrain); this backplane is wired ahead of it so a
+// second instance is never silently missing it. Against the same Redis connection everything else
+// here already requires — no new setting, nothing to add to the configuration table.
+builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
