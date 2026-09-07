@@ -126,4 +126,27 @@ public class MatchListLiveTests(ClusterFixture fixture)
         Assert.Null(row.Opponent);
         Assert.False(row.CanPlay);
     }
+
+    [Fact]
+    public async Task Active_only_keeps_a_live_in_progress_row_and_drops_a_live_resolved_one()
+    {
+        const string me = "p-liveactive-me";
+        const string rival = "p-liveactive-rival";
+        await Shared.Players.UpsertAsync(Player.Register(me, $"{me}@example.com", "Amir", Language.En, Shared.Clock.Now));
+        await Shared.Players.UpsertAsync(Player.Register(rival, $"{rival}@example.com", "Sara", Language.En, Shared.Clock.Now));
+
+        await Shared.Archive.SaveAsync(new ArchivedMatch(
+            "liveactive-inprogress", "liveactive-inprogress", Language.En, me, rival, WinnerId: null, IsDraw: false,
+            ChallengerScore: 0, OpponentScore: 0, MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
+            QuestionIds: [], IsLive: true));
+        await Shared.Archive.SaveAsync(new ArchivedMatch(
+            "liveactive-resolved", "liveactive-resolved", Language.En, me, rival, WinnerId: me, IsDraw: false,
+            ChallengerScore: 5, OpponentScore: 2, MatchState.Resolved, Shared.Clock.Now, EndedAt: Shared.Clock.Now,
+            QuestionIds: [], IsLive: true));
+
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, take: null, Shared.Archive, Shared.Players, Grains);
+
+        Assert.Contains(list, m => m.Id == "liveactive-inprogress");
+        Assert.DoesNotContain(list, m => m.Id == "liveactive-resolved");
+    }
 }
