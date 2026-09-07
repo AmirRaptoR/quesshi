@@ -135,6 +135,7 @@ classes.
 | `QuestionGeneratorGrain` | `0` | Mongo | daily reminder → tops up thin category/level/lang buckets via the Claude API |
 | `LiveMatchGrain` | matchId | Redis | the round clock: opens/closes rounds, reveals, abandonment and no-contest, pushed out through `ILiveNotifier` |
 | `LiveSettingsGrain` | `0` | Redis | the runtime `Live:Enabled` toggle the admin dashboard and the create/join endpoints read |
+| `LiveLobbyGrain` | `0` | Redis | the live counterpart to `MatchmakingGrain`: matches two players queued for a random live opponent on language and question count; an entry expires with the presence that heartbeats it |
 
 ### Fairness (never simplify away)
 - Correct answers never reach the client before that player has answered.

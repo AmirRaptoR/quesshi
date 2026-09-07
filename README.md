@@ -41,6 +41,10 @@ clock moves you both on together. Three rounds in a row with no answer from you 
 if neither of you answers three rounds running, it's a no-contest and nothing goes on the
 leaderboard.
 
+Start a live duel with a friend by sharing a lobby code or link, or queue for a random opponent
+matched on your language and question count — closing the tab while queued simply drops you from it,
+the same way it drops your presence. Either door lands both of you in the same duel.
+
 The scoreboard is a *shamseh*, the twelve-ray Persian rosette: half the rays are yours and half are
 theirs, one per question, saffron for right and pomegranate for wrong. The star only completes when
 both of you have played, which is exactly what a duel is. Past twenty questions it becomes two
@@ -141,9 +145,10 @@ or the end, and never knows whether SignalR, a test fake, or nobody at all is li
 side. That is what keeps the dependency rule intact — the transport lives in `Quesshi.Server`, on
 the inward-pointing side of the arrow, not in the grain.
 
-The transport side is a SignalR hub, `LobbyHub`, mapped at `/hub/lobby`; it currently carries
-presence only — marking a player online while they're connected and off when they drop — with the
-per-duel hub for round-by-round play landing separately. Redis backs SignalR's own scale-out
+The transport side is a SignalR hub, `LobbyHub`, mapped at `/hub/lobby`; it carries presence —
+marking a player online while they're connected and off when they drop — and the random-opponent
+queue, which rides the same connection because an entry cannot outlive the socket that heartbeats it.
+The per-duel hub for round-by-round play lands separately. Redis backs SignalR's own scale-out
 backplane, on top of everything else it already does for Orleans.
 
 **There is no separate Orleans host.** The silo is co-hosted in the ASP.NET app
