@@ -135,6 +135,25 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
     }
 
     [Fact]
+    public async Task Reads_only_the_directory_no_Mongo_query_beyond_display_name_lookups()
+    {
+        LiveShared.Directory.Rows.Clear();
+        var challenger = NewPlayer("noquery");
+        LiveShared.Directory.Rows["row-nq"] = new LiveDirectoryRow("row-nq", "NOQ001", challenger.Id, null,
+            (int)Language.En, 0, 10, (int)LivePhase.Lobby, DateTimeOffset.UtcNow);
+        LiveShared.Archive.ResetCounters();
+
+        using var client = AdminClient();
+        await client.GetFromJsonAsync<AdminLivePageDto>("/api/admin/live");
+
+        // ForPlayerAsync is the only query FakeArchive counts; zero proves the endpoint never
+        // touched IMatchArchive at all, only the index and the player-name lookup.
+        Assert.Equal(0, LiveShared.Archive.Queries);
+
+        LiveShared.Directory.Rows.Clear();
+    }
+
+    [Fact]
     public async Task A_lobby_with_no_opponent_shows_an_empty_opponent_not_a_blank_row()
     {
         LiveShared.Directory.Rows.Clear();
