@@ -32,6 +32,19 @@ public sealed class PlayerGrain(IPlayerRepository players, ILogger<PlayerGrain> 
         await players.UpsertAsync(_player);
     }
 
+    public async Task<int> RecordAbandonmentAsync(DateTimeOffset now)
+    {
+        if (_player is null)
+        {
+            logger.LogWarning("Abandonment for unknown player {Player}", this.GetPrimaryKeyString());
+            return 0;
+        }
+
+        var penalty = _player.RecordAbandonment(now);
+        await players.UpsertAsync(_player);
+        return penalty;
+    }
+
     public async Task AddFriendAsync(string otherId)
     {
         if (_player is null) return;
