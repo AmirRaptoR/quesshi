@@ -223,6 +223,40 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         Assert.Equal(after, Shared.Leaderboard.Scores[quitter]);
     }
 
+    /// <summary>
+    /// A guest still pays for walking away — the stats penalty is charged to their own record exactly
+    /// as a signed-in quitter's is — but a guest was never on the leaderboard to begin with, and
+    /// penalising must not be the way one gets on it.
+    /// </summary>
+    [Fact]
+    public async Task A_guest_who_abandons_pays_the_stats_penalty_but_still_never_reaches_the_leaderboard()
+    {
+        var quitter = Player.Guest("p-guestabandon-quitter", "Amir", Language.En, Shared.Clock.Now);
+        quitter.RecordResult(MatchOutcome.Win, 1000); // banked from an earlier duel
+        await Shared.Players.UpsertAsync(quitter);
+        const string winner = "p-guestabandon-winner";
+        await Shared.Players.UpsertAsync(Player.Register(winner, $"{winner}@example.com", "Sara", Language.En, Shared.Clock.Now));
+
+        // A first abandonment on record already, so this settlement is the costly second one.
+        await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(quitter.Id).RecordAbandonmentAsync(Shared.Clock.Now);
+        var beforeSecond = (await Shared.Players.GetAsync(quitter.Id))!.Stats.TotalScore;
+
+        var start = Shared.Clock.Now.AddHours(1);
+        var ids = SeedQuestions("guestabandon");
+        var m = LiveMatch.Create("guestabandon-1", quitter.Id, ids, start);
+        m.Join(winner, start);
+        var now = start + LiveRules.StartCountdown;
+        m.Advance(now);
+        AbandonBySilence(m, winner, ref now);
+        Assert.Equal(MatchState.Abandoned, m.State);
+
+        await Sut.SettleAsync(m, Language.En);
+
+        var after = (await Shared.Players.GetAsync(quitter.Id))!.Stats.TotalScore;
+        Assert.Equal(Math.Max(0, beforeSecond - 200), after); // the stats penalty still applies
+        Assert.False(Shared.Leaderboard.Scores.ContainsKey(quitter.Id)); // but no entry was ever created
+    }
+
     [Fact]
     public async Task A_live_duel_is_mirrored_into_the_archive_on_start_and_again_on_end()
     {

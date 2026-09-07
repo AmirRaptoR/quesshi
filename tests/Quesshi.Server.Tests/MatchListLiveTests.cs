@@ -71,6 +71,27 @@ public class MatchListLiveTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Building_the_list_activates_no_grain_for_a_live_row()
+    {
+        const string me = "p-livenograin-me";
+        const string rival = "p-livenograin-rival";
+        await Shared.Players.UpsertAsync(Player.Register(me, $"{me}@example.com", "Amir", Language.En, Shared.Clock.Now));
+        await Shared.Players.UpsertAsync(Player.Register(rival, $"{rival}@example.com", "Sara", Language.En, Shared.Clock.Now));
+
+        await Shared.Archive.SaveAsync(new ArchivedMatch(
+            "livenograin-1", "livenograin-1", Language.En, me, rival, WinnerId: null, IsDraw: false,
+            ChallengerScore: 3, OpponentScore: 1, MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
+            QuestionIds: [], IsLive: true));
+
+        var spy = GrainActivationSpy.Wrap(Grains, out var requests);
+
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, spy);
+
+        Assert.Contains(list, m => m.Id == "livenograin-1");
+        Assert.DoesNotContain(requests, r => r.GrainInterface == typeof(IMatchGrain) && r.Key == "livenograin-1");
+    }
+
+    [Fact]
     public async Task A_no_contest_live_duel_is_left_out_of_the_list_entirely()
     {
         const string me = "p-livenc-me";
