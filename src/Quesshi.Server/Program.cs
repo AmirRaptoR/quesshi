@@ -95,6 +95,7 @@ builder.Services.AddSingleton<IAiSpendLog, MongoAiSpendLog>();
 builder.Services.AddSingleton<ILeaderboard, RedisLeaderboard>();
 builder.Services.AddSingleton<ILiveDirectory, RedisLiveDirectory>();
 builder.Services.AddSingleton<IOtpStore, RedisOtpStore>();
+builder.Services.AddSingleton<IPresence, RedisPresence>();
 builder.Services.AddSingleton<QuestionPromptBuilder>();
 builder.Services.AddSingleton<IQuestionGenerator, OpenRouterQuestionGenerator>();
 
@@ -188,6 +189,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
 app.MapLive();
