@@ -494,6 +494,104 @@ public class LiveMatchTests
         Assert.Equal(Challenger, snapshot.WinnerId);
     }
 
+    // ---- NextDueAt ----
+
+    [Fact]
+    public void NextDueAt_in_the_lobby_is_created_at_plus_lobby_expiry()
+    {
+        var m = NewMatch();
+        Assert.Equal(T0 + LiveRules.LobbyExpires, m.NextDueAt);
+    }
+
+    [Fact]
+    public void NextDueAt_in_the_countdown_is_phase_ends_at()
+    {
+        var m = Joined();
+        Assert.Equal(m.PhaseEndsAt, m.NextDueAt);
+    }
+
+    [Fact]
+    public void NextDueAt_in_a_question_is_phase_ends_at_plus_network_grace()
+    {
+        var m = InRound0();
+        Assert.Equal(m.PhaseEndsAt!.Value + MatchRules.NetworkGrace, m.NextDueAt);
+    }
+
+    [Fact]
+    public void NextDueAt_in_a_reveal_is_phase_ends_at()
+    {
+        var m = InRound0();
+        m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // -> reveal
+        Assert.Equal(LivePhase.Reveal, m.Phase);
+        Assert.Equal(m.PhaseEndsAt, m.NextDueAt);
+    }
+
+    [Fact]
+    public void NextDueAt_is_null_once_the_duel_is_over()
+    {
+        var m = PlayFullDuelToResolution();
+        Assert.True(m.IsOver);
+        Assert.Null(m.NextDueAt);
+    }
+
+    [Theory]
+    [InlineData(LivePhase.Lobby)]
+    [InlineData(LivePhase.Countdown)]
+    [InlineData(LivePhase.Reveal)]
+    public void Advance_at_exactly_next_due_at_moves_the_phase_and_before_it_does_not(LivePhase phase)
+    {
+        var m = phase switch
+        {
+            LivePhase.Lobby => NewMatch(),
+            LivePhase.Countdown => Joined(),
+            _ => InRound0() // advanced to Reveal below
+        };
+        if (phase == LivePhase.Reveal) m.Advance(PastGrace(m.PhaseEndsAt!.Value));
+        Assert.Equal(phase, m.Phase);
+
+        var due = m.NextDueAt!.Value;
+        Assert.False(m.Advance(due - TimeSpan.FromTicks(1)));
+        Assert.Equal(phase, m.Phase);
+
+        Assert.True(m.Advance(due));
+        Assert.NotEqual(phase, m.Phase);
+    }
+
+    [Fact]
+    public void NextDueAt_in_a_question_names_the_grace_boundary_which_only_closes_strictly_after_it()
+    {
+        // The Question phase is the one exception documented on NextDueAt itself: StepOnce only
+        // closes a question once now is strictly past PhaseEndsAt + NetworkGrace, so Advance at
+        // NextDueAt exactly is still one tick early — the grain's re-arm-on-no-op path exists for
+        // precisely this boundary.
+        var m = InRound0();
+        var due = m.NextDueAt!.Value;
+
+        Assert.False(m.Advance(due));
+        Assert.Equal(LivePhase.Question, m.Phase);
+
+        Assert.True(m.Advance(due + TimeSpan.FromTicks(1)));
+        Assert.Equal(LivePhase.Reveal, m.Phase);
+    }
+
+    // ---- EndNoContest ----
+
+    [Fact]
+    public void EndNoContest_finishes_the_duel_with_no_winner()
+    {
+        var m = InRound0();
+        var at = m.CurrentRound!.StartedAt + TimeSpan.FromSeconds(4);
+
+        m.EndNoContest(at);
+
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(LivePhase.Over, m.Phase);
+        Assert.Null(m.PhaseEndsAt);
+        Assert.Equal(at, m.EndedAt);
+        Assert.Null(m.WinnerId);
+        Assert.False(m.IsDraw);
+    }
+
     // ---- Snapshot ----
 
     [Fact]
