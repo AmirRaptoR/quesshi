@@ -1,6 +1,4 @@
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using Orleans.Configuration;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
@@ -136,27 +134,10 @@ var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions);
 builder.Services.AddSingleton(tokenIssuer);
 builder.Services.AddSingleton(adminTokenIssuer);
 
-// Two schemes, two audiences, two signing keys. A player token cannot be presented as an admin
-// token even if something else goes wrong, because it will not validate against the admin scheme.
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidIssuer = jwtOptions.Issuer,
-        ValidAudience = jwtOptions.Audience,
-        IssuerSigningKey = tokenIssuer.SigningKey,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
-    })
-    .AddJwtBearer(AdminTokenIssuer.Scheme, options => options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidIssuer = adminAuthOptions.Issuer,
-        ValidAudience = AdminTokenIssuer.Audience,
-        IssuerSigningKey = adminTokenIssuer.SigningKey,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
-    });
+// Registers the player scheme (default) and the admin scheme, including the /hub query-string
+// token hook the player scheme needs for SignalR. See AuthenticationSetup for why this is an
+// extension method rather than inline here: a test host calls the exact same code.
+builder.Services.AddQuesshiAuthentication(jwtOptions, adminAuthOptions, tokenIssuer, adminTokenIssuer);
 
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("admin", policy => policy
