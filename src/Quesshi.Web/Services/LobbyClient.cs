@@ -19,6 +19,7 @@ public sealed class LobbyClient : IAsyncDisposable
     public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(20);
 
     private readonly HubConnection _connection;
+    private readonly SemaphoreSlim _startLock = new(1, 1);
     private Timer? _timer;
 
     public event Action<LiveChallengeDto>? ChallengeReceived;
@@ -26,6 +27,11 @@ public sealed class LobbyClient : IAsyncDisposable
     public event Action<string>? ChallengeDeclined;
     public event Action<string>? DuelReady;
     public event Action<string>? ChallengeFailed;
+
+    /// <summary>Surfaces <see cref="HubConnection.Closed"/> — fired once the reconnect attempts
+    /// (<see cref="ReconnectDelays"/>) are exhausted, or on an explicit <see cref="StopAsync"/>.
+    /// A consumer wanting only unintentional drops must track its own stop separately.</summary>
+    public event Action? Closed;
 
     public LobbyClient(string hubUrl, Func<string?> accessTokenProvider)
         : this(BuildConnection(hubUrl, accessTokenProvider))
@@ -37,6 +43,7 @@ public sealed class LobbyClient : IAsyncDisposable
     {
         _connection = connection;
         _connection.Reconnected += OnReconnectedAsync;
+        _connection.Closed += OnClosedAsync;
 
         _connection.On<LiveChallengeDto>("ChallengeReceived", c => ChallengeReceived?.Invoke(c));
         _connection.On<string>("ChallengeExpired", id => ChallengeExpired?.Invoke(id));
@@ -98,6 +105,32 @@ public sealed class LobbyClient : IAsyncDisposable
         await StartHeartbeatingAsync();
     }
 
+    /// <summary>Idempotent: returns true immediately if already connected, otherwise attempts a start
+    /// and reports whether it succeeded — never throws. A <see cref="SemaphoreSlim"/> serializes
+    /// overlapping callers (a button press racing the layout's own sync, say) so at most one
+    /// <see cref="StartAsync"/> is ever in flight, which is what keeps a second caller from hitting
+    /// <see cref="HubConnection.StartAsync"/>'s own "already starting" exception.</summary>
+    public async Task<bool> EnsureConnectedAsync(CancellationToken ct = default)
+    {
+        if (IsConnected) return true;
+
+        await _startLock.WaitAsync(ct);
+        try
+        {
+            if (IsConnected) return true;
+            await StartAsync(ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _startLock.Release();
+        }
+    }
+
     /// <summary>Stops the connection without disposing it, so the same instance can be started again — a
     /// player can sign out and back in within one WASM session without losing this singleton.</summary>
     public async Task StopAsync(CancellationToken ct = default)
@@ -109,6 +142,15 @@ public sealed class LobbyClient : IAsyncDisposable
 
     /// <summary>Without this, a session that survives a drop would stop heartbeating forever and quietly time out.</summary>
     internal Task OnReconnectedAsync(string? connectionId) => StartHeartbeatingAsync();
+
+    /// <summary>Stops the now-pointless heartbeat and republishes the drop as <see cref="Closed"/>.</summary>
+    internal Task OnClosedAsync(Exception? exception)
+    {
+        _timer?.Dispose();
+        _timer = null;
+        Closed?.Invoke();
+        return Task.CompletedTask;
+    }
 
     private async Task StartHeartbeatingAsync()
     {
@@ -162,7 +204,9 @@ public sealed class LobbyClient : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _connection.Reconnected -= OnReconnectedAsync;
+        _connection.Closed -= OnClosedAsync;
         _timer?.Dispose();
+        _startLock.Dispose();
         await _connection.DisposeAsync();
     }
 }

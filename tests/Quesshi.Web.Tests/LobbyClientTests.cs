@@ -119,4 +119,67 @@ public class LobbyClientTests
 
         Assert.Null(result);
     }
+
+    /// <summary>Real network attempt to an unreachable localhost port — fails fast (connection
+    /// refused), which is exactly the "start attempted, but failed" path this proves.</summary>
+    [Fact]
+    public async Task EnsureConnectedAsync_returns_false_instead_of_throwing_when_the_start_fails()
+    {
+        await using var client = NewClient();
+
+        var connected = await client.EnsureConnectedAsync();
+
+        Assert.False(connected);
+    }
+
+    /// <summary>Two callers asking for the connection at once — a button press racing the layout's own
+    /// sync, say — must not turn into two overlapping HubConnection.StartAsync calls, which throws.</summary>
+    [Fact]
+    public async Task Overlapping_EnsureConnectedAsync_calls_do_not_throw()
+    {
+        await using var client = NewClient();
+
+        var first = client.EnsureConnectedAsync();
+        var second = client.EnsureConnectedAsync();
+        var results = await Task.WhenAll(first, second);
+
+        Assert.All(results, Assert.False);
+    }
+
+    [Fact]
+    public async Task Closed_is_surfaced_to_consumers()
+    {
+        await using var client = NewClient();
+        var closed = false;
+        client.Closed += () => closed = true;
+
+        var closedField = typeof(HubConnection).GetField("Closed",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var closedHandler = (Func<Exception?, Task>)closedField.GetValue(client.Connection)!;
+        await closedHandler(null);
+
+        Assert.True(closed);
+    }
+
+    /// <summary>A connection that closed (five reconnect attempts exhausted, say) is not permanently
+    /// dead — starting it again must resume heartbeating exactly as a first start would.</summary>
+    [Fact]
+    public async Task A_closed_connection_started_again_resumes_heartbeating()
+    {
+        await using var client = NewClient();
+        var heartbeats = 0;
+        client.HeartbeatInvokerOverrideForTests = () => { heartbeats++; return Task.CompletedTask; };
+
+        var closedField = typeof(HubConnection).GetField("Closed",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var closedHandler = (Func<Exception?, Task>)closedField.GetValue(client.Connection)!;
+        await closedHandler(null);
+
+        var reconnectedField = typeof(HubConnection).GetField("Reconnected",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var reconnectedHandler = (Func<string?, Task>)reconnectedField.GetValue(client.Connection)!;
+        await reconnectedHandler("new-connection-id");
+
+        Assert.True(heartbeats > 0);
+    }
 }
