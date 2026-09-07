@@ -34,6 +34,7 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<ILobbyNotifier>(LiveShared.LobbyNotifier);
             services.AddSingleton<IIdFactory>(LiveShared.Ids);
             services.AddSingleton<QuestionSetBuilder>();
+            services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
         });
     }
 }

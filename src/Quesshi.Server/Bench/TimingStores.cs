@@ -25,6 +25,7 @@ internal sealed class TimingMatchArchive(IMatchArchive inner) : IMatchArchive
     public Task SaveAsync(ArchivedMatch match, CancellationToken ct = default) => inner.SaveAsync(match, ct);
     public Task<ArchivedMatch?> ByCodeAsync(string code, CancellationToken ct = default) => inner.ByCodeAsync(code, ct);
     public Task<long> CountAsync(CancellationToken ct = default) => inner.CountAsync(ct);
+    public Task<long> CountLiveAsync(CancellationToken ct = default) => inner.CountLiveAsync(ct);
 }
 
 /// <summary>Same idea as <see cref="TimingMatchArchive"/>, for the one player lookup the endpoint makes.</summary>

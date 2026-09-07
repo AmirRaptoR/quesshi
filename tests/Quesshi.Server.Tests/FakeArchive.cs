@@ -26,4 +26,5 @@ public sealed class FakeArchive : IMatchArchive
         return [.. Items.Where(m => !m.IsLive && (m.ChallengerId == p || m.OpponentId == p)).OrderByDescending(m => m.CreatedAt).Take(take)];
     }
     public Task<long> CountAsync(CancellationToken ct = default) => Task.FromResult((long)Items.Count);
+    public Task<long> CountLiveAsync(CancellationToken ct = default) => Task.FromResult((long)Items.Count(m => m.IsLive));
 }

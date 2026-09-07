@@ -1,0 +1,99 @@
+@page "/admin/live"
+@inherits AdminPageBase
+
+<PageTitle>@L["admin.live"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["admin.live"]</h1></header>
+    <AdminNav />
+
+    <div class="row row--between" style="margin-bottom:1rem">
+        <span class="faint">@L.Format("admin.live.total", L.Num(_page?.Total ?? 0))</span>
+        <button class="btn btn--sm" @onclick="ReloadAsync">@L["admin.live.refresh"]</button>
+    </div>
+
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_page is null)
+    {
+        <p class="empty">@L["common.error"]</p>
+    }
+    else if (_page.Items.Count == 0)
+    {
+        <p class="empty">@L["admin.live.none"]</p>
+    }
+    else
+    {
+        <div class="scroll-x card card--flat">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>@L["admin.live.code"]</th>
+                        <th>@L["admin.live.challenger"]</th>
+                        <th>@L["admin.live.opponent"]</th>
+                        <th>@L["admin.language"]</th>
+                        <th>@L["admin.live.round"]</th>
+                        <th>@L["admin.live.phase"]</th>
+                        <th>@L["admin.live.startedAt"]</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _page.Items)
+                    {
+                        <tr>
+                            <td dir="ltr">@row.Code</td>
+                            <td>@row.ChallengerName</td>
+                            <td>@(row.OpponentName.Length > 0 ? row.OpponentName : L["admin.live.noOpponent"])</td>
+                            <td dir="ltr">@row.Lang</td>
+                            <td class="numeral">@L.Num(row.RoundIndex + 1) / @L.Num(row.TotalRounds)</td>
+                            <td>@L["admin.live.phase." + row.Phase]</td>
+                            <td dir="ltr">@row.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>
+                                @if (_confirmingId == row.Id)
+                                {
+                                    <div class="row" style="gap:.3rem;justify-content:flex-end">
+                                        <button class="btn btn--danger btn--sm" @onclick="() => EndAsync(row.Id)">@L["admin.live.confirmEnd"]</button>
+                                        <button class="btn btn--ghost btn--sm" @onclick="() => _confirmingId = null">@L["admin.cancel"]</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="row" style="justify-content:flex-end">
+                                        <button class="btn btn--danger btn--sm" @onclick="() => _confirmingId = row.Id">@L["admin.live.end"]</button>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private AdminLivePageDto? _page;
+    private string? _confirmingId;
+
+    protected override async Task LoadAsync() => _page = await Api.AdminLiveAsync();
+
+    private async Task ReloadAsync()
+    {
+        _page = await Api.AdminLiveAsync();
+        StateHasChanged();
+    }
+
+    private async Task EndAsync(string id)
+    {
+        _confirmingId = null;
+        await Api.EndLiveDuelAsync(id);
+        await ReloadAsync();
+    }
+}
