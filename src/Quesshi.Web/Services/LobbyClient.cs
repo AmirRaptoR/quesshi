@@ -32,6 +32,13 @@ public sealed class LobbyClient : IAsyncDisposable
 
     internal HubConnection Connection => _connection;
 
+    /// <summary>Queues the caller for a random live opponent. Null means: now waiting, or the duel
+    /// could not be built — <c>QueueFailed</c> on <see cref="Connection"/> is what distinguishes those.</summary>
+    public Task<string?> QueueRandomAsync(int lang, int questionCount, List<string> categories, List<int> levels)
+        => _connection.InvokeAsync<string?>("QueueRandom", lang, questionCount, categories, levels);
+
+    public Task LeaveQueueAsync() => _connection.InvokeAsync("LeaveQueue");
+
     /// <summary>Test-only override for the "Heartbeat" invocation, so resuming after a reconnect can be proven with no server to call.</summary>
     internal Func<Task>? HeartbeatInvokerOverrideForTests { get; set; }
 
