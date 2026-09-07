@@ -101,4 +101,17 @@ public static class Mappers
             mine, theirs, v.WinnerId, v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
             v.QuestionIds.Count);
     }
+
+    /// <summary>
+    /// The grain's <see cref="LiveView"/> as the wire shape: state and phase become words, and
+    /// <c>ServerNow</c> is added beside every deadline so a client can measure clock skew once at
+    /// connect and never re-sync.
+    /// </summary>
+    public static LiveViewDto ToDto(this LiveView v, DateTimeOffset serverNow) => new(
+        v.Id, v.ChallengerId, v.OpponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
+        ((LivePhase)v.Phase).ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
+        [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
+        [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
+            [.. r.Answers.Select(a => new LiveRoundAnswerViewDto(a.PlayerId, a.Answered, a.ChoiceIndex, a.Correct, a.Score))]))],
+        v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code);
 }

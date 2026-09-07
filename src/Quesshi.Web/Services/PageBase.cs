@@ -58,7 +58,7 @@ public abstract class PageBase : ComponentBase, IDisposable
         // watching a page fail to load before it does.
         if (State.IsGuest && !AllowsGuest)
         {
-            Nav.NavigateTo(State.GuestMatchId is { Length: > 0 } id ? $"/duel/{id}" : "/signin");
+            Nav.NavigateTo(State.GuestMatchId is { Length: > 0 } id ? (State.GuestMatchIsLive ? $"/live/{id}" : $"/duel/{id}") : "/signin");
             return;
         }
 

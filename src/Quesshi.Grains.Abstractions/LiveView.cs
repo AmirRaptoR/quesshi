@@ -22,4 +22,6 @@ public sealed record LiveView(
     [property: Id(11)] bool IsDraw,
     [property: Id(12)] string? AbandonedBy,
     [property: Id(13)] DateTimeOffset CreatedAt,
-    [property: Id(14)] DateTimeOffset? EndedAt);
+    [property: Id(14)] DateTimeOffset? EndedAt,
+    [property: Id(15)] string Code,
+    [property: Id(16)] int Lang);

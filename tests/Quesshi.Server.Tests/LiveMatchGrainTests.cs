@@ -122,46 +122,122 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task CreateAsync_is_idempotent_and_rejects_a_bad_question_list()
     {
         var grain = NewGrain(out _, out var questionIds);
-        var first = await grain.CreateAsync(Amir, questionIds);
-        var second = await grain.CreateAsync("someone-else", questionIds);
+        var first = await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
+        var second = await grain.CreateAsync("TESTCODE", (int)Language.En, "someone-else", questionIds);
 
         Assert.Equal(first.Id, second.Id);
         Assert.Equal(Amir, second.ChallengerId); // still the original challenger, not overwritten
 
         var freshGrain = NewGrain(out _, out var badList);
         badList.RemoveAt(0); // wrong count
-        await Assert.ThrowsAsync<ArgumentException>(() => freshGrain.CreateAsync(Amir, badList));
+        await Assert.ThrowsAsync<ArgumentException>(() => freshGrain.CreateAsync("TESTCODE", (int)Language.En, Amir, badList));
     }
 
     [Fact]
     public async Task JoinAsync_refuses_the_challenger_a_stranger_after_taken_and_is_idempotent_for_the_real_opponent()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
 
-        Assert.False(await grain.JoinAsync(Amir)); // cannot join your own challenge
-        Assert.True(await grain.JoinAsync(Sara));
-        Assert.False(await grain.JoinAsync(Stranger)); // already taken
-        Assert.True(await grain.JoinAsync(Sara)); // idempotent
+        Assert.Equal((int)LiveJoinResult.SelfJoin, await grain.JoinAsync(Amir)); // cannot join your own challenge
+        Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Sara));
+        Assert.Equal((int)LiveJoinResult.Taken, await grain.JoinAsync(Stranger)); // already taken
+        Assert.Equal((int)LiveJoinResult.AlreadyIn, await grain.JoinAsync(Sara)); // idempotent
     }
 
     [Fact]
     public async Task JoinAsync_refuses_a_lobby_that_has_already_expired()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
 
         Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
         await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
 
-        Assert.False(await grain.JoinAsync(Sara));
+        Assert.Equal((int)LiveJoinResult.Expired, await grain.JoinAsync(Sara));
+    }
+
+    [Fact]
+    public async Task CreateAsync_mirrors_the_duel_into_the_archive_so_its_code_can_be_resolved()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        var view = await grain.CreateAsync("MIRROR1", (int)Language.En, Amir, questionIds);
+
+        var row = await LiveShared.Archive.ByCodeAsync("MIRROR1");
+        Assert.NotNull(row);
+        Assert.Equal(id, row!.Id);
+        Assert.True(row.IsLive);
+        Assert.Equal(Amir, row.ChallengerId);
+        Assert.Equal(MatchState.AwaitingOpponent, row.State);
+        Assert.Equal(view.Id, row.Id);
+    }
+
+    [Fact]
+    public async Task JoinAsync_mirrors_the_opponent_into_the_archive()
+    {
+        var grain = NewGrain(out _, out var questionIds);
+        await grain.CreateAsync("MIRROR2", (int)Language.En, Amir, questionIds);
+        Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Sara));
+
+        var row = await LiveShared.Archive.ByCodeAsync("MIRROR2");
+        Assert.NotNull(row);
+        Assert.Equal(Sara, row!.OpponentId);
+        Assert.Equal(MatchState.InProgress, row.State);
+    }
+
+    [Fact]
+    public async Task Expiry_mirrors_no_contest_into_the_archive_and_notifies_ended_exactly_once()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        await grain.CreateAsync("MIRROR3", (int)Language.En, Amir, questionIds);
+
+        Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
+        await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
+        await WaitForEventAsync(id, "Ended", 1);
+
+        var row = await LiveShared.Archive.ByCodeAsync("MIRROR3");
+        Assert.Equal(MatchState.NoContest, row!.State);
+        Assert.Single(LiveShared.Notifier.EventsFor(id), e => e.Kind == "Ended");
+    }
+
+    // ---- Cancel ----
+
+    [Fact]
+    public async Task CancelAsync_by_the_challenger_in_the_lobby_ends_the_duel_and_notifies_once()
+    {
+        var grain = NewGrain(out var id, out var questionIds);
+        await grain.CreateAsync("CANCEL1", (int)Language.En, Amir, questionIds);
+
+        Assert.True(await grain.CancelAsync(Amir));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.NoContest, view!.State);
+        await WaitForEventAsync(id, "Ended", 1);
+        Assert.Single(LiveShared.Notifier.EventsFor(id), e => e.Kind == "Ended");
+    }
+
+    [Fact]
+    public async Task CancelAsync_by_anyone_else_or_once_the_duel_has_left_the_lobby_is_refused()
+    {
+        var strangerGrain = NewGrain(out _, out var strangerIds);
+        await strangerGrain.CreateAsync("CANCEL2", (int)Language.En, Amir, strangerIds);
+        Assert.False(await strangerGrain.CancelAsync(Stranger));
+        Assert.False(await strangerGrain.CancelAsync(Sara)); // not seated at all, still refused
+
+        var joinedGrain = NewGrain(out _, out var joinedIds);
+        await joinedGrain.CreateAsync("CANCEL3", (int)Language.En, Amir, joinedIds);
+        await joinedGrain.JoinAsync(Sara);
+        Assert.False(await joinedGrain.CancelAsync(Amir)); // no longer in the lobby
+
+        var stillLobby = await strangerGrain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, stillLobby!.State);
     }
 
     [Fact]
     public async Task CreateAsync_registers_a_reminder_so_an_unjoined_lobby_expires_even_across_a_deactivation()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
 
         // Kill the activation — its in-memory timer dies with it. Only the reminder is left to
         // expire this lobby.
@@ -182,7 +258,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task Joining_starts_the_countdown_and_it_opens_round_zero_on_schedule()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
         var afterJoin = await grain.GetAsync(Amir);
@@ -197,7 +273,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task A_silent_duel_plays_itself_to_no_contest_after_three_rounds_with_no_external_input()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
         // One big jump: LiveMatch.Advance fast-forwards through the countdown and three silent
@@ -216,7 +292,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task A_full_length_duel_resolves_driven_only_by_the_clock_between_answers()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
@@ -245,7 +321,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task The_second_answer_closes_the_round_early_and_the_original_deadline_timer_no_longer_fires_against_it()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -272,7 +348,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task A_forced_deactivation_and_a_gap_longer_than_stale_after_recovers_as_no_contest()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -293,7 +369,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task A_forced_deactivation_and_a_gap_shorter_than_stale_after_keeps_playing()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -314,7 +390,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task State_persists_to_hot_storage_and_rehydrates_after_deactivation()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -337,7 +413,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task AnswerAsync_resolves_the_question_and_records_served_and_correct_counters()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -357,7 +433,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task AnswerAsync_refuses_a_late_answer_but_accepts_one_inside_the_grace_window()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -366,7 +442,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.True(await grain.AnswerAsync(Amir, 0, 0));
 
         var grain2 = NewGrain(out _, out var q2);
-        await grain2.CreateAsync(Amir, q2);
+        await grain2.CreateAsync("TESTCODE2", (int)Language.En, Amir, q2);
         await grain2.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain2, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -382,7 +458,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task AnswerAsync_refuses_a_non_participant_a_wrong_slot_a_double_answer_and_a_finished_duel()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -403,7 +479,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task LiveRoundCard_never_carries_the_correct_index()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForEventAsync(id, "RoundStarted", 1);
@@ -418,7 +494,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task GetAsync_redacts_the_open_round_but_reveals_a_closed_one()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -450,7 +526,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     {
         var grain = NewGrain(out _, out var questionIds);
 
-        var lobby = await grain.CreateAsync(Amir, questionIds);
+        var lobby = await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         Assert.Equal((int)LivePhase.Lobby, lobby.Phase);
         Assert.NotNull(await grain.GetAsync(Amir));
 
@@ -479,7 +555,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task GetAsync_is_null_for_a_non_participant_and_for_a_duel_that_does_not_exist()
     {
         var grain = NewGrain(out _, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
         Assert.Null(await grain.GetAsync(Stranger));
@@ -494,7 +570,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task EndAsync_finishes_an_in_flight_duel_as_no_contest_and_is_a_no_op_afterwards()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -518,7 +594,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var id = Guid.NewGuid().ToString("N");
         var ghostIds = Enumerable.Range(0, MatchRules.QuestionsPerMatch).Select(i => $"{id}-ghost{i}").ToList();
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id);
-        await grain.CreateAsync(Amir, ghostIds); // none of these ids exist in the question repository
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, ghostIds); // none of these ids exist in the question repository
         await grain.JoinAsync(Sara);
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
@@ -535,7 +611,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task A_full_duel_notifies_in_exact_order_with_no_duplicates()
     {
         var grain = NewGrain(out var id, out var questionIds);
-        await grain.CreateAsync(Amir, questionIds);
+        await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
         var jump = LiveRules.StartCountdown
@@ -569,7 +645,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         try
         {
             var grain = NewGrain(out var id, out var questionIds);
-            await grain.CreateAsync(Amir, questionIds);
+            await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
             await grain.JoinAsync(Sara);
 
             var jump = LiveRules.StartCountdown

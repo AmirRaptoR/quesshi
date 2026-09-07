@@ -153,16 +153,7 @@ public static class GameEndpoints
 
         api.MapPost("/matches/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
-        {
-            var meId = ctx.User.PlayerId()!;
-            var found = await archive.ByCodeAsync(code);
-            if (found is null) return Results.NotFound(new { error = "no_such_code" });
-
-            var grain = grains.GetGrain<IMatchGrain>(found.Id);
-            if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
-
-            return Results.Ok(await SummaryAsync(grain, meId, players));
-        });
+            await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players));
 
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
         // report a question you were actually served, and only once.
@@ -244,6 +235,23 @@ public static class GameEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         }).WithMetadata(new AllowGuest());
+    }
+
+    /// <summary>
+    /// Extracted out of the endpoint delegate so a live code's refusal can be driven directly in a
+    /// test, the same way <see cref="ListMatchesAsync"/> is.
+    /// </summary>
+    internal static async Task<IResult> JoinMatchAsync(string code, string meId, IGrainFactory grains,
+        IMatchArchive archive, IPlayerRepository players)
+    {
+        var found = await archive.ByCodeAsync(code);
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
+
+        var grain = grains.GetGrain<IMatchGrain>(found.Id);
+        if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
+
+        return Results.Ok(await SummaryAsync(grain, meId, players));
     }
 
     /// <summary>How many archived matches the list will ever look at.</summary>

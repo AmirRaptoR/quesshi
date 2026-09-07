@@ -9,7 +9,7 @@ public class LiveMatchTests
     private static readonly string[] Ten = [.. Enumerable.Range(1, MatchRules.QuestionsPerMatch).Select(i => $"q{i}")];
     private static readonly DateTimeOffset T0 = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
 
-    private static LiveMatch NewMatch() => LiveMatch.Create("lm1", Challenger, Ten, T0);
+    private static LiveMatch NewMatch() => LiveMatch.Create("lm1", "CODE01", Language.En, Challenger, Ten, T0);
 
     private static LiveMatch Joined()
     {
@@ -58,7 +58,7 @@ public class LiveMatchTests
     public void IsOver_names_resolved_forfeited_abandoned_and_no_contest()
     {
         var snapshot = new LiveMatchSnapshot(
-            "lm", Challenger, Opponent, [.. Ten], MatchState.Forfeited, LivePhase.Over, null,
+            "lm", "CODE01", Language.En, Challenger, Opponent, [.. Ten], MatchState.Forfeited, LivePhase.Over, null,
             [], new Dictionary<string, int>(), T0, T0, null, false, null);
         Assert.True(LiveMatch.FromSnapshot(snapshot).IsOver);
     }
@@ -71,14 +71,22 @@ public class LiveMatchTests
     [InlineData(11)]
     public void Create_rejects_a_length_nobody_can_choose(int count)
         => Assert.Throws<ArgumentException>(() =>
-            LiveMatch.Create("lm", Challenger, [.. Enumerable.Range(0, count).Select(i => $"q{i}")], T0));
+            LiveMatch.Create("lm", "CODE01", Language.En, Challenger, [.. Enumerable.Range(0, count).Select(i => $"q{i}")], T0));
 
     [Fact]
     public void Create_rejects_duplicate_question_ids()
     {
         var ids = Ten.ToList();
         ids[1] = ids[0];
-        Assert.Throws<ArgumentException>(() => LiveMatch.Create("lm", Challenger, ids, T0));
+        Assert.Throws<ArgumentException>(() => LiveMatch.Create("lm", "CODE01", Language.En, Challenger, ids, T0));
+    }
+
+    [Fact]
+    public void Create_carries_the_share_code_and_language()
+    {
+        var m = NewMatch();
+        Assert.Equal("CODE01", m.Code);
+        Assert.Equal(Language.En, m.Lang);
     }
 
     // ---- Rounds and the clock ----
@@ -124,6 +132,46 @@ public class LiveMatchTests
         var atExpiry = T0 + LiveRules.LobbyExpires;
         Assert.Throws<InvalidOperationException>(() => m.Join(Opponent, atExpiry));
         Assert.Equal(MatchState.NoContest, m.State);
+    }
+
+    // ---- TryJoin ----
+
+    [Fact]
+    public void TryJoin_seats_the_first_opponent()
+    {
+        var m = NewMatch();
+        Assert.Equal(LiveJoinResult.Joined, m.TryJoin(Opponent, T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+    }
+
+    [Fact]
+    public void TryJoin_refuses_the_challenger_as_self_join()
+    {
+        var m = NewMatch();
+        Assert.Equal(LiveJoinResult.SelfJoin, m.TryJoin(Challenger, T0));
+        Assert.Equal(MatchState.AwaitingOpponent, m.State); // untouched
+    }
+
+    [Fact]
+    public void TryJoin_is_idempotent_for_the_seated_opponent()
+    {
+        var m = Joined();
+        Assert.Equal(LiveJoinResult.AlreadyIn, m.TryJoin(Opponent, T0));
+    }
+
+    [Fact]
+    public void TryJoin_refuses_a_stranger_once_the_seat_is_taken()
+    {
+        var m = Joined();
+        Assert.Equal(LiveJoinResult.Taken, m.TryJoin("u-stranger", T0));
+    }
+
+    [Fact]
+    public void TryJoin_reports_expired_distinctly_from_taken()
+    {
+        var m = NewMatch();
+        var atExpiry = T0 + LiveRules.LobbyExpires;
+        Assert.Equal(LiveJoinResult.Expired, m.TryJoin(Opponent, atExpiry));
     }
 
     [Fact]

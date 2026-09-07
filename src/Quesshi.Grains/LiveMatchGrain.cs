@@ -20,6 +20,7 @@ public sealed class LiveMatchGrain(
     IQuestionRepository questions,
     ICategoryRepository categories,
     ILiveNotifier notifier,
+    IMatchArchive archive,
     IClock clock,
     ILogger<LiveMatchGrain> logger) : Grain, ILiveMatchGrain, IRemindable
 {
@@ -53,41 +54,44 @@ public sealed class LiveMatchGrain(
         return AfterChangeAsync(phaseBefore, wasOver);
     }
 
-    public async Task<LiveView> CreateAsync(string challengerId, List<string> questionIds)
+    public async Task<LiveView> CreateAsync(string code, int lang, string challengerId, List<string> questionIds)
     {
         if (_match is not null) return await ViewAsync(_match, challengerId);
 
-        _match = LiveMatch.Create(this.GetPrimaryKeyString(), challengerId, questionIds, clock.Now);
+        _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, (Language)lang, challengerId, questionIds, clock.Now);
 
         // A lobby nobody joins must still expire even with the grain deactivated, so the reminder
         // is registered here rather than waiting for the first phase transition.
         await this.RegisterOrUpdateReminder(SafetyNetReminder, ReminderPeriod, ReminderPeriod);
         await AfterChangeAsync(LivePhase.Lobby, false);
+        await IndexAsync(); // mirrored so the code is resolvable at all — a grain nobody has indexed can never be found
         return await ViewAsync(_match, challengerId);
     }
 
-    public async Task<bool> JoinAsync(string playerId)
+    public async Task<int> JoinAsync(string playerId)
     {
-        if (_match is null) return false;
-        if (playerId == _match.OpponentId) return true; // idempotent: the same opponent joining again
-        if (playerId == _match.ChallengerId) return false; // you cannot join your own challenge
+        if (_match is null) return (int)LiveJoinResult.Unknown;
 
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
 
-        try
-        {
-            _match.Join(playerId, clock.Now);
-        }
-        catch (InvalidOperationException)
-        {
-            // Join settles the clock first even on a call that is then rejected (the lobby may have
-            // just expired) — that still has to be persisted.
-            await AfterChangeAsync(phaseBefore, wasOver);
-            return false;
-        }
+        // TryJoin settles the clock first even on a call that is then refused (the lobby may have
+        // just expired) — that still has to be persisted, so every outcome but SelfJoin — which
+        // touches nothing — goes through AfterChangeAsync.
+        var result = _match.TryJoin(playerId, clock.Now);
+        if (result != LiveJoinResult.SelfJoin) await AfterChangeAsync(phaseBefore, wasOver);
+        if (result == LiveJoinResult.Joined) await IndexAsync(); // the opponent is now part of the row a code resolves to
 
-        await AfterChangeAsync(phaseBefore, wasOver);
+        return (int)result;
+    }
+
+    public async Task<bool> CancelAsync(string playerId)
+    {
+        if (_match is null || playerId != _match.ChallengerId || _match.Phase != LivePhase.Lobby) return false;
+
+        var phaseBefore = _match.Phase;
+        _match.EndNoContest(clock.Now);
+        await AfterChangeAsync(phaseBefore, false, "cancelled by challenger");
         return true;
     }
 
@@ -213,6 +217,7 @@ public sealed class LiveMatchGrain(
 
         if (!wasOver && m.IsOver)
         {
+            await IndexAsync(); // the row has to read NoContest/Resolved/Abandoned before anyone can be told
             await SettleAsync();
             await SafeNotifyAsync(() => notifier.EndedAsync(m.Id, BuildEnded(m, endReason)));
         }
@@ -265,6 +270,16 @@ public sealed class LiveMatchGrain(
     {
         state.State.Json = JsonSerializer.Serialize(_match!.ToSnapshot());
         return state.WriteStateAsync();
+    }
+
+    /// <summary>Mirrors the duel into Mongo so its code can be resolved and its lifecycle read without
+    /// activating the grain — exactly what <c>MatchGrain.IndexAsync</c> does for an async match.
+    /// Scores stay 0 here: settling — what a live row's score means — is the settling sub-issue's.</summary>
+    private Task IndexAsync()
+    {
+        var m = _match!;
+        return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
+            0, 0, m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true));
     }
 
     /// <summary>How many of the current rounds are closed (revealed or done) — every round but the
@@ -347,6 +362,6 @@ public sealed class LiveMatchGrain(
         return new LiveView(
             m.Id, m.ChallengerId, m.OpponentId, (int)m.State, (int)m.Phase, m.PhaseEndsAt,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, players, rounds,
-            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt);
+            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang);
     }
 }

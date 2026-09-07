@@ -108,23 +108,31 @@
         State.Changed += StateHasChanged;
         await State.InitialiseAsync();
 
-        // Somebody already signed in does not need the guest path at all — take the seat and play.
-        if (State.SignedIn && !State.IsGuest)
+        if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
         {
-            if (await Api.JoinAsync(Code) is { } match)
+            // A guest reopening their own link belongs back in their duel, not at a second one.
+            Nav.NavigateTo(State.GuestMatchIsLive ? $"/live/{mine}" : $"/duel/{mine}");
+            return;
+        }
+
+        // One invite lookup decides everything below: which endpoint joins this code, and — if
+        // nobody is signed in, or the join itself fails — what the card underneath renders.
+        _invite = await Api.InviteAsync(Code);
+
+        // Somebody already signed in does not need the guest path at all — take the seat and play.
+        if (State.SignedIn && !State.IsGuest && _invite is not null)
+        {
+            if (_invite.Live)
+            {
+                if (await Api.JoinLiveAsync(Code) is { } live) { Nav.NavigateTo($"/live/{live.Id}"); return; }
+            }
+            else if (await Api.JoinAsync(Code) is { } match)
             {
                 Nav.NavigateTo($"/play/{match.Id}");
                 return;
             }
         }
-        else if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
-        {
-            // A guest reopening their own link belongs back in their duel, not at a second one.
-            Nav.NavigateTo($"/duel/{mine}");
-            return;
-        }
 
-        _invite = await Api.InviteAsync(Code);
         _loading = false;
     }
 
@@ -136,6 +144,21 @@
     private async Task PlayAsGuestAsync()
     {
         _busy = true; _error = null;
+
+        if (_invite is { Live: true })
+        {
+            var live = await Api.JoinAsGuestLiveAsync(Code, _name.Trim(), State.Lang);
+            if (live is null)
+            {
+                _busy = false;
+                _error = L["join.failed"];
+                return;
+            }
+
+            await State.SignInAsGuestLiveAsync(live);
+            Nav.NavigateTo($"/live/{live.Live.Id}");
+            return;
+        }
 
         var result = await Api.JoinAsGuestAsync(Code, _name.Trim(), State.Lang);
         if (result is null)
