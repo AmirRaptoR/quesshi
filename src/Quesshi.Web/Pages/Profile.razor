@@ -89,6 +89,10 @@
                     <div class="row">
                         <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
                         <span class="grow">@friend.DisplayName</span>
+                        @if (friend.Online)
+                        {
+                            <span class="dot--online" title="@L["profile.online"]" aria-label="@L["profile.online"]"></span>
+                        }
                         <span class="numeral faint">@L.Num(friend.Score)</span>
                         @if (friend.Online)
                         {

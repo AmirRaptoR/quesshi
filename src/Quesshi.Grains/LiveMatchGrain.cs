@@ -107,6 +107,7 @@ public sealed class LiveMatchGrain(
         var correct = question.IsCorrect(choiceIndex);
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
+        var answeredBefore = _match.CurrentRound?.Answers.Count ?? 0;
 
         try
         {
@@ -122,6 +123,11 @@ public sealed class LiveMatchGrain(
 
         question.RecordServed(correct);
         await questions.UpsertAsync(question);
+
+        // Only the first answer of a round gets this push — the second one closes the round, and
+        // RoundRevealedAsync (fired from AfterChangeAsync below) supersedes it.
+        if (answeredBefore == 0 && _match.Phase == LivePhase.Question)
+            await SafeNotifyAsync(() => notifier.OpponentAnsweredAsync(_match.Id, slot, playerId));
 
         await AfterChangeAsync(phaseBefore, wasOver);
         return true;

@@ -4,21 +4,34 @@ namespace Quesshi.Grains.Abstractions;
 /// The single grain on key 0 that decides, under one lock, whether a player may enter a duel through
 /// either door: the random queue, or a friend challenge. A player holds at most one commitment across
 /// both — a queue entry, a challenge sent, or a challenge received — which is why both doors live on
-/// the same grain rather than two.
+/// the same grain rather than two: Orleans runs this grain's calls one after another, never
+/// concurrently, and that is the entire mechanism behind the invariant.
 /// </summary>
 [Alias("Quesshi.Grains.Abstractions.ILiveLobbyGrain")]
 public interface ILiveLobbyGrain : IGrainWithIntegerKey
 {
     /// <summary>
-    /// Minimal placeholder for #26's random queue: enough of "waiting" to prove the one-commitment
-    /// invariant against a friend challenge. Pairing two waiting players is #26's own work.
-    /// Returns a <c>Quesshi.Domain.LiveChallengeResult</c> as <c>int</c>: <c>Sent</c> or <c>CallerCommitted</c>.
+    /// Prunes, then looks for a waiting entry with the same language and question count belonging to
+    /// somebody else. Found: removes it, builds the duel from that entry's categories and levels, and
+    /// returns the new match id. Not found: replaces any existing entry for this player with a fresh
+    /// one and returns null. If the duel cannot be built, neither player is left queued and null is
+    /// returned to this caller too — <see cref="Quesshi.Application.Ports.ILobbyNotifier"/> is what
+    /// tells both players it failed. A caller already holding a pending challenge is refused outright:
+    /// nothing is queued and null comes back.
     /// </summary>
     [Alias("EnqueueAsync")]
-    Task<int> EnqueueAsync(string playerId, int lang);
+    Task<string?> EnqueueAsync(string playerId, int lang, int questionCount, List<string> categories, List<int> levels);
 
-    [Alias("LeaveQueueAsync")]
-    Task LeaveQueueAsync(string playerId);
+    [Alias("LeaveAsync")]
+    Task LeaveAsync(string playerId);
+
+    [Alias("HeartbeatAsync")]
+    Task HeartbeatAsync(string playerId);
+
+    /// <summary>How many others (never the caller) are queued in the caller's own bucket (same
+    /// language, same question count), after pruning.</summary>
+    [Alias("WaitingCountAsync")]
+    Task<int> WaitingCountAsync(string playerId, int lang, int questionCount);
 
     /// <summary>
     /// From <paramref name="challengerId"/> to <paramref name="targetId"/>, carrying the language,

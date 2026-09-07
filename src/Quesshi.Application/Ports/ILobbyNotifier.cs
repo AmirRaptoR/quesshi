@@ -5,9 +5,10 @@ public sealed record LiveChallengeNotice(string ChallengeId, string ChallengerId
     List<string> CategoryIds, List<int> Levels, DateTimeOffset ExpiresAt);
 
 /// <summary>
-/// The outbound port the live lobby grain pushes challenge events through, over <c>/hub/lobby</c>.
-/// Lives beside <see cref="ILiveNotifier"/> for the same reason: the grain never knows whether the
-/// target is actually listening, or on which page.
+/// The outbound port <c>ILiveLobbyGrain</c> pushes through for both of its doors — the lobby's
+/// counterpart to <see cref="ILiveNotifier"/>. The grain depends on this interface only, so it never
+/// has to know whether the players it is queueing or challenging are actually listening on
+/// <c>/hub/lobby</c>.
 /// </summary>
 public interface ILobbyNotifier
 {
@@ -24,4 +25,13 @@ public interface ILobbyNotifier
 
     /// <summary>Accepted, but the duel could not be built. Delivered to both players.</summary>
     Task ChallengeFailedAsync(string playerId, string challengeId, CancellationToken ct = default);
+
+    /// <summary>Both players in a newly-formed random duel get this, with the same match id.</summary>
+    Task MatchedAsync(string playerId, string matchId, CancellationToken ct = default);
+
+    /// <summary>How many others are now waiting in this player's own (language, question count) bucket.</summary>
+    Task QueueCountChangedAsync(string playerId, int othersWaiting, CancellationToken ct = default);
+
+    /// <summary>The duel a match attempt would have created could not be built; this player is no longer queued.</summary>
+    Task QueueFailedAsync(string playerId, CancellationToken ct = default);
 }

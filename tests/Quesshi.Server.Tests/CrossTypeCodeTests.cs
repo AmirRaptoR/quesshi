@@ -61,7 +61,8 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
             false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
 
-        var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Clock);
+        var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Players,
+            LiveShared.Questions, LiveShared.Categories, Shared.Clock);
 
         Assert.Equal(400, StatusOf(result));
         Assert.Equal("not_a_live_code", ErrorOf(result));
@@ -87,17 +88,30 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
     }
 
     [Fact]
-    public async Task A_live_row_does_not_appear_in_the_async_match_list_for_either_player()
+    public async Task A_live_row_appears_in_the_match_list_for_both_players_marked_live_and_not_playable()
     {
+        const string challenger = "p-live-challenger";
+        const string opponent = "p-live-opponent";
         var id = Guid.NewGuid().ToString("N");
         var code = $"LIVE-{id}".ToUpperInvariant();
-        Shared.Archive.Items.Add(LiveRow(id, code, "p-live-challenger") with { OpponentId = "p-live-opponent" });
+        Shared.Archive.Items.Add(LiveRow(id, code, challenger) with { OpponentId = opponent });
 
-        var challengerRows = await GameEndpoints.ListMatchesAsync("p-live-challenger", false, null, Shared.Archive, Shared.Players, Grains);
-        var opponentRows = await GameEndpoints.ListMatchesAsync("p-live-opponent", false, null, Shared.Archive, Shared.Players, Grains);
+        var challengerSpy = GrainActivationSpy.Wrap(Grains, out var challengerRequests);
+        var opponentSpy = GrainActivationSpy.Wrap(Grains, out var opponentRequests);
 
-        Assert.DoesNotContain(challengerRows, r => r.Id == id);
-        Assert.DoesNotContain(opponentRows, r => r.Id == id);
+        var challengerRows = await GameEndpoints.ListMatchesAsync(challenger, false, null, Shared.Archive, Shared.Players, challengerSpy);
+        var opponentRows = await GameEndpoints.ListMatchesAsync(opponent, false, null, Shared.Archive, Shared.Players, opponentSpy);
+
+        var challengerRow = challengerRows.Single(r => r.Id == id);
+        var opponentRow = opponentRows.Single(r => r.Id == id);
+
+        Assert.True(challengerRow.IsLive);
+        Assert.False(challengerRow.CanPlay);
+        Assert.True(opponentRow.IsLive);
+        Assert.False(opponentRow.CanPlay);
+
+        Assert.DoesNotContain(challengerRequests, r => r.GrainInterface == typeof(IMatchGrain) && r.Key == id);
+        Assert.DoesNotContain(opponentRequests, r => r.GrainInterface == typeof(IMatchGrain) && r.Key == id);
     }
 
     private static readonly TokenIssuer Issuer = new(new JwtOptions

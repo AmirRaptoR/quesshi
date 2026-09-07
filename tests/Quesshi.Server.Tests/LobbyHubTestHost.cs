@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Orleans;
+using Orleans.TestingHost;
 using Quesshi.Application.Ports;
 using Quesshi.Infrastructure;
 using Quesshi.Server.Auth;
@@ -15,11 +16,11 @@ namespace Quesshi.Server.Tests;
 
 /// <summary>
 /// Hosts the real <see cref="LobbyHub"/> at <c>/hub/lobby</c> behind the real authentication, against a
-/// <see cref="FakePresence"/> — no Mongo, no Redis, the same reasoning <see cref="AuthTestHost"/>
-/// and <see cref="LiveApiTestHost"/> give for building their own host rather than WebApplicationFactory.
-/// The hub still reaches into <see cref="ILiveLobbyGrain"/> for any pending challenge on connect, so a
-/// real (if borrowed) <see cref="IGrainFactory"/> is required — everything else the hub needs beyond
-/// presence is faked, since these tests are about the presence lifecycle, not challenges.
+/// <see cref="FakePresence"/> and <see cref="LiveClusterFixture"/>'s already-running silo — the same
+/// reasoning <see cref="AuthTestHost"/> and <see cref="LiveApiTestHost"/> give for building their own
+/// host rather than WebApplicationFactory. The cluster is what lets QueueRandom/LeaveQueue and the
+/// pending-challenge check the hub runs on connect reach the real <c>ILiveLobbyGrain</c>; everything
+/// the hub needs beyond presence and that grain is faked.
 /// </summary>
 public sealed class LobbyHubTestHost : IAsyncDisposable
 {
@@ -31,7 +32,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
     private readonly IHost _host;
     private readonly TestServer _server;
 
-    public LobbyHubTestHost(IGrainFactory grains)
+    public LobbyHubTestHost(TestCluster cluster)
     {
         _host = new HostBuilder()
             .ConfigureWebHost(web =>
@@ -48,7 +49,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                         TokenIssuer,
                         new AdminTokenIssuer(new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" }));
                     services.AddSingleton<IPresence>(Presence);
-                    services.AddSingleton(grains);
+                    services.AddSingleton(cluster.GrainFactory);
                     services.AddSingleton<ILobbyNotifier, FakeLobbyNotifier>();
                     services.AddSingleton<IPlayerRepository, FakePlayers>();
                     services.AddSingleton<IIdFactory, IdFactory>();
@@ -83,5 +84,24 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
     {
         await _host.StopAsync();
         _host.Dispose();
+    }
+
+    /// <summary>
+    /// Polls <paramref name="condition"/> until it is true or <paramref name="timeout"/> elapses. For
+    /// waits that have no callback to hook — <c>OnDisconnectedAsync</c> awaits <c>MarkOfflineAsync</c>
+    /// before <c>Queue.LeaveAsync</c>, so a presence signal alone does not prove the grain's queue entry
+    /// is gone — this reads the grain's own state instead of guessing how long that takes.
+    /// </summary>
+    public static async Task WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout, string because)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await condition()) return;
+            await Task.Delay(20);
+        }
+
+        if (!await condition())
+            throw new TimeoutException($"Timed out after {timeout} waiting for {because}.");
     }
 }

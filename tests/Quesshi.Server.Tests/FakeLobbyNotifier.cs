@@ -2,7 +2,7 @@ using Quesshi.Application.Ports;
 
 namespace Quesshi.Server.Tests;
 
-/// <summary>Records every call, the same shape as <see cref="FakeLiveNotifier"/>.</summary>
+/// <summary>Records every call, keyed by player id so tests sharing one silo never see each other's pushes.</summary>
 public sealed class FakeLobbyNotifier : ILobbyNotifier
 {
     public sealed record Event(string Kind, string PlayerId, object? Payload);
@@ -34,6 +34,10 @@ public sealed class FakeLobbyNotifier : ILobbyNotifier
 
     public Task ChallengeFailedAsync(string playerId, string challengeId, CancellationToken ct = default)
         => Record("ChallengeFailed", playerId, challengeId);
+
+    public Task MatchedAsync(string playerId, string matchId, CancellationToken ct = default) => Record("Matched", playerId, matchId);
+    public Task QueueCountChangedAsync(string playerId, int othersWaiting, CancellationToken ct = default) => Record("QueueCount", playerId, othersWaiting);
+    public Task QueueFailedAsync(string playerId, CancellationToken ct = default) => Record("QueueFailed", playerId, null);
 
     private Task Record(string kind, string playerId, object? payload)
     {

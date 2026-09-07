@@ -11,5 +11,6 @@ public static class LiveShared
     public static readonly FakeLobbyNotifier LobbyNotifier = new();
     public static readonly FakeArchive Archive = new();
     public static readonly FakePlayers Players = new();
+    public static readonly FakeIdFactory Ids = new();
     public static readonly FakeLiveDirectory Directory = new();
 }

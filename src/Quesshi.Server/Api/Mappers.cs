@@ -103,15 +103,114 @@ public static class Mappers
     }
 
     /// <summary>
-    /// The grain's <see cref="LiveView"/> as the wire shape: state and phase become words, and
-    /// <c>ServerNow</c> is added beside every deadline so a client can measure clock skew once at
-    /// connect and never re-sync.
+    /// The list's view of a live duel, built straight off its archive row rather than through a
+    /// grain: the row is mirrored on start and on end (<c>LiveMatchSettlement</c>), so it already
+    /// holds every field the list needs. A live duel is never <c>CanPlay</c> — it advances on its own
+    /// clock whether or not this player is looking — so the row offers Rejoin instead of Play.
     /// </summary>
-    public static LiveViewDto ToDto(this LiveView v, DateTimeOffset serverNow) => new(
-        v.Id, v.ChallengerId, v.OpponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
-        ((LivePhase)v.Phase).ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
-        [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
-        [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
-            [.. r.Answers.Select(a => new LiveRoundAnswerViewDto(a.PlayerId, a.Answered, a.ChoiceIndex, a.Correct, a.Score))]))],
-        v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code);
+    public static MatchSummaryDto ToLiveSummary(this ArchivedMatch m, string me, Func<string, (string Name, string Avatar)> lookup)
+    {
+        var otherId = m.ChallengerId == me ? m.OpponentId : m.ChallengerId;
+        var (myScore, otherScore) = m.ChallengerId == me
+            ? (m.ChallengerScore, m.OpponentScore)
+            : (m.OpponentScore, m.ChallengerScore);
+
+        var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
+
+        var (myName, myAvatar) = lookup(me);
+        var mine = new PlayerSideDto(me, myName, myAvatar, myScore, 0, 0, over);
+
+        PlayerSideDto? theirs = null;
+        if (otherId is not null)
+        {
+            var (name, avatar) = lookup(otherId);
+            theirs = new PlayerSideDto(otherId, name, avatar, otherScore, 0, 0, over);
+        }
+
+        var outcome = !over ? "pending"
+            : m.IsDraw ? "draw"
+            : m.WinnerId == me ? "win"
+            : m.WinnerId is null ? "draw" : "loss";
+
+        return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), m.State.ToString().ToLowerInvariant(),
+            mine, theirs, m.WinnerId, m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
+            m.QuestionIds.Count, IsLive: true);
+    }
+
+    /// <summary>
+    /// Every player id a <see cref="LiveView"/> mentions, resolved to (name, avatar) in one query —
+    /// the live twin of the <c>Func&lt;string,(string,string)&gt;</c> <see cref="ToSummary"/> takes,
+    /// built once per request instead of duplicated at every call site.
+    /// </summary>
+    public static async Task<Func<string, (string Name, string Avatar)>> LiveLookupAsync(this IPlayerRepository players, LiveView v)
+    {
+        List<string> ids = v.OpponentId is null ? [v.ChallengerId] : [v.ChallengerId, v.OpponentId];
+        var byId = (await players.GetManyAsync(ids)).ToDictionary(p => p.Id);
+        return id => byId.TryGetValue(id, out var p) ? (p.DisplayName, p.AvatarSeed) : ("—", id);
+    }
+
+    /// <summary>
+    /// The grain's <see cref="LiveView"/> as the wire shape: state and phase become words,
+    /// <c>ServerNow</c> is added beside every deadline so a client can measure clock skew once at
+    /// connect and never re-sync, and the #13 contract additions are filled in here rather than in
+    /// the grain: both players' name/avatar (<paramref name="lookup"/>, mirroring
+    /// <see cref="ToSummary"/>), the lobby's derived expiry, and — for whichever round is current —
+    /// the prompt/choices/media a client needs to render it and, once revealed, its explanation.
+    /// The correct index is never added here beyond what <see cref="LiveView.Rounds"/> already
+    /// redacts: <see cref="LiveRoundCardDto"/> has no such field.
+    /// </summary>
+    public static async Task<LiveViewDto> ToLiveDtoAsync(this LiveView v, DateTimeOffset serverNow,
+        IQuestionRepository questions, ICategoryRepository categories, Func<string, (string Name, string Avatar)> lookup)
+    {
+        var phase = (LivePhase)v.Phase;
+        LiveRoundCardDto? card = null;
+        string? explanation = null;
+
+        if (phase is LivePhase.Question or LivePhase.Reveal && v.RoundIndex < v.Rounds.Count)
+        {
+            var round = v.Rounds[v.RoundIndex];
+            var question = await questions.GetAsync(round.QuestionId);
+            if (question is not null)
+            {
+                var category = await categories.GetAsync(question.CategoryId);
+                card = new LiveRoundCardDto(round.Slot, v.TotalRounds, question.Id, question.Prompt, [.. question.Choices],
+                    question.CategoryId, category?.NameFor((Language)v.Lang) ?? question.CategoryId,
+                    category?.Icon ?? "", category?.Color ?? "", (int)question.Level,
+                    question.Media.Kind == MediaKind.None ? null : new MediaDto(question.Media.Kind.ToString().ToLowerInvariant(), question.Media.Url, question.Media.Attribution),
+                    round.StartedAt, round.StartedAt + MatchRules.QuestionTime);
+
+                if (phase == LivePhase.Reveal) explanation = question.Explanation;
+            }
+        }
+
+        var (challengerName, challengerAvatar) = lookup(v.ChallengerId);
+        var (opponentName, opponentAvatar) = v.OpponentId is null ? (null, null) : ((string?, string?))lookup(v.OpponentId);
+
+        return new LiveViewDto(
+            v.Id, v.ChallengerId, v.OpponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
+            phase.ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
+            [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
+            [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
+                [.. r.Answers.Select(a => new LiveRoundAnswerViewDto(a.PlayerId, a.Answered, a.ChoiceIndex, a.Correct, a.Score))]))],
+            v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code,
+            challengerName, challengerAvatar, opponentName, opponentAvatar,
+            phase == LivePhase.Lobby ? v.CreatedAt + LiveRules.LobbyExpires : null,
+            card, explanation);
+    }
+
+    /// <summary>The four pushes <see cref="ILiveNotifier"/> carries, as the wire shape <c>LiveHub</c> sends them in.</summary>
+    public static LiveRoundCardDto ToDto(this LiveRoundCard c) => new(
+        c.Slot, c.TotalRounds, c.QuestionId, c.Prompt, [.. c.Choices],
+        c.CategoryId, c.CategoryName, c.CategoryIcon, c.CategoryColor, (int)c.Level,
+        c.Media.Kind == MediaKind.None ? null : new MediaDto(c.Media.Kind.ToString().ToLowerInvariant(), c.Media.Url, c.Media.Attribution),
+        c.StartedAt, c.EndsAt);
+
+    public static LiveRoundRevealDto ToDto(this LiveRoundReveal r) => new(
+        r.Slot, r.CorrectIndex, r.Explanation,
+        [.. r.Players.Select(p => new LivePlayerRoundDto(p.PlayerId, p.ChoiceIndex, p.Correct, p.RoundScore, p.TotalScore))],
+        r.EndsAt);
+
+    public static LiveEndedDto ToDto(this LiveEnded e) => new(
+        e.State.ToString().ToLowerInvariant(), e.WinnerId, e.IsDraw, e.AbandonedBy,
+        [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))], e.Reason);
 }

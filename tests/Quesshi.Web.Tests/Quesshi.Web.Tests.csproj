@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\src\Quesshi.Web\Quesshi.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\src\Quesshi.Web\wwwroot\i18n\**\*.json" LinkBase="i18n" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

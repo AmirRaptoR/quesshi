@@ -54,57 +54,108 @@ else
 
     private LiveChallengeDto? _challenge;
     private System.Threading.Timer? _ticker;
-    private bool _lobbyStarted;
+
+    /// <summary>Whether <see cref="Lobby"/> is currently started — the app has exactly one, and it tracks
+    /// sign-in state rather than being restarted on every render.</summary>
+    private bool _lobbyConnected;
 
     protected override async Task OnInitializedAsync()
     {
-        State.Changed += StateHasChanged;
+        State.Changed += OnStateChanged;
         Nav.LocationChanged += OnLocationChanged;
         await State.InitialiseAsync();
-
-        if (State.SignedIn && !State.IsGuest)
-            await StartLobbyAsync();
+        await SyncLobbyConnectionAsync();
     }
 
-    private async Task StartLobbyAsync()
+    private void OnStateChanged()
     {
-        if (_lobbyStarted) return;
-        _lobbyStarted = true;
+        StateHasChanged();
+        _ = SyncLobbyConnectionAsync();
+    }
 
+    /// <summary>The same "signed in and not a guest" condition the tab bar above already gates on: a
+    /// guest has no door into presence, the queue or a challenge, so it never opens this connection.</summary>
+    private async Task SyncLobbyConnectionAsync()
+    {
+        var shouldConnect = State.SignedIn && !State.IsGuest;
+        if (shouldConnect && !_lobbyConnected)
+        {
+            _lobbyConnected = true;
+            WireLobbyEvents();
+            StartTicker();
+
+            try
+            {
+                await Lobby.StartAsync();
+            }
+            catch
+            {
+                // A dropped lobby connection is not fatal to the rest of the app; the automatic
+                // reconnect keeps trying, and OnConnectedAsync re-delivers anything still pending.
+            }
+        }
+        else if (!shouldConnect && _lobbyConnected)
+        {
+            _lobbyConnected = false;
+            UnwireLobbyEvents();
+            StopTicker();
+            _challenge = null;
+            await Lobby.StopAsync();
+        }
+    }
+
+    private void WireLobbyEvents()
+    {
         Lobby.ChallengeReceived += OnChallengeReceived;
-        Lobby.ChallengeExpired += id => ClearIfCurrent(id, InvokeAsync(StateHasChanged));
-        Lobby.ChallengeDeclined += id => ClearIfCurrent(id, InvokeAsync(StateHasChanged));
-        Lobby.ChallengeFailed += id => ClearIfCurrent(id, InvokeAsync(StateHasChanged));
-        Lobby.DuelReady += matchId => InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"));
+        Lobby.ChallengeExpired += OnChallengeCleared;
+        Lobby.ChallengeDeclined += OnChallengeCleared;
+        Lobby.ChallengeFailed += OnChallengeCleared;
+        Lobby.DuelReady += OnDuelReady;
+    }
 
-        // The banner's time-left counts down locally; a challenge past its deadline hides itself
-        // even before any server round trip confirms it.
-        _ticker = new System.Threading.Timer(_ =>
-        {
-            if (_challenge is { } c && c.ExpiresAt <= DateTimeOffset.UtcNow)
-                ClearIfCurrent(c.ChallengeId, InvokeAsync(StateHasChanged));
-            else
-                InvokeAsync(StateHasChanged);
-        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-
-        try
-        {
-            await Lobby.StartAsync();
-        }
-        catch
-        {
-            // A dropped lobby connection is not fatal to the rest of the app; the automatic
-            // reconnect keeps trying, and OnConnectedAsync re-delivers anything still pending.
-        }
+    private void UnwireLobbyEvents()
+    {
+        Lobby.ChallengeReceived -= OnChallengeReceived;
+        Lobby.ChallengeExpired -= OnChallengeCleared;
+        Lobby.ChallengeDeclined -= OnChallengeCleared;
+        Lobby.ChallengeFailed -= OnChallengeCleared;
+        Lobby.DuelReady -= OnDuelReady;
     }
 
     private void OnChallengeReceived(LiveChallengeDto challenge)
         => InvokeAsync(() => { _challenge = challenge; StateHasChanged(); });
 
-    private void ClearIfCurrent(string challengeId, Task _)
+    private void OnChallengeCleared(string challengeId) => ClearIfCurrent(challengeId);
+
+    private void OnDuelReady(string matchId) => InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"));
+
+    private void ClearIfCurrent(string challengeId)
     {
-        if (_challenge?.ChallengeId == challengeId) _challenge = null;
+        if (_challenge?.ChallengeId == challengeId)
+            InvokeAsync(() => { _challenge = null; StateHasChanged(); });
     }
+
+    /// <summary>The banner's time-left counts down locally; a challenge past its deadline hides itself
+    /// even before any server round trip confirms it.</summary>
+    private void StartTicker()
+    {
+        _ticker ??= new System.Threading.Timer(_ =>
+        {
+            if (_challenge is { } c && c.ExpiresAt <= DateTimeOffset.UtcNow)
+                ClearIfCurrent(c.ChallengeId);
+            else
+                InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private void StopTicker()
+    {
+        _ticker?.Dispose();
+        _ticker = null;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => StateHasChanged();
 
     private async Task AcceptAsync()
     {
@@ -120,13 +171,11 @@ else
         await Lobby.DeclineAsync(challenge.ChallengeId);
     }
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => StateHasChanged();
-
     public async ValueTask DisposeAsync()
     {
-        State.Changed -= StateHasChanged;
+        State.Changed -= OnStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
-        if (_ticker is not null) await _ticker.DisposeAsync();
+        if (_lobbyConnected) UnwireLobbyEvents();
+        StopTicker();
     }
 }

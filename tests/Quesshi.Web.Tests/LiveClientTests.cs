@@ -79,6 +79,42 @@ public class LiveClientTests
         Assert.Equal(0, joinCalls);
     }
 
+    /// <summary>
+    /// A page has no other way to learn what happened while the socket was down — a missed reveal, a
+    /// missed round start, even a missed ending — than the rejoin's own catch-up view. Without this
+    /// event a reconnecting client is stuck showing whatever phase it was in when it dropped.
+    /// </summary>
+    [Fact]
+    public async Task Reconnecting_raises_Rejoined_with_the_fresh_catchup_view()
+    {
+        await using var client = NewClient();
+        client.JoinInvokerOverrideForTests = id => Task.FromResult(SampleView(id, DateTimeOffset.UtcNow));
+        await client.JoinAsync("m1");
+
+        LiveViewDto? rejoined = null;
+        client.Rejoined += v => rejoined = v;
+
+        await client.OnReconnectedAsync("new-connection-id");
+
+        Assert.NotNull(rejoined);
+        Assert.Equal("m1", rejoined!.Id);
+    }
+
+    /// <summary>Before any Join, a reconnect fetches nothing, so it must not raise Rejoined either.</summary>
+    [Fact]
+    public async Task Reconnecting_before_any_Join_does_not_raise_Rejoined()
+    {
+        await using var client = NewClient();
+        client.JoinInvokerOverrideForTests = id => Task.FromResult(SampleView(id, DateTimeOffset.UtcNow));
+
+        var raised = false;
+        client.Rejoined += _ => raised = true;
+
+        await client.OnReconnectedAsync(null);
+
+        Assert.False(raised);
+    }
+
     [Fact]
     public void The_connection_is_configured_for_automatic_reconnect()
     {

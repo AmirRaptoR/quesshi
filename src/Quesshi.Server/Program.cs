@@ -13,6 +13,7 @@ using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Redis;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Hubs;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Seed;
 using StackExchange.Redis;
@@ -73,17 +74,17 @@ builder.Services.AddSingleton(mongoOptions);
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
 
-// The live-duel hub lands with #10 (ILiveMatchGrain); this backplane is wired ahead of it so a
-// second instance is never silently missing it. Against the same Redis connection everything else
-// here already requires — no new setting, nothing to add to the configuration table.
+// Against the same Redis connection everything else here already requires — no new setting,
+// nothing to add to the configuration table. LiveHub and its notifier are #13's.
 builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
-builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
+builder.Services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
     Path.Combine(builder.Environment.ContentRootPath, "i18n"),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger<JsonFileTranslator>()));
 builder.Services.AddSingleton<IIdFactory, IdFactory>();
+builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
@@ -194,6 +195,7 @@ app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
 app.MapLive();
+app.MapHub<LiveHub>("/hub/live");
 app.MapAdminAuth();
 app.MapAdminAccounts();
 app.MapAdmin();

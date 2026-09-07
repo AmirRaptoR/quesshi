@@ -15,4 +15,13 @@ public interface ILiveNotifier
 
     /// <summary>Declared for the transport sub-issue to call; the grain never invokes this — presence is out of scope here.</summary>
     Task OpponentPresenceChangedAsync(string matchId, string playerId, bool online, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fired once, on the first answer of a round only — the second answer closes the round and
+    /// <see cref="RoundRevealedAsync"/> supersedes it. Carries the match, the round slot and who
+    /// just answered, and nothing else: no choice index, no score. It is the only way a client can
+    /// show "they have answered" without polling — neither <see cref="RoundStartedAsync"/> nor
+    /// <see cref="RoundRevealedAsync"/> fires when only one side is in.
+    /// </summary>
+    Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default);
 }

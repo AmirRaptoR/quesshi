@@ -61,7 +61,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
     private async Task<IResult> CreateAsync(FakeIdFactory ids, string meId = Amir, int? questions = null, bool random = false)
         => await LiveEndpoints.CreateAsync(new CreateMatchDto(random, "en", [ScarceCategory], questions), meId,
-            Grains, Builder, ids, LiveShared.Archive, LiveShared.Players, Clock);
+            Grains, Builder, ids, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
 
     private static LiveViewDto ViewOf(IResult result) => (LiveViewDto)CrossTypeCodeTests.ValueOf(result);
 
@@ -112,7 +112,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var ids = NewIds();
         // A valid choice (100) far past the 10 approved questions the pool actually has.
         var result = await LiveEndpoints.CreateAsync(new CreateMatchDto(false, "en", [ScarceCategory], 100), Amir,
-            Grains, Builder, ids, LiveShared.Archive, LiveShared.Players, Clock);
+            Grains, Builder, ids, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
 
         Assert.Equal(503, CrossTypeCodeTests.StatusOf(result));
     }
@@ -146,7 +146,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
 
-        var result = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        var result = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
 
         var dto = ViewOf(result);
@@ -162,7 +162,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
 
-        var result = await LiveEndpoints.JoinAsync(created.Code, Amir, Grains, LiveShared.Archive, Clock);
+        var result = await LiveEndpoints.JoinAsync(created.Code, Amir, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("self_join", CrossTypeCodeTests.ErrorOf(result));
     }
@@ -172,9 +172,9 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     {
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
-        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
 
-        var result = await LiveEndpoints.JoinAsync(created.Code, Stranger, Grains, LiveShared.Archive, Clock);
+        var result = await LiveEndpoints.JoinAsync(created.Code, Stranger, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("cannot_join", CrossTypeCodeTests.ErrorOf(result));
     }
@@ -190,7 +190,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         await Grains.GetGrain<ILiveMatchGrain>(created.Id).GetAsync(Amir);
         await WaitUntilAsync(() => LiveShared.Archive.Items.First(m => m.Id == created.Id).State == MatchState.NoContest);
 
-        var result = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        var result = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("lobby_expired", CrossTypeCodeTests.ErrorOf(result));
     }
@@ -218,7 +218,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Unknown_code_returns_404_no_such_code()
     {
-        var result = await LiveEndpoints.JoinAsync("NO-SUCH-CODE", Sara, Grains, LiveShared.Archive, Clock);
+        var result = await LiveEndpoints.JoinAsync("NO-SUCH-CODE", Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(result));
     }
@@ -228,9 +228,9 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     {
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
-        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
 
-        var second = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        var second = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(second));
         Assert.Equal(Sara, ViewOf(second).OpponentId);
     }
@@ -241,7 +241,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
 
-        var result = await LiveEndpoints.GetAsync(created.Id, Stranger, Grains, Clock);
+        var result = await LiveEndpoints.GetAsync(created.Id, Stranger, Grains, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
     }
 
@@ -251,7 +251,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
 
-        var result = await LiveEndpoints.GetAsync(created.Id, Amir, Grains, Clock);
+        var result = await LiveEndpoints.GetAsync(created.Id, Amir, Grains, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal(created.Id, ViewOf(result).Id);
     }
@@ -288,7 +288,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     {
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
-        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
 
         var result = await LiveEndpoints.CancelAsync(created.Id, Amir, Grains);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
@@ -307,7 +307,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var playersBefore = LiveShared.Players.Items.Count;
 
         var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("Newcomer"),
-            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+            LiveShared.Archive, LiveShared.Players, Grains, LiveShared.Questions, LiveShared.Categories, Issuer, ids, Clock);
 
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
         var dto = (GuestLiveResultDto)CrossTypeCodeTests.ValueOf(result);
@@ -315,7 +315,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         Assert.Equal(playersBefore + 1, LiveShared.Players.Items.Count);
 
         // The guest holding that token may now GET their own duel and join by code (already-joined -> idempotent).
-        var view = await LiveEndpoints.GetAsync(created.Id, dto.Me.Id, Grains, Clock);
+        var view = await LiveEndpoints.GetAsync(created.Id, dto.Me.Id, Grains, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(view));
     }
 
@@ -327,7 +327,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var playersBefore = LiveShared.Players.Items.Count;
 
         var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("x"),
-            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+            LiveShared.Archive, LiveShared.Players, Grains, LiveShared.Questions, LiveShared.Categories, Issuer, ids, Clock);
 
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("name_length", CrossTypeCodeTests.ErrorOf(result));
@@ -341,7 +341,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var playersBefore = LiveShared.Players.Items.Count;
 
         var result = await AuthEndpoints.GuestJoinLiveAsync("NO-SUCH-CODE", new GuestJoinDto("Newcomer"),
-            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+            LiveShared.Archive, LiveShared.Players, Grains, LiveShared.Questions, LiveShared.Categories, Issuer, ids, Clock);
 
         Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal(playersBefore, LiveShared.Players.Items.Count);
@@ -352,11 +352,11 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     {
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
-        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, Clock);
+        await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         var playersBefore = LiveShared.Players.Items.Count;
 
         var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("Newcomer"),
-            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+            LiveShared.Archive, LiveShared.Players, Grains, LiveShared.Questions, LiveShared.Categories, Issuer, ids, Clock);
 
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("cannot_join", CrossTypeCodeTests.ErrorOf(result));
@@ -375,7 +375,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var playersBefore = LiveShared.Players.Items.Count;
 
         var result = await AuthEndpoints.GuestJoinLiveAsync(created.Code, new GuestJoinDto("Newcomer"),
-            LiveShared.Archive, LiveShared.Players, Grains, Issuer, ids, Clock);
+            LiveShared.Archive, LiveShared.Players, Grains, LiveShared.Questions, LiveShared.Categories, Issuer, ids, Clock);
 
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
         Assert.Equal("lobby_expired", CrossTypeCodeTests.ErrorOf(result));

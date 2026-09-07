@@ -25,6 +25,8 @@ public sealed class FakeLiveNotifier : ILiveNotifier
     public Task EndedAsync(string matchId, LiveEnded ended, CancellationToken ct = default) => Record("Ended", matchId, ended);
     public Task OpponentPresenceChangedAsync(string matchId, string playerId, bool online, CancellationToken ct = default)
         => Record("OpponentPresenceChanged", matchId, (playerId, online));
+    public Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default)
+        => Record("OpponentAnswered", matchId, (slot, playerId));
 
     private Task Record(string kind, string matchId, object payload)
     {

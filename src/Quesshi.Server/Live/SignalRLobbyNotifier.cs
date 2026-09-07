@@ -29,4 +29,13 @@ public sealed class SignalRLobbyNotifier(IHubContext<LobbyHub> hub, IPlayerRepos
 
     public Task ChallengeFailedAsync(string playerId, string challengeId, CancellationToken ct = default)
         => hub.Clients.Group(playerId).SendAsync("ChallengeFailed", challengeId, ct);
+
+    public Task MatchedAsync(string playerId, string matchId, CancellationToken ct = default)
+        => hub.Clients.Group(playerId).SendAsync("Matched", matchId, ct);
+
+    public Task QueueCountChangedAsync(string playerId, int othersWaiting, CancellationToken ct = default)
+        => hub.Clients.Group(playerId).SendAsync("QueueCount", othersWaiting, ct);
+
+    public Task QueueFailedAsync(string playerId, CancellationToken ct = default)
+        => hub.Clients.Group(playerId).SendAsync("QueueFailed", ct);
 }

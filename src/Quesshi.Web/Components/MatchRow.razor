@@ -20,6 +20,10 @@
         </div>
     </div>
 
+    @if (Match.IsLive)
+    {
+        <span class="chip chip--live-tag">@L["home.live"]</span>
+    }
     <span class="chip @ChipClass">@Status</span>
 </button>
 
@@ -38,7 +42,9 @@
         "win" => L["result.win"],
         "loss" => L["result.loss"],
         "draw" => L["result.draw"],
-        _ => Match.CanPlay ? L["home.yourTurn"] : L["home.waiting"]
+        // An in-flight live duel is never CanPlay — it advances on its own clock — so it gets its own
+        // wording rather than falling into "waiting", which would read as if nothing was happening.
+        _ => Match.IsLive ? L["home.rejoin"] : Match.CanPlay ? L["home.yourTurn"] : L["home.waiting"]
     };
 
     private string ChipClass => Match.Outcome switch
@@ -48,5 +54,5 @@
         _ => Match.CanPlay ? "chip--live" : ""
     };
 
-    private void Open() => Nav.NavigateTo(Match.CanPlay ? $"/play/{Match.Id}" : $"/duel/{Match.Id}");
+    private void Open() => Nav.NavigateTo(Match.IsLive ? $"/live/{Match.Id}" : Match.CanPlay ? $"/play/{Match.Id}" : $"/duel/{Match.Id}");
 }

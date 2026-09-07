@@ -4,6 +4,7 @@ public sealed class Player
 {
     private readonly Dictionary<string, CategoryRecord> _byCategory = [];
     private readonly HashSet<string> _friends = [];
+    private readonly List<DateTimeOffset> _abandonments = [];
 
     private Player(string id, string email, string displayName, Language lang, DateTimeOffset createdAt)
     {
@@ -33,6 +34,9 @@ public sealed class Player
     public IReadOnlyCollection<string> Friends => _friends;
     public IReadOnlyDictionary<string, CategoryRecord> ByCategory => _byCategory;
 
+    /// <summary>Every abandonment still inside the rolling window, oldest first, as of the last time one was recorded.</summary>
+    public IReadOnlyList<DateTimeOffset> Abandonments => _abandonments;
+
     public static Player Register(string id, string email, string displayName, Language lang, DateTimeOffset now)
         => new(id, email.Trim().ToLowerInvariant(), displayName.Trim(), lang, now);
 
@@ -60,6 +64,22 @@ public sealed class Player
         };
     }
 
+    /// <summary>
+    /// A live duel walked away from. Prunes anything outside <see cref="LiveRules.AbandonmentWindow"/>,
+    /// counts this one in, and charges whatever that count costs straight out of the score already
+    /// banked — floored at zero, same as every other place a score can move. Returns the penalty so
+    /// the caller can apply the identical amount to the leaderboard.
+    /// </summary>
+    public int RecordAbandonment(DateTimeOffset now)
+    {
+        _abandonments.RemoveAll(at => now - at >= LiveRules.AbandonmentWindow);
+        _abandonments.Add(now);
+
+        var penalty = LiveRules.AbandonmentPenalty(_abandonments.Count);
+        if (penalty > 0) Stats = Stats with { TotalScore = Stats.TotalScore - penalty };
+        return penalty;
+    }
+
     public void RecordAnswer(string categoryId, bool correct)
     {
         var rec = _byCategory.GetValueOrDefault(categoryId, new CategoryRecord(0, 0));
@@ -77,7 +97,7 @@ public sealed class Player
     public void RemoveFriend(string playerId) => _friends.Remove(playerId);
 
     public PlayerSnapshot ToSnapshot() => new(Id, Email, DisplayName, AvatarSeed, Lang, IsBanned, CreatedAt, Stats,
-        new Dictionary<string, CategoryRecord>(_byCategory), [.. _friends], IsGuest);
+        new Dictionary<string, CategoryRecord>(_byCategory), [.. _friends], IsGuest, [.. _abandonments]);
 
     public static Player FromSnapshot(PlayerSnapshot s)
     {
@@ -90,6 +110,7 @@ public sealed class Player
         };
         foreach (var (k, v) in s.ByCategory) p._byCategory[k] = v;
         foreach (var f in s.Friends) p._friends.Add(f);
+        if (s.Abandonments is not null) p._abandonments.AddRange(s.Abandonments);
         return p;
     }
 }

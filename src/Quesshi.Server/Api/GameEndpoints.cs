@@ -160,24 +160,7 @@ public static class GameEndpoints
         // report a question you were actually served, and only once.
         api.MapPost("/report", async (ReportQuestionDto body, HttpContext ctx,
             IQuestionRepository questions, IMatchArchive archive, IClock clock) =>
-        {
-            var meId = ctx.User.PlayerId()!;
-
-            if (!Enum.TryParse<ReportReason>(body.Reason, true, out var reason))
-                return Results.BadRequest(new { error = "bad_reason" });
-
-            var mine = await archive.ForPlayerAsync(meId, 60);
-            if (!mine.Any(m => m.QuestionIds.Contains(body.QuestionId)))
-                return Results.BadRequest(new { error = "not_your_question" });
-
-            if (await questions.GetAsync(body.QuestionId) is not { } question) return Results.NotFound();
-
-            var accepted = question.Report(meId, reason, clock.Now);
-            if (accepted) await questions.UpsertAsync(question);
-
-            // Already reported by this player is not an error worth surfacing; the button is done either way.
-            return Results.Ok(new { reported = true, alreadyReported = !accepted });
-        });
+            await ReportAsync(body, ctx.User.PlayerId()!, questions, archive, clock));
 
         api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
             IGrainFactory grains, bool? active, int? take) =>
@@ -255,6 +238,31 @@ public static class GameEndpoints
         return Results.Ok(await SummaryAsync(grain, meId, players));
     }
 
+    /// <summary>
+    /// Extracted out of the endpoint delegate so a report's guard can be driven directly in a test,
+    /// the same way <see cref="JoinMatchAsync"/> and <see cref="ListMatchesAsync"/> are. A live duel's
+    /// archive row carries its <c>QuestionIds</c> just as an async one does, so a question served in
+    /// either kind of duel is reportable — the archive row is the ownership check either way.
+    /// </summary>
+    internal static async Task<IResult> ReportAsync(ReportQuestionDto body, string meId,
+        IQuestionRepository questions, IMatchArchive archive, IClock clock)
+    {
+        if (!Enum.TryParse<ReportReason>(body.Reason, true, out var reason))
+            return Results.BadRequest(new { error = "bad_reason" });
+
+        var mine = await archive.ForPlayerAsync(meId, 60);
+        if (!mine.Any(m => m.QuestionIds.Contains(body.QuestionId)))
+            return Results.BadRequest(new { error = "not_your_question" });
+
+        if (await questions.GetAsync(body.QuestionId) is not { } question) return Results.NotFound();
+
+        var accepted = question.Report(meId, reason, clock.Now);
+        if (accepted) await questions.UpsertAsync(question);
+
+        // Already reported by this player is not an error worth surfacing; the button is done either way.
+        return Results.Ok(new { reported = true, alreadyReported = !accepted });
+    }
+
     /// <summary>How many archived matches the list will ever look at.</summary>
     private const int MatchListLimit = 40;
 
@@ -265,32 +273,45 @@ public static class GameEndpoints
         if (activeOnly)
             rows = [.. rows.Where(r => r.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
 
+        // A live duel has no equivalent to IMatchGrain to ask — it is mirrored into its archive row on
+        // start and on end (LiveMatchSettlement), and that row already carries everything the list
+        // needs. Only an async duel is worth activating a grain for. A no-contest live duel changed
+        // nothing and has no result to show, so it is left out entirely — it stays in the archive and
+        // is still findable by code, just not in this list.
+        var liveRows = rows.Where(r => r.IsLive && r.State != MatchState.NoContest).ToList();
+        var asyncRows = rows.Where(r => !r.IsLive).ToList();
+
         // Asked all at once, so the wait is the slowest single activation rather than the sum of
         // forty. Redaction still happens inside each grain, per player, exactly as it did before.
-        var views = await Task.WhenAll(rows.Select(r => grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId)));
-        var live = views.OfType<MatchView>().ToList();
+        var views = await Task.WhenAll(asyncRows.Select(r => grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId)));
+        var asyncViews = views.OfType<MatchView>().ToList();
 
         // The row was only a way of finding the duel. A grain is written before it is indexed, so a
         // duel that has just been resolved can still be filed as in progress; where the two
         // disagree the grain is the one to believe, and the archive filter above merely saves
         // activating grains that were already finished long ago.
         if (activeOnly)
-            live = [.. live.Where(v => (MatchState)v.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
+            asyncViews = [.. asyncViews.Where(v => (MatchState)v.State is MatchState.AwaitingOpponent or MatchState.InProgress)];
 
-        // Who to name is read from the views, not from the archive rows that found them. A grain
-        // persists itself before it is mirrored into Mongo, so a duel joined a moment ago has an
-        // opponent the row does not know about yet — and taking the ids from the row would render
-        // that opponent as an em dash. One query either way.
-        var names = (await players.GetManyAsync([.. live
+        // Who to name is read from the views, not from the archive rows that found them, for async
+        // duels: a grain persists itself before it is mirrored into Mongo, so a duel joined a moment
+        // ago has an opponent the row does not know about yet. A live duel has no such lag — its row
+        // is the only source there is — so its ids come from the row instead. One query either way.
+        var names = (await players.GetManyAsync([.. asyncViews
                 .SelectMany(v => new[] { v.ChallengerId, v.OpponentId })
+                .Concat(liveRows.SelectMany(r => new[] { r.ChallengerId, r.OpponentId }))
                 .OfType<string>().Distinct()]))
             .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
 
-        var summaries = live.Select(v => v.ToSummary(meId, id => names.TryGetValue(id, out var found) ? found : ("—", id)));
+        (string, string) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id);
+
+        var summaries = asyncViews.Select(v => v.ToSummary(meId, Lookup))
+            .Concat(liveRows.Select(r => r.ToLiveSummary(meId, Lookup)));
 
         // A caller that says how many it will show gets that many. Playable first and newest after,
         // which is the order both pages already put them in, so cutting the list here cannot hide a
-        // duel that is waiting on this player behind one that is not.
+        // duel that is waiting on this player behind one that is not. A live duel is never CanPlay,
+        // so it can only ever displace another duel that was already waiting, not a playable one.
         return take is { } n
             ? [.. summaries.OrderByDescending(s => s.CanPlay).ThenByDescending(s => s.CreatedAt).Take(n)]
             : [.. summaries];
@@ -337,18 +358,21 @@ public static class GameEndpoints
     private static MediaDto? ToMediaDto(MediaRef media)
         => media.Kind == MediaKind.None ? null : new MediaDto(media.Kind.ToString().ToLowerInvariant(), media.Url, media.Attribution);
 
-    /// <summary>Internal so a test can call it directly, the same way <see cref="ListMatchesAsync"/> is.</summary>
+    /// <summary>Internal so <see cref="Quesshi.Server.Tests"/> can drive it directly, the same way
+    /// <see cref="ListMatchesAsync"/> is driven — one bulk presence read for the whole friends list,
+    /// never one per friend.</summary>
     internal static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board, IPresence presence)
     {
-        // One round trip for every friend's presence, not one per friend — the same shape IPresence
-        // documents for the random queue and friend challenges.
-        var online = await presence.OnlineAsync(me.Friends);
-
-        var friends = new List<FriendDto>();
+        var candidates = new List<Player>();
         foreach (var id in me.Friends)
             if (await players.GetAsync(id) is { } f)
-                friends.Add(new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id)));
+                candidates.Add(f);
 
+        var online = candidates.Count == 0
+            ? []
+            : await presence.OnlineAsync([.. candidates.Select(f => f.Id)]);
+
+        var friends = candidates.Select(f => new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id)));
         return [.. friends.OrderByDescending(f => f.Score)];
     }
 

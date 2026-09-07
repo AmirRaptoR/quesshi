@@ -10,11 +10,12 @@ namespace Quesshi.Server.Live;
 
 /// <summary>
 /// One connection per signed-in player, open for the whole session — not the single-duel lifetime
-/// <c>/hub/live</c> (still unbuilt) will have. Its job is presence — mark the caller online on
-/// connect, refresh it on <see cref="Heartbeat"/>, and let the key expire on its own when the
-/// connection is gone — plus friend challenges: <see cref="Challenge"/>, <see cref="Accept"/>,
-/// <see cref="Decline"/>, and delivery of anything pending on <see cref="OnConnectedAsync"/>.
-/// Nothing here decides a duel's outcome.
+/// <c>/hub/live</c> has. Its job is presence — mark the caller online on connect, refresh it on
+/// <see cref="Heartbeat"/>, and let the key expire on its own when the connection is gone — plus both
+/// doors into a duel: the random queue (<see cref="QueueRandom"/>, <see cref="LeaveQueue"/>) and
+/// friend challenges (<see cref="Challenge"/>, <see cref="Accept"/>, <see cref="Decline"/>, and
+/// delivery of anything pending on <see cref="OnConnectedAsync"/>). Neither door decides a duel's
+/// outcome; that is <c>ILiveMatchGrain</c>'s.
 /// </summary>
 [Authorize]
 public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNotifier notifier,
@@ -50,14 +51,46 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // Closing the tab dequeues you too: a queue entry cannot outlive the connection that
+        // heartbeats it. A pending challenge is untouched — it still resolves via accept, decline or
+        // its own timer, the same as it would across a brief reconnect.
         if (Context.User is { } user && !user.IsGuest())
-            await presence.MarkOfflineAsync(user.PlayerId()!);
+        {
+            var playerId = user.PlayerId()!;
+            await presence.MarkOfflineAsync(playerId);
+            await Lobby.LeaveAsync(playerId);
+        }
 
         await base.OnDisconnectedAsync(exception);
     }
 
-    /// <summary>Refreshes the caller's presence TTL. Called on a timer by <c>LobbyClient</c> while connected.</summary>
-    public Task Heartbeat() => presence.MarkOnlineAsync(Context.User!.PlayerId()!, PresenceTtl);
+    /// <summary>Refreshes the caller's presence TTL and, if they are queued, their live queue entry too
+    /// — the same connection heartbeats both, so an entry never lapses under a player who is still here.
+    /// Called on a timer by <c>LobbyClient</c> while connected.</summary>
+    public async Task Heartbeat()
+    {
+        var playerId = Context.User!.PlayerId()!;
+        await presence.MarkOnlineAsync(playerId, PresenceTtl);
+        await Lobby.HeartbeatAsync(playerId);
+    }
+
+    /// <summary>
+    /// Queues the caller for a random live opponent. Returns the new match id if this call is the one
+    /// that found a waiting opponent; null if this call is now the one waiting, or if the duel could
+    /// not be built (in which case <see cref="ILobbyNotifier.QueueFailedAsync"/> is what tells both
+    /// sides), or if the caller already holds a pending challenge. Refused explicitly for a guest, on
+    /// top of the connection already being refused at <see cref="OnConnectedAsync"/> — provable
+    /// without standing up a connection.
+    /// </summary>
+    public Task<string?> QueueRandom(int lang, int questionCount, List<string> categories, List<int> levels)
+        => Context.User!.IsGuest()
+            ? throw new HubException("guests cannot queue")
+            : Lobby.EnqueueAsync(Context.User!.PlayerId()!, lang, questionCount, categories, levels);
+
+    public Task LeaveQueue()
+        => Context.User!.IsGuest()
+            ? throw new HubException("guests cannot queue")
+            : Lobby.LeaveAsync(Context.User!.PlayerId()!);
 
     /// <summary>
     /// Refuses a guest caller explicitly, on top of <see cref="OnConnectedAsync"/> refusing the
