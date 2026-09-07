@@ -11,6 +11,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     private const string TokenKey = "quesshi.token";
     private const string LangKey = "quesshi.lang";
     private const string GuestMatchKey = "quesshi.guestMatch";
+    private const string GuestMatchLiveKey = "quesshi.guestMatchLive";
 
     private int _generation;
     private bool _retrying;
@@ -34,6 +35,10 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// <summary>The one match a guest may look at. Null for everybody else.</summary>
     public string? GuestMatchId { get; private set; }
 
+    /// <summary>Which kind of duel <see cref="GuestMatchId"/> is — a live lobby routes to <c>/live/{id}</c>,
+    /// an async one to <c>/duel/{id}</c>. Meaningless while <see cref="GuestMatchId"/> is null.</summary>
+    public bool GuestMatchIsLive { get; private set; }
+
     public event Action? Changed;
 
     public async Task InitialiseAsync()
@@ -45,6 +50,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
         await js.InvokeVoidAsync("quesshi.setLang", Lang);
 
         GuestMatchId = await js.InvokeAsync<string?>("quesshi.get", GuestMatchKey);
+        GuestMatchIsLive = await js.InvokeAsync<string?>("quesshi.get", GuestMatchLiveKey) == "1";
 
         var token = await js.InvokeAsync<string?>("quesshi.get", TokenKey);
         if (!string.IsNullOrWhiteSpace(token))
@@ -115,15 +121,22 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     }
 
     /// <summary>Signs in as a guest and pins them to the duel they were invited to.</summary>
-    public async Task SignInAsGuestAsync(GuestResultDto result)
-    {
-        Apply(result.Token);
-        Me = result.Me;
-        GuestMatchId = result.Match.Id;
+    public async Task SignInAsGuestAsync(GuestResultDto result) => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Match.Id, isLive: false);
 
-        await js.InvokeVoidAsync("quesshi.set", TokenKey, result.Token);
-        await js.InvokeVoidAsync("quesshi.set", GuestMatchKey, result.Match.Id);
-        await SetLangAsync(result.Me.Lang);
+    /// <summary>The live twin: signs in as a guest and pins them to the lobby they were invited to.</summary>
+    public async Task SignInAsGuestLiveAsync(GuestLiveResultDto result) => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Live.Id, isLive: true);
+
+    private async Task SignInAsGuestCoreAsync(string token, MeDto me, string matchId, bool isLive)
+    {
+        Apply(token);
+        Me = me;
+        GuestMatchId = matchId;
+        GuestMatchIsLive = isLive;
+
+        await js.InvokeVoidAsync("quesshi.set", TokenKey, token);
+        await js.InvokeVoidAsync("quesshi.set", GuestMatchKey, matchId);
+        await js.InvokeVoidAsync("quesshi.set", GuestMatchLiveKey, isLive ? "1" : "0");
+        await SetLangAsync(me.Lang);
     }
 
     public async Task SignOutAsync()
@@ -140,7 +153,9 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     private async Task ForgetGuestMatchAsync()
     {
         GuestMatchId = null;
+        GuestMatchIsLive = false;
         await js.InvokeVoidAsync("quesshi.remove", GuestMatchKey);
+        await js.InvokeVoidAsync("quesshi.remove", GuestMatchLiveKey);
     }
 
     public void SetMe(MeDto me)
