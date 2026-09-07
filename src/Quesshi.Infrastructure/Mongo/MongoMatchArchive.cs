@@ -15,17 +15,14 @@ public sealed class MongoMatchArchive(MongoContext db) : IMatchArchive
     }
 
     /// <summary>
-    /// Async only: a live row reaching <c>GET /api/matches</c> would activate an empty
-    /// <c>IMatchGrain</c> for a duel that grain has never heard of. Filtered here, at the query, so
-    /// every caller of this list — the endpoint, the bench, the report — stays async-only for free.
+    /// A player's live and async rows alike, newest first: <c>GameEndpoints.ListMatchesAsync</c> is
+    /// the one that splits a live row away from the grain fan-out, so this query does not need to.
     /// </summary>
     public async Task<IReadOnlyList<ArchivedMatch>> ForPlayerAsync(string playerId, int take, CancellationToken ct = default)
         => [.. (await db.Matches
-            .Find(Builders<MatchDoc>.Filter.And(
-                Builders<MatchDoc>.Filter.Or(
-                    Builders<MatchDoc>.Filter.Eq(m => m.ChallengerId, playerId),
-                    Builders<MatchDoc>.Filter.Eq(m => m.OpponentId, playerId)),
-                Builders<MatchDoc>.Filter.Eq(m => m.IsLive, false)))
+            .Find(Builders<MatchDoc>.Filter.Or(
+                Builders<MatchDoc>.Filter.Eq(m => m.ChallengerId, playerId),
+                Builders<MatchDoc>.Filter.Eq(m => m.OpponentId, playerId)))
             .SortByDescending(m => m.CreatedAt).Limit(take).ToListAsync(ct)).Select(d => d.ToDomain())];
 
     public Task<long> CountAsync(CancellationToken ct = default)

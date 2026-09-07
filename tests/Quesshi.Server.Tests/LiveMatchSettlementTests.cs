@@ -30,11 +30,18 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         return ids;
     }
 
+    /// <summary>A duel to settle. Settlement never reads the share code or the language off the duel —
+    /// <see cref="LiveMatchSettlement.IndexAsync"/> is handed the language separately — so both are
+    /// fixed here rather than restated at every call site; the code is derived from the id so two
+    /// duels in one test are still distinct.</summary>
+    private static LiveMatch NewDuel(string id, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset start)
+        => LiveMatch.Create(id, id.ToUpperInvariant(), Language.En, challengerId, questionIds, start);
+
     /// <summary>Plays a live duel to its natural end: every round answered by both sides, instantly, so
     /// every correct answer scores the same maximum the async path would for an equally instant answer.</summary>
     private static LiveMatch PlayToResolved(string id, List<string> questionIds, string a, string b, int aCorrect, int bCorrect, DateTimeOffset start)
     {
-        var m = LiveMatch.Create(id, a, questionIds, start);
+        var m = NewDuel(id, a, questionIds, start);
         m.Join(b, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0
@@ -133,7 +140,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         await Shared.Players.UpsertAsync(Player.Register(b, $"{b}@example.com", "Sara", Language.En, Shared.Clock.Now));
 
         var start = Shared.Clock.Now;
-        var m = LiveMatch.Create("nocontest-1", a, SeedQuestions("nocontest"), start);
+        var m = NewDuel("nocontest-1", a, SeedQuestions("nocontest"), start);
         m.Join(b, start);
         // Nobody ever answers; the lobby/round clock runs out and the duel becomes a no-contest.
         m.Advance(start + LiveRules.StartCountdown + MatchRules.QuestionTime + LiveRules.StaleAfter + LiveRules.StaleAfter);
@@ -165,7 +172,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
 
         var start = Shared.Clock.Now;
         var ids = SeedQuestions("abandon");
-        var m = LiveMatch.Create("abandon-1", quitter, ids, start);
+        var m = NewDuel("abandon-1", quitter, ids, start);
         m.Join(winner, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0
@@ -209,7 +216,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
 
         var start = Shared.Clock.Now.AddHours(1);
         var ids = SeedQuestions("repeat");
-        var m = LiveMatch.Create("repeat-1", quitter, ids, start);
+        var m = NewDuel("repeat-1", quitter, ids, start);
         m.Join(winner, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now);
@@ -243,7 +250,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
 
         var start = Shared.Clock.Now.AddHours(1);
         var ids = SeedQuestions("guestabandon");
-        var m = LiveMatch.Create("guestabandon-1", quitter.Id, ids, start);
+        var m = NewDuel("guestabandon-1", quitter.Id, ids, start);
         m.Join(winner, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now);
@@ -262,7 +269,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
     {
         var start = Shared.Clock.Now;
         var ids = SeedQuestions("mirror");
-        var m = LiveMatch.Create("mirror-1", "p-mirror-a", ids, start);
+        var m = NewDuel("mirror-1", "p-mirror-a", ids, start);
 
         await Sut.IndexAsync(m, Language.En);
         var onStart = Shared.Archive.Items.Single(x => x.Id == "mirror-1");

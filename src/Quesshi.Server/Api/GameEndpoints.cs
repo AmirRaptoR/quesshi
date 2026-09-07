@@ -159,24 +159,7 @@ public static class GameEndpoints
         // report a question you were actually served, and only once.
         api.MapPost("/report", async (ReportQuestionDto body, HttpContext ctx,
             IQuestionRepository questions, IMatchArchive archive, IClock clock) =>
-        {
-            var meId = ctx.User.PlayerId()!;
-
-            if (!Enum.TryParse<ReportReason>(body.Reason, true, out var reason))
-                return Results.BadRequest(new { error = "bad_reason" });
-
-            var mine = await archive.ForPlayerAsync(meId, 60);
-            if (!mine.Any(m => m.QuestionIds.Contains(body.QuestionId)))
-                return Results.BadRequest(new { error = "not_your_question" });
-
-            if (await questions.GetAsync(body.QuestionId) is not { } question) return Results.NotFound();
-
-            var accepted = question.Report(meId, reason, clock.Now);
-            if (accepted) await questions.UpsertAsync(question);
-
-            // Already reported by this player is not an error worth surfacing; the button is done either way.
-            return Results.Ok(new { reported = true, alreadyReported = !accepted });
-        });
+            await ReportAsync(body, ctx.User.PlayerId()!, questions, archive, clock));
 
         api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
             IGrainFactory grains, bool? active, int? take) =>
@@ -252,6 +235,31 @@ public static class GameEndpoints
         if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
 
         return Results.Ok(await SummaryAsync(grain, meId, players));
+    }
+
+    /// <summary>
+    /// Extracted out of the endpoint delegate so a report's guard can be driven directly in a test,
+    /// the same way <see cref="JoinMatchAsync"/> and <see cref="ListMatchesAsync"/> are. A live duel's
+    /// archive row carries its <c>QuestionIds</c> just as an async one does, so a question served in
+    /// either kind of duel is reportable — the archive row is the ownership check either way.
+    /// </summary>
+    internal static async Task<IResult> ReportAsync(ReportQuestionDto body, string meId,
+        IQuestionRepository questions, IMatchArchive archive, IClock clock)
+    {
+        if (!Enum.TryParse<ReportReason>(body.Reason, true, out var reason))
+            return Results.BadRequest(new { error = "bad_reason" });
+
+        var mine = await archive.ForPlayerAsync(meId, 60);
+        if (!mine.Any(m => m.QuestionIds.Contains(body.QuestionId)))
+            return Results.BadRequest(new { error = "not_your_question" });
+
+        if (await questions.GetAsync(body.QuestionId) is not { } question) return Results.NotFound();
+
+        var accepted = question.Report(meId, reason, clock.Now);
+        if (accepted) await questions.UpsertAsync(question);
+
+        // Already reported by this player is not an error worth surfacing; the button is done either way.
+        return Results.Ok(new { reported = true, alreadyReported = !accepted });
     }
 
     /// <summary>How many archived matches the list will ever look at.</summary>
