@@ -152,6 +152,38 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
         LiveShared.Directory.Rows.Clear();
     }
 
+    [Fact]
+    public async Task Rows_are_ordered_oldest_first()
+    {
+        LiveShared.Directory.Rows.Clear();
+        var older = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var newer = DateTimeOffset.UtcNow;
+        LiveShared.Directory.Rows["row-newer"] = new LiveDirectoryRow("row-newer", "NEW001", "p1", "p2", (int)Language.En, 0, 10, (int)LivePhase.Lobby, newer);
+        LiveShared.Directory.Rows["row-older"] = new LiveDirectoryRow("row-older", "OLD001", "p1", "p2", (int)Language.En, 0, 10, (int)LivePhase.Lobby, older);
+
+        using var client = AdminClient();
+        var page = await client.GetFromJsonAsync<AdminLivePageDto>("/api/admin/live");
+
+        Assert.Equal(["row-older", "row-newer"], page!.Items.Select(r => r.Id));
+
+        LiveShared.Directory.Rows.Clear();
+    }
+
+    [Fact]
+    public async Task A_row_whose_duel_could_no_longer_be_running_is_dropped_and_removed_from_the_index()
+    {
+        LiveShared.Directory.Rows.Clear();
+        var maxAge = LiveRules.LobbyExpires + (10 * (MatchRules.QuestionTime + LiveRules.RevealTime)) + TimeSpan.FromMinutes(1);
+        var longDead = LiveShared.TimeProvider.GetUtcNow() - maxAge - TimeSpan.FromSeconds(1);
+        LiveShared.Directory.Rows["row-ghost"] = new LiveDirectoryRow("row-ghost", "GHOST1", "p1", "p2", (int)Language.En, 0, 10, (int)LivePhase.Question, longDead);
+
+        using var client = AdminClient();
+        var page = await client.GetFromJsonAsync<AdminLivePageDto>("/api/admin/live");
+
+        Assert.Empty(page!.Items);
+        Assert.False(LiveShared.Directory.Rows.ContainsKey("row-ghost"));
+    }
+
     // ---- End duel ----
 
     [Fact]
