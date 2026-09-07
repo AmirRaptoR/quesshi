@@ -49,6 +49,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         await using var connection = host.NewConnection(token);
 
         await connection.StartAsync();
+        await host.Presence.WaitForOnlineAsync("p1", TimeSpan.FromSeconds(5)); // StartAsync() races the server's OnConnectedAsync
 
         Assert.True(host.Presence.IsOnline("p1"));
     }
@@ -60,10 +61,11 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         var token = host.TokenIssuer.Issue(RealPlayer("p1"));
         var connection = host.NewConnection(token);
         await connection.StartAsync();
+        await host.Presence.WaitForOnlineAsync("p1", TimeSpan.FromSeconds(5));
         Assert.True(host.Presence.IsOnline("p1"));
 
         await connection.DisposeAsync();
-        await Task.Delay(200); // the server-side OnDisconnectedAsync runs asynchronously after the client tears down
+        await host.Presence.WaitForOfflineAsync("p1", TimeSpan.FromSeconds(5)); // the server's OnDisconnectedAsync runs asynchronously after the client tears down
 
         Assert.False(host.Presence.IsOnline("p1"));
     }
@@ -190,9 +192,13 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         await c1.InvokeAsync("QueueRandom", lang, count, new List<string> { cat.Id }, new List<int>());
 
         await c1.DisposeAsync();
-        await Task.Delay(200); // OnDisconnectedAsync runs asynchronously after the client tears down
 
         var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveLobbyGrain>(0);
+        await LobbyHubTestHost.WaitUntilAsync(
+            async () => await observer.WaitingCountAsync("nobody", lang, count) == 0,
+            TimeSpan.FromSeconds(5),
+            "the disconnected player's queue entry to be dequeued by OnDisconnectedAsync");
+
         Assert.Equal(0, await observer.WaitingCountAsync("nobody", lang, count));
     }
 
