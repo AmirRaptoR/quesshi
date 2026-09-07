@@ -129,20 +129,31 @@ src/
 tests/
   Quesshi.Domain.Tests/        scoring and the match state machine
   Quesshi.Application.Tests/   use cases against in-memory fakes
+  Quesshi.Web.Tests/           client-side wiring, e.g. the live-duel hub connection
   Quesshi.Server.Tests/        grains, on a real Orleans test cluster
 ```
 
 Dependencies point inward: Domain ← Application ← Infrastructure/Grains/Server. One type per file,
-throughout.
+throughout. `Quesshi.Grains` carries no reference to SignalR — a grain can never call a hub
+directly. Instead, a live duel's grain talks through `ILiveNotifier`, an outbound port declared in
+`Quesshi.Application.Ports`: the grain calls it to announce a countdown, a round starting, a reveal
+or the end, and never knows whether SignalR, a test fake, or nobody at all is listening on the other
+side. That is what keeps the dependency rule intact — the transport lives in `Quesshi.Server`, on
+the inward-pointing side of the arrow, not in the grain.
+
+The transport side is a SignalR hub, `LobbyHub`, mapped at `/hub/lobby`; it currently carries
+presence only — marking a player online while they're connected and off when they drop — with the
+per-duel hub for round-by-round play landing separately. Redis backs SignalR's own scale-out
+backplane, on top of everything else it already does for Orleans.
 
 **There is no separate Orleans host.** The silo is co-hosted in the ASP.NET app
 (`builder.UseOrleans(…)`), so it scales with the API rather than beside it. Anything that only
 *calls* a grain references `Quesshi.Grains.Abstractions` and never sees an implementation.
 
-**Redis** carries Orleans clustering, live match state, reminders and the leaderboard.
-**Mongo** carries everything durable: players, questions, categories, match history.
+**Redis** carries Orleans clustering, match state (async and live), reminders, the leaderboard and
+presence. **Mongo** carries everything durable: players, questions, categories, match history.
 
-A live duel is a grain; a finished one is a document. The grain is the single writer while the match
+A duel in progress is a grain; a finished one is a document. The grain is the single writer while the match
 is being played, which is what makes "twenty seconds, server-timed" true rather than hopeful.
 
 ## Two identities, on purpose
