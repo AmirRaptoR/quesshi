@@ -28,6 +28,14 @@ public sealed class LiveClient : IAsyncDisposable
     public event Action<OpponentAnsweredDto>? OpponentAnswered;
 
     /// <summary>
+    /// Fires after a reconnect's automatic rejoin completes, with the fresh catch-up view. Whatever
+    /// pushes were missed while the socket was down (a reveal, a new round, even the duel ending)
+    /// arrive as ordinary <c>RoundStarted</c>/<c>RoundRevealed</c>/<c>Ended</c> events only from here
+    /// on — this is what re-syncs the phase the client was in when it dropped.
+    /// </summary>
+    public event Action<LiveViewDto>? Rejoined;
+
+    /// <summary>
     /// Server time minus local time, captured once from the <c>ServerNow</c> of the first
     /// <see cref="LiveViewDto"/> a connection receives. Because every deadline the hub sends is
     /// absolute server time, this is the only clock information a reconnect ever needs — there is no
@@ -91,7 +99,13 @@ public sealed class LiveClient : IAsyncDisposable
 
     /// <summary>The reconnected handler: without this, a page that survives a drop would be stuck on stale state forever.</summary>
     internal Task OnReconnectedAsync(string? connectionId)
-        => _matchId is { } id ? JoinAsync(id) : Task.CompletedTask;
+        => _matchId is { } id ? RejoinAsync(id) : Task.CompletedTask;
+
+    private async Task RejoinAsync(string matchId)
+    {
+        var view = await JoinAsync(matchId);
+        Rejoined?.Invoke(view);
+    }
 
     /// <summary>Pure function so it is testable with no connection at all: server time minus local time.</summary>
     public static TimeSpan ComputeSkew(DateTimeOffset serverNow, DateTimeOffset localNow) => serverNow - localNow;

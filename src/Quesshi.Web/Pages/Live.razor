@@ -275,6 +275,7 @@
         _client.OpponentLeft += p => OnPresence(p, online: false);
         _client.OpponentBack += p => OnPresence(p, online: true);
         _client.OpponentAnswered += OnOpponentAnswered;
+        _client.Rejoined += OnRejoined;
         _client.Connection.Reconnecting += _ => Toggle(true);
         _client.Connection.Reconnected += _ => Toggle(false);
         _client.Connection.Closed += _ => Toggle(true);
@@ -293,6 +294,7 @@
         }
 
         _refused = _view is null;
+        SyncLocalAnswerState();
         _ticker = new Timer(_ => InvokeAsync(StateHasChanged), null, 250, 250);
     }
 
@@ -358,6 +360,34 @@
         if (p.PlayerId == MeId) return; // that push is about my own connection, not theirs
         _opponentOnline = online;
         InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// A dropped-and-restored connection may have missed a whole phase change — the reveal that
+    /// closed the round we were locked into, or the round after that. The rejoin's fresh catch-up
+    /// view is the only source of truth for what actually happened while the socket was down, so it
+    /// replaces <see cref="_view"/> outright rather than being patched in.
+    /// </summary>
+    private void OnRejoined(LiveViewDto view)
+    {
+        _view = view;
+        SyncLocalAnswerState();
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Rebuilds the locked/choice/opponent-answered fields from whatever the current view says about
+    /// the round in flight — needed after both a fresh load and a rejoin, since either can land mid-
+    /// round with an answer already recorded server-side that this page never locally submitted.
+    /// </summary>
+    private void SyncLocalAnswerState()
+    {
+        var round = _view is { Phase: "question" } v && v.RoundIndex < v.Rounds.Count ? v.Rounds[v.RoundIndex] : null;
+        var mine = round?.Answers.FirstOrDefault(a => a.PlayerId == MeId);
+
+        _locked = mine is { Answered: true };
+        _myChoice = mine?.ChoiceIndex;
+        _opponentAnswered = round?.Answers.Any(a => a.PlayerId != MeId && a.Answered) ?? false;
     }
 
     // --- actions ----------------------------------------------------------------------------------

@@ -27,17 +27,25 @@
     private Timer? _timer;
     private int _liveRemaining;
 
+    // The component instance in Live.razor's header is not @key'd by round — the same Ring survives
+    // from one question to the next, so the deadline the ticking timer reads has to live in a field
+    // it re-reads every tick, not in a value closed over once at the timer's creation. A Timer whose
+    // callback captured the first round's EndsAt would keep computing against that stale deadline
+    // forever after, and every round from the second one on would render as already expired.
+    private DateTimeOffset _endsAt;
+
     protected override void OnParametersSet()
     {
         if (EndsAt is not { } endsAt) return;
 
+        _endsAt = endsAt;
         _liveRemaining = RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew);
-        _timer ??= new Timer(_ => Tick(endsAt), null, 200, 200);
+        _timer ??= new Timer(_ => Tick(), null, 200, 200);
     }
 
-    private void Tick(DateTimeOffset endsAt)
+    private void Tick()
     {
-        _liveRemaining = RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew);
+        _liveRemaining = RingClock.RemainingSeconds(_endsAt, DateTimeOffset.UtcNow, Skew);
         InvokeAsync(StateHasChanged);
     }
 
