@@ -108,4 +108,22 @@ public class MatchListLiveTests(ClusterFixture fixture)
 
         Assert.DoesNotContain(list, m => m.Id == "livenc-1");
     }
+
+    [Fact]
+    public async Task An_awaiting_opponent_live_lobby_appears_with_a_null_opponent_and_is_not_playable()
+    {
+        const string me = "p-livelobby-me";
+        await Shared.Players.UpsertAsync(Player.Register(me, $"{me}@example.com", "Amir", Language.En, Shared.Clock.Now));
+
+        await Shared.Archive.SaveAsync(new ArchivedMatch(
+            "livelobby-1", "livelobby-1", Language.En, me, OpponentId: null, WinnerId: null, IsDraw: false,
+            ChallengerScore: 0, OpponentScore: 0, MatchState.AwaitingOpponent, Shared.Clock.Now, EndedAt: null,
+            QuestionIds: [], IsLive: true));
+
+        var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
+
+        var row = list.Single(m => m.Id == "livelobby-1");
+        Assert.Null(row.Opponent);
+        Assert.False(row.CanPlay);
+    }
 }
