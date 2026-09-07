@@ -18,6 +18,13 @@ namespace Quesshi.Server.Tests;
 public class LobbyHubTests(LiveClusterFixture fixture)
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>Bound for every wait on a hub lifecycle signal below. 5s proved too tight: with every
+    /// core saturated, the SignalR handshake and the server's OnConnectedAsync/OnDisconnectedAsync
+    /// continuation can genuinely take longer than that, which turned the timeout itself into a source
+    /// of intermittent failure — the exact symptom this class exists to remove.</summary>
+    private static readonly TimeSpan SignalTimeout = TimeSpan.FromSeconds(15);
+
     private static int _n;
 
     private static Player RealPlayer(string id) => Player.Register(id, $"{id}@example.com", id, Language.En, T0);
@@ -49,7 +56,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         await using var connection = host.NewConnection(token);
 
         await connection.StartAsync();
-        await host.Presence.WaitForOnlineAsync("p1", TimeSpan.FromSeconds(5)); // StartAsync() races the server's OnConnectedAsync
+        await host.Presence.WaitForOnlineAsync("p1", SignalTimeout); // StartAsync() races the server's OnConnectedAsync
 
         Assert.True(host.Presence.IsOnline("p1"));
     }
@@ -61,11 +68,11 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         var token = host.TokenIssuer.Issue(RealPlayer("p1"));
         var connection = host.NewConnection(token);
         await connection.StartAsync();
-        await host.Presence.WaitForOnlineAsync("p1", TimeSpan.FromSeconds(5));
+        await host.Presence.WaitForOnlineAsync("p1", SignalTimeout);
         Assert.True(host.Presence.IsOnline("p1"));
 
         await connection.DisposeAsync();
-        await host.Presence.WaitForOfflineAsync("p1", TimeSpan.FromSeconds(5)); // the server's OnDisconnectedAsync runs asynchronously after the client tears down
+        await host.Presence.WaitForOfflineAsync("p1", SignalTimeout); // the server's OnDisconnectedAsync runs asynchronously after the client tears down
 
         Assert.False(host.Presence.IsOnline("p1"));
     }
@@ -81,7 +88,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
 
         // The handshake still completes; the server aborts the connection right after OnConnectedAsync runs.
         await connection.StartAsync();
-        await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.Task.WaitAsync(SignalTimeout);
 
         Assert.False(host.Presence.IsOnline("g1"));
     }
@@ -196,7 +203,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveLobbyGrain>(0);
         await LobbyHubTestHost.WaitUntilAsync(
             async () => await observer.WaitingCountAsync("nobody", lang, count) == 0,
-            TimeSpan.FromSeconds(5),
+            SignalTimeout,
             "the disconnected player's queue entry to be dequeued by OnDisconnectedAsync");
 
         Assert.Equal(0, await observer.WaitingCountAsync("nobody", lang, count));
