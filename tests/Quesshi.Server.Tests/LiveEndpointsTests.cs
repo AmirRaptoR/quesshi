@@ -56,8 +56,10 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     private const string ScarceCategory = "lep-scarce";
 
     /// <summary>A fresh <see cref="IIdFactory"/> per test, so each test's codes are its own and archive
-    /// lookups by code cannot pick up another test's row.</summary>
-    private static FakeIdFactory NewIds() => new(Interlocked.Increment(ref _n));
+    /// lookups by code cannot pick up another test's row. Offset well clear of <see cref="LiveShared.Ids"/>'s
+    /// own low range: that factory mints codes for every grain-originated duel (lobby matches, rematches)
+    /// across the whole assembly, and a small starting number here would eventually collide with one.</summary>
+    private static FakeIdFactory NewIds() => new(500_000 + Interlocked.Increment(ref _n));
 
     private async Task<IResult> CreateAsync(FakeIdFactory ids, string meId = Amir, int? questions = null, bool random = false)
         => await LiveEndpoints.CreateAsync(new CreateMatchDto(random, "en", [ScarceCategory], questions), meId,

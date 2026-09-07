@@ -154,8 +154,8 @@ public static class AuthEndpoints
         var view = (await grain.GetAsync(guest.Id))!;
         var challenger = await players.GetAsync(view.ChallengerId);
         var lookup = (string id) => id == guest.Id
-            ? (guest.DisplayName, guest.AvatarSeed)
-            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id);
+            ? (guest.DisplayName, guest.AvatarSeed, true)
+            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id, challenger?.IsGuest ?? false);
         return Results.Ok(new GuestLiveResultDto(tokens.Issue(guest), guest.ToMeDto([]),
             await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup)));
     }
