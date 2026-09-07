@@ -97,7 +97,7 @@
         // A guest belongs on their one duel; everybody else signed in belongs in the lobby.
         if (State.IsGuest)
         {
-            if (State.GuestMatchId is { Length: > 0 } id) Nav.NavigateTo($"/duel/{id}");
+            if (State.GuestMatchId is { Length: > 0 } id) Nav.NavigateTo(State.GuestMatchIsLive ? $"/live/{id}" : $"/duel/{id}");
         }
         else if (State.SignedIn)
         {

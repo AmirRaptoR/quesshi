@@ -1,0 +1,56 @@
+@page "/live/{MatchId}"
+@inherits PageBase
+
+@*
+    Placeholder: the five-phase live play screen is #13. This lands only enough to prove the
+    create/join/cancel/expiry path all the way through — the duel's phase and both players, from
+    GET /api/live/{id} and nothing more.
+*@
+
+<PageTitle>@L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_live is null)
+    {
+        <div class="empty">
+            <p>@L["common.error"]</p>
+            <a class="btn btn--ghost" href="/">@L["common.back"]</a>
+        </div>
+    }
+    else
+    {
+        <section class="card card--taq enter" style="text-align:center">
+            <span class="eyebrow">@_live.Phase</span>
+
+            <div class="row row--between" style="margin-top:1rem">
+                <div style="text-align:start">
+                    <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
+                    <div style="font-weight:700">@(_live.ChallengerId == State.Me?.Id ? State.Me.DisplayName : _live.OpponentId)</div>
+                </div>
+                <div style="text-align:end">
+                    <div class="faint" style="font-size:var(--step--1)">@L["result.them"]</div>
+                    <div style="font-weight:700">@((_live.ChallengerId == State.Me?.Id ? _live.OpponentId : _live.ChallengerId) ?? "—")</div>
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public string MatchId { get; set; } = "";
+
+    /// <summary>The one lobby a guest was invited into.</summary>
+    protected override bool AllowsGuest => true;
+
+    private LiveViewDto? _live;
+
+    protected override async Task LoadAsync() => _live = await Api.LiveAsync(MatchId);
+}

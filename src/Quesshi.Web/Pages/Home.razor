@@ -211,6 +211,20 @@
     {
         _busy = true; _error = null;
 
+        // One invite lookup decides the kind, so the right join endpoint is called on the first
+        // try rather than guessing by trial — the same branch Join.razor makes off /join/{code}.
+        var invite = await Api.InviteAsync(_code);
+        if (invite is null) { _busy = false; _error = L["common.error"]; return; }
+
+        if (invite.Live)
+        {
+            var live = await Api.JoinLiveAsync(_code);
+            _busy = false;
+            if (live is null) { _error = L["common.error"]; return; }
+            Nav.NavigateTo($"/live/{live.Id}");
+            return;
+        }
+
         var match = await Api.JoinAsync(_code);
         _busy = false;
 
