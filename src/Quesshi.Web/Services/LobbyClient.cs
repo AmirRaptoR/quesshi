@@ -50,13 +50,38 @@ public sealed class LobbyClient : IAsyncDisposable
     /// <summary>Whether the underlying connection is currently usable for an invoke.</summary>
     public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
-    /// <summary>Queues the caller for a random live opponent. Null means: now waiting, the duel
-    /// could not be built, or the caller already holds a pending challenge — <c>QueueFailed</c> on
-    /// <see cref="Connection"/> distinguishes the second from the other two.</summary>
-    public Task<string?> QueueRandomAsync(int lang, int questionCount, List<string> categories, List<int> levels)
-        => _connection.InvokeAsync<string?>("QueueRandom", lang, questionCount, categories, levels);
+    /// <summary>Queues the caller for a random live opponent. <see cref="QueueRandomResult.Sent"/> is
+    /// false when the invoke could not be sent at all (the connection is not active, or drops mid-call)
+    /// — distinct from a sent call whose null <see cref="QueueRandomResult.MatchId"/> means: now waiting,
+    /// the duel could not be built, or the caller already holds a pending challenge (<c>QueueFailed</c>
+    /// on <see cref="Connection"/> distinguishes the second from the other two).</summary>
+    public async Task<QueueRandomResult> QueueRandomAsync(int lang, int questionCount, List<string> categories, List<int> levels)
+    {
+        try
+        {
+            var matchId = await _connection.InvokeAsync<string?>("QueueRandom", lang, questionCount, categories, levels);
+            return new QueueRandomResult(true, matchId);
+        }
+        catch
+        {
+            return new QueueRandomResult(false, null);
+        }
+    }
 
-    public Task LeaveQueueAsync() => _connection.InvokeAsync("LeaveQueue");
+    /// <summary>False if the invoke could not be sent — the caller's local "left the queue" state
+    /// stands regardless, since there is nothing more useful to do with a dead connection here.</summary>
+    public async Task<bool> LeaveQueueAsync()
+    {
+        try
+        {
+            await _connection.InvokeAsync("LeaveQueue");
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>Test-only override for the "Heartbeat" invocation, so resuming after a reconnect can be proven with no server to call.</summary>
     internal Func<Task>? HeartbeatInvokerOverrideForTests { get; set; }
@@ -95,14 +120,44 @@ public sealed class LobbyClient : IAsyncDisposable
     internal Task HeartbeatAsync()
         => HeartbeatInvokerOverrideForTests is { } overridden ? overridden() : _connection.InvokeAsync("Heartbeat");
 
-    public Task<int> ChallengeAsync(string targetId, string? lang, int questionCount, List<string> categoryIds, List<int> levels, CancellationToken ct = default)
-        => _connection.InvokeAsync<int>("Challenge", targetId, lang, questionCount, categoryIds, levels, ct);
+    /// <summary>Null means the invoke could not be sent — every real result is a defined <c>LiveChallengeResult</c> value.</summary>
+    public async Task<int?> ChallengeAsync(string targetId, string? lang, int questionCount, List<string> categoryIds, List<int> levels, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _connection.InvokeAsync<int>("Challenge", targetId, lang, questionCount, categoryIds, levels, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
-    public Task<LiveChallengeAcceptResultDto> AcceptAsync(string challengeId, CancellationToken ct = default)
-        => _connection.InvokeAsync<LiveChallengeAcceptResultDto>("Accept", challengeId, ct);
+    /// <summary>Null means the invoke could not be sent.</summary>
+    public async Task<LiveChallengeAcceptResultDto?> AcceptAsync(string challengeId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _connection.InvokeAsync<LiveChallengeAcceptResultDto>("Accept", challengeId, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
-    public Task<int> DeclineAsync(string challengeId, CancellationToken ct = default)
-        => _connection.InvokeAsync<int>("Decline", challengeId, ct);
+    /// <summary>Null means the invoke could not be sent — every real result is a defined <c>LiveChallengeResult</c> value.</summary>
+    public async Task<int?> DeclineAsync(string challengeId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _connection.InvokeAsync<int>("Decline", challengeId, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -114,3 +169,8 @@ public sealed class LobbyClient : IAsyncDisposable
 
 /// <summary>The wire shape of <c>LobbyHub.Accept</c>'s return value.</summary>
 public sealed record LiveChallengeAcceptResultDto(int Result, string? MatchId, string? ChallengerId);
+
+/// <summary><see cref="LobbyClient.QueueRandomAsync"/>'s outcome. <paramref name="Sent"/> is false only
+/// when the invoke itself could not go out — a sent call's own null <paramref name="MatchId"/> is a
+/// separate, valid outcome (queued and waiting).</summary>
+public readonly record struct QueueRandomResult(bool Sent, string? MatchId);

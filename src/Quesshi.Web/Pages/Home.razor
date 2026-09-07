@@ -223,10 +223,11 @@
         // Translator.All is ["fa","en","nl"] in exactly Quesshi.Domain.Language's declared order
         // (Fa=0, En=1, Nl=2) — Quesshi.Web has no reference to Quesshi.Domain to cast against directly.
         var lang = Array.IndexOf(Translator.All, _lang);
-        var matchId = await Lobby.QueueRandomAsync(lang, _questions, _picked.Count == 0 ? [] : [.. _picked],
+        var result = await Lobby.QueueRandomAsync(lang, _questions, _picked.Count == 0 ? [] : [.. _picked],
             _levels.Count == 0 ? [] : [.. _levels.Order()]);
 
-        if (matchId is { Length: > 0 }) Nav.NavigateTo($"/live/{matchId}");
+        if (!result.Sent) { _liveWaiting = false; _error = L["common.error"]; return; }
+        if (result.MatchId is { Length: > 0 }) Nav.NavigateTo($"/live/{result.MatchId}");
     }
 
     private async Task CancelLiveQueueAsync()
