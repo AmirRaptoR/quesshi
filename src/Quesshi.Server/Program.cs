@@ -182,6 +182,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
 app.MapLive();
