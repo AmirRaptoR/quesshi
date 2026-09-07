@@ -83,6 +83,7 @@ builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
     Path.Combine(builder.Environment.ContentRootPath, "i18n"),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger<JsonFileTranslator>()));
 builder.Services.AddSingleton<IIdFactory, IdFactory>();
+builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
