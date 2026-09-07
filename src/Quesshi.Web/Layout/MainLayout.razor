@@ -3,6 +3,7 @@
 @inject AppState State
 @inject Translator L
 @inject NavigationManager Nav
+@inject LobbyClient Lobby
 
 @if (!State.Ready)
 {
@@ -36,19 +37,47 @@ else
     /// <summary>The admin panel has its own navigation; it should not wear the game's chrome.</summary>
     private bool IsAdminArea => new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Whether <see cref="Lobby"/> is currently started — the app has exactly one, and it tracks
+    /// sign-in state rather than being restarted on every render.</summary>
+    private bool _lobbyConnected;
+
     protected override async Task OnInitializedAsync()
     {
-        State.Changed += StateHasChanged;
+        State.Changed += OnStateChanged;
         Nav.LocationChanged += OnLocationChanged;
         await State.InitialiseAsync();
+        await SyncLobbyConnectionAsync();
+    }
+
+    private void OnStateChanged()
+    {
+        StateHasChanged();
+        _ = SyncLobbyConnectionAsync();
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => StateHasChanged();
 
+    /// <summary>The same "signed in and not a guest" condition the tab bar above already gates on: a
+    /// guest has no door into presence, the queue or a challenge, so it never opens this connection.</summary>
+    private async Task SyncLobbyConnectionAsync()
+    {
+        var shouldConnect = State.SignedIn && !State.IsGuest;
+        if (shouldConnect && !_lobbyConnected)
+        {
+            _lobbyConnected = true;
+            await Lobby.StartAsync();
+        }
+        else if (!shouldConnect && _lobbyConnected)
+        {
+            _lobbyConnected = false;
+            await Lobby.StopAsync();
+        }
+    }
+
     public void Dispose()
     {
-        State.Changed -= StateHasChanged;
+        State.Changed -= OnStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
     }
 }

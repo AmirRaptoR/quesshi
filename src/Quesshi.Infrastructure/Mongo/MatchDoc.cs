@@ -22,7 +22,8 @@ public sealed class MatchDoc
     public DateTime? EndedAt { get; set; }
     public List<string> QuestionIds { get; set; } = [];
 
-    /// <summary>Absent on every document written before live duels existed; the driver defaults a missing bool to false.</summary>
+    /// <summary>Discriminates a live duel from an async one in the shared collection. Absent on an
+    /// old row, which BSON leaves as the default false — an existing row still reads as async.</summary>
     public bool IsLive { get; set; }
 
     public static MatchDoc From(ArchivedMatch m) => new()

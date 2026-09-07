@@ -29,13 +29,13 @@ public static class GameEndpoints
         });
 
         // --- profile -----------------------------------------------------------------
-        api.MapGet("/me", async (HttpContext ctx, IPlayerRepository players, ILeaderboard board) =>
+        api.MapGet("/me", async (HttpContext ctx, IPlayerRepository players, ILeaderboard board, IPresence presence) =>
         {
             var me = await players.GetAsync(ctx.User.PlayerId()!);
-            return me is null ? Results.Unauthorized() : Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board)));
+            return me is null ? Results.Unauthorized() : Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPut("/me", async (UpdateProfileDto body, HttpContext ctx, IPlayerRepository players, ILeaderboard board) =>
+        api.MapPut("/me", async (UpdateProfileDto body, HttpContext ctx, IPlayerRepository players, ILeaderboard board, IPresence presence) =>
         {
             var me = await players.GetAsync(ctx.User.PlayerId()!);
             if (me is null) return Results.Unauthorized();
@@ -47,7 +47,7 @@ public static class GameEndpoints
             me.SetLanguage(body.Lang.ToLanguage());
             await players.UpsertAsync(me);
 
-            return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board)));
+            return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
         });
 
         api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx,
@@ -153,16 +153,7 @@ public static class GameEndpoints
 
         api.MapPost("/matches/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
-        {
-            var meId = ctx.User.PlayerId()!;
-            var found = await archive.ByCodeAsync(code);
-            if (found is null) return Results.NotFound(new { error = "no_such_code" });
-
-            var grain = grains.GetGrain<IMatchGrain>(found.Id);
-            if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
-
-            return Results.Ok(await SummaryAsync(grain, meId, players));
-        });
+            await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players));
 
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
         // report a question you were actually served, and only once.
@@ -244,6 +235,23 @@ public static class GameEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         }).WithMetadata(new AllowGuest());
+    }
+
+    /// <summary>
+    /// Extracted out of the endpoint delegate so a live code's refusal can be driven directly in a
+    /// test, the same way <see cref="ListMatchesAsync"/> is.
+    /// </summary>
+    internal static async Task<IResult> JoinMatchAsync(string code, string meId, IGrainFactory grains,
+        IMatchArchive archive, IPlayerRepository players)
+    {
+        var found = await archive.ByCodeAsync(code);
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
+
+        var grain = grains.GetGrain<IMatchGrain>(found.Id);
+        if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
+
+        return Results.Ok(await SummaryAsync(grain, meId, players));
     }
 
     /// <summary>How many archived matches the list will ever look at.</summary>
@@ -341,13 +349,21 @@ public static class GameEndpoints
     private static MediaDto? ToMediaDto(MediaRef media)
         => media.Kind == MediaKind.None ? null : new MediaDto(media.Kind.ToString().ToLowerInvariant(), media.Url, media.Attribution);
 
-    private static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board)
+    /// <summary>Internal so <see cref="Quesshi.Server.Tests"/> can drive it directly, the same way
+    /// <see cref="ListMatchesAsync"/> is driven — one bulk presence read for the whole friends list,
+    /// never one per friend.</summary>
+    internal static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board, IPresence presence)
     {
-        var friends = new List<FriendDto>();
+        var candidates = new List<Player>();
         foreach (var id in me.Friends)
             if (await players.GetAsync(id) is { } f)
-                friends.Add(new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore));
+                candidates.Add(f);
 
+        var online = candidates.Count == 0
+            ? []
+            : await presence.OnlineAsync([.. candidates.Select(f => f.Id)]);
+
+        var friends = candidates.Select(f => new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id)));
         return [.. friends.OrderByDescending(f => f.Score)];
     }
 

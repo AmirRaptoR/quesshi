@@ -1,6 +1,4 @@
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using Orleans.Configuration;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
@@ -15,6 +13,7 @@ using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Redis;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Hubs;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Seed;
 using StackExchange.Redis;
@@ -47,6 +46,12 @@ builder.UseOrleans(silo =>
     var nightly = builder.Configuration.GetValue("Generation:Nightly", false);
     silo.AddStartupTask(async (services, ct) =>
         await services.GetRequiredService<IGrainFactory>().GetGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly));
+
+    // Seeds, never overwrites: a runtime toggle through POST /api/admin/live/enabled must survive
+    // the next restart, so this only ever writes into a grain that has never persisted a value.
+    var liveEnabled = builder.Configuration.GetValue("Live:Enabled", true);
+    silo.AddStartupTask(async (services, ct) =>
+        await services.GetRequiredService<IGrainFactory>().GetGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled));
 });
 
 // --- configuration objects -----------------------------------------------------------
@@ -68,12 +73,18 @@ builder.Services.AddSingleton(mongoOptions);
 // --- infrastructure ------------------------------------------------------------------
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
+
+// Against the same Redis connection everything else here already requires — no new setting,
+// nothing to add to the configuration table. LiveHub and its notifier are #13's.
+builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
+builder.Services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
     Path.Combine(builder.Environment.ContentRootPath, "i18n"),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger<JsonFileTranslator>()));
 builder.Services.AddSingleton<IIdFactory, IdFactory>();
+builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
@@ -84,7 +95,9 @@ builder.Services.AddSingleton<IMatchArchive, MongoMatchArchive>();
 builder.Services.AddSingleton<IGenerationLog, MongoGenerationLog>();
 builder.Services.AddSingleton<IAiSpendLog, MongoAiSpendLog>();
 builder.Services.AddSingleton<ILeaderboard, RedisLeaderboard>();
+builder.Services.AddSingleton<ILiveDirectory, RedisLiveDirectory>();
 builder.Services.AddSingleton<IOtpStore, RedisOtpStore>();
+builder.Services.AddSingleton<IPresence, RedisPresence>();
 builder.Services.AddSingleton<QuestionPromptBuilder>();
 builder.Services.AddSingleton<IQuestionGenerator, OpenRouterQuestionGenerator>();
 
@@ -136,27 +149,10 @@ var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions);
 builder.Services.AddSingleton(tokenIssuer);
 builder.Services.AddSingleton(adminTokenIssuer);
 
-// Two schemes, two audiences, two signing keys. A player token cannot be presented as an admin
-// token even if something else goes wrong, because it will not validate against the admin scheme.
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidIssuer = jwtOptions.Issuer,
-        ValidAudience = jwtOptions.Audience,
-        IssuerSigningKey = tokenIssuer.SigningKey,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
-    })
-    .AddJwtBearer(AdminTokenIssuer.Scheme, options => options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidIssuer = adminAuthOptions.Issuer,
-        ValidAudience = AdminTokenIssuer.Audience,
-        IssuerSigningKey = adminTokenIssuer.SigningKey,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
-    });
+// Registers the player scheme (default) and the admin scheme, including the /hub query-string
+// token hook the player scheme needs for SignalR. See AuthenticationSetup for why this is an
+// extension method rather than inline here: a test host calls the exact same code.
+builder.Services.AddQuesshiAuthentication(jwtOptions, adminAuthOptions, tokenIssuer, adminTokenIssuer);
 
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("admin", policy => policy
@@ -195,8 +191,11 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
+app.MapLive();
+app.MapHub<LiveHub>("/hub/live");
 app.MapAdminAuth();
 app.MapAdminAccounts();
 app.MapAdmin();

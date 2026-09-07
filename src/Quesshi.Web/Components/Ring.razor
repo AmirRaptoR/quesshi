@@ -1,4 +1,5 @@
 @* Countdown ring. The clock that counts is the server's; this one just shows it draining. *@
+@implements IDisposable
 <svg class="ring" viewBox="0 0 44 44" width="@Size" height="@Size" aria-hidden="true">
     <circle class="ring__track" cx="22" cy="22" r="19" stroke-width="3" />
     <circle class="ring__fill @Heat" cx="22" cy="22" r="19" stroke-width="3"
@@ -10,8 +11,48 @@
     [Parameter] public int Total { get; set; } = 20;
     [Parameter] public string Size { get; set; } = "44";
 
-    private const double Circumference = 2 * Math.PI * 19;
+    /// <summary>
+    /// An absolute deadline instead of a caller-counted integer. When set, the ring owns its own
+    /// timer and derives <see cref="Remaining"/> from the deadline on every tick, so a reconnect
+    /// mid-round draws the correct arc immediately instead of waiting for a first counted-down value.
+    /// <see cref="Remaining"/> and this are mutually exclusive; when this is null the component
+    /// behaves exactly as it always has.
+    /// </summary>
+    [Parameter] public DateTimeOffset? EndsAt { get; set; }
 
-    private double Offset => Circumference * (1 - Math.Clamp(Total == 0 ? 0 : (double)Remaining / Total, 0, 1));
-    private string Heat => Remaining <= 5 ? "hot" : Remaining <= 10 ? "warn" : "";
+    /// <summary>The clock skew measured once at connect, so a browser clock out of true still agrees with the server.</summary>
+    [Parameter] public TimeSpan Skew { get; set; }
+
+    private const double Circumference = 2 * Math.PI * 19;
+    private Timer? _timer;
+    private int _liveRemaining;
+
+    // The component instance in Live.razor's header is not @key'd by round — the same Ring survives
+    // from one question to the next, so the deadline the ticking timer reads has to live in a field
+    // it re-reads every tick, not in a value closed over once at the timer's creation. A Timer whose
+    // callback captured the first round's EndsAt would keep computing against that stale deadline
+    // forever after, and every round from the second one on would render as already expired.
+    private DateTimeOffset _endsAt;
+
+    protected override void OnParametersSet()
+    {
+        if (EndsAt is not { } endsAt) return;
+
+        _endsAt = endsAt;
+        _liveRemaining = RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew);
+        _timer ??= new Timer(_ => Tick(), null, 200, 200);
+    }
+
+    private void Tick()
+    {
+        _liveRemaining = RingClock.RemainingSeconds(_endsAt, DateTimeOffset.UtcNow, Skew);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private int RemainingSeconds => EndsAt is not null ? _liveRemaining : Remaining;
+
+    private double Offset => Circumference * (1 - Math.Clamp(Total == 0 ? 0 : (double)RemainingSeconds / Total, 0, 1));
+    private string Heat => RemainingSeconds <= 5 ? "hot" : RemainingSeconds <= 10 ? "warn" : "";
+
+    public void Dispose() => _timer?.Dispose();
 }

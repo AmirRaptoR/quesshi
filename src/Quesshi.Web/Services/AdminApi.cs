@@ -75,6 +75,11 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<GenerationRunDto?> GenerateIllustratedAsync(GenerateRequestDto body) => PostAsync<GenerationRunDto>("api/admin/generate/illustrated", body);
     public Task<MediaDto?> UploadAsync(MultipartFormDataContent content) => PostContentAsync<MediaDto>("api/admin/media", content);
 
+    // --- live duels ------------------------------------------------------------------
+    public Task<AdminLivePageDto?> AdminLiveAsync() => GetAsync<AdminLivePageDto>("api/admin/live");
+    public Task<bool> EndLiveDuelAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/live/{id}/end");
+    public Task<bool> SetLiveEnabledAsync(bool value) => SendAsync(HttpMethod.Post, $"api/admin/live/enabled?value={value}");
+
     // --- plumbing ------------------------------------------------------------------
     private async Task<T?> GetAsync<T>(string url)
     {

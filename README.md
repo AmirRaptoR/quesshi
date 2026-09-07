@@ -1,10 +1,13 @@
 # Quesshi · کوئیشی
 
-**Asynchronous trivia duels for friends who are never online at the same time.**
+**Trivia duels for friends — play a round whenever you're free, or start a live one and answer
+together, right now.**
 
-Two players get the same questions in the same order. Whoever plays first waits, and the
-notification is the game. Trilingual from the ground up — Persian, English and Dutch, each with its
-own question bank rather than a machine translation of someone else's.
+The default is asynchronous: two players get the same questions in the same order, whoever plays
+first waits, and the notification is the game. A **live** duel is the second mode, for when you're
+both online at once — same question, same clock, both scores visible as they happen. Trilingual
+from the ground up — Persian, English and Dutch, each with its own question bank rather than a
+machine translation of someone else's.
 
 It ships with no questions: you generate them, or write them, or seed your own. The interface,
 however, is fully translated into all three.
@@ -18,13 +21,29 @@ however, is fully translated into all three.
 
 ## How a duel works
 
+Both kinds of duel share the same question set, scoring and difficulty ramp; the clock and what you
+can see of the other player are the only things that differ.
+
 - **Ten to a hundred questions.** Three categories in rotation, or pick your own.
 - **Four choices, exactly one correct.** Twenty seconds each, timed by the server.
 - **`100 × correct + up to 60 speed bonus`**, the bonus decaying linearly to zero at the buzzer.
 - **Difficulty ramps** across the run — five levels spread evenly from the first slot to the last,
   so a ten-question duel climbs two levels at a time and a hundred-question one climbs in twenties.
-- **You cannot see the other player's answers**, or their score, until your own run is finished.
-- **A duel nobody answers for 48 hours is forfeited.**
+- **Asynchronous, the default: you cannot see the other player's answers**, or their score, until
+  your own run is finished — a duel nobody answers for 48 hours is forfeited. **Live is the
+  opposite by design:** both scores update in front of you as the round is played, because you are
+  both playing it at the same instant.
+
+A live duel puts both of you on one shared clock instead of two separate runs. The same question
+lands for both players at once; the round closes the moment the second of you answers, or at the
+buzzer, whichever comes first; a fixed three-second reveal follows and there is no Next button — the
+clock moves you both on together. Three rounds in a row with no answer from you loses you the duel;
+if neither of you answers three rounds running, it's a no-contest and nothing goes on the
+leaderboard.
+
+Start a live duel with a friend by sharing a lobby code or link, or queue for a random opponent
+matched on your language and question count — closing the tab while queued simply drops you from it,
+the same way it drops your presence. Either door lands both of you in the same duel.
 
 The scoreboard is a *shamseh*, the twelve-ray Persian rosette: half the rays are yours and half are
 theirs, one per question, saffron for right and pomegranate for wrong. The star only completes when
@@ -78,11 +97,13 @@ images are blocked by default and Outlook renders with Word. Mailpit scores the 
 its 186 compatibility tests.
 
 ```bash
-dotnet test                   # 247 tests; only the grain tests need anything running, and they self-host
+dotnet test                   # 445 tests; only the grain tests need anything running, and they self-host
 ```
 
-To play against yourself, sign in as two addresses in two browser profiles, start a duel in one and
-join with the code in the other.
+To play against yourself, sign in as two addresses in two browser profiles. For an asynchronous
+duel, start one in either profile and answer both runs whenever you like. For a live one, start it
+in one profile and join with the code in the other — both browsers then sit on the same round at
+the same time.
 
 ### The admin panel
 
@@ -112,20 +133,32 @@ src/
 tests/
   Quesshi.Domain.Tests/        scoring and the match state machine
   Quesshi.Application.Tests/   use cases against in-memory fakes
+  Quesshi.Web.Tests/           client-side wiring, e.g. the live-duel hub connection
   Quesshi.Server.Tests/        grains, on a real Orleans test cluster
 ```
 
 Dependencies point inward: Domain ← Application ← Infrastructure/Grains/Server. One type per file,
-throughout.
+throughout. `Quesshi.Grains` carries no reference to SignalR — a grain can never call a hub
+directly. Instead, a live duel's grain talks through `ILiveNotifier`, an outbound port declared in
+`Quesshi.Application.Ports`: the grain calls it to announce a countdown, a round starting, a reveal
+or the end, and never knows whether SignalR, a test fake, or nobody at all is listening on the other
+side. That is what keeps the dependency rule intact — the transport lives in `Quesshi.Server`, on
+the inward-pointing side of the arrow, not in the grain.
+
+The transport side is a SignalR hub, `LobbyHub`, mapped at `/hub/lobby`; it carries presence —
+marking a player online while they're connected and off when they drop — and the random-opponent
+queue, which rides the same connection because an entry cannot outlive the socket that heartbeats it.
+The per-duel hub for round-by-round play lands separately. Redis backs SignalR's own scale-out
+backplane, on top of everything else it already does for Orleans.
 
 **There is no separate Orleans host.** The silo is co-hosted in the ASP.NET app
 (`builder.UseOrleans(…)`), so it scales with the API rather than beside it. Anything that only
 *calls* a grain references `Quesshi.Grains.Abstractions` and never sees an implementation.
 
-**Redis** carries Orleans clustering, live match state, reminders and the leaderboard.
-**Mongo** carries everything durable: players, questions, categories, match history.
+**Redis** carries Orleans clustering, match state (async and live), reminders, the leaderboard and
+presence. **Mongo** carries everything durable: players, questions, categories, match history.
 
-A live duel is a grain; a finished one is a document. The grain is the single writer while the match
+A duel in progress is a grain; a finished one is a document. The grain is the single writer while the match
 is being played, which is what makes "twenty seconds, server-timed" true rather than hopeful.
 
 ## Two identities, on purpose
@@ -230,6 +263,7 @@ anything that is not `Development` must either configure `Smtp:Host` or ask for
 | `OpenRouter:Model`            | Any model id OpenRouter serves, e.g. `google/gemini-2.5-flash`.                            |
 | `Generation:Nightly`          | Runs the top-up every night. Off by default; the admin button works regardless.           |
 | `Generation:AutoApprove`      | Publish generated questions immediately instead of parking them for review.               |
+| `Live:Enabled`                | Whether a new live duel can start. On by default. Toggle at runtime from the admin dashboard; a duel already in flight always finishes. |
 
 Put local values in `appsettings.Development.json` or user secrets. **Do not commit keys** —
 `appsettings.Development.json` and `appsettings.Local.json` are gitignored for exactly that reason.

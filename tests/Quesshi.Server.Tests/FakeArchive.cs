@@ -22,7 +22,9 @@ public sealed class FakeArchive : IMatchArchive
     {
         Queries++;
         if (DelayMs > 0) await Task.Delay(DelayMs, ct);
-        return [.. Items.Where(m => m.ChallengerId == p || m.OpponentId == p).OrderByDescending(m => m.CreatedAt).Take(take)];
+        // Mirrors MongoMatchArchive.ForPlayerAsync: live rows never enter this list.
+        return [.. Items.Where(m => !m.IsLive && (m.ChallengerId == p || m.OpponentId == p)).OrderByDescending(m => m.CreatedAt).Take(take)];
     }
     public Task<long> CountAsync(CancellationToken ct = default) => Task.FromResult((long)Items.Count);
+    public Task<long> CountLiveAsync(CancellationToken ct = default) => Task.FromResult((long)Items.Count(m => m.IsLive));
 }
