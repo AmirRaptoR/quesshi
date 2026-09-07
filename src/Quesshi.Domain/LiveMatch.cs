@@ -41,6 +41,25 @@ public sealed class LiveMatch
     /// <summary>The round currently open for answers or being revealed, or null before the first one starts.</summary>
     public LiveRound? CurrentRound => _rounds.Count == 0 ? null : _rounds[^1];
 
+    /// <summary>
+    /// The instant at which <see cref="Advance"/> would next change something, or null once
+    /// <see cref="IsOver"/>. Mirrors the boundary <see cref="StepOnce"/> actually checks, so the
+    /// clock driving this duel and the rules governing it never drift apart.
+    /// </summary>
+    public DateTimeOffset? NextDueAt
+    {
+        get
+        {
+            if (IsOver) return null;
+            return Phase switch
+            {
+                LivePhase.Lobby => CreatedAt + LiveRules.LobbyExpires,
+                LivePhase.Question => PhaseEndsAt + MatchRules.NetworkGrace,
+                _ => PhaseEndsAt
+            };
+        }
+    }
+
     public static LiveMatch Create(string id, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
     {
         if (!MatchRules.IsValidCount(questionIds.Count))
@@ -131,6 +150,14 @@ public sealed class LiveMatch
         }
 
         return answer;
+    }
+
+    /// <summary>The admin kill path: ends an in-flight duel early with no winner. The reason a caller
+    /// wanted this stays out of the domain — it is the grain's to log and to notify with.</summary>
+    public void EndNoContest(DateTimeOffset now)
+    {
+        if (IsOver) return;
+        FinishNoContest(now);
     }
 
     public LiveMatchSnapshot ToSnapshot() => new(
