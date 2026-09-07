@@ -187,6 +187,8 @@ in a real browser.
 - Media on local disk, not object storage.
 - One admin approving a queue; no community moderation.
 - Single silo (clustering is real, so a second node is config).
-- No SignalR — async duels do not need it.
+- SignalR was deferred, not skipped: async duels never needed it, but live duels (#8) do, and it's
+  in `Quesshi.Server` now — presence today, per-duel round push next — reached from
+  `Quesshi.Grains` only through the `ILiveNotifier` port, never directly.
 - Web push deferred to after the first playable run; still outstanding.
 - Media questions are supported end to end but none ship in the seed bank.
