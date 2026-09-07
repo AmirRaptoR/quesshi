@@ -142,11 +142,11 @@ public static class Mappers
     /// the live twin of the <c>Func&lt;string,(string,string)&gt;</c> <see cref="ToSummary"/> takes,
     /// built once per request instead of duplicated at every call site.
     /// </summary>
-    public static async Task<Func<string, (string Name, string Avatar)>> LiveLookupAsync(this IPlayerRepository players, LiveView v)
+    public static async Task<Func<string, (string Name, string Avatar, bool IsGuest)>> LiveLookupAsync(this IPlayerRepository players, LiveView v)
     {
         List<string> ids = v.OpponentId is null ? [v.ChallengerId] : [v.ChallengerId, v.OpponentId];
         var byId = (await players.GetManyAsync(ids)).ToDictionary(p => p.Id);
-        return id => byId.TryGetValue(id, out var p) ? (p.DisplayName, p.AvatarSeed) : ("—", id);
+        return id => byId.TryGetValue(id, out var p) ? (p.DisplayName, p.AvatarSeed, p.IsGuest) : ("—", id, false);
     }
 
     /// <summary>
@@ -160,7 +160,7 @@ public static class Mappers
     /// redacts: <see cref="LiveRoundCardDto"/> has no such field.
     /// </summary>
     public static async Task<LiveViewDto> ToLiveDtoAsync(this LiveView v, DateTimeOffset serverNow,
-        IQuestionRepository questions, ICategoryRepository categories, Func<string, (string Name, string Avatar)> lookup)
+        IQuestionRepository questions, ICategoryRepository categories, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
     {
         var phase = (LivePhase)v.Phase;
         LiveRoundCardDto? card = null;
@@ -183,8 +183,8 @@ public static class Mappers
             }
         }
 
-        var (challengerName, challengerAvatar) = lookup(v.ChallengerId);
-        var (opponentName, opponentAvatar) = v.OpponentId is null ? (null, null) : ((string?, string?))lookup(v.OpponentId);
+        var (challengerName, challengerAvatar, challengerIsGuest) = lookup(v.ChallengerId);
+        var (opponentName, opponentAvatar, opponentIsGuest) = v.OpponentId is null ? (null, null, false) : ((string?, string?, bool))lookup(v.OpponentId);
 
         return new LiveViewDto(
             v.Id, v.ChallengerId, v.OpponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
@@ -195,7 +195,7 @@ public static class Mappers
             v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code,
             challengerName, challengerAvatar, opponentName, opponentAvatar,
             phase == LivePhase.Lobby ? v.CreatedAt + LiveRules.LobbyExpires : null,
-            card, explanation);
+            card, explanation, challengerIsGuest, opponentIsGuest);
     }
 
     /// <summary>The four pushes <see cref="ILiveNotifier"/> carries, as the wire shape <c>LiveHub</c> sends them in.</summary>
@@ -213,4 +213,6 @@ public static class Mappers
     public static LiveEndedDto ToDto(this LiveEnded e) => new(
         e.State.ToString().ToLowerInvariant(), e.WinnerId, e.IsDraw, e.AbandonedBy,
         [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))], e.Reason);
+
+    public static RematchOutcomeDto ToDto(this RematchOutcome o) => new(((RematchStatus)o.Status).ToString().ToLowerInvariant(), o.NewMatchId);
 }

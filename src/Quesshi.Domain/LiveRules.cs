@@ -24,6 +24,13 @@ public static class LiveRules
     /// <summary>How far back an abandonment still counts against a player. Tuned after watching real behaviour.</summary>
     public static readonly TimeSpan AbandonmentWindow = TimeSpan.FromDays(7);
 
+    /// <summary>
+    /// How long a player's rematch readiness survives before a later press by the other side no
+    /// longer completes the handshake. Without this, a press answered long after the fact would drag
+    /// an absent player into a live duel they would then lose to the miss-streak abandonment penalty.
+    /// </summary>
+    public static readonly TimeSpan RematchExpires = TimeSpan.FromMinutes(2);
+
     /// <summary>What the second abandonment in the window costs; the first is always free.</summary>
     public const int AbandonmentPenaltyBase = 200;
 

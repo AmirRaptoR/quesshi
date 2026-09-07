@@ -35,6 +35,15 @@ public sealed class SignalRLiveNotifier(IHubContext<LiveHub> hub) : ILiveNotifie
     public Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default)
         => Group(matchId).SendAsync("OpponentAnswered", new OpponentAnsweredDto(matchId, slot, playerId), ct);
 
+    public Task RematchRequestedAsync(string matchId, string playerId, CancellationToken ct = default)
+        => Group(matchId).SendAsync("RematchRequested", new RematchRequestedDto(playerId), ct);
+
+    public Task RematchCreatedAsync(string matchId, string newMatchId, CancellationToken ct = default)
+        => Group(matchId).SendAsync("RematchCreated", new RematchCreatedDto(newMatchId), ct);
+
+    public Task RematchFailedAsync(string matchId, CancellationToken ct = default)
+        => Group(matchId).SendAsync("RematchFailed", ct);
+
     /// <summary>Called from <see cref="LiveHub.Join"/> on every connect and reconnect alike — a duplicate "back" for a
     /// connection that was never away is harmless, and simpler than tracking whether it was.</summary>
     public Task NoteConnectedAsync(string connectionId, string matchId, string playerId)

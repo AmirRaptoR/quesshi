@@ -21,4 +21,6 @@ public sealed record LiveViewDto(
     string? OpponentName = null, string? OpponentAvatar = null,
     DateTimeOffset? LobbyEndsAt = null,
     LiveRoundCardDto? CurrentCard = null,
-    string? CurrentExplanation = null);
+    string? CurrentExplanation = null,
+    bool ChallengerIsGuest = false,
+    bool OpponentIsGuest = false);
