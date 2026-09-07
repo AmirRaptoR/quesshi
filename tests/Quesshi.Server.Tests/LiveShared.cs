@@ -8,4 +8,5 @@ public static class LiveShared
     public static readonly FakeQuestions Questions = new();
     public static readonly FakeCategories Categories = new();
     public static readonly FakeLiveNotifier Notifier = new();
+    public static readonly FakeArchive Archive = new();
 }

@@ -5,11 +5,22 @@ public interface ILiveMatchGrain : IGrainWithStringKey
 {
     /// <summary>Idempotent: returns the existing view if the duel already exists.</summary>
     [Alias("CreateAsync")]
-    Task<LiveView> CreateAsync(string challengerId, List<string> questionIds);
+    Task<LiveView> CreateAsync(string code, int lang, string challengerId, List<string> questionIds);
 
-    /// <summary>False rather than an exception when the challenge is already taken or expired.</summary>
+    /// <summary>
+    /// A <see cref="LiveJoinResult"/> carried as <c>int</c>: <see cref="Quesshi.Grains.Abstractions"/>
+    /// keeps its Orleans-SDK-only reference list, so the domain enum crosses the boundary as a
+    /// number rather than a type this project would have to reference <c>Quesshi.Domain</c> for.
+    /// </summary>
     [Alias("JoinAsync")]
-    Task<bool> JoinAsync(string playerId);
+    Task<int> JoinAsync(string playerId);
+
+    /// <summary>
+    /// True only when the caller is the challenger and the duel is still in the lobby: it ends the
+    /// duel as a no-contest and notifies. False leaves the duel running untouched.
+    /// </summary>
+    [Alias("CancelAsync")]
+    Task<bool> CancelAsync(string playerId);
 
     /// <summary>
     /// True if the answer was recorded, false if it was refused (late, wrong slot, already
