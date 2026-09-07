@@ -27,7 +27,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     private static readonly TimeProviderClock Clock = new(LiveShared.TimeProvider);
     private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions, LiveShared.Categories);
 
-    private static int _n;
+    private static int _n = LiveIdRanges.NewIdsPoolStart;
 
     static LiveEndpointsTests()
     {
@@ -56,10 +56,11 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     private const string ScarceCategory = "lep-scarce";
 
     /// <summary>A fresh <see cref="IIdFactory"/> per test, so each test's codes are its own and archive
-    /// lookups by code cannot pick up another test's row. Offset well clear of <see cref="LiveShared.Ids"/>'s
-    /// own low range: that factory mints codes for every grain-originated duel (lobby matches, rematches)
-    /// across the whole assembly, and a small starting number here would eventually collide with one.</summary>
-    private static FakeIdFactory NewIds() => new(500_000 + Interlocked.Increment(ref _n));
+    /// lookups by code cannot pick up another test's row. Seeded from this class's own reserved slice
+    /// of <see cref="LiveIdRanges"/> — see <see cref="LiveIdRanges.NewIdsPoolStart"/> for why: a
+    /// zero-based counter here collided with <see cref="LiveShared.Ids"/>' own zero-based counter
+    /// (issue #34).</summary>
+    private static FakeIdFactory NewIds() => new(Interlocked.Add(ref _n, LiveIdRanges.NewIdsStep));
 
     private async Task<IResult> CreateAsync(FakeIdFactory ids, string meId = Amir, int? questions = null, bool random = false)
         => await LiveEndpoints.CreateAsync(new CreateMatchDto(random, "en", [ScarceCategory], questions), meId,
@@ -122,7 +123,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Create_retries_a_colliding_code_and_succeeds_on_a_fresh_one()
     {
-        var ids = new FakeIdFactory(9001) { CodesToRepeat = 1 }; // first NewMatchCode() collides, second is fresh
+        var ids = new FakeIdFactory(LiveIdRanges.CollidingCodeRetrySeed) { CodesToRepeat = 1 }; // first NewMatchCode() collides, second is fresh
         LiveShared.Archive.Items.Add(new ArchivedMatch("someone-elses-id", ids.PeekNextCode(), Language.En,
             "someone-else", null, null, false, 0, 0, MatchState.AwaitingOpponent, Clock.Now, null, [], IsLive: true));
 
@@ -134,7 +135,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Create_gives_up_after_repeated_collisions_and_returns_503()
     {
-        var ids = new FakeIdFactory(9100) { CodesToRepeat = int.MaxValue }; // every code this factory makes already collides
+        var ids = new FakeIdFactory(LiveIdRanges.CollidingCodeGiveUpSeed) { CodesToRepeat = int.MaxValue }; // every code this factory makes already collides
         LiveShared.Archive.Items.Add(new ArchivedMatch("blocker", ids.PeekNextCode(), Language.En,
             "someone-else", null, null, false, 0, 0, MatchState.AwaitingOpponent, Clock.Now, null, [], IsLive: true));
 
