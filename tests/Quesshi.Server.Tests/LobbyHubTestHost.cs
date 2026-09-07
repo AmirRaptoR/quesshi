@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Orleans.TestingHost;
 using Quesshi.Application.Ports;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Live;
@@ -13,8 +14,10 @@ namespace Quesshi.Server.Tests;
 
 /// <summary>
 /// Hosts the real <see cref="LobbyHub"/> at <c>/hub/lobby</c> behind the real authentication, against a
-/// <see cref="FakePresence"/> — no Orleans, no Mongo, no Redis, the same reasoning <see cref="AuthTestHost"/>
-/// and <see cref="LiveApiTestHost"/> give for building their own host rather than WebApplicationFactory.
+/// <see cref="FakePresence"/> and <see cref="LiveClusterFixture"/>'s already-running silo — the same
+/// reasoning <see cref="AuthTestHost"/> and <see cref="LiveApiTestHost"/> give for building their own
+/// host rather than WebApplicationFactory. The cluster is what lets QueueRandom/LeaveQueue reach the
+/// real <c>ILiveLobbyGrain</c>.
 /// </summary>
 public sealed class LobbyHubTestHost : IAsyncDisposable
 {
@@ -26,7 +29,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
     private readonly IHost _host;
     private readonly TestServer _server;
 
-    public LobbyHubTestHost()
+    public LobbyHubTestHost(TestCluster cluster)
     {
         _host = new HostBuilder()
             .ConfigureWebHost(web =>
@@ -43,6 +46,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                         TokenIssuer,
                         new AdminTokenIssuer(new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" }));
                     services.AddSingleton<IPresence>(Presence);
+                    services.AddSingleton(cluster.GrainFactory);
                 });
                 web.Configure(app =>
                 {

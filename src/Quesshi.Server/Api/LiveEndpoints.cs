@@ -52,8 +52,8 @@ public static class LiveEndpoints
     internal static async Task<IResult> CreateAsync(CreateMatchDto body, string meId, IGrainFactory grains,
         QuestionSetBuilder builder, IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IClock clock)
     {
-        // The random queue and friend challenges are #15's; this endpoint only ever seats a friend
-        // who follows the code.
+        // The random queue rides LobbyHub.QueueRandom instead — it needs a heartbeat and a push, which
+        // a REST endpoint cannot give it. This endpoint only ever seats a friend who follows the code.
         if (body.Random) return Results.BadRequest(new { error = "random_not_supported" });
 
         var me = await players.GetAsync(meId);
