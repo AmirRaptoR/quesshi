@@ -21,6 +21,7 @@ public sealed class LiveMatchGrain(
     ICategoryRepository categories,
     ILiveNotifier notifier,
     IMatchArchive archive,
+    ILiveDirectory directory,
     IClock clock,
     ILogger<LiveMatchGrain> logger) : Grain, ILiveMatchGrain, IRemindable
 {
@@ -171,6 +172,9 @@ public sealed class LiveMatchGrain(
     private async Task AfterChangeAsync(LivePhase phaseBefore, bool wasOver, string? endReason = null)
     {
         await SaveAsync();
+        // A duel that is already over is about to have its row removed in NotifyAsync's ending
+        // branch below — writing it here first would only be undone a moment later.
+        if (!_match!.IsOver) await UpsertDirectoryAsync();
         await RearmAsync();
         await NotifyAsync(phaseBefore, wasOver, endReason);
     }
@@ -218,6 +222,7 @@ public sealed class LiveMatchGrain(
         if (!wasOver && m.IsOver)
         {
             await IndexAsync(); // the row has to read NoContest/Resolved/Abandoned before anyone can be told
+            await RemoveFromDirectoryAsync(); // a finished duel never lingers in the in-flight list
             await SettleAsync();
             await SafeNotifyAsync(() => notifier.EndedAsync(m.Id, BuildEnded(m, endReason)));
         }
@@ -263,6 +268,32 @@ public sealed class LiveMatchGrain(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "ILiveNotifier threw for live duel {MatchId}; the duel keeps running.", _match?.Id);
+        }
+    }
+
+    /// <summary>Writes this duel's row to the in-flight index — everything <c>/admin/live</c> needs
+    /// without activating this grain. Called on every phase change while the duel is still running.</summary>
+    private Task UpsertDirectoryAsync()
+    {
+        var m = _match!;
+        var row = new LiveDirectoryRow(m.Id, m.Code, m.ChallengerId, m.OpponentId, (int)m.Lang,
+            m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, (int)m.Phase, m.CreatedAt);
+        return SafeDirectoryAsync(() => directory.UpsertAsync(row));
+    }
+
+    private Task RemoveFromDirectoryAsync() => SafeDirectoryAsync(() => directory.RemoveAsync(_match!.Id));
+
+    /// <summary>Same treatment as <see cref="SafeNotifyAsync"/>: the index is a nicety for admins, not
+    /// something a Redis blip is allowed to wedge the duel over.</summary>
+    private async Task SafeDirectoryAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "ILiveDirectory threw for live duel {MatchId}; the duel keeps running.", _match?.Id);
         }
     }
 

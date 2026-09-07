@@ -30,4 +30,7 @@ public sealed class MongoMatchArchive(MongoContext db) : IMatchArchive
 
     public Task<long> CountAsync(CancellationToken ct = default)
         => db.Matches.CountDocumentsAsync(Builders<MatchDoc>.Filter.Empty, cancellationToken: ct);
+
+    public Task<long> CountLiveAsync(CancellationToken ct = default)
+        => db.Matches.CountDocumentsAsync(Builders<MatchDoc>.Filter.Eq(m => m.IsLive, true), cancellationToken: ct);
 }
