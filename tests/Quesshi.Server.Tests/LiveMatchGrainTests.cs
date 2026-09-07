@@ -95,6 +95,19 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.Equal(["Microsoft.Orleans.Sdk"], packageRefs.Select(m => m.Groups[1].Value));
     }
 
+    [Fact]
+    public void No_live_duel_payload_or_view_carries_a_remaining_seconds_count()
+    {
+        Type[] types =
+        [
+            typeof(LiveView), typeof(LivePlayerView), typeof(LiveRoundResultView), typeof(LiveRoundAnswerView),
+            typeof(LiveCountdown), typeof(LiveRoundCard), typeof(LiveRoundReveal), typeof(LivePlayerRound),
+            typeof(LiveEnded), typeof(LivePlayerScore)
+        ];
+        foreach (var type in types)
+            Assert.DoesNotContain(type.GetProperties(), p => p.Name.Contains("Seconds") || p.Name.Contains("Remaining"));
+    }
+
     private static string ReadRepoFile(params string[] relativeParts)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -430,6 +443,36 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.Equal(0, revealedRound.CorrectIndex);
         Assert.Equal(0, revealedRound.Answers.Single(a => a.PlayerId == Amir).ChoiceIndex);
         Assert.Equal(1, revealedRound.Answers.Single(a => a.PlayerId == Sara).ChoiceIndex);
+    }
+
+    [Fact]
+    public async Task GetAsync_returns_a_complete_view_for_a_participant_in_every_phase()
+    {
+        var grain = NewGrain(out _, out var questionIds);
+
+        var lobby = await grain.CreateAsync(Amir, questionIds);
+        Assert.Equal((int)LivePhase.Lobby, lobby.Phase);
+        Assert.NotNull(await grain.GetAsync(Amir));
+
+        await grain.JoinAsync(Sara);
+        var countdown = await grain.GetAsync(Amir);
+        Assert.Equal((int)LivePhase.Countdown, countdown!.Phase);
+        Assert.NotNull(countdown.PhaseEndsAt);
+
+        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        var question = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
+        Assert.Equal(0, question.RoundIndex);
+        Assert.Equal(MatchRules.QuestionsPerMatch, question.TotalRounds);
+
+        Assert.True(await grain.AnswerAsync(Amir, 0, 0));
+        Assert.True(await grain.AnswerAsync(Sara, 0, 1));
+        var reveal = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Reveal);
+        Assert.Equal(0, reveal.Rounds.Single().CorrectIndex);
+
+        await grain.EndAsync("end for the phase-coverage test");
+        var over = await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
+        Assert.Equal((int)LivePhase.Over, over.Phase);
+        Assert.Null(over.PhaseEndsAt);
     }
 
     [Fact]
