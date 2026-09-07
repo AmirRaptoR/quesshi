@@ -337,7 +337,8 @@ public static class GameEndpoints
     private static MediaDto? ToMediaDto(MediaRef media)
         => media.Kind == MediaKind.None ? null : new MediaDto(media.Kind.ToString().ToLowerInvariant(), media.Url, media.Attribution);
 
-    private static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board, IPresence presence)
+    /// <summary>Internal so a test can call it directly, the same way <see cref="ListMatchesAsync"/> is.</summary>
+    internal static async Task<List<FriendDto>> FriendsOfAsync(Player me, IPlayerRepository players, ILeaderboard board, IPresence presence)
     {
         var friends = new List<FriendDto>();
         foreach (var id in me.Friends)
