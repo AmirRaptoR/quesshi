@@ -12,15 +12,22 @@ public sealed class LiveMatch
     private readonly List<LiveRound> _rounds = [];
     private readonly Dictionary<string, int> _missStreak = [];
 
-    private LiveMatch(string id, string challengerId, IEnumerable<string> questionIds, DateTimeOffset createdAt)
+    private LiveMatch(string id, string code, Language lang, string challengerId, IEnumerable<string> questionIds, DateTimeOffset createdAt)
     {
         Id = id;
+        Code = code;
+        Lang = lang;
         ChallengerId = challengerId;
         _questionIds = [.. questionIds];
         CreatedAt = createdAt;
     }
 
     public string Id { get; }
+
+    /// <summary>The share code a friend types or follows — the same namespace an async match's code
+    /// lives in, mirrored into <c>IMatchArchive</c> so it can be resolved by code at all.</summary>
+    public string Code { get; }
+    public Language Lang { get; }
     public string ChallengerId { get; }
     public string? OpponentId { get; private set; }
     public IReadOnlyList<string> QuestionIds => _questionIds;
@@ -60,7 +67,7 @@ public sealed class LiveMatch
         }
     }
 
-    public static LiveMatch Create(string id, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
+    public static LiveMatch Create(string id, string code, Language lang, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
     {
         if (!MatchRules.IsValidCount(questionIds.Count))
             throw new ArgumentException(
@@ -68,7 +75,7 @@ public sealed class LiveMatch
         if (questionIds.Distinct().Count() != questionIds.Count)
             throw new ArgumentException("A live duel cannot repeat a question.", nameof(questionIds));
 
-        return new LiveMatch(id, challengerId, questionIds, now);
+        return new LiveMatch(id, code, lang, challengerId, questionIds, now);
     }
 
     public bool IsParticipant(string playerId) => playerId == ChallengerId || playerId == OpponentId;
@@ -90,6 +97,34 @@ public sealed class LiveMatch
         State = MatchState.InProgress;
         Phase = LivePhase.Countdown;
         PhaseEndsAt = now + LiveRules.StartCountdown;
+    }
+
+    /// <summary>
+    /// The grain-facing counterpart to <see cref="Join"/>: never throws, and distinguishes why a
+    /// join did not seat anyone, which <see cref="Join"/>'s single exception message does not. The
+    /// same opponent joining twice is idempotent here rather than an error.
+    /// </summary>
+    public LiveJoinResult TryJoin(string playerId, DateTimeOffset now)
+    {
+        if (playerId == OpponentId)
+        {
+            Advance(now);
+            return LiveJoinResult.AlreadyIn;
+        }
+        if (playerId == ChallengerId) return LiveJoinResult.SelfJoin;
+
+        try
+        {
+            Join(playerId, now);
+            return LiveJoinResult.Joined;
+        }
+        catch (InvalidOperationException)
+        {
+            // Join settles the clock before it throws, so State already reflects why this failed:
+            // NoContest means the lobby's own clock ran out; anything else means someone beat this
+            // caller to the seat.
+            return State == MatchState.NoContest ? LiveJoinResult.Expired : LiveJoinResult.Taken;
+        }
     }
 
     /// <summary>
@@ -161,13 +196,13 @@ public sealed class LiveMatch
     }
 
     public LiveMatchSnapshot ToSnapshot() => new(
-        Id, ChallengerId, OpponentId, [.. _questionIds], State, Phase, PhaseEndsAt,
+        Id, Code, Lang, ChallengerId, OpponentId, [.. _questionIds], State, Phase, PhaseEndsAt,
         [.. _rounds.Select(r => new LiveRoundSnapshot(r.Slot, r.QuestionId, r.StartedAt, new Dictionary<string, LiveAnswer>(r.Answers)))],
         new Dictionary<string, int>(_missStreak), CreatedAt, EndedAt, WinnerId, IsDraw, AbandonedBy);
 
     public static LiveMatch FromSnapshot(LiveMatchSnapshot s)
     {
-        var m = new LiveMatch(s.Id, s.ChallengerId, s.QuestionIds, s.CreatedAt)
+        var m = new LiveMatch(s.Id, s.Code, s.Lang, s.ChallengerId, s.QuestionIds, s.CreatedAt)
         {
             OpponentId = s.OpponentId,
             State = s.State,
