@@ -196,6 +196,26 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Expiry_changes_no_PlayerStats_and_records_nothing_on_the_leaderboard()
+    {
+        var ids = NewIds();
+        var created = ViewOf(await CreateAsync(ids));
+        var statsBefore = (await LiveShared.Players.GetAsync(Amir))!.Stats;
+        // A leaderboard of this test's own: LiveMatchGrain has no ILeaderboard dependency at all
+        // (LiveTestSilo never registers one), so nothing in the live path could write to this even
+        // if it were wired in — this instance stands in for that guarantee, the same shape the async
+        // side's forfeit test asserts against Shared.Leaderboard.
+        var leaderboard = new FakeLeaderboard();
+
+        LiveShared.TimeProvider.Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
+        await Grains.GetGrain<ILiveMatchGrain>(created.Id).GetAsync(Amir);
+        await WaitUntilAsync(() => LiveShared.Archive.Items.First(m => m.Id == created.Id).State == MatchState.NoContest);
+
+        Assert.Equal(statsBefore, (await LiveShared.Players.GetAsync(Amir))!.Stats);
+        Assert.Empty(leaderboard.Scores);
+    }
+
+    [Fact]
     public async Task Unknown_code_returns_404_no_such_code()
     {
         var result = await LiveEndpoints.JoinAsync("NO-SUCH-CODE", Sara, Grains, LiveShared.Archive, Clock);
