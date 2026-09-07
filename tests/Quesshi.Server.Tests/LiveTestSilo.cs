@@ -30,8 +30,8 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
             services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
             services.AddSingleton<ILiveNotifier>(LiveShared.Notifier);
-            services.AddSingleton<IMatchArchive>(LiveShared.Archive);
             services.AddSingleton<ILobbyNotifier>(LiveShared.LobbyNotifier);
+            services.AddSingleton<IMatchArchive>(LiveShared.Archive);
             services.AddSingleton<IIdFactory>(LiveShared.Ids);
             services.AddSingleton<QuestionSetBuilder>();
             services.AddSingleton<ILiveDirectory>(LiveShared.Directory);

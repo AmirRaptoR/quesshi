@@ -273,8 +273,11 @@
         _busy = true; _error = null;
 
         // Nothing picked means "surprise me" — the server draws three categories itself.
-        var match = await Api.CreateMatchAsync(random, _lang, _picked.Count == 0 ? null : [.. _picked], _questions,
-            _levels.Count == 0 ? null : [.. _levels.Order()]);
+        var categories = _picked.Count == 0 ? null : (List<string>?)[.. _picked];
+        var levels = _levels.Count == 0 ? null : (List<int>?)[.. _levels.Order()];
+        State.SetLastLiveSettings(_lang, _questions, categories, levels);
+
+        var match = await Api.CreateMatchAsync(random, _lang, categories, _questions, levels);
         _busy = false;
 
         if (match is null) { _error = L["common.error"]; return; }

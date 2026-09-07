@@ -20,8 +20,9 @@ builder.Services.AddTransient<Func<string, LiveClient>>(sp => hubUrl =>
     return new LiveClient(new Uri(new Uri(builder.HostEnvironment.BaseAddress), hubUrl).ToString(), () => appState.Token);
 });
 
-// One LobbyClient for the whole session, unlike LiveClient above — MainLayout starts and disposes it
-// as the player signs in and out.
+// One LobbyClient for the whole session, unlike LiveClient above — the app shell holds it so an
+// invitation arrives wherever the player is, not just on one page — and MainLayout starts and stops
+// it as the player signs in and out.
 builder.Services.AddSingleton(sp =>
 {
     var appState = sp.GetRequiredService<AppState>();

@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Orleans;
 using Orleans.TestingHost;
 using Quesshi.Application.Ports;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Live;
 
@@ -16,8 +18,9 @@ namespace Quesshi.Server.Tests;
 /// Hosts the real <see cref="LobbyHub"/> at <c>/hub/lobby</c> behind the real authentication, against a
 /// <see cref="FakePresence"/> and <see cref="LiveClusterFixture"/>'s already-running silo — the same
 /// reasoning <see cref="AuthTestHost"/> and <see cref="LiveApiTestHost"/> give for building their own
-/// host rather than WebApplicationFactory. The cluster is what lets QueueRandom/LeaveQueue reach the
-/// real <c>ILiveLobbyGrain</c>.
+/// host rather than WebApplicationFactory. The cluster is what lets QueueRandom/LeaveQueue and the
+/// pending-challenge check the hub runs on connect reach the real <c>ILiveLobbyGrain</c>; everything
+/// the hub needs beyond presence and that grain is faked.
 /// </summary>
 public sealed class LobbyHubTestHost : IAsyncDisposable
 {
@@ -47,6 +50,9 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                         new AdminTokenIssuer(new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" }));
                     services.AddSingleton<IPresence>(Presence);
                     services.AddSingleton(cluster.GrainFactory);
+                    services.AddSingleton<ILobbyNotifier, FakeLobbyNotifier>();
+                    services.AddSingleton<IPlayerRepository, FakePlayers>();
+                    services.AddSingleton<IIdFactory, IdFactory>();
                 });
                 web.Configure(app =>
                 {

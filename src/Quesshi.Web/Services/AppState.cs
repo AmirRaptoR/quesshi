@@ -39,6 +39,22 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// an async one to <c>/duel/{id}</c>. Meaningless while <see cref="GuestMatchId"/> is null.</summary>
     public bool GuestMatchIsLive { get; private set; }
 
+    /// <summary>The language / question count / categories / levels last used to start a duel on
+    /// <c>Home.razor</c> — what a friend challenge reuses. Null fields mean "no preference yet";
+    /// the caller falls back to defaults.</summary>
+    public string? LastLiveLang { get; private set; }
+    public int? LastLiveQuestionCount { get; private set; }
+    public List<string>? LastLiveCategories { get; private set; }
+    public List<int>? LastLiveLevels { get; private set; }
+
+    public void SetLastLiveSettings(string lang, int questionCount, List<string>? categories, List<int>? levels)
+    {
+        LastLiveLang = lang;
+        LastLiveQuestionCount = questionCount;
+        LastLiveCategories = categories;
+        LastLiveLevels = levels;
+    }
+
     public event Action? Changed;
 
     public async Task InitialiseAsync()

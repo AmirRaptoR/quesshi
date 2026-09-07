@@ -85,8 +85,9 @@ public static class GameEndpoints
             return Results.Ok();
         });
 
+        // Search results are candidates to add, not yet friends — online status has no meaning here.
         api.MapGet("/players/search", async (string? q, IPlayerRepository players) =>
-            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore)).ToList());
+            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false)).ToList());
 
         // --- leaderboards ------------------------------------------------------------
         api.MapGet("/leaderboard", async (ILeaderboard board, IPlayerRepository players) =>

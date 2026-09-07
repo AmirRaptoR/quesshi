@@ -5,4 +5,5 @@ namespace Quesshi.Grains.Abstractions;
 public sealed class LiveLobbyState
 {
     [Id(0)] public List<LiveQueueEntry> Waiting { get; set; } = [];
+    [Id(1)] public List<LiveChallengeView> Challenges { get; set; } = [];
 }

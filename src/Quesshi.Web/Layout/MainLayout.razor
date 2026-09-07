@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AppState State
 @inject Translator L
 @inject NavigationManager Nav
@@ -11,6 +11,21 @@
 }
 else
 {
+    @* Behind the same gate as the tab bar below: a guest has no friends list, so nothing here is ever theirs to see. *@
+    @if (State.SignedIn && !State.IsGuest && _challenge is { } challenge)
+    {
+        <div class="card card--taq enter" style="position:sticky;top:0;z-index:20;margin-bottom:.6rem">
+            <div class="row row--between">
+                <span>@L.Format("challenge.title", challenge.ChallengerName)</span>
+                <span class="numeral faint">@L.Format("challenge.timeLeft", Math.Max(0, (int)(challenge.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds))</span>
+            </div>
+            <div class="row" style="margin-top:.6rem;gap:.5rem">
+                <button class="btn btn--sm" @onclick="AcceptAsync">@L["challenge.accept"]</button>
+                <button class="btn btn--ghost btn--sm" @onclick="DeclineAsync">@L["challenge.decline"]</button>
+            </div>
+        </div>
+    }
+
     @Body
 
     @* A guest has exactly one page; a row of tabs to places they cannot open is worse than no tabs. *@
@@ -37,6 +52,9 @@ else
     /// <summary>The admin panel has its own navigation; it should not wear the game's chrome.</summary>
     private bool IsAdminArea => new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
 
+    private LiveChallengeDto? _challenge;
+    private System.Threading.Timer? _ticker;
+
     /// <summary>Whether <see cref="Lobby"/> is currently started — the app has exactly one, and it tracks
     /// sign-in state rather than being restarted on every render.</summary>
     private bool _lobbyConnected;
@@ -55,9 +73,6 @@ else
         _ = SyncLobbyConnectionAsync();
     }
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => StateHasChanged();
-
     /// <summary>The same "signed in and not a guest" condition the tab bar above already gates on: a
     /// guest has no door into presence, the queue or a challenge, so it never opens this connection.</summary>
     private async Task SyncLobbyConnectionAsync()
@@ -66,18 +81,101 @@ else
         if (shouldConnect && !_lobbyConnected)
         {
             _lobbyConnected = true;
-            await Lobby.StartAsync();
+            WireLobbyEvents();
+            StartTicker();
+
+            try
+            {
+                await Lobby.StartAsync();
+            }
+            catch
+            {
+                // A dropped lobby connection is not fatal to the rest of the app; the automatic
+                // reconnect keeps trying, and OnConnectedAsync re-delivers anything still pending.
+            }
         }
         else if (!shouldConnect && _lobbyConnected)
         {
             _lobbyConnected = false;
+            UnwireLobbyEvents();
+            StopTicker();
+            _challenge = null;
             await Lobby.StopAsync();
         }
     }
 
-    public void Dispose()
+    private void WireLobbyEvents()
+    {
+        Lobby.ChallengeReceived += OnChallengeReceived;
+        Lobby.ChallengeExpired += OnChallengeCleared;
+        Lobby.ChallengeDeclined += OnChallengeCleared;
+        Lobby.ChallengeFailed += OnChallengeCleared;
+        Lobby.DuelReady += OnDuelReady;
+    }
+
+    private void UnwireLobbyEvents()
+    {
+        Lobby.ChallengeReceived -= OnChallengeReceived;
+        Lobby.ChallengeExpired -= OnChallengeCleared;
+        Lobby.ChallengeDeclined -= OnChallengeCleared;
+        Lobby.ChallengeFailed -= OnChallengeCleared;
+        Lobby.DuelReady -= OnDuelReady;
+    }
+
+    private void OnChallengeReceived(LiveChallengeDto challenge)
+        => InvokeAsync(() => { _challenge = challenge; StateHasChanged(); });
+
+    private void OnChallengeCleared(string challengeId) => ClearIfCurrent(challengeId);
+
+    private void OnDuelReady(string matchId) => InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"));
+
+    private void ClearIfCurrent(string challengeId)
+    {
+        if (_challenge?.ChallengeId == challengeId)
+            InvokeAsync(() => { _challenge = null; StateHasChanged(); });
+    }
+
+    /// <summary>The banner's time-left counts down locally; a challenge past its deadline hides itself
+    /// even before any server round trip confirms it.</summary>
+    private void StartTicker()
+    {
+        _ticker ??= new System.Threading.Timer(_ =>
+        {
+            if (_challenge is { } c && c.ExpiresAt <= DateTimeOffset.UtcNow)
+                ClearIfCurrent(c.ChallengeId);
+            else
+                InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private void StopTicker()
+    {
+        _ticker?.Dispose();
+        _ticker = null;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => StateHasChanged();
+
+    private async Task AcceptAsync()
+    {
+        if (_challenge is not { } challenge) return;
+        await Lobby.AcceptAsync(challenge.ChallengeId);
+        // Navigation happens off the DuelReady push, delivered to both players alike.
+    }
+
+    private async Task DeclineAsync()
+    {
+        if (_challenge is not { } challenge) return;
+        _challenge = null;
+        await Lobby.DeclineAsync(challenge.ChallengeId);
+    }
+
+    public async ValueTask DisposeAsync()
     {
         State.Changed -= OnStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        if (_lobbyConnected) UnwireLobbyEvents();
+        StopTicker();
     }
 }
