@@ -2,6 +2,8 @@ using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Api;
+using Quesshi.Server.Auth;
+using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
 
@@ -34,6 +36,27 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         var view = await Grains.GetGrain<IMatchGrain>(id).GetAsync("p-joiner");
         Assert.Null(view);
     }
+
+    [Fact]
+    public async Task Guest_join_refuses_a_live_code_and_creates_no_guest()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var code = $"LIVE-{id}".ToUpperInvariant();
+        Shared.Archive.Items.Add(LiveRow(id, code, "p-challenger"));
+        var playersBefore = Shared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinAsync(code, new GuestJoinDto("Newcomer"), Shared.Archive,
+            Shared.Players, Grains, Issuer, new FakeIdFactory(), Shared.Clock);
+
+        Assert.Equal(400, StatusOf(result));
+        Assert.Equal("not_an_async_code", ErrorOf(result));
+        Assert.Equal(playersBefore, Shared.Players.Items.Count);
+    }
+
+    private static readonly TokenIssuer Issuer = new(new JwtOptions
+    {
+        Key = "a-test-signing-key-long-enough-to-use", Issuer = "quesshi", Audience = "quesshi", Days = 1
+    });
 
     /// <summary>
     /// Minimal-API results (<c>Results.BadRequest</c>, <c>Results.NotFound</c>, ...) are internal
