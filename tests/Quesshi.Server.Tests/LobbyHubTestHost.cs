@@ -79,4 +79,23 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
         await _host.StopAsync();
         _host.Dispose();
     }
+
+    /// <summary>
+    /// Polls <paramref name="condition"/> until it is true or <paramref name="timeout"/> elapses. For
+    /// waits that have no callback to hook — <c>OnDisconnectedAsync</c> awaits <c>MarkOfflineAsync</c>
+    /// before <c>Queue.LeaveAsync</c>, so a presence signal alone does not prove the grain's queue entry
+    /// is gone — this reads the grain's own state instead of guessing how long that takes.
+    /// </summary>
+    public static async Task WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout, string because)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await condition()) return;
+            await Task.Delay(20);
+        }
+
+        if (!await condition())
+            throw new TimeoutException($"Timed out after {timeout} waiting for {because}.");
+    }
 }
