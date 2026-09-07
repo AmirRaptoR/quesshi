@@ -132,6 +132,32 @@ public class LobbyHubTests(LiveClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Heartbeat_over_the_hub_keeps_the_callers_queue_entry_alive_past_the_TTL()
+    {
+        var cat = SeedCategory("hub-heartbeat");
+        var lang = (int)Language.En;
+        var count = 5010 + (int)Interlocked.Increment(ref _n);
+
+        await using var host = NewHost();
+        var t1 = host.TokenIssuer.Issue(RealPlayer("lhb-hb1-" + _n));
+        await using var c1 = host.NewConnection(t1);
+        await c1.StartAsync();
+
+        await c1.InvokeAsync<string?>("QueueRandom", lang, count, new List<string> { cat.Id }, new List<int>());
+
+        LiveShared.TimeProvider.Advance(TimeSpan.FromSeconds(45));
+        await c1.InvokeAsync("Heartbeat"); // the same call LobbyClient's timer makes every 20s while connected
+        LiveShared.TimeProvider.Advance(TimeSpan.FromSeconds(45)); // 90s total, but only 45s since the heartbeat
+
+        var t2 = host.TokenIssuer.Issue(RealPlayer("lhb-hb2-" + _n));
+        await using var c2 = host.NewConnection(t2);
+        await c2.StartAsync();
+        var matchId = await c2.InvokeAsync<string?>("QueueRandom", lang, count, new List<string> { cat.Id }, new List<int>());
+
+        Assert.NotNull(matchId);
+    }
+
+    [Fact]
     public async Task LeaveQueue_over_the_hub_removes_the_callers_entry()
     {
         var cat = SeedCategory("hub-leave");

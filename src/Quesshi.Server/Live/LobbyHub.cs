@@ -48,8 +48,15 @@ public sealed class LobbyHub(IPresence presence, IGrainFactory grains) : Hub
         await base.OnDisconnectedAsync(exception);
     }
 
-    /// <summary>Refreshes the caller's presence TTL. Called on a timer by <c>LobbyClient</c> while connected.</summary>
-    public Task Heartbeat() => presence.MarkOnlineAsync(Context.User!.PlayerId()!, PresenceTtl);
+    /// <summary>Refreshes the caller's presence TTL and, if they are queued, their live queue entry too
+    /// — the same connection heartbeats both, so an entry never lapses under a player who is still here.
+    /// Called on a timer by <c>LobbyClient</c> while connected.</summary>
+    public async Task Heartbeat()
+    {
+        var playerId = Context.User!.PlayerId()!;
+        await presence.MarkOnlineAsync(playerId, PresenceTtl);
+        await Queue.HeartbeatAsync(playerId);
+    }
 
     /// <summary>
     /// Queues the caller for a random live opponent. Returns the new match id if this call is the one
