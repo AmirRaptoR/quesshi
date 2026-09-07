@@ -220,6 +220,15 @@
     {
         _liveWaiting = true; _liveOthers = 0; _error = null;
 
+        // A button press can outlive the layout's own connection attempt — this is what lets a socket
+        // that died between deployments come back up on the first click rather than just erroring.
+        if (!await Lobby.EnsureConnectedAsync())
+        {
+            _liveWaiting = false;
+            _error = L["common.error"];
+            return;
+        }
+
         // Translator.All is ["fa","en","nl"] in exactly Quesshi.Domain.Language's declared order
         // (Fa=0, En=1, Nl=2) — Quesshi.Web has no reference to Quesshi.Domain to cast against directly.
         var lang = Array.IndexOf(Translator.All, _lang);
