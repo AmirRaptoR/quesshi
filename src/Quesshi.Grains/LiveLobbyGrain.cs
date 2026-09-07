@@ -55,11 +55,13 @@ public sealed class LiveLobbyGrain(
             {
                 await SafeNotifyAsync(() => notifier.QueueFailedAsync(waiting.PlayerId));
                 await SafeNotifyAsync(() => notifier.QueueFailedAsync(playerId));
+                await NotifyBucketCountAsync(lang, questionCount); // a third party still waiting in this bucket just lost one of its two possible opponents
                 return null;
             }
 
             await SafeNotifyAsync(() => notifier.MatchedAsync(waiting.PlayerId, matchId));
             await SafeNotifyAsync(() => notifier.MatchedAsync(playerId, matchId));
+            await NotifyBucketCountAsync(lang, questionCount); // same: a third party's count just dropped by two
             return matchId;
         }
 
