@@ -4,6 +4,7 @@ using Orleans;
 using Orleans.Runtime;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Application.Ports;
+using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 
 namespace Quesshi.Grains;
@@ -22,10 +23,15 @@ public sealed class LiveMatchGrain(
     ILiveNotifier notifier,
     IMatchArchive archive,
     ILiveDirectory directory,
+    QuestionSetBuilder questionSetBuilder,
+    IIdFactory ids,
     IClock clock,
     ILogger<LiveMatchGrain> logger) : Grain, ILiveMatchGrain, IRemindable
 {
     private const string SafetyNetReminder = "live-safety-net";
+
+    /// <summary>Mirrors <c>LiveLobbyGrain.MaxCodeAttempts</c>: how many fresh codes a rematch's new duel will try before giving up.</summary>
+    private const int MaxCodeAttempts = 5;
     private static readonly TimeSpan ReminderPeriod = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MinimumDueTime = TimeSpan.FromMilliseconds(1);
 
@@ -146,6 +152,86 @@ public sealed class LiveMatchGrain(
         var phaseBefore = _match.Phase;
         _match.EndNoContest(clock.Now);
         await AfterChangeAsync(phaseBefore, false, reason);
+    }
+
+    public async Task<RematchOutcome> RequestRematchAsync(string playerId)
+    {
+        if (_match is null || !_match.IsOver || _match.OpponentId is null || !_match.IsParticipant(playerId))
+            return new RematchOutcome((int)RematchStatus.Refused);
+
+        var now = clock.Now;
+        PruneExpiredReadiness(now);
+
+        state.State.RematchReadyAt[playerId] = now;
+        await state.WriteStateAsync();
+
+        var opponentId = playerId == _match.ChallengerId ? _match.OpponentId : _match.ChallengerId;
+        if (!state.State.RematchReadyAt.ContainsKey(opponentId))
+        {
+            await SafeNotifyAsync(() => notifier.RematchRequestedAsync(_match.Id, playerId));
+            return new RematchOutcome((int)RematchStatus.Waiting);
+        }
+
+        if (!await GrainFactory.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync())
+            return await FailRematchAsync();
+
+        List<Question> set;
+        try
+        {
+            set = [.. await questionSetBuilder.BuildAsync(_match.Lang, null, _match.QuestionIds.Count, null)];
+        }
+        catch (NotEnoughQuestionsException)
+        {
+            return await FailRematchAsync();
+        }
+
+        var newMatchId = await CreateRematchDuelAsync(set);
+        if (newMatchId is null) return await FailRematchAsync();
+
+        state.State.RematchReadyAt.Clear();
+        await state.WriteStateAsync();
+        await SafeNotifyAsync(() => notifier.RematchCreatedAsync(_match.Id, newMatchId));
+        return new RematchOutcome((int)RematchStatus.Created, newMatchId);
+    }
+
+    /// <summary>Same shape as <see cref="LiveLobbyGrain.TryCreateDuelAsync"/>: mint a collision-free
+    /// code, create the grain with the original challenger, then join the original opponent. Anything
+    /// but a clean join is a failed attempt, not a half-open duel.</summary>
+    private async Task<string?> CreateRematchDuelAsync(List<Question> set)
+    {
+        var m = _match!;
+        for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
+        {
+            var code = ids.NewMatchCode();
+            if (await archive.ByCodeAsync(code) is not null) continue;
+
+            var newMatchId = ids.NewId();
+            var grain = GrainFactory.GetGrain<ILiveMatchGrain>(newMatchId);
+            await grain.CreateAsync(code, (int)m.Lang, m.ChallengerId, [.. set.Select(q => q.Id)]);
+
+            var joinResult = (LiveJoinResult)await grain.JoinAsync(m.OpponentId!);
+            return joinResult == LiveJoinResult.Joined ? newMatchId : null;
+        }
+
+        return null;
+    }
+
+    private async Task<RematchOutcome> FailRematchAsync()
+    {
+        state.State.RematchReadyAt.Clear();
+        await state.WriteStateAsync();
+        await SafeNotifyAsync(() => notifier.RematchFailedAsync(_match!.Id));
+        return new RematchOutcome((int)RematchStatus.Failed);
+    }
+
+    /// <summary>A readiness flag older than <see cref="LiveRules.RematchExpires"/> no longer counts
+    /// towards completing the handshake — a press arriving after it starts the wait over rather than
+    /// dragging an absent player into a fresh duel.</summary>
+    private void PruneExpiredReadiness(DateTimeOffset now)
+    {
+        var cutoff = now - LiveRules.RematchExpires;
+        foreach (var stale in state.State.RematchReadyAt.Where(kv => kv.Value < cutoff).Select(kv => kv.Key).ToList())
+            state.State.RematchReadyAt.Remove(stale);
     }
 
     public async Task ReceiveReminder(string reminderName, TickStatus status)

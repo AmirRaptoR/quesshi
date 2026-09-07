@@ -27,6 +27,15 @@ public sealed class LiveClient : IAsyncDisposable
     /// question phase can show "they have answered" without polling.</summary>
     public event Action<OpponentAnsweredDto>? OpponentAnswered;
 
+    /// <summary>The other side has pressed Rematch first — the still-undecided side's Ended screen can say so.</summary>
+    public event Action<RematchRequestedDto>? RematchRequested;
+
+    /// <summary>Both sides have pressed Rematch: the fresh duel to navigate to.</summary>
+    public event Action<RematchCreatedDto>? RematchCreated;
+
+    /// <summary>Both sides pressed Rematch, but the fresh duel could not be built.</summary>
+    public event Action? RematchFailed;
+
     /// <summary>
     /// Fires after a reconnect's automatic rejoin completes, with the fresh catch-up view. Whatever
     /// pushes were missed while the socket was down (a reveal, a new round, even the duel ending)
@@ -60,6 +69,9 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<OpponentPresenceDto>("OpponentLeft", p => OpponentLeft?.Invoke(p));
         _connection.On<OpponentPresenceDto>("OpponentBack", p => OpponentBack?.Invoke(p));
         _connection.On<OpponentAnsweredDto>("OpponentAnswered", a => OpponentAnswered?.Invoke(a));
+        _connection.On<RematchRequestedDto>("RematchRequested", r => RematchRequested?.Invoke(r));
+        _connection.On<RematchCreatedDto>("RematchCreated", r => RematchCreated?.Invoke(r));
+        _connection.On("RematchFailed", () => RematchFailed?.Invoke());
     }
 
     internal HubConnection Connection => _connection;
@@ -96,6 +108,9 @@ public sealed class LiveClient : IAsyncDisposable
 
     public Task AnswerAsync(string matchId, int round, int choiceIndex, CancellationToken ct = default)
         => _connection.InvokeAsync("Answer", matchId, round, choiceIndex, ct);
+
+    public Task<RematchOutcomeDto> RematchAsync(string matchId, CancellationToken ct = default)
+        => _connection.InvokeAsync<RematchOutcomeDto>("Rematch", matchId, ct);
 
     /// <summary>The reconnected handler: without this, a page that survives a drop would be stuck on stale state forever.</summary>
     internal Task OnReconnectedAsync(string? connectionId)

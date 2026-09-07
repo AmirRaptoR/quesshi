@@ -224,6 +224,30 @@
             </section>
 
             <div class="stack enter" style="margin-top:1.2rem">
+                @if (CanOfferRematch)
+                {
+                    @if (_rematchFailed)
+                    {
+                        <p class="notice notice--bad" style="text-align:center">@L["live.rematch.failed"]</p>
+                    }
+                    @if (_rematchPressed)
+                    {
+                        <p class="faint" style="text-align:center">@L["live.rematch.waiting"]</p>
+                    }
+                    else
+                    {
+                        @if (_opponentWantsRematch)
+                        {
+                            <p class="faint" style="text-align:center">@L["live.rematch.theyWantIt"]</p>
+                        }
+                        <button class="btn btn--block" @onclick="RequestRematchAsync">@L["live.rematch.button"]</button>
+                    }
+                }
+                else if (_view.OpponentId is not null)
+                {
+                    <p class="faint" style="text-align:center">@L["live.rematch.guestBlocked"]</p>
+                }
+
                 @if (State.IsGuest)
                 {
                     <a class="btn btn--ghost btn--block" href="/signin">@L["result.keepScore"]</a>
@@ -262,11 +286,44 @@
     private bool _opponentOnline = true;
     private bool _copied;
 
+    private bool _rematchPressed;
+    private bool _opponentWantsRematch;
+    private bool _rematchFailed;
+
     private Timer? _ticker;
+    private string? _boundMatchId;
 
     private string MeId => State.Me!.Id;
 
     protected override async Task LoadAsync()
+    {
+        await ConnectAsync();
+        _ticker = new Timer(_ => InvokeAsync(StateHasChanged), null, 250, 250);
+    }
+
+    /// <summary>
+    /// A rematch push navigates to <c>/live/{newId}</c> while this page is already open — the same
+    /// component instance is reused (#35's own technical note), so this is the only hook that ever
+    /// notices the route changed. Tears down the finished duel's <see cref="LiveClient"/> and
+    /// re-enters for the new id rather than staying bound to the old one.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_boundMatchId is null || _boundMatchId == MatchId) return;
+
+        if (_client is not null)
+        {
+            try { await _client.LeaveAsync(); } catch { /* the connection may already be gone */ }
+            await _client.DisposeAsync();
+        }
+
+        _view = null;
+        _refused = false;
+        await ConnectAsync();
+        StateHasChanged();
+    }
+
+    private async Task ConnectAsync()
     {
         _client = ClientFactory("/hub/live");
         _client.RoundStarted += OnRoundStarted;
@@ -276,6 +333,9 @@
         _client.OpponentBack += p => OnPresence(p, online: true);
         _client.OpponentAnswered += OnOpponentAnswered;
         _client.Rejoined += OnRejoined;
+        _client.RematchRequested += OnRematchRequested;
+        _client.RematchCreated += OnRematchCreated;
+        _client.RematchFailed += OnRematchFailed;
         _client.Connection.Reconnecting += _ => Toggle(true);
         _client.Connection.Reconnected += _ => Toggle(false);
         _client.Connection.Closed += _ => Toggle(true);
@@ -294,8 +354,11 @@
         }
 
         _refused = _view is null;
+        _rematchPressed = false;
+        _opponentWantsRematch = false;
+        _rematchFailed = false;
         SyncLocalAnswerState();
-        _ticker = new Timer(_ => InvokeAsync(StateHasChanged), null, 250, 250);
+        _boundMatchId = MatchId;
     }
 
     private Task Toggle(bool reconnecting)
@@ -362,6 +425,22 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private void OnRematchRequested(RematchRequestedDto r)
+    {
+        if (r.PlayerId == MeId) return; // that push is about my own press, not theirs
+        _opponentWantsRematch = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRematchCreated(RematchCreatedDto r) => InvokeAsync(() => Nav.NavigateTo($"/live/{r.NewMatchId}"));
+
+    private void OnRematchFailed()
+    {
+        _rematchPressed = false;
+        _rematchFailed = true;
+        InvokeAsync(StateHasChanged);
+    }
+
     /// <summary>
     /// A dropped-and-restored connection may have missed a whole phase change — the reveal that
     /// closed the round we were locked into, or the round after that. The rejoin's fresh catch-up
@@ -410,6 +489,33 @@
         Nav.NavigateTo("/");
     }
 
+    private async Task RequestRematchAsync()
+    {
+        if (_client is null) return;
+
+        _rematchPressed = true;
+        _rematchFailed = false;
+        StateHasChanged();
+
+        RematchOutcomeDto outcome;
+        try { outcome = await _client.RematchAsync(MatchId); }
+        catch { outcome = new RematchOutcomeDto("failed"); }
+
+        switch (outcome.Status)
+        {
+            case "created" when outcome.NewMatchId is not null:
+                Nav.NavigateTo($"/live/{outcome.NewMatchId}");
+                break;
+            case "waiting":
+                break; // the waiting line is already showing
+            default: // "refused" or "failed" — nothing to press again for, or the server needs another try
+                _rematchPressed = false;
+                _rematchFailed = outcome.Status == "failed";
+                StateHasChanged();
+                break;
+        }
+    }
+
     private async Task CopyAsync()
     {
         _copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
@@ -431,6 +537,10 @@
         : 0;
 
     private string? TheirId => _view!.ChallengerId == MeId ? _view.OpponentId : _view.ChallengerId;
+
+    /// <summary>Consistent with #12: a guest may join a live duel, but not create one — and a
+    /// rematch creates one. Offered only once the duel actually has an opponent to rematch with.</summary>
+    private bool CanOfferRematch => _view is { OpponentId: not null, ChallengerIsGuest: false, OpponentIsGuest: false };
 
     private LiveRoundResultViewDto? CurrentRound =>
         _view is not null && _view.RoundIndex < _view.Rounds.Count ? _view.Rounds[_view.RoundIndex] : null;

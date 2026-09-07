@@ -53,6 +53,32 @@ public sealed class LiveHub(
         await grains.GetGrain<ILiveMatchGrain>(matchId).AnswerAsync(meId, round, choiceIndex);
     }
 
+    /// <summary>
+    /// Guest-blocked regardless of what the client offered, the way <c>LobbyHub.QueueRandom</c>
+    /// refuses a guest's press: the caller's own claim is checked first, then — since nothing about
+    /// the *opponent*'s guest status crosses the wire until <see cref="ILiveMatchGrain.GetAsync"/>'s
+    /// view names them — one repository read for the other side. Both checks run before the grain
+    /// ever sees the press, so a guest calling this directly gets refused with no readiness recorded.
+    /// </summary>
+    public async Task<RematchOutcomeDto> Rematch(string matchId)
+    {
+        var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
+        if (Context.User!.IsGuest()) return new RematchOutcomeDto("refused");
+
+        var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
+        var view = await grain.GetAsync(meId);
+        if (view is null) return new RematchOutcomeDto("refused");
+
+        var opponentId = view.ChallengerId == meId ? view.OpponentId : view.ChallengerId;
+        if (opponentId is null) return new RematchOutcomeDto("refused"); // a lobby nobody joined has nobody to rematch with
+
+        var opponent = await players.GetAsync(opponentId);
+        if (opponent is null || opponent.IsGuest) return new RematchOutcomeDto("refused");
+
+        var outcome = await grain.RequestRematchAsync(meId);
+        return outcome.ToDto();
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (notifier is SignalRLiveNotifier tracker) await tracker.NoteDisconnectedAsync(Context.ConnectionId);
