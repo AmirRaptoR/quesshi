@@ -228,6 +228,12 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
         Assert.Equal((int)MatchState.NoContest, view!.State);
         Assert.Null(view.WinnerId);
         Assert.False(view.IsDraw);
+
+        // Both players told, not left on a frozen screen: one Ended event whose payload names both.
+        var ended = Assert.Single(LiveShared.Notifier.EventsFor(view.Id), e => e.Kind == "Ended");
+        var payload = (LiveEnded)ended.Payload;
+        Assert.Contains(payload.Scores, p => p.PlayerId == challenger.Id);
+        Assert.Contains(payload.Scores, p => p.PlayerId == opponent.Id);
     }
 
     [Fact]
