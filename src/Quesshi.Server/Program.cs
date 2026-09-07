@@ -87,6 +87,7 @@ builder.Services.AddSingleton<IMatchArchive, MongoMatchArchive>();
 builder.Services.AddSingleton<IGenerationLog, MongoGenerationLog>();
 builder.Services.AddSingleton<IAiSpendLog, MongoAiSpendLog>();
 builder.Services.AddSingleton<ILeaderboard, RedisLeaderboard>();
+builder.Services.AddSingleton<ILiveDirectory, RedisLiveDirectory>();
 builder.Services.AddSingleton<IOtpStore, RedisOtpStore>();
 builder.Services.AddSingleton<QuestionPromptBuilder>();
 builder.Services.AddSingleton<IQuestionGenerator, OpenRouterQuestionGenerator>();

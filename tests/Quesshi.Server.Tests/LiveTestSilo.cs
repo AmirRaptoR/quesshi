@@ -30,6 +30,7 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
             services.AddSingleton<ILiveNotifier>(LiveShared.Notifier);
             services.AddSingleton<IMatchArchive>(LiveShared.Archive);
+            services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
         });
     }
 }
