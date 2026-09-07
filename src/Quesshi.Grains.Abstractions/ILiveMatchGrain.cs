@@ -38,4 +38,15 @@ public interface ILiveMatchGrain : IGrainWithStringKey
     /// <summary>Admin-facing: finishes an in-flight duel early as a no-contest.</summary>
     [Alias("EndAsync")]
     Task EndAsync(string reason);
+
+    /// <summary>
+    /// A participant of a <em>finished</em> duel marks itself ready for a rematch. Symmetric and
+    /// idempotent: the first press records readiness and waits, a second press by the same player
+    /// changes nothing, and only a press by the <em>other</em> participant — while this one's
+    /// readiness has not expired — creates the fresh duel. The caller is refused outright (no
+    /// readiness recorded) when it is not a participant, the duel is not over, or it never got an
+    /// opponent at all.
+    /// </summary>
+    [Alias("RequestRematchAsync")]
+    Task<RematchOutcome> RequestRematchAsync(string playerId);
 }

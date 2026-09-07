@@ -24,4 +24,16 @@ public interface ILiveNotifier
     /// <see cref="RoundRevealedAsync"/> fires when only one side is in.
     /// </summary>
     Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The first rematch press: without this the second press has no prompt, and in practice the
+    /// handshake rarely completes. Fired once, to the finished duel's own group.
+    /// </summary>
+    Task RematchRequestedAsync(string matchId, string playerId, CancellationToken ct = default);
+
+    /// <summary>The second press: a fresh duel now exists. Pushed to the finished duel's group so both clients navigate to it.</summary>
+    Task RematchCreatedAsync(string matchId, string newMatchId, CancellationToken ct = default);
+
+    /// <summary>Both sides were ready but the fresh duel could not be built — the kill switch was off, or there were not enough questions.</summary>
+    Task RematchFailedAsync(string matchId, CancellationToken ct = default);
 }
