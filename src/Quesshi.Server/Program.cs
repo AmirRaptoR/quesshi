@@ -77,6 +77,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 // second instance is never silently missing it. Against the same Redis connection everything else
 // here already requires — no new setting, nothing to add to the configuration table.
 builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
+builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(

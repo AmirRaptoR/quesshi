@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Orleans;
 using Quesshi.Application.Ports;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Live;
 
@@ -13,8 +15,11 @@ namespace Quesshi.Server.Tests;
 
 /// <summary>
 /// Hosts the real <see cref="LobbyHub"/> at <c>/hub/lobby</c> behind the real authentication, against a
-/// <see cref="FakePresence"/> — no Orleans, no Mongo, no Redis, the same reasoning <see cref="AuthTestHost"/>
+/// <see cref="FakePresence"/> — no Mongo, no Redis, the same reasoning <see cref="AuthTestHost"/>
 /// and <see cref="LiveApiTestHost"/> give for building their own host rather than WebApplicationFactory.
+/// The hub still reaches into <see cref="ILiveLobbyGrain"/> for any pending challenge on connect, so a
+/// real (if borrowed) <see cref="IGrainFactory"/> is required — everything else the hub needs beyond
+/// presence is faked, since these tests are about the presence lifecycle, not challenges.
 /// </summary>
 public sealed class LobbyHubTestHost : IAsyncDisposable
 {
@@ -26,7 +31,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
     private readonly IHost _host;
     private readonly TestServer _server;
 
-    public LobbyHubTestHost()
+    public LobbyHubTestHost(IGrainFactory grains)
     {
         _host = new HostBuilder()
             .ConfigureWebHost(web =>
@@ -43,6 +48,10 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                         TokenIssuer,
                         new AdminTokenIssuer(new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" }));
                     services.AddSingleton<IPresence>(Presence);
+                    services.AddSingleton(grains);
+                    services.AddSingleton<ILobbyNotifier, FakeLobbyNotifier>();
+                    services.AddSingleton<IPlayerRepository, FakePlayers>();
+                    services.AddSingleton<IIdFactory, IdFactory>();
                 });
                 web.Configure(app =>
                 {
