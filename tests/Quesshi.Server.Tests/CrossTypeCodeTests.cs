@@ -53,6 +53,25 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         Assert.Equal(playersBefore, Shared.Players.Items.Count);
     }
 
+    [Fact]
+    public async Task Invite_reports_live_correctly_for_both_kinds()
+    {
+        var liveId = Guid.NewGuid().ToString("N");
+        var liveCode = $"LIVE-{liveId}".ToUpperInvariant();
+        Shared.Archive.Items.Add(LiveRow(liveId, liveCode, "p-challenger"));
+
+        var asyncId = Guid.NewGuid().ToString("N");
+        var asyncCode = $"ASYNC-{asyncId}".ToUpperInvariant();
+        Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
+            false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
+
+        var liveInvite = (InviteDto)ValueOf(await AuthEndpoints.InviteAsync(liveCode, Shared.Archive, Shared.Players));
+        var asyncInvite = (InviteDto)ValueOf(await AuthEndpoints.InviteAsync(asyncCode, Shared.Archive, Shared.Players));
+
+        Assert.True(liveInvite.Live);
+        Assert.False(asyncInvite.Live);
+    }
+
     private static readonly TokenIssuer Issuer = new(new JwtOptions
     {
         Key = "a-test-signing-key-long-enough-to-use", Issuer = "quesshi", Audience = "quesshi", Days = 1
@@ -67,7 +86,9 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
 
     internal static string ErrorOf(object result)
     {
-        var value = result.GetType().GetProperty("Value")!.GetValue(result);
-        return (string)value!.GetType().GetProperty("error")!.GetValue(value)!;
+        var value = ValueOf(result);
+        return (string)value.GetType().GetProperty("error")!.GetValue(value)!;
     }
+
+    internal static object ValueOf(object result) => result.GetType().GetProperty("Value")!.GetValue(result)!;
 }

@@ -41,15 +41,7 @@ public static class AuthEndpoints
         // Anonymous on purpose: an invite link has to say who is challenging before anyone is asked
         // to identify themselves. It reveals nothing a person holding the code should not see.
         app.MapGet("/api/invite/{code}", async (string code, IMatchArchive archive, IPlayerRepository players) =>
-        {
-            var match = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
-            if (match is null) return Results.NotFound(new { error = "no_such_code" });
-
-            var challenger = await players.GetAsync(match.ChallengerId);
-            return Results.Ok(new InviteDto(match.Code, challenger?.DisplayName ?? "—",
-                challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
-                match.State == MatchState.AwaitingOpponent));
-        });
+            await InviteAsync(code, archive, players));
 
         // Becoming a guest and taking the seat are one call, so a name typed against a duel that has
         // already been taken never leaves a player record behind.
@@ -70,6 +62,21 @@ public static class AuthEndpoints
 
             return Results.Ok(SignIn(player, tokens));
         });
+    }
+
+    /// <summary>
+    /// The one lookup every consumer of a code shares; who to route it to reads <see cref="InviteDto.Live"/>
+    /// off this same call rather than guessing by trying an endpoint of one kind first.
+    /// </summary>
+    internal static async Task<IResult> InviteAsync(string code, IMatchArchive archive, IPlayerRepository players)
+    {
+        var match = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (match is null) return Results.NotFound(new { error = "no_such_code" });
+
+        var challenger = await players.GetAsync(match.ChallengerId);
+        return Results.Ok(new InviteDto(match.Code, challenger?.DisplayName ?? "—",
+            challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
+            match.State == MatchState.AwaitingOpponent, match.IsLive));
     }
 
     /// <summary>
