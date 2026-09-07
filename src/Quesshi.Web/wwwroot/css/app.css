@@ -281,6 +281,14 @@ a  { color: var(--firouzeh); text-decoration: none; }
 }
 .avatar--lg { width: 4rem; height: 4rem; font-size: var(--step-2); }
 
+/* --- presence: who could actually play right now -------------------------- */
+.dot--online {
+  flex: none;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--firouzeh);
+}
+
 /* --- shamseh: the twelve-ray rosette ------------------------------------- */
 .shamseh { display: block; width: 100%; height: auto; overflow: visible; }
 .shamseh__ray { transition: fill 0.45s var(--ease), opacity 0.45s var(--ease); }

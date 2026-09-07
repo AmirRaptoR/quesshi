@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Orleans.Runtime;
 using Orleans.TestingHost;
 using Quesshi.Application.Ports;
+using Quesshi.Application.UseCases;
 
 namespace Quesshi.Server.Tests;
 
@@ -30,6 +31,10 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
             services.AddSingleton<ILiveNotifier>(LiveShared.Notifier);
             services.AddSingleton<IMatchArchive>(LiveShared.Archive);
+            services.AddSingleton<ILobbyNotifier>(LiveShared.LobbyNotifier);
+            services.AddSingleton<IIdFactory>(LiveShared.Ids);
+            services.AddSingleton<QuestionSetBuilder>();
+            services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
         });
     }
 }

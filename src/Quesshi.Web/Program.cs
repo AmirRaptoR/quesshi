@@ -20,6 +20,15 @@ builder.Services.AddTransient<Func<string, LiveClient>>(sp => hubUrl =>
     return new LiveClient(new Uri(new Uri(builder.HostEnvironment.BaseAddress), hubUrl).ToString(), () => appState.Token);
 });
 
+// One LobbyClient for the whole session, unlike LiveClient above — MainLayout starts and disposes it
+// as the player signs in and out.
+builder.Services.AddSingleton(sp =>
+{
+    var appState = sp.GetRequiredService<AppState>();
+    var hubUrl = new Uri(new Uri(builder.HostEnvironment.BaseAddress), "hub/lobby").ToString();
+    return new LobbyClient(hubUrl, () => appState.Token);
+});
+
 // The admin panel gets its own HttpClient so the two bearer tokens can never be mixed up.
 builder.Services.AddScoped(sp => new AdminHttpClient(new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) }));
 builder.Services.AddScoped<AdminApi>();

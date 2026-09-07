@@ -25,6 +25,15 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
 {
     public const string SigningKey = "a-live-endpoint-test-signing-key-long-enough";
 
+    /// <summary>
+    /// Every test class that stands up its own <see cref="LiveApiTestHost"/> shares the same
+    /// <see cref="LiveShared.Archive"/> and grain factory, so two hosts minting ids from the same
+    /// zero-seeded <c>FakeIdFactory</c> could collide on the same match id or share code and end up
+    /// reading each other's grain activation — deterministically, not just under parallel test
+    /// execution. Each host claims its own disjoint range instead.
+    /// </summary>
+    private static int _idSeed;
+
     public TokenIssuer TokenIssuer { get; } = new(new JwtOptions { Key = SigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 });
 
     private readonly IHost _host = new HostBuilder()
@@ -47,7 +56,7 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<IMatchArchive>(LiveShared.Archive);
                 services.AddSingleton<IPlayerRepository>(LiveShared.Players);
                 services.AddSingleton<IClock>(new TimeProviderClock(LiveShared.TimeProvider));
-                services.AddSingleton<IIdFactory>(new FakeIdFactory());
+                services.AddSingleton<IIdFactory>(new FakeIdFactory(Interlocked.Add(ref _idSeed, 100_000)));
                 services.AddSingleton<QuestionSetBuilder>();
                 services.AddSignalR();
                 services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
