@@ -11,6 +11,13 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.10" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.11" />
+  </ItemGroup>
+
+  <!-- LiveClient's reconnect wiring is tested against a real (unstarted) HubConnection, which needs
+       a seam the public API has no reason to expose otherwise. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quesshi.Web.Tests" />
   </ItemGroup>
 
   <ItemGroup>
