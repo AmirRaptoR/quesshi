@@ -25,8 +25,41 @@
             <div class="card stat"><div class="stat__value">@L.Num(_data.Players)</div><div class="stat__label">@L["admin.players"]</div></div>
             <div class="card stat"><div class="stat__value">@L.Num(_data.Approved)</div><div class="stat__label">@L["admin.approved"]</div></div>
             <div class="card stat"><div class="stat__value">@L.Num(_data.Pending)</div><div class="stat__label">@L["admin.pending"]</div></div>
-            <div class="card stat"><div class="stat__value">@L.Num(_data.Matches)</div><div class="stat__label">@L["admin.matches"]</div></div>
+            <div class="card stat">
+                <div class="stat__value">@L.Num(_data.Matches)</div>
+                <div class="stat__label">@L["admin.matches"] (@L.Num(_data.LiveMatches) @L["admin.live"])</div>
+            </div>
         </div>
+
+        <section class="card enter" style="margin-top:1rem">
+            <div class="row row--between">
+                <span class="eyebrow">@L["admin.live"]</span>
+                <label class="row" style="gap:.4rem">
+                    <span class="faint" style="font-size:var(--step--1)">@(_data.LiveEnabled ? L["admin.live.enabled"] : L["admin.live.disabledLabel"])</span>
+                    <input type="checkbox" checked="@_data.LiveEnabled" disabled="@_toggling" @onchange="ToggleLiveAsync" />
+                </label>
+            </div>
+
+            @if (!_data.LiveEnabled)
+            {
+                <div class="notice" style="margin-top:.8rem">@L["admin.live.offNotice"]</div>
+            }
+
+            <div class="grid-2" style="margin-top:.8rem">
+                <div class="stat">
+                    <div class="stat__value">@L.Num(_data.LiveInFlight)</div>
+                    <div class="stat__label">@L["admin.live.inFlight"]</div>
+                </div>
+                <div class="stat">
+                    <div class="stat__value">@L.Num(_data.PlayersConnected)</div>
+                    <div class="stat__label">@L["admin.live.connected"]</div>
+                </div>
+                <div class="stat">
+                    <div class="stat__value">@L.Num(_data.QueueDepth)</div>
+                    <div class="stat__label">@L["admin.live.queueDepth"]</div>
+                </div>
+            </div>
+        </section>
 
         <section class="card enter" style="margin-top:1rem">
             <div class="row row--between">
@@ -133,6 +166,7 @@
     /// <summary>Token counts run to the millions; nobody reads the last six digits.</summary>
     private static string Thousands(long tokens) => tokens < 1000 ? tokens.ToString() : $"{tokens / 1000m:0.#}k";
     private bool _busy;
+    private bool _toggling;
 
     protected override async Task LoadAsync() => _data = await Api.DashboardAsync();
 
@@ -142,5 +176,14 @@
         await Api.GenerateNowAsync();
         await LoadAsync();
         _busy = false;
+    }
+
+    private async Task ToggleLiveAsync()
+    {
+        if (_data is null) return;
+        _toggling = true;
+        await Api.SetLiveEnabledAsync(!_data.LiveEnabled);
+        await LoadAsync();
+        _toggling = false;
     }
 }
