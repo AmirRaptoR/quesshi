@@ -1,5 +1,6 @@
 @page "/profile"
 @inherits PageBase
+@inject LobbyClient Lobby
 
 <PageTitle>@L["nav.profile"] · @L["app.name"]</PageTitle>
 
@@ -89,6 +90,12 @@
                         <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
                         <span class="grow">@friend.DisplayName</span>
                         <span class="numeral faint">@L.Num(friend.Score)</span>
+                        @if (friend.Online)
+                        {
+                            <button class="btn btn--sm" disabled="@(_challenging == friend.Id)" @onclick="() => ChallengeAsync(friend.Id)">
+                                @L["profile.challenge"]
+                            </button>
+                        }
                         <button class="btn btn--ghost btn--sm btn--icon" title="@L["profile.remove"]"
                                 aria-label="@L["profile.remove"]" @onclick="() => RemoveAsync(friend.Id)">
                             <Icon Name="close" />
@@ -128,6 +135,7 @@
     private List<FriendDto> _found = [];
     private List<CategoryDto> _categories = [];
     private bool _busy, _saved;
+    private string? _challenging;
 
     protected override async Task LoadAsync()
     {
@@ -159,6 +167,24 @@
     private async Task RemoveAsync(string id)
     {
         if (await Api.RemoveFriendAsync(id)) await RefreshMeAsync();
+    }
+
+    /// <summary>The same language / question count / categories / levels last chosen on Home.razor, or the defaults.</summary>
+    private async Task ChallengeAsync(string targetId)
+    {
+        _challenging = targetId;
+        try
+        {
+            await Lobby.ChallengeAsync(targetId,
+                State.LastLiveLang ?? State.Lang,
+                State.LastLiveQuestionCount ?? 10,
+                State.LastLiveCategories ?? [],
+                State.LastLiveLevels ?? []);
+        }
+        finally
+        {
+            _challenging = null;
+        }
     }
 
     private async Task RefreshMeAsync()

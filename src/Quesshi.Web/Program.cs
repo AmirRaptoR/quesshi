@@ -20,6 +20,14 @@ builder.Services.AddTransient<Func<string, LiveClient>>(sp => hubUrl =>
     return new LiveClient(new Uri(new Uri(builder.HostEnvironment.BaseAddress), hubUrl).ToString(), () => appState.Token);
 });
 
+// One LobbyClient for the whole session — the app shell holds it so an invitation arrives wherever
+// the player is, not just on one page.
+builder.Services.AddScoped(sp =>
+{
+    var appState = sp.GetRequiredService<AppState>();
+    return new LobbyClient(new Uri(new Uri(builder.HostEnvironment.BaseAddress), "/hub/lobby").ToString(), () => appState.Token);
+});
+
 // The admin panel gets its own HttpClient so the two bearer tokens can never be mixed up.
 builder.Services.AddScoped(sp => new AdminHttpClient(new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) }));
 builder.Services.AddScoped<AdminApi>();
