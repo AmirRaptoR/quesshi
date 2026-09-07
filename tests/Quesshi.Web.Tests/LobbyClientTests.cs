@@ -41,4 +41,13 @@ public class LobbyClientTests
     {
         Assert.Equal(TimeSpan.FromSeconds(20), LobbyClient.HeartbeatInterval);
     }
+
+    [Fact]
+    public async Task IsConnected_is_false_for_a_never_started_connection()
+    {
+        await using var client = NewClient();
+
+        Assert.False(client.IsConnected);
+        Assert.Equal(HubConnectionState.Disconnected, client.Connection.State);
+    }
 }

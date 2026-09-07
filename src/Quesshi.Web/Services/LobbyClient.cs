@@ -47,6 +47,9 @@ public sealed class LobbyClient : IAsyncDisposable
 
     internal HubConnection Connection => _connection;
 
+    /// <summary>Whether the underlying connection is currently usable for an invoke.</summary>
+    public bool IsConnected => _connection.State == HubConnectionState.Connected;
+
     /// <summary>Queues the caller for a random live opponent. Null means: now waiting, the duel
     /// could not be built, or the caller already holds a pending challenge — <c>QueueFailed</c> on
     /// <see cref="Connection"/> distinguishes the second from the other two.</summary>
