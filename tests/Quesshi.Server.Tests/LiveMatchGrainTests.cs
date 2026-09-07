@@ -68,6 +68,41 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         throw new TimeoutException($"Never saw {count} '{kind}' events for {matchId}.");
     }
 
+    // ---- Dependency direction ----
+
+    [Fact]
+    public void Quesshi_grains_csproj_references_no_aspnet_or_signalr_package_and_no_server_project()
+    {
+        var csproj = ReadRepoFile("src", "Quesshi.Grains", "Quesshi.Grains.csproj");
+        Assert.DoesNotContain("Microsoft.AspNetCore", csproj);
+        Assert.DoesNotContain("SignalR", csproj);
+        Assert.DoesNotContain("Quesshi.Server.csproj", csproj);
+    }
+
+    [Fact]
+    public void Quesshi_application_csproj_gains_no_reference_to_grains_or_orleans()
+    {
+        var csproj = ReadRepoFile("src", "Quesshi.Application", "Quesshi.Application.csproj");
+        Assert.DoesNotContain("Quesshi.Grains", csproj);
+        Assert.DoesNotContain("Orleans", csproj);
+    }
+
+    [Fact]
+    public void Quesshi_grains_abstractions_csproj_still_references_only_the_orleans_sdk()
+    {
+        var csproj = ReadRepoFile("src", "Quesshi.Grains.Abstractions", "Quesshi.Grains.Abstractions.csproj");
+        var packageRefs = System.Text.RegularExpressions.Regex.Matches(csproj, "<PackageReference Include=\"([^\"]+)\"");
+        Assert.Equal(["Microsoft.Orleans.Sdk"], packageRefs.Select(m => m.Groups[1].Value));
+    }
+
+    private static string ReadRepoFile(params string[] relativeParts)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Quesshi.slnx"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        return File.ReadAllText(Path.Combine([dir!.FullName, .. relativeParts]));
+    }
+
     // ---- Create / Join ----
 
     [Fact]
