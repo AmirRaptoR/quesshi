@@ -71,19 +71,42 @@ Retrying naively is no better: `LiveMatchSettlement`'s own remarks say it has no
 and "a caller that settles twice will apply every effect twice", and `ILeaderboard.AddAsync` is an
 increment, not a set.
 
-So settlement needs durable progress, in the grain's own state next to the match:
+A progress checkpoint in the grain is necessary but **not sufficient**, and it is worth being precise
+about why: a checkpoint written *after* the effects still duplicates them when the crash lands
+between the effect and the checkpoint, and one written *before* loses them when the crash lands the
+other way. Retry safety has to live with the effect, not beside it.
 
-- `SettledPlayers`, a set of player ids, and a `SettlementComplete` flag.
-- Settlement walks the participants; for each one not already in `SettledPlayers` it applies that
-  player's effects — `ApplyResultAsync`, the leaderboard increment, `RecordAbandonmentAsync` — then
-  adds the id and persists. Effects are therefore keyed by (match, player) and applied at most once.
-- `OnActivateAsync` resumes: a match that `IsOver` with `SettlementComplete` false settles the
-  remainder before serving anything.
-- `archive.SaveAsync` is a whole-row upsert and is safe to repeat; only the per-player effects need
-  the guard.
+**The leaderboard stops being incremental.** `ILeaderboard.AddAsync(playerId, delta)` is the only
+reason settlement's leaderboard write is dangerous to repeat. But the leaderboard is a projection of
+something already authoritative — `Player.Stats.TotalScore`, which `RecordResult` and
+`RecordAbandonment` already move with a zero floor. So `AddAsync` and `PenaliseAsync` are replaced by
+`SetAsync(playerId, total)`, called with the player's `TotalScore` after each change. Repeating it is
+a no-op by construction, the floor stops being duplicated in two places, and `PenaliseAsync`'s
+"two penalties racing past the floor" problem disappears with the method.
 
-The recovery test is the point of this: fail storage after the first participant, reactivate, and
-assert every participant is settled exactly once.
+**Stats deduplicate on the player document.** `ApplyResultAsync` and `RecordAbandonmentAsync` take
+the match id and record it in a capped list of settled match ids on `Player`, written in the *same*
+`UpsertAsync` as the stat change — one Mongo write, so the marker and the effect cannot come apart. A
+second call for the same match id is a no-op.
+*Ceiling:* the list is capped (200 entries, oldest evicted), so a duel settling later than 200
+subsequent duels for the same player could double-apply. That is far outside the retry window this
+guards, and the alternative is an unbounded list on a hot document.
+
+**With those two, the grain checkpoint is only an optimisation** — it saves re-walking participants,
+and its loss can no longer corrupt anything. It stays for that reason: `SettledPlayers` plus a
+`SettlementComplete` flag in grain state. `archive.SaveAsync` is a whole-row upsert and was always
+safe to repeat.
+
+### Settlement needs a retry trigger, not just reactivation
+
+Resuming on activation is not enough. `RearmAsync` unregisters the safety-net reminder as soon as the
+match is over, so a transient failure leaves the grain alive with nothing scheduled; once it
+deactivates, nothing brings it back — no player reopens a finished duel. So the reminder is
+unregistered on `SettlementComplete`, not on `IsOver`, and until then it keeps firing settlement.
+
+Tests, and they are the point of all of this: fail between two participants' effects; fail between an
+effect and the checkpoint save; then recover **without anyone touching the match**, and assert every
+participant is settled exactly once.
 
 ## Decisions
 
@@ -93,8 +116,11 @@ assert every participant is settled exactly once.
   Teams are a possible future feature and are deliberately not designed for here.
 - An abandoner ranks below every player who finished, regardless of score, and is penalised on the
   strength of having abandoned rather than on the match's final state.
-- Every mutation of a `Player` goes through `IPlayerGrain`. The repository has one writer.
-- An invitation's lifetime is its lobby's lifetime.
+- Every mutation of a `Player` goes through `IPlayerGrain` — profile edits, bans, results, the
+  leaderboard and the guest claim. The repository has one writer.
+- The leaderboard becomes a projection of `Player.Stats.TotalScore` written absolutely, not a running
+  increment, which is what makes settlement safe to retry.
+- An invitation's lifetime is its lobby's lifetime: ten minutes live, 48 hours async.
 - Settings are editable exactly while the question set is empty. Questions are drawn at Start, which
   is also what makes a legacy record with recorded answers safe to convert.
 - Lobby capacity is 2–8.
@@ -125,12 +151,17 @@ behaviour is unchanged and needs no special case. Joins close at start.
 **Leaving before start** frees the seat. The owner leaving ends the lobby as `NoContest`; ownership
 does not transfer.
 
-**Expiry** is unchanged: `LiveRules.LobbyExpires` measured from `CreatedAt`, settled inside
-`Advance`.
+**Expiry differs by kind, and each kind keeps the deadline it has today.** A live lobby expires
+`LiveRules.LobbyExpires` (10 minutes) after `CreatedAt` and settles to `NoContest` inside `Advance`.
+An async lobby expires `MatchRules.ForfeitAfter` (48 hours) after `CreatedAt` and settles to
+`Forfeited` via `TryForfeit`. Neither is changed by this design; the difference is deliberate, since a
+live lobby is a room people are standing in and an async one is an open invitation. Every "the lobby
+expires" below means whichever of those two applies, and an invitation is dead the moment its lobby
+is — there is no window in which an invitation outlives the thing it points at.
 
-**Async lobbies work identically**, with one restriction: nobody may join after start. Late joins
-would make "is this duel finished?" unanswerable, which is too high a price for saving a share-link
-round trip.
+**Async lobbies otherwise work identically**, with one restriction: nobody may join after start. Late
+joins would make "is this duel finished?" unanswerable, which is too high a price for saving a
+share-link round trip.
 
 ### Settings live on the lobby
 
@@ -174,10 +205,9 @@ never a thing that *creates* a duel — it is a pointer at a lobby that already 
 seconds today, which is right for "your friend is online this second, answer now" and wrong for an
 invitation that is meant to wait for someone offline — a friend connecting a minute later would find
 it already dead. Since the invitation is now only a pointer, it has no business expiring before the
-thing it points at: `ChallengeLifetime` is deleted, and an invitation's expiry *is* its lobby's —
-`LiveRules.LobbyExpires` for a live lobby, `MatchRules.ForfeitAfter` for an async one, and
-immediately on Start. One lifetime, applied identically to storage, reconnect delivery and
-acceptance.
+thing it points at: `ChallengeLifetime` is deleted, and an invitation's expiry *is* its lobby's, as
+defined in Section 1 — ten minutes for a live lobby, 48 hours for an async one, and immediately on
+Start. One lifetime, applied identically to storage, reconnect delivery and acceptance.
 
 ### The exclusivity invariant changes
 
@@ -324,15 +354,38 @@ collision case, as `{id}@guest.invalid` is simply replaced.
 `players.UpsertAsync(_player)`. An upgrade written straight to the repository would be reverted the
 moment that grain next writes — the cached copy still carries `{id}@guest.invalid` and
 `IsGuest = true`, and the next settled match would put them back. So `IPlayerGrain` gains
-`ClaimEmailAsync`, which claims the address, clears the guest flag and seeds the leaderboard under
+`ClaimEmailAsync`, which claims the address, clears the guest flag and refreshes the leaderboard under
 the grain's own serialisation, and the endpoint calls that.
 
-**This is a pre-existing bug wider than the upgrade.** `PUT /api/me` writes with
-`players.UpsertAsync(me)` (`GameEndpoints.cs:47`) while an activated `PlayerGrain` holds a stale
-copy, so a rename or language change today can be silently undone by the next match that settles.
-Since this design has to touch that endpoint anyway (for `AllowGuest` and the avatar), the profile
-write moves onto the grain at the same time. After this, every mutation of a `Player` goes through
-`IPlayerGrain` and the repository is written by exactly one owner.
+**The leaderboard write must move into the grain too.** Settlement currently updates the leaderboard
+itself, outside `PlayerGrain`, and reads `IsGuest` through the repository to decide whether to. That
+interleaves: settlement banks 100 into a guest's stats, an upgrade seeds the leaderboard from the new
+total, then settlement — holding its own stale view — writes the same 100 again. Result application,
+the guest-eligibility check and the leaderboard write therefore all happen inside `PlayerGrain`, for
+both match types, so they are serialised against each other and against the claim. `SetAsync`'s
+absolute value makes the residual interleavings harmless rather than merely unlikely.
+
+**The upgrade has to replace the session token.** `TokenIssuer` stamps the guest claim from
+`player.IsGuest` at issue time (`TokenIssuer.cs:25`) and authorization reads that claim, not the
+database — so clearing the flag while the browser still holds the old JWT leaves the upgraded player
+guest-forbidden from every account-only endpoint and from `LobbyHub`. The upgrade therefore returns a
+full sign-in result exactly as `/api/auth/otp/verify` does: a fresh token with no guest claim, plus
+the player. The client stores it, `AppState` re-applies it (clearing `IsGuest` and the guest match
+keys), and `MainLayout.SyncLobbyConnectionAsync` reconnects the lobby hub with the new token — which
+it already does on any state change, so this needs no new plumbing, only the correct state change.
+
+**This is a pre-existing bug wider than the upgrade.** Two endpoints write player documents behind
+the grain's back:
+
+- `PUT /api/me` (`GameEndpoints.cs:47`), so a rename or language change can be silently undone by the
+  next match that settles;
+- `POST /admin/users/{id}/ban` (`AdminEndpoints.cs:239`), which is worse — a later grain write can
+  **undo a ban**, and an overlapping admin write can just as easily overwrite a profile change or a
+  claimed email.
+
+Both move onto `IPlayerGrain` (`UpdateProfileAsync`, `SetBannedAsync`). Only then is the claim about
+a single writer true, and only then is the ban durable. After this, every mutation of a `Player` goes
+through `IPlayerGrain` and the repository has exactly one writer.
 
 **When the address already has an account**, the upgrade is refused with a clear message and ordinary
 sign-in is offered instead; the guest history stays behind. Merging two player rows means reconciling
@@ -411,9 +464,10 @@ Each step green before the next.
 4. **Server** — lobby endpoints, invitation changes on `LobbyHub`.
 5. **Web** — the lobby page, roster and settings controls, standings on the results screen, guest
    name and avatar editing.
-6. **Player writes onto the grain** — `PUT /api/me` through `IPlayerGrain`, `AllowGuest` on it, the
-   avatar field. Independent of the lobby work and fixes a live bug, so it can move earlier if the
-   stale-cache clobbering is biting.
+6. **Player writes onto the grain** — `PUT /api/me` and the admin ban endpoint through `IPlayerGrain`,
+   `AllowGuest` on the `PUT`, the avatar field, and the leaderboard moved inside the grain as an
+   absolute `SetAsync`. Independent of the lobby work and fixes two live bugs, so it can move earlier
+   — and step 0 wants the `SetAsync` change anyway, so in practice that part lands with step 0.
 7. **Guest upgrade** — last, because it depends only on step 6 and should not hold the rest up.
 
 Step 0 is visible — live duels start affecting stats and the leaderboard, which they should have been
