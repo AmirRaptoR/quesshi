@@ -28,8 +28,10 @@ public sealed class Match
     public string Id { get; }
     public string Code { get; }
 
-    /// <summary>What the lobby's owner picked, and what the question set is drawn from at start.</summary>
-    public DuelSettings Settings { get; }
+    /// <summary>What the lobby's owner picked, and what the question set is drawn from at start.
+    /// Privately settable rather than init-only: see <see cref="UpdateSettings"/>, the one place it
+    /// ever changes after construction.</summary>
+    public DuelSettings Settings { get; private set; }
 
     public Language Lang => Settings.Language;
 
@@ -163,11 +165,88 @@ public sealed class Match
 
         // A capacity-2 lobby starting the instant its second seat fills is not a special case of
         // this rule — it is this rule, with Capacity == 2. That is exactly what keeps 1v1 behaviour
-        // unchanged: the owner-presses-Start affordance a bigger lobby needs is a later step's
-        // concern (see DrawQuestions' remarks), and a two-seat lobby can never be in a state where
-        // it applies.
-        if (_participants.Count == Capacity)
-            State = MatchState.InProgress;
+        // unchanged: the owner-presses-Start affordance a bigger lobby needs (see Start) never gets a
+        // chance to apply, because a two-seat lobby can never be in a state where it is needed — the
+        // very join that seats the second player is always also the one that reaches Capacity.
+        if (_participants.Count == Capacity) BeginDuel();
+    }
+
+    /// <summary>
+    /// The actual state flip out of the lobby, shared by the two doors that reach it: <see cref="Join"/>
+    /// reaching <see cref="Capacity"/> on its own, and the owner's explicit <see cref="Start"/>. Neither
+    /// caller may invoke this before the question set is ready — the grain draws it (via
+    /// <see cref="DrawQuestions"/>) one join early for the auto-start case, and <see cref="Start"/>
+    /// checks <see cref="QuestionIds"/> itself before ever calling in here.
+    /// </summary>
+    private void BeginDuel() => State = MatchState.InProgress;
+
+    /// <summary>
+    /// The owner's explicit counterpart to <see cref="Join"/>'s auto-start: starts the duel once at
+    /// least two are seated, for a lobby with room to spare that nobody is going to fill the rest of.
+    /// Refused for anyone but the owner, below two participants, once the lobby has already left
+    /// <see cref="MatchState.AwaitingOpponent"/>, or while <see cref="QuestionIds"/> is still empty —
+    /// the grain draws the question set (via <see cref="DrawQuestions"/>) before ever calling this,
+    /// since that needs the question bank it owns, not this class.
+    /// </summary>
+    public bool Start(string playerId, DateTimeOffset now)
+    {
+        if (State != MatchState.AwaitingOpponent || playerId != OwnerId || _participants.Count < 2 || _questionIds.Count == 0)
+            return false;
+
+        BeginDuel();
+        return true;
+    }
+
+    /// <summary>
+    /// A seated, non-owner player gives up their seat before the duel starts, freeing it for someone
+    /// else to take. The owner cannot leave this way — there is no ownership transfer, so an owner's
+    /// departure has to end the whole lobby instead (see <see cref="Cancel"/>). Settles the deadline
+    /// first, mirroring <see cref="Join"/>. Returns false if nothing changed: the lobby has already
+    /// left <see cref="MatchState.AwaitingOpponent"/>, the caller is the owner, or the caller was
+    /// never seated.
+    /// </summary>
+    public bool Leave(string playerId, DateTimeOffset now)
+    {
+        TryForfeit(now);
+        return State == MatchState.AwaitingOpponent && playerId != OwnerId && _participants.Remove(playerId);
+    }
+
+    /// <summary>
+    /// The owner cancels their own lobby before it ever became a duel: <see cref="MatchState.NoContest"/>,
+    /// with no ownership transfer to whoever else is seated — added here for the first time, since
+    /// step 1 left <see cref="MatchState.NoContest"/> supported on this class but produced by nothing.
+    /// Mirrors <see cref="LiveMatch"/>'s own owner-cancel path. Deliberately leaves <see cref="Standings"/>
+    /// empty rather than calling <see cref="FinishWithStandings"/>: a cancelled lobby credits nobody,
+    /// even a lone owner who had already served themself some questions before cancelling (see
+    /// <c>MatchGrain.SettleAsync</c>'s own guard for why that matters). Settles the deadline first, so
+    /// cancelling an already-expired lobby is a no-op rather than double-ending it. Refused for anyone
+    /// but the owner, or once the lobby has already started or ended.
+    /// </summary>
+    public bool Cancel(string playerId, DateTimeOffset now)
+    {
+        TryForfeit(now);
+        if (State != MatchState.AwaitingOpponent || playerId != OwnerId) return false;
+
+        State = MatchState.NoContest;
+        EndedAt = now;
+        WinnerId = null;
+        IsDraw = false;
+        return true;
+    }
+
+    /// <summary>
+    /// The owner changes what <see cref="DrawQuestions"/> will draw. "Settings are editable exactly
+    /// while the question set is empty" is the one flag this checks — deliberately not a second,
+    /// separate "locked" bit, so a legacy record (whose questions are always already drawn, see
+    /// <see cref="FromSnapshot"/>) is correctly locked out of this too, with no extra state to keep in
+    /// step. Refused for anyone but the owner.
+    /// </summary>
+    public bool UpdateSettings(string playerId, DuelSettings settings)
+    {
+        if (playerId != OwnerId || _questionIds.Count > 0) return false;
+
+        Settings = settings;
+        return true;
     }
 
     public bool IsParticipant(string playerId) => _participants.Contains(playerId);

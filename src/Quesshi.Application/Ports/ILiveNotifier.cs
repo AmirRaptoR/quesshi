@@ -26,14 +26,14 @@ public interface ILiveNotifier
     Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default);
 
     /// <summary>
-    /// The first rematch press: without this the second press has no prompt, and in practice the
-    /// handshake rarely completes. Fired once, to the finished duel's own group.
+    /// A rematch lobby exists for this finished duel — pushed to the finished duel's own group every
+    /// time <c>RequestRematchAsync</c> succeeds, whether this call is the one that created the lobby or
+    /// a later one that landed on the same derived id. There is no separate "somebody wants a rematch"
+    /// push any more: every other participant learns about it as an ordinary invitation, through
+    /// <c>ILobbyNotifier.ChallengeReceivedAsync</c>, not through this duel's own group.
     /// </summary>
-    Task RematchRequestedAsync(string matchId, string playerId, CancellationToken ct = default);
-
-    /// <summary>The second press: a fresh duel now exists. Pushed to the finished duel's group so both clients navigate to it.</summary>
     Task RematchCreatedAsync(string matchId, string newMatchId, CancellationToken ct = default);
 
-    /// <summary>Both sides were ready but the fresh duel could not be built — the kill switch was off, or there were not enough questions.</summary>
+    /// <summary>The lobby could not be created — the live kill switch was off.</summary>
     Task RematchFailedAsync(string matchId, CancellationToken ct = default);
 }

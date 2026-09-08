@@ -9,23 +9,22 @@ using Quesshi.Grains.Abstractions;
 namespace Quesshi.Grains;
 
 /// <summary>
-/// The one grain, on key 0, that owns both doors into a live duel: the random queue and friend
-/// challenges. A player's commitment — waiting, sent, or received — is decided here under one lock,
-/// which is what makes "at most one at a time" true across both doors rather than something each
-/// door has to trust the other to respect. Unlike a challenge, a queue entry is worthless once it goes
-/// stale — <see cref="Ttl"/> matches <c>LobbyHub.PresenceTtl</c> exactly, because a player whose
-/// presence has lapsed is a player whose queue entry has lapsed too.
+/// The one grain, on key 0, that owns the random live queue and relays friend challenges. Renamed
+/// from <c>LiveLobbyGrain</c> (issue #51) — see <see cref="ILiveMatchmakingGrain"/>'s own remarks for
+/// why, and for why the queue keeps a single lock that a challenge no longer needs.
+/// Unlike a challenge, a queue entry is worthless once it goes stale — <see cref="Ttl"/> matches
+/// <c>LobbyHub.PresenceTtl</c> exactly, because a player whose presence has lapsed is a player whose
+/// queue entry has lapsed too.
 /// </summary>
-public sealed class LiveLobbyGrain(
-    [PersistentState("live-lobby", "hot")] IPersistentState<LiveLobbyState> state,
+public sealed class LiveMatchmakingGrain(
+    [PersistentState("live-lobby", "hot")] IPersistentState<LiveMatchmakingState> state,
     QuestionSetBuilder builder,
     IIdFactory ids,
     IMatchArchive archive,
     IClock clock,
     ILobbyNotifier notifier,
-    ILogger<LiveLobbyGrain> logger) : Grain, ILiveLobbyGrain
+    ILogger<LiveMatchmakingGrain> logger) : Grain, ILiveMatchmakingGrain
 {
-    public static readonly TimeSpan ChallengeLifetime = TimeSpan.FromSeconds(45);
     public static readonly TimeSpan Ttl = TimeSpan.FromSeconds(60);
     private const int MaxCodeAttempts = 5;
     private static readonly TimeSpan MinimumDueTime = TimeSpan.FromMilliseconds(1);
@@ -35,14 +34,18 @@ public sealed class LiveLobbyGrain(
     /// <summary>
     /// A challenge that was already overdue when this activation started is expired right away rather
     /// than waiting for a call to notice it; everything still alive gets its timer re-armed against
-    /// the deadline recorded when it was sent. The queue's own stale entries are swept by
+    /// the deadline recorded when it was sent. A challenge left over from before issue #51 — one with
+    /// no <see cref="LiveChallengeView.LobbyId"/>, from when a challenge carried settings instead of a
+    /// pointer — is treated the same way: it means nothing under the new model, so it is expired
+    /// exactly as if its clock had already run out, rather than risking <see cref="AcceptAsync"/>
+    /// trying to join an empty lobby id later. The queue's own stale entries are swept by
     /// <see cref="PruneTickAsync"/>, armed here too, so an empty bucket's count is never stuck stale.
     /// </summary>
     public override async Task OnActivateAsync(CancellationToken ct)
     {
         foreach (var challenge in state.State.Challenges.ToList())
         {
-            if (challenge.ExpiresAt <= clock.Now)
+            if (challenge.ExpiresAt <= clock.Now || string.IsNullOrEmpty(challenge.LobbyId))
             {
                 RemoveAndDisarm(challenge);
                 await SafeNotifyAsync(() => notifier.ChallengeExpiredAsync(challenge.ChallengerId, challenge.ChallengeId));
@@ -66,9 +69,6 @@ public sealed class LiveLobbyGrain(
     public async Task<string?> EnqueueAsync(string playerId, int lang, int questionCount, List<string> categories, List<int> levels)
     {
         Prune();
-
-        // Committed to a challenge already: the queue is not a second door for this player right now.
-        if (HasChallenge(playerId)) return null;
 
         var waiting = state.State.Waiting.FirstOrDefault(w => w.Lang == lang && w.QuestionCount == questionCount && w.PlayerId != playerId);
         if (waiting is not null)
@@ -123,20 +123,21 @@ public sealed class LiveLobbyGrain(
         return Task.FromResult(state.State.Waiting.Count(w => w.Lang == lang && w.QuestionCount == questionCount && w.PlayerId != playerId));
     }
 
-    public async Task<int> ChallengeAsync(string challengeId, string challengerId, string targetId, int lang,
-        int questionCount, List<string> categoryIds, List<int> levels)
+    public async Task<int> ChallengeAsync(string challengeId, string challengerId, string targetId, string lobbyId)
     {
-        // A queue entry nobody has refreshed in a while must not block a challenge that would
-        // otherwise go through cleanly.
-        Prune();
-
         if (challengerId == targetId) return (int)LiveChallengeResult.SelfChallenge;
-        if (HasCommitment(challengerId)) return (int)LiveChallengeResult.CallerCommitted;
-        if (HasCommitment(targetId)) return (int)LiveChallengeResult.TargetCommitted;
+
+        // No exclusivity check here any more (see this grain's own remarks): the only thing worth
+        // verifying is that the lobby being pointed at is real and still open for the invitation to
+        // mean anything, and asking the lobby itself is the only way to know that without duplicating
+        // its rules here.
+        var lobby = GrainFactory.GetGrain<ILiveMatchGrain>(lobbyId);
+        var view = await lobby.GetAsync(challengerId);
+        if (view is null || view.Phase != (int)LivePhase.Lobby) return (int)LiveChallengeResult.NotFound;
 
         var sentAt = clock.Now;
-        var challenge = new LiveChallengeView(challengeId, challengerId, targetId, lang, questionCount,
-            categoryIds, levels, sentAt, sentAt + ChallengeLifetime);
+        var challenge = new LiveChallengeView(challengeId, challengerId, targetId, lobbyId, view.Code,
+            sentAt, view.CreatedAt + LiveRules.LobbyExpires);
 
         state.State.Challenges.Add(challenge);
         await state.WriteStateAsync();
@@ -162,23 +163,25 @@ public sealed class LiveLobbyGrain(
             return new LiveChallengeAcceptResult((int)LiveChallengeResult.Expired, null, challenge.ChallengerId);
         }
 
-        // Removed before the duel is built, not after: both commitments are freed the moment this
-        // challenge is spent, whether or not building the duel goes on to succeed.
+        // Consumed before the join is attempted, not after: an invitation is a one-shot pointer, spent
+        // the instant it is acted on, whether or not the seat is still there by the time this lands.
         RemoveAndDisarm(challenge);
         await state.WriteStateAsync();
 
-        var matchId = await BuildDuelAsync(challenge.ChallengerId, challenge.TargetId, challenge.Lang,
-            challenge.QuestionCount, challenge.CategoryIds, challenge.Levels);
-        if (matchId is null)
+        var lobby = GrainFactory.GetGrain<ILiveMatchGrain>(challenge.LobbyId);
+        var joinResult = (LiveJoinResult)await lobby.JoinAsync(targetId);
+        if (joinResult is LiveJoinResult.Joined or LiveJoinResult.AlreadyIn)
         {
-            await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.ChallengerId, challengeId));
-            await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.TargetId, challengeId));
-            return new LiveChallengeAcceptResult((int)LiveChallengeResult.DuelFailed, null, challenge.ChallengerId);
+            await SafeNotifyAsync(() => notifier.DuelReadyAsync(challenge.ChallengerId, challenge.LobbyId));
+            await SafeNotifyAsync(() => notifier.DuelReadyAsync(challenge.TargetId, challenge.LobbyId));
+            return new LiveChallengeAcceptResult((int)LiveChallengeResult.Accepted, challenge.LobbyId, challenge.ChallengerId);
         }
 
-        await SafeNotifyAsync(() => notifier.DuelReadyAsync(challenge.ChallengerId, matchId));
-        await SafeNotifyAsync(() => notifier.DuelReadyAsync(challenge.TargetId, matchId));
-        return new LiveChallengeAcceptResult((int)LiveChallengeResult.Accepted, matchId, challenge.ChallengerId);
+        // Taken, Full, Expired, SelfJoin or Unknown: the lobby moved on before this invitation was
+        // spent. Both sides are told, the same as the old "the duel could not be built" path.
+        await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.ChallengerId, challengeId));
+        await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.TargetId, challengeId));
+        return new LiveChallengeAcceptResult((int)LiveChallengeResult.DuelFailed, null, challenge.ChallengerId);
     }
 
     public async Task<int> DeclineAsync(string challengeId, string targetId)
@@ -193,19 +196,15 @@ public sealed class LiveLobbyGrain(
         return (int)LiveChallengeResult.Declined;
     }
 
-    public Task<LiveChallengeView?> PendingForAsync(string playerId)
-        => Task.FromResult(state.State.Challenges.FirstOrDefault(c => c.TargetId == playerId && c.ExpiresAt > clock.Now));
-
-    private bool HasChallenge(string playerId)
-        => state.State.Challenges.Any(c => c.ChallengerId == playerId || c.TargetId == playerId);
-
-    private bool HasCommitment(string playerId)
-        => state.State.Waiting.Any(w => w.PlayerId == playerId) || HasChallenge(playerId);
+    public Task<IReadOnlyList<LiveChallengeView>> PendingForAsync(string playerId)
+        => Task.FromResult<IReadOnlyList<LiveChallengeView>>(
+            [.. state.State.Challenges.Where(c => c.TargetId == playerId && c.ExpiresAt > clock.Now).OrderBy(c => c.SentAt)]);
 
     /// <summary>Exactly what <c>LiveEndpoints.CreateAsync</c> does for a code-shared duel: build the
     /// question set, retry a colliding code, create then join. Any failure drops the duel and hands
-    /// back null; the caller is responsible for telling both players. Shared by both doors — a
-    /// challenge's own settings on accept, or the first-queued player's settings on a match.</summary>
+    /// back null; the caller is responsible for telling both players. Used by the random queue only —
+    /// a challenge no longer builds a duel this way, since it now points at a lobby that already
+    /// exists (see <see cref="ChallengeAsync"/>).</summary>
     private async Task<string?> BuildDuelAsync(string challengerId, string opponentId, int lang, int questionCount,
         List<string> categoryIds, List<int> levelInts)
     {
@@ -268,7 +267,7 @@ public sealed class LiveLobbyGrain(
     }
 
     private static LiveChallengeNotice ToNotice(LiveChallengeView c)
-        => new(c.ChallengeId, c.ChallengerId, c.Lang, c.QuestionCount, c.CategoryIds, c.Levels, c.ExpiresAt);
+        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt);
 
     private async Task PruneTickAsync(CancellationToken ct)
     {
@@ -303,7 +302,7 @@ public sealed class LiveLobbyGrain(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "ILobbyNotifier threw in the live lobby; the lobby keeps running.");
+            logger.LogWarning(ex, "ILobbyNotifier threw in the live matchmaking grain; the grain keeps running.");
         }
     }
 }

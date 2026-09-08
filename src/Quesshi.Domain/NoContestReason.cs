@@ -20,5 +20,13 @@ public enum NoContestReason
     Stale,
 
     /// <summary>The lobby's own clock ran out before it ever became a duel.</summary>
-    LobbyExpired
+    LobbyExpired,
+
+    /// <summary>
+    /// The owner deliberately ended their own lobby before it ever became a duel — not a clock running
+    /// out, so it must not be reported or read as <see cref="LobbyExpired"/>. There is no ownership
+    /// transfer: cancelling is the owner's alone, and everyone else seated simply leaves via a normal
+    /// join-time seat release instead.
+    /// </summary>
+    OwnerCancelled
 }

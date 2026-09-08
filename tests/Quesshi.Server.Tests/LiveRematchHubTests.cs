@@ -10,9 +10,10 @@ namespace Quesshi.Server.Tests;
 /// <summary>
 /// <see cref="LiveHub.Rematch"/>'s own job per the issue's technical notes: the guest gate, refusing
 /// a non-participant or a duel with no opponent, and — for two real accounts — that the hub's return
-/// value reflects the grain's handshake. <see cref="LiveHubTests"/>' own class doc explains why a
-/// grain-originated push is never asserted here: this silo and this host are two separate
-/// <c>ILiveNotifier</c> instances, so only the hub call's own return value is provable.
+/// value reflects the grain's idempotent lobby creation (issue #51: no more readiness handshake, so
+/// both participants' presses land on the very same lobby id). <see cref="LiveHubTests"/>' own class
+/// doc explains why a grain-originated push is never asserted here: this silo and this host are two
+/// separate <c>ILiveNotifier</c> instances, so only the hub call's own return value is provable.
 /// </summary>
 [Collection(nameof(LiveClusterCollection))]
 public class LiveRematchHubTests(LiveClusterFixture fixture) : IAsyncDisposable
@@ -127,7 +128,7 @@ public class LiveRematchHubTests(LiveClusterFixture fixture) : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Two_real_accounts_pressing_rematch_completes_the_handshake_through_the_hub()
+    public async Task Two_real_accounts_pressing_rematch_both_land_on_the_same_lobby_through_the_hub()
     {
         var (challenger, opponent, matchId) = await NewFinishedDuelAsync();
 
@@ -137,12 +138,12 @@ public class LiveRematchHubTests(LiveClusterFixture fixture) : IAsyncDisposable
         await opponentConn.StartAsync();
 
         var first = await challengerConn.InvokeAsync<RematchOutcomeDto>("Rematch", matchId);
-        Assert.Equal("waiting", first.Status);
-        Assert.Null(first.NewMatchId);
+        Assert.Equal("created", first.Status);
+        Assert.NotNull(first.NewMatchId);
 
         var second = await opponentConn.InvokeAsync<RematchOutcomeDto>("Rematch", matchId);
         Assert.Equal("created", second.Status);
-        Assert.NotNull(second.NewMatchId);
+        Assert.Equal(first.NewMatchId, second.NewMatchId);
     }
 
     [Fact]

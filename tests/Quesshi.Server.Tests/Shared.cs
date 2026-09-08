@@ -9,6 +9,7 @@ public static class Shared
 {
     public static readonly MovableClock Clock = new();
     public static readonly FakeQuestions Questions = new();
+    public static readonly FakeCategories Categories = new();
     public static readonly FakeArchive Archive = new();
     public static readonly FakeLeaderboard Leaderboard = new();
     public static readonly FakePlayers Players = new();

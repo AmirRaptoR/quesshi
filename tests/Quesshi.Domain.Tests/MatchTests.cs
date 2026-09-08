@@ -295,6 +295,137 @@ public class MatchTests
         Assert.Equal(Opponent, m.OpponentId);
     }
 
+    // ---- Start, Leave, Cancel and UpdateSettings ----
+
+    [Fact]
+    public void Start_by_the_owner_with_two_seated_begins_the_duel_with_room_to_spare()
+    {
+        var m = NewMatchN(3); // already drawn
+        m.Join(Opponent, T0);
+
+        Assert.True(m.Start(Challenger, T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+    }
+
+    [Fact]
+    public void Start_is_refused_below_two_participants()
+    {
+        var m = NewMatchN(3);
+        Assert.False(m.Start(Challenger, T0));
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+    }
+
+    [Fact]
+    public void Start_is_refused_for_a_non_owner()
+    {
+        var m = NewMatchN(3);
+        m.Join(Opponent, T0);
+        Assert.False(m.Start(Opponent, T0));
+    }
+
+    [Fact]
+    public void Start_is_refused_once_the_lobby_has_already_started()
+    {
+        var m = Joined3();
+        Assert.False(m.Start(Challenger, T0));
+    }
+
+    [Fact]
+    public void Start_is_refused_while_the_question_set_is_still_undrawn()
+    {
+        var m = Match.Create("m", "C", Challenger, NewSettings(), 3, T0); // no DrawQuestions call
+        m.Join(Opponent, T0);
+        Assert.False(m.Start(Challenger, T0));
+    }
+
+    [Fact]
+    public void Leave_frees_a_non_owner_seat()
+    {
+        var m = NewMatchN(4); // room to spare after two join, so leaving still leaves it short of Capacity
+        m.Join(Opponent, T0);
+        m.Join(Third, T0);
+
+        Assert.True(m.Leave(Opponent, T0));
+        Assert.Equal([Challenger, Third], m.Participants);
+        Assert.Equal(MatchState.AwaitingOpponent, m.State); // still short of Capacity
+    }
+
+    [Fact]
+    public void Leave_is_refused_for_the_owner()
+    {
+        var m = NewMatchN(3);
+        Assert.False(m.Leave(Challenger, T0));
+        Assert.Equal([Challenger], m.Participants);
+    }
+
+    [Fact]
+    public void Leave_is_refused_once_the_duel_has_started()
+    {
+        var m = Joined3();
+        Assert.False(m.Leave(Opponent, T0));
+    }
+
+    [Fact]
+    public void Cancel_by_the_owner_ends_the_lobby_as_no_contest_with_no_ownership_transfer()
+    {
+        var m = NewMatchN(3);
+        m.Join(Opponent, T0);
+
+        Assert.True(m.Cancel(Challenger, T0));
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.True(m.IsOver);
+        Assert.Null(m.WinnerId);
+        Assert.False(m.IsDraw);
+        Assert.Empty(m.Standings); // nobody is credited
+        Assert.Equal(Challenger, m.OwnerId); // no ownership transfer
+    }
+
+    [Fact]
+    public void Cancel_is_refused_for_a_non_owner()
+    {
+        var m = NewMatchN(3);
+        m.Join(Opponent, T0);
+        Assert.False(m.Cancel(Opponent, T0));
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+    }
+
+    [Fact]
+    public void Cancel_is_refused_once_the_duel_has_started()
+    {
+        var m = Joined3();
+        Assert.False(m.Cancel(Challenger, T0));
+    }
+
+    [Fact]
+    public void UpdateSettings_changes_settings_while_the_question_set_is_still_empty()
+    {
+        var m = Match.Create("m", "C", Challenger, NewSettings(), 3, T0);
+        var next = DuelSettings.Create(Language.Fa, 20, ["geography"], [Difficulty.Hard]);
+
+        Assert.True(m.UpdateSettings(Challenger, next));
+        Assert.Equal(next, m.Settings);
+    }
+
+    [Fact]
+    public void UpdateSettings_is_refused_once_the_question_set_is_drawn()
+    {
+        var m = NewMatchN(3); // NewMatchN already draws
+        var original = m.Settings;
+
+        Assert.False(m.UpdateSettings(Challenger, DuelSettings.Create(Language.Fa, 20, [], [])));
+        Assert.Equal(original, m.Settings);
+    }
+
+    [Fact]
+    public void UpdateSettings_is_refused_for_a_non_owner()
+    {
+        var m = Match.Create("m", "C", Challenger, NewSettings(), 3, T0);
+        var original = m.Settings;
+
+        Assert.False(m.UpdateSettings(Opponent, DuelSettings.Create(Language.Fa, 20, [], [])));
+        Assert.Equal(original, m.Settings);
+    }
+
     // ---- N-player standings ----
 
     [Fact]

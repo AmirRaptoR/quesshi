@@ -8,6 +8,8 @@ public class MatchGrainTests(ClusterFixture fixture)
 {
     private const string Amir = "p-amir";
     private const string Sara = "p-sara";
+    private const string Vahid = "p-vahid";
+    private const string Stranger = "p-stranger2";
 
     private IMatchGrain NewMatch(out string id, out List<string> questionIds)
     {
@@ -16,9 +18,25 @@ public class MatchGrainTests(ClusterFixture fixture)
         return fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id);
     }
 
+    /// <summary>A capacity-aware lobby, created through <see cref="IMatchGrain.CreateLobbyAsync"/> with
+    /// no question set drawn yet — seeds a fresh bank first, so a later auto-start or
+    /// <c>StartAsync</c> always has enough questions to draw regardless of what other tests already
+    /// pulled from the shared bank.</summary>
+    private async Task<(IMatchGrain Grain, string Id)> NewLobbyAsync(string code, string owner, int capacity)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        SeedQuestions(id);
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id);
+        await grain.CreateLobbyAsync(code, owner, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], capacity);
+        return (grain, id);
+    }
+
     /// <summary>Six questions where the correct answer is always index 0, so tests can pick deliberately.</summary>
     private static List<string> SeedQuestions(string prefix)
     {
+        if (Shared.Categories.Items.All(c => c.Id != "geography"))
+            Shared.Categories.Items.Add(new Category("geography", "جغرافیا", "Geography", "globe", "#336699"));
+
         var ids = new List<string>();
         for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)
         {
@@ -213,5 +231,193 @@ public class MatchGrainTests(ClusterFixture fixture)
 
         Assert.True(Shared.Leaderboard.Scores.ContainsKey(Amir));
         Assert.False(Shared.Leaderboard.Scores.ContainsKey(guest.Id));
+    }
+
+    // ---- Lobby: capacity, Start, Leave, UpdateSettings (issue #51) ----
+
+    [Fact]
+    public async Task CreateLobbyAsync_opens_a_lobby_with_no_questions_drawn_and_only_the_owner_seated()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY1", Amir, capacity: 3);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, view!.State);
+        Assert.Empty(view.QuestionIds); // nothing drawn yet
+    }
+
+    [Fact]
+    public async Task JoinAsync_seats_up_to_capacity_and_refuses_a_latecomer()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY2", Amir, capacity: 3);
+
+        Assert.True(await grain.JoinAsync(Sara));
+        Assert.True(await grain.JoinAsync(Vahid)); // fills capacity, auto-starts
+        Assert.False(await grain.JoinAsync(Stranger));
+        Assert.True(await grain.JoinAsync(Sara)); // idempotent for someone already seated
+    }
+
+    [Fact]
+    public async Task Reaching_capacity_auto_starts_and_draws_a_real_playable_question_set()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY3", Amir, capacity: 3);
+
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // the third seat fills capacity
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.InProgress, view!.State);
+        Assert.Equal(MatchRules.QuestionsPerMatch, view.QuestionIds.Count); // questions were drawn
+
+        var served = await grain.ServeNextAsync(Vahid); // the third seat is a real, playable participant
+        Assert.NotNull(served);
+    }
+
+    [Fact]
+    public async Task A_capacity_two_match_created_through_CreateLobbyAsync_behaves_exactly_like_a_1v1_today()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY4", Amir, capacity: 2);
+
+        // The second join is the only thing that ever happens — nobody calls StartAsync, exactly as
+        // a 1v1 works today, and it both seats the opponent and begins the duel in the same call.
+        Assert.True(await grain.JoinAsync(Sara));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.InProgress, view!.State);
+        Assert.Equal(MatchRules.QuestionsPerMatch, view.QuestionIds.Count);
+
+        await PlayAsync(grain, Amir, correctCount: 6);
+        await PlayAsync(grain, Sara, correctCount: 2);
+
+        var resolved = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.Resolved, resolved!.State);
+        Assert.Equal(Amir, resolved.WinnerId);
+    }
+
+    [Fact]
+    public async Task StartAsync_is_owner_only_and_requires_two_seated()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY5", Amir, capacity: 3);
+
+        Assert.False(await grain.StartAsync(Amir)); // only the owner is seated so far
+
+        await grain.JoinAsync(Sara);
+        Assert.False(await grain.StartAsync(Sara)); // seated, but not the owner
+
+        Assert.True(await grain.StartAsync(Amir));
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.InProgress, view!.State);
+        Assert.Equal(MatchRules.QuestionsPerMatch, view.QuestionIds.Count); // Start drew the question set
+    }
+
+    [Fact]
+    public async Task StartAsync_is_refused_once_the_lobby_has_already_started()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY6", Amir, capacity: 2);
+        await grain.JoinAsync(Sara); // auto-starts at capacity 2
+
+        Assert.False(await grain.StartAsync(Amir));
+    }
+
+    [Fact]
+    public async Task LeaveAsync_frees_a_seat_for_someone_else_to_take()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY7", Amir, capacity: 3);
+        await grain.JoinAsync(Sara); // one seat still open
+
+        Assert.True(await grain.LeaveAsync(Sara));
+        var afterLeave = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, afterLeave!.State);
+
+        // The freed seat is really free: someone new can take it.
+        Assert.True(await grain.JoinAsync(Vahid));
+    }
+
+    [Fact]
+    public async Task LeaveAsync_by_the_owner_ends_the_lobby_as_no_contest_with_no_ownership_transfer()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY8", Amir, capacity: 3);
+        await grain.JoinAsync(Sara); // one seat still open
+
+        Assert.True(await grain.LeaveAsync(Amir));
+
+        var view = await grain.GetAsync(Sara); // Sara is still a participant even though the duel is over
+        Assert.Equal((int)MatchState.NoContest, view!.State);
+    }
+
+    /// <summary>
+    /// Before Cancel existed, MatchState.NoContest was reachable on Match only in the abstract — step 1
+    /// left it "supported but produced by nothing". A lone owner can play through the pre-lobby
+    /// compatibility overload (questions already drawn, exactly like The_challenger_can_play_before_
+    /// anyone_joins) while still AwaitingOpponent, so cancelling after playing some is a real sequence,
+    /// not a hypothetical: MatchGrain.SettleAsync must not score that as a Loss just because
+    /// WinnerId/IsDraw both read "nobody in first place" for a cancelled lobby.
+    /// </summary>
+    [Fact]
+    public async Task LeaveAsync_by_the_owner_after_playing_some_of_a_pre_drawn_lobby_settles_nothing()
+    {
+        // Ids of its own, never used by any other test in this file: Shared.Players/Shared.Leaderboard
+        // are one process-wide store for the whole run (see A_finished_async_duel_moves_player_stats_
+        // and_the_leaderboard's own remarks), and this test's whole point is that settlement never
+        // touches either of them.
+        var grain = NewMatch(out _, out var questionIds);
+        const string owner = "p-cancel-owner";
+        await grain.CreateAsync((int)Language.En, owner, questionIds, "MLOBBY8B");
+
+        var served = await grain.ServeNextAsync(owner);
+        await grain.AnswerAsync(owner, served!.Slot, 0);
+
+        Assert.True(await grain.LeaveAsync(owner));
+
+        var view = await grain.GetAsync(owner);
+        Assert.Equal((int)MatchState.NoContest, view!.State);
+
+        // Nobody is credited or penalised for a cancelled lobby.
+        Assert.Null(await Shared.Players.GetAsync(owner));
+        Assert.False(Shared.Leaderboard.Scores.ContainsKey(owner));
+    }
+
+    [Fact]
+    public async Task LeaveAsync_is_refused_for_a_stranger_and_once_the_match_has_started()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY9", Amir, capacity: 2);
+        Assert.False(await grain.LeaveAsync(Stranger)); // never seated
+
+        await grain.JoinAsync(Sara); // auto-starts at capacity 2
+        Assert.False(await grain.LeaveAsync(Sara)); // no longer in the lobby
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_owner_only_and_refused_once_questions_are_drawn()
+    {
+        var (grain, id) = await NewLobbyAsync("MLOBBY10", Amir, capacity: 3);
+        SeedQuestions(id + "-extra"); // 20 total distinct En/geography questions, regardless of test order
+
+        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, [], [])); // not the owner
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], []));
+
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // fills capacity -- draws 20 questions, per the updated settings
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(20, view!.QuestionIds.Count);
+
+        // Questions are drawn now, so settings can no longer change.
+        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], []));
+    }
+
+    [Fact]
+    public async Task An_unjoined_lobby_forfeits_after_48_hours_via_the_reminder()
+    {
+        var (grain, id) = await NewLobbyAsync("MLOBBY11", Amir, capacity: 2);
+
+        Shared.Clock.Advance(MatchRules.ForfeitAfter + TimeSpan.FromMinutes(1));
+
+        // Drives the same reminder ReceiveReminder is registered under in CreateAsync/CreateLobbyAsync,
+        // without waiting on Orleans's own real-time reminder schedule for a 48-hour due time.
+        await fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id)
+            .AsReference<Orleans.IRemindable>().ReceiveReminder("forfeit", default);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.Forfeited, view!.State);
     }
 }

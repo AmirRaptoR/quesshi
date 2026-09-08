@@ -185,6 +185,125 @@ public class LiveMatchTests
         Assert.Equal(Opponent, m.OpponentId);
     }
 
+    // ---- Start, Leave and UpdateSettings ----
+
+    [Fact]
+    public void Start_by_the_owner_with_two_seated_begins_the_duel_with_room_to_spare()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        m.DrawQuestions(Ten);
+        m.Join(Opponent, T0);
+
+        Assert.True(m.Start(Challenger, T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+        Assert.Equal(LivePhase.Countdown, m.Phase);
+        Assert.Equal(T0 + LiveRules.StartCountdown, m.PhaseEndsAt);
+    }
+
+    [Fact]
+    public void Start_is_refused_below_two_participants()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        m.DrawQuestions(Ten);
+
+        Assert.False(m.Start(Challenger, T0));
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+    }
+
+    [Fact]
+    public void Start_is_refused_for_a_non_owner()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        m.DrawQuestions(Ten);
+        m.Join(Opponent, T0);
+
+        Assert.False(m.Start(Opponent, T0));
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+    }
+
+    [Fact]
+    public void Start_is_refused_once_the_lobby_has_already_started()
+    {
+        var m = Joined(); // capacity 2, already started
+        Assert.False(m.Start(Challenger, T0));
+    }
+
+    [Fact]
+    public void Start_is_refused_while_the_question_set_is_still_undrawn()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        m.Join(Opponent, T0); // no DrawQuestions call
+
+        Assert.False(m.Start(Challenger, T0));
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+    }
+
+    [Fact]
+    public void Leave_frees_a_non_owner_seat()
+    {
+        // Capacity 4, room to spare after two join, so leaving still leaves it short of Capacity.
+        var m = LiveMatch.Create("lm4", "CODE04", Challenger, NewSettings(), capacity: 4, T0);
+        m.DrawQuestions(Ten);
+        m.Join(Opponent, T0);
+        m.Join(Third, T0);
+
+        Assert.True(m.Leave(Opponent, T0));
+        Assert.Equal([Challenger, Third], m.Participants);
+        Assert.Equal(LivePhase.Lobby, m.Phase); // still short of Capacity
+    }
+
+    [Fact]
+    public void Leave_is_refused_for_the_owner()
+    {
+        var m = NewMatch(capacity: 3);
+        Assert.False(m.Leave(Challenger, T0));
+        Assert.Equal([Challenger], m.Participants);
+    }
+
+    [Fact]
+    public void Leave_is_refused_once_the_duel_has_started()
+    {
+        var m = Joined(); // capacity 2, already started
+        Assert.False(m.Leave(Opponent, T0));
+    }
+
+    [Fact]
+    public void Leave_is_refused_for_someone_not_seated()
+    {
+        var m = NewMatch(capacity: 3);
+        Assert.False(m.Leave(Third, T0));
+    }
+
+    [Fact]
+    public void UpdateSettings_changes_settings_while_the_question_set_is_still_empty()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        var next = DuelSettings.Create(Language.Fa, 20, ["geography"], [Difficulty.Hard]);
+
+        Assert.True(m.UpdateSettings(Challenger, next));
+        Assert.Equal(next, m.Settings);
+    }
+
+    [Fact]
+    public void UpdateSettings_is_refused_for_a_non_owner()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        var original = m.Settings;
+
+        Assert.False(m.UpdateSettings(Opponent, DuelSettings.Create(Language.Fa, 20, [], [])));
+        Assert.Equal(original, m.Settings);
+    }
+
+    [Fact]
+    public void UpdateSettings_is_refused_once_the_question_set_is_drawn()
+    {
+        var m = NewMatch(capacity: 3); // NewMatch already draws
+        var original = m.Settings;
+
+        Assert.False(m.UpdateSettings(Challenger, DuelSettings.Create(Language.Fa, 20, [], [])));
+        Assert.Equal(original, m.Settings);
+    }
+
     // ---- Create (pre-lobby compatibility overload) ----
 
     [Theory]
@@ -291,11 +410,27 @@ public class LiveMatchTests
         Assert.Equal(LiveJoinResult.AlreadyIn, m.TryJoin(Opponent, T0));
     }
 
+    /// <summary>
+    /// A capacity-2 lobby can only ever close by filling — there is no "started early with room to
+    /// spare" for it — so a stranger arriving once both seats are taken sees <see cref="LiveJoinResult.Full"/>,
+    /// not <see cref="LiveJoinResult.Taken"/>. See <see cref="TryJoin_reports_taken_for_an_early_owner_start_with_room_to_spare"/>
+    /// for the case Taken is actually for.
+    /// </summary>
     [Fact]
     public void TryJoin_refuses_a_stranger_once_the_seat_is_taken()
     {
         var m = Joined();
-        Assert.Equal(LiveJoinResult.Taken, m.TryJoin("u-stranger", T0));
+        Assert.Equal(LiveJoinResult.Full, m.TryJoin("u-stranger", T0));
+    }
+
+    [Fact]
+    public void TryJoin_reports_taken_for_an_early_owner_start_with_room_to_spare()
+    {
+        var m = NewMatch(capacity: 3);
+        m.Join(Opponent, T0);
+        Assert.True(m.Start(Challenger, T0)); // only 2 of 3 seats filled
+
+        Assert.Equal(LiveJoinResult.Taken, m.TryJoin(Third, T0));
     }
 
     [Fact]
