@@ -268,6 +268,7 @@
   "live.end.noContest": "کسی امتیاز نگرفت. حساب نمی‌شود.",
   "live.lobby.cancel": "لغو",
   "live.lobby.expiresIn": "انقضا تا {0} ثانیهٔ دیگر",
+  "live.lobby.expiresInMinutes": "انقضا تا {0} دقیقهٔ دیگر",
   "live.lobby.waiting": "در انتظار حریف…",
   "live.opponentAway": "اتصال حریف قطع شد.",
   "live.question.locked": "پاسخ ثبت شد",
