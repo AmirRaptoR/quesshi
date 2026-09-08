@@ -156,6 +156,26 @@ public static class GameEndpoints
             IMatchArchive archive, IPlayerRepository players) =>
             await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players));
 
+        // --- async lobby lifecycle (issue #52) -----------------------------------------------------
+        // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
+        // capacity-aware IMatchGrain.JoinAsync a 2-to-8-seat lobby needs, so an N-player async lobby is
+        // joined exactly as a 1v1 always was.
+        api.MapPost("/matches/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
+            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
+
+        api.MapPost("/matches/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
+            await grains.GetGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "cannot_leave" }));
+
+        api.MapPost("/matches/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
+            await grains.GetGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "cannot_start" }));
+
+        api.MapPut("/matches/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
+            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
+
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
         // report a question you were actually served, and only once.
         api.MapPost("/report", async (ReportQuestionDto body, HttpContext ctx,
@@ -237,6 +257,59 @@ public static class GameEndpoints
 
         return Results.Ok(await SummaryAsync(grain, meId, players));
     }
+
+    /// <summary>
+    /// Opens an N-player async lobby (2-8 seats) with these settings, drawing no questions yet —
+    /// <c>Start</c> draws them from whatever the settings say at that instant. Mirrors
+    /// <see cref="LiveEndpoints.CreateLobbyAsync"/> exactly, capacity validation and question-count
+    /// coercion included, other than not retrying a colliding code — the plain <c>POST /matches</c>
+    /// above does not either, and a lobby-create should not behave differently from the creation path
+    /// it sits beside.
+    /// </summary>
+    internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
+        IIdFactory ids, IPlayerRepository players)
+    {
+        if (body.Capacity is < 2 or > 8) return Results.BadRequest(new { error = "bad_capacity" });
+
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var count = CoerceQuestionCount(body.Questions);
+        var levels = CoerceLevels(body.Levels);
+
+        var matchId = ids.NewId();
+        var grain = grains.GetGrain<IMatchGrain>(matchId);
+        var view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+
+        return Results.Ok(await ToSummaryAsync(view, meId, players));
+    }
+
+    internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
+        IGrainFactory grains, IPlayerRepository players)
+    {
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var count = CoerceQuestionCount(body.Questions);
+        var levels = CoerceLevels(body.Levels);
+
+        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
+    }
+
+    /// <summary>Mirrors <see cref="QuestionSetBuilder.BuildAsync"/>'s own coercion: a count nobody
+    /// picked from the offered choices is not a request worth refusing, just one worth defaulting.</summary>
+    private static int CoerceQuestionCount(int? questionCount)
+    {
+        var count = questionCount ?? MatchRules.QuestionsPerMatch;
+        return MatchRules.IsValidCount(count) ? count : MatchRules.QuestionsPerMatch;
+    }
+
+    /// <summary>Anything outside 1..5 is dropped rather than rejected — the same coercion every other
+    /// creation path in this file applies.</summary>
+    private static List<int> CoerceLevels(List<int>? levels) => [.. (levels ?? []).Where(l => l is >= 1 and <= 5)];
 
     /// <summary>
     /// Extracted out of the endpoint delegate so a report's guard can be driven directly in a test,

@@ -92,14 +92,33 @@ public static class Mappers
         var over = state is MatchState.Resolved or MatchState.Forfeited;
         var canReveal = mine.Finished || over;
 
-        var outcome = !over ? "pending"
-            : v.IsDraw ? "draw"
-            : v.WinnerId == me ? "win"
-            : v.WinnerId is null ? "draw" : "loss";
+        var outcome = !over ? "pending" : OutcomeFor(me, v.Runs);
 
         return new MatchSummaryDto(v.Id, v.Code, ((Language)v.Lang).Code(), state.ToString().ToLowerInvariant(),
             mine, theirs, v.WinnerId, v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
             v.QuestionIds.Count);
+    }
+
+    /// <summary>
+    /// A per-player outcome ranked from every run's own banked score, never from the match's
+    /// <c>WinnerId</c>/<c>IsDraw</c> scalars — those name only the top of the standings, and reading
+    /// them for an arbitrary player's own result is exactly the bug that would hand a global "draw" to
+    /// everyone once first place is shared, not just to whoever actually shares it. For scores of
+    /// 100, 100, 50 this gives the two 100s "win"/"draw" (they share first) and the 50 "loss", never
+    /// three draws. Ranking purely by score is correct for <see cref="RunView"/>'s own domain, unlike
+    /// <c>LiveMatch.Standings</c>: an async run has no per-round abandonment to rank below everyone
+    /// else regardless of score (see <c>Match.Standings</c>'s own remarks), so "highest score(s) win,
+    /// ties share first" is the entire rule.
+    /// </summary>
+    private static string OutcomeFor(string playerId, IReadOnlyList<RunView> runs)
+    {
+        var mine = runs.FirstOrDefault(r => r.PlayerId == playerId);
+        if (mine is null || runs.Count == 0) return "loss";
+
+        var top = runs.Max(r => r.Score);
+        if (mine.Score != top) return "loss";
+
+        return runs.Count(r => r.Score == top) > 1 ? "draw" : "win";
     }
 
     /// <summary>
@@ -127,10 +146,23 @@ public static class Mappers
             theirs = new PlayerSideDto(otherId, name, avatar, otherScore, 0, 0, over);
         }
 
-        var outcome = !over ? "pending"
-            : m.IsDraw ? "draw"
-            : m.WinnerId == me ? "win"
-            : m.WinnerId is null ? "draw" : "loss";
+        // Every per-player outcome reads Results — the real per-participant Standing this archive row
+        // carries — never the two match-wide scalars: WinnerId/IsDraw name only who occupies (or
+        // shares) first place, and reading them for an arbitrary player's own result is exactly the
+        // bug that hands a global "draw" to everyone once first place is shared. For scores of 100,
+        // 100, 50 this reads two "win"/"draw" results and one "loss" from Results, never three draws.
+        // NoContest is its own case, kept exactly as before: it credits nobody, so Results carries
+        // only the unranked Loss placeholder (see ParticipantResult's own remarks) rather than a real
+        // Standing, and "draw" — nobody won, not "everybody lost" — is the honest reading of that.
+        string outcome;
+        if (!over) outcome = "pending";
+        else if (m.State == MatchState.NoContest) outcome = "draw";
+        else outcome = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Outcome switch
+        {
+            MatchOutcome.Win => "win",
+            MatchOutcome.Draw => "draw",
+            _ => "loss"
+        };
 
         return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), m.State.ToString().ToLowerInvariant(),
             mine, theirs, m.WinnerId, m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
@@ -214,5 +246,8 @@ public static class Mappers
         e.State.ToString().ToLowerInvariant(), e.WinnerId, e.IsDraw, e.AbandonedBy,
         [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))], e.Reason);
 
-    public static RematchOutcomeDto ToDto(this RematchOutcome o) => new(((RematchStatus)o.Status).ToString().ToLowerInvariant(), o.NewMatchId);
+    public static LivePlayerEliminatedDto ToDto(this LivePlayerEliminated e) => new(e.PlayerId, e.RoundSlot);
+
+    public static RematchOutcomeDto ToDto(this RematchOutcome o) =>
+        new(((RematchStatus)o.Status).ToString().ToLowerInvariant(), o.NewMatchId, o.NewMatchCode);
 }

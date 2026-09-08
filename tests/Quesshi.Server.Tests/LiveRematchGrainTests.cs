@@ -245,4 +245,50 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
         Assert.Equal((int)RematchStatus.Created, afterRecovery.Status);
         Assert.NotNull(afterRecovery.NewMatchId);
     }
+
+    /// <summary>
+    /// Issue #52's invitation-reach requirement: a guest participant of the finished duel never
+    /// receives the in-app <c>ChallengeAsync</c> invitation every other participant gets — they never
+    /// connect to <c>LobbyHub</c> at all, so one would sit undelivered forever — but the rematch
+    /// lobby's share code still goes out to everyone, guest included, on the finished duel's own
+    /// <c>RematchCreated</c> push. That code is the guest's entire invitation: the link they are
+    /// reached by, exactly as the original duel was.
+    /// </summary>
+    [Fact]
+    public async Task A_guest_participant_gets_no_in_app_invitation_but_the_rematch_code_still_reaches_everyone()
+    {
+        var n = Interlocked.Increment(ref _n);
+        var challengerId = $"{Challenger}-{n}";
+        var guestId = $"rm-guest-{n}";
+        var matchId = Guid.NewGuid().ToString("N");
+        var questionIds = SeedQuestionsFor(SeedCategory().Id, 10);
+
+        LiveShared.Players.Items.Add(Player.Guest(guestId, "Guest", Language.En, LiveShared.TimeProvider.GetUtcNow()));
+
+        var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(matchId);
+        await grain.CreateAsync($"CODE{n}", (int)Language.En, challengerId, questionIds);
+        await grain.JoinAsync(guestId);
+        await grain.EndAsync("test");
+
+        var outcome = await grain.RequestRematchAsync(challengerId);
+
+        Assert.Equal((int)RematchStatus.Created, outcome.Status);
+        Assert.False(string.IsNullOrWhiteSpace(outcome.NewMatchCode));
+
+        // No in-app invitation was ever minted for the guest.
+        var matchmaking = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var pending = await matchmaking.PendingForAsync(guestId);
+        Assert.Empty(pending);
+
+        // The code everyone (guest included) can join the lobby by went out on the duel's own group,
+        // and it is the very code the requester's own return value carries.
+        var created = LiveShared.Notifier.EventsFor(matchId).Single(e => e.Kind == "RematchCreated");
+        var (newMatchId, newMatchCode) = ((string NewMatchId, string NewMatchCode))created.Payload;
+        Assert.Equal(outcome.NewMatchId, newMatchId);
+        Assert.Equal(outcome.NewMatchCode, newMatchCode);
+
+        // The code genuinely resolves the rematch lobby, exactly the way any other invite link does.
+        var byCode = await LiveShared.Archive.ByCodeAsync(newMatchCode);
+        Assert.Equal(outcome.NewMatchId, byCode!.Id);
+    }
 }

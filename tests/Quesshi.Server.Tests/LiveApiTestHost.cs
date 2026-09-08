@@ -11,6 +11,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Hubs;
+using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
 
@@ -60,6 +61,15 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<QuestionSetBuilder>();
                 services.AddSignalR();
                 services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
+
+                // AddQuesshiAuthentication above only needs a TokenIssuer to configure JWT validation
+                // with, not to hand callers one to mint a fresh token with — the guest-join route
+                // mapped below takes TokenIssuer as an ordinary DI parameter, so it has to be
+                // resolvable from the container too. A fresh instance, not the TokenIssuer property:
+                // a field initializer cannot reference another instance member (CS0236), and it need
+                // not be the literal same object anyway — every TokenIssuer built from this SigningKey
+                // mints and validates identically.
+                services.AddSingleton(new TokenIssuer(new JwtOptions { Key = SigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 }));
             });
             web.Configure(app =>
             {
@@ -70,6 +80,17 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
                 {
                     endpoints.MapLive();
                     endpoints.MapHub<LiveHub>("/hub/live");
+
+                    // Only this one guest route, not the full AuthEndpoints.MapAuth() — minimal API
+                    // infers every mapped route's parameter sources (body/service/route) when the
+                    // endpoint data source is first built, not lazily per request, so mapping the OTP
+                    // and Google routes too would require registering AuthService/AuthOptions this
+                    // host has no use for, just to satisfy inference for routes nothing here calls.
+                    endpoints.MapPost("/api/auth/guest/live/{code}", async (string code, GuestJoinDto body,
+                        IMatchArchive archive, IPlayerRepository players, IGrainFactory grains,
+                        IQuestionRepository questions, ICategoryRepository categories, TokenIssuer tokens,
+                        IIdFactory ids, IClock clock) =>
+                        await AuthEndpoints.GuestJoinLiveAsync(code, body, archive, players, grains, questions, categories, tokens, ids, clock));
                 });
             });
         })
