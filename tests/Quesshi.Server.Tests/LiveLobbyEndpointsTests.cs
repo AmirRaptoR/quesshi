@@ -223,4 +223,23 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
             new UpdateDuelSettingsDto("nl", [Category], 20, null), Amir, Grains, LiveShared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
     }
+    [Fact]
+    public async Task The_owner_can_reopen_the_lobby_they_just_created()
+    {
+        // The lobby page loads a lobby by joining the code it was handed, so this is the owner's own
+        // route back into the room they made. It used to come back SelfJoin -- "you cannot join your
+        // own challenge", true when a challenger waited for an opponent instead of holding a seat --
+        // and the page rendered that as "that invite doesn't exist any more". An owner could create a
+        // lobby, share the code, and never see the page they were meant to press Start on.
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 4);
+
+        var again = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Amir);
+
+        Assert.Equal((int)LiveJoinResult.AlreadyIn, again);
+
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Single(view!.Players);            // still one seat taken, not two
+        Assert.Contains(Amir, view.Participants); // and it is still the owner's
+    }
+
 }

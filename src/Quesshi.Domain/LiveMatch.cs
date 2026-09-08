@@ -249,7 +249,12 @@ public sealed class LiveMatch
     /// </summary>
     public LiveJoinResult TryJoin(string playerId, DateTimeOffset now)
     {
-        if (playerId == OwnerId) return LiveJoinResult.SelfJoin;
+        // The owner is Participants[0], not somebody standing outside their own lobby, so "can I
+        // join?" asked by them is answered by the participant check below like anyone else's — they
+        // are already in. This used to return SelfJoin ("you cannot join your own challenge"), which
+        // was true in the old model where a challenger waited for an opponent instead of occupying a
+        // seat, and became a real blocker once a lobby had a page: that page loads by joining, so an
+        // owner opening the lobby they had just created was refused and told the invite did not exist.
         if (_participants.Contains(playerId))
         {
             Advance(now);

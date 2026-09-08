@@ -352,11 +352,18 @@ public class LiveMatchTests
     }
 
     [Fact]
-    public void TryJoin_refuses_the_challenger_as_self_join()
+    public void TryJoin_is_a_no_op_for_the_owner_who_already_holds_seat_zero()
     {
+        // Not a refusal: the owner is Participants[0], so "join" asked by them is already true. It
+        // used to answer SelfJoin -- accurate when a challenger stood outside waiting for an opponent
+        // rather than occupying a seat, and wrong once a lobby became a room with a page that loads
+        // by joining, which left an owner unable to open the lobby they had just made.
         var m = NewMatch();
-        Assert.Equal(LiveJoinResult.SelfJoin, m.TryJoin(Challenger, T0));
-        Assert.Equal(MatchState.AwaitingOpponent, m.State); // untouched
+
+        Assert.Equal(LiveJoinResult.AlreadyIn, m.TryJoin(Challenger, T0));
+
+        Assert.Equal(MatchState.AwaitingOpponent, m.State); // still waiting: no seat was taken
+        Assert.Single(m.Participants);
     }
 
     [Fact]
