@@ -25,3 +25,6 @@ deploy/
 # harmless: deploy refuses to ship over tracked changes, so a stray edit stops a
 # release rather than riding along with it.
 .superpowers/
+
+# Agent worktrees: scratch checkouts, never part of the repository.
+.claude/worktrees/

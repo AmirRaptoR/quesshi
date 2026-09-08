@@ -14,6 +14,21 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # The archive's participant index and its one-time backfill are only meaningfully testable
+    # against a real server: multikey index behaviour, dropping the two indexes it replaces, and a
+    # bulk update over legacy rows are all things an in-memory fake would simply agree with.
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +45,10 @@ jobs:
         run: dotnet build Quesshi.slnx --no-restore --configuration Release
 
       - name: Test
+        # Declaring the connection string makes an unreachable Mongo a test failure rather than a
+        # quiet skip, so the index test cannot rot into a vacuous pass.
+        env:
+          QUESSHI_TEST_MONGO: mongodb://127.0.0.1:27017
         run: dotnet test Quesshi.slnx --no-build --configuration Release --logger "trx;LogFileName=test-results.trx"
 
       - name: Upload test results

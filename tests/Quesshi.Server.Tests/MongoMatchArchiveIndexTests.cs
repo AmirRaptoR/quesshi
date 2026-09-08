@@ -25,12 +25,13 @@ public class MongoMatchArchiveIndexTests
         Environment.GetEnvironmentVariable("QUESSHI_TEST_MONGO") ?? "mongodb://127.0.0.1:27017";
 
     /// <summary>
-    /// A best-effort integration test, not a skip: there is no live-infrastructure marker in this
-    /// project's test framework (xUnit v2 has no runtime <c>Skip.If</c>), and CI does not run a Mongo
-    /// container the way the compose-based dev environment does. A short server-selection timeout
-    /// means an environment with no reachable Mongo returns quickly and quietly rather than hanging or
-    /// failing the whole suite; wherever Mongo *is* reachable — including this repository's own dev
-    /// stack — the real assertions below run for real.
+    /// Reachable Mongo is optional locally and mandatory in CI, which is the only way this test is
+    /// worth having: a test that passes because it silently did nothing is worse than no test, since
+    /// it reports coverage it does not provide. So <c>QUESSHI_TEST_MONGO</c> is a declaration that
+    /// Mongo is supposed to be there — CI sets it against its service container, and failing to reach
+    /// it is a failure, not a shrug. With the variable unset, a developer with no stack running gets
+    /// the quiet return and a short server-selection timeout instead of a hang, and the README's
+    /// promise that only the self-hosting grain tests need anything running still holds.
     /// </summary>
     private static async Task<MongoClient?> TryConnectAsync()
     {
@@ -42,8 +43,9 @@ public class MongoMatchArchiveIndexTests
             await client.GetDatabase("admin").RunCommandAsync((Command<BsonDocument>)"{ ping: 1 }");
             return client;
         }
-        catch
+        catch (Exception ex) when (Environment.GetEnvironmentVariable("QUESSHI_TEST_MONGO") is null)
         {
+            _ = ex;
             return null;
         }
     }
@@ -52,7 +54,7 @@ public class MongoMatchArchiveIndexTests
     public async Task The_multikey_Participants_index_serves_ForPlayerAsync_the_same_rows_the_two_indexes_it_replaces_did()
     {
         var client = await TryConnectAsync();
-        if (client is null) return; // no reachable Mongo in this environment -- see TryConnectAsync's remarks
+        if (client is null) return; // no declared Mongo in this environment -- see TryConnectAsync's remarks
 
         var dbName = $"quesshi_test_{Guid.NewGuid():N}";
         var db = client.GetDatabase(dbName);
