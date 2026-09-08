@@ -230,18 +230,7 @@
                     {
                         <p class="notice notice--bad" style="text-align:center">@L["live.rematch.failed"]</p>
                     }
-                    @if (_rematchPressed)
-                    {
-                        <p class="faint" style="text-align:center">@L["live.rematch.waiting"]</p>
-                    }
-                    else
-                    {
-                        @if (_opponentWantsRematch)
-                        {
-                            <p class="faint" style="text-align:center">@L["live.rematch.theyWantIt"]</p>
-                        }
-                        <button class="btn btn--block" @onclick="RequestRematchAsync">@L["live.rematch.button"]</button>
-                    }
+                    <button class="btn btn--block" disabled="@_rematchPressed" @onclick="RequestRematchAsync">@L["live.rematch.button"]</button>
                 }
                 else if (_view.OpponentId is not null)
                 {
@@ -287,7 +276,6 @@
     private bool _copied;
 
     private bool _rematchPressed;
-    private bool _opponentWantsRematch;
     private bool _rematchFailed;
 
     private Timer? _ticker;
@@ -333,7 +321,6 @@
         _client.OpponentBack += p => OnPresence(p, online: true);
         _client.OpponentAnswered += OnOpponentAnswered;
         _client.Rejoined += OnRejoined;
-        _client.RematchRequested += OnRematchRequested;
         _client.RematchCreated += OnRematchCreated;
         _client.RematchFailed += OnRematchFailed;
         _client.Connection.Reconnecting += _ => Toggle(true);
@@ -355,7 +342,6 @@
 
         _refused = _view is null;
         _rematchPressed = false;
-        _opponentWantsRematch = false;
         _rematchFailed = false;
         SyncLocalAnswerState();
         _boundMatchId = MatchId;
@@ -422,13 +408,6 @@
     {
         if (p.PlayerId == MeId) return; // that push is about my own connection, not theirs
         _opponentOnline = online;
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void OnRematchRequested(RematchRequestedDto r)
-    {
-        if (r.PlayerId == MeId) return; // that push is about my own press, not theirs
-        _opponentWantsRematch = true;
         InvokeAsync(StateHasChanged);
     }
 
@@ -506,8 +485,6 @@
             case "created" when outcome.NewMatchId is not null:
                 Nav.NavigateTo($"/live/{outcome.NewMatchId}");
                 break;
-            case "waiting":
-                break; // the waiting line is already showing
             default: // "refused" or "failed" — nothing to press again for, or the server needs another try
                 _rematchPressed = false;
                 _rematchFailed = outcome.Status == "failed";

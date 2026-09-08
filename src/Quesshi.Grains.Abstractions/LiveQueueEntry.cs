@@ -1,7 +1,7 @@
 namespace Quesshi.Grains.Abstractions;
 
 /// <summary>
-/// One player's place in <see cref="ILiveLobbyGrain"/>'s queue. Categories and levels ride along
+/// One player's place in <see cref="ILiveMatchmakingGrain"/>'s queue. Categories and levels ride along
 /// unused unless this entry turns out to be the one an arriving player is matched against — then
 /// they are what the resulting duel is built from, because whoever queued first sets the terms.
 /// </summary>

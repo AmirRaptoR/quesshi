@@ -80,12 +80,13 @@ public interface ILiveMatchGrain : IGrainWithStringKey
     Task EndAsync(string reason);
 
     /// <summary>
-    /// A participant of a <em>finished</em> duel marks itself ready for a rematch. Symmetric and
-    /// idempotent: the first press records readiness and waits, a second press by the same player
-    /// changes nothing, and only a press by the <em>other</em> participant — while this one's
-    /// readiness has not expired — creates the fresh duel. The caller is refused outright (no
-    /// readiness recorded) when it is not a participant, the duel is not over, or it never got an
-    /// opponent at all.
+    /// A participant of a <em>finished</em> duel asks for a rematch: creates a lobby with this duel's
+    /// own settings and capacity, and auto-invites every other participant — whoever turns up, plays.
+    /// Idempotent about the lobby itself, not just about readiness: the lobby's id is derived from this
+    /// duel's id (see the implementation's own remarks), so however many participants call this,
+    /// however many times, they all land on the same lobby with no reference stored anywhere and
+    /// nothing to orphan. Refused outright when the caller is not a participant, the duel is not over,
+    /// or it never got past a single seat.
     /// </summary>
     [Alias("RequestRematchAsync")]
     Task<RematchOutcome> RequestRematchAsync(string playerId);

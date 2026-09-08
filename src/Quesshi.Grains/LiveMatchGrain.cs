@@ -31,7 +31,7 @@ public sealed class LiveMatchGrain(
 {
     private const string SafetyNetReminder = "live-safety-net";
 
-    /// <summary>Mirrors <c>LiveLobbyGrain.MaxCodeAttempts</c>: how many fresh codes a rematch's new duel will try before giving up.</summary>
+    /// <summary>Mirrors <c>LiveMatchmakingGrain.MaxCodeAttempts</c>: how many fresh codes a rematch's lobby will try before giving up.</summary>
     private const int MaxCodeAttempts = 5;
     private static readonly TimeSpan ReminderPeriod = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MinimumDueTime = TimeSpan.FromMilliseconds(1);
@@ -269,50 +269,74 @@ public sealed class LiveMatchGrain(
         await AfterChangeAsync(phaseBefore, false, reason);
     }
 
+    /// <summary>
+    /// Replaces the old symmetric ready-flag handshake: a rematch now creates a lobby with this
+    /// duel's own settings and capacity, and auto-invites every participant — whoever turns up, plays.
+    /// Refused outright for a non-participant, a duel that is not over, or one that never got past a
+    /// single seat (nothing to rematch with).
+    /// </summary>
+    /// <remarks>
+    /// The lobby's id is <em>derived</em> from this duel's id (<see cref="DeriveRematchLobbyId"/>),
+    /// never minted. That is the whole mechanism behind "one rematch lobby per finished duel, however
+    /// many participants press the button, however many times": every request computes the same id,
+    /// and <see cref="ILiveMatchGrain.CreateLobbyAsync"/> is already documented idempotent — it
+    /// returns the existing view once the duel already exists — so the first request to actually reach
+    /// that grain creates it and every later one, from anyone, lands on that same lobby with nothing
+    /// recorded here and nothing to orphan. Recording the created lobby's id on this match instead — the
+    /// obvious-looking alternative — cannot be made crash-safe: the lobby is created inside
+    /// <c>CreateLobbyAsync</c> before this method could ever persist a reference to it, so a crash in
+    /// between would orphan a lobby and let the next request mint a second one. Deriving sidesteps
+    /// that by never needing a reference in the first place. A rematch of the rematch derives a
+    /// further id from <em>its</em> id, so the chain keeps extending without ever colliding with
+    /// itself or with any freshly minted match id (see <see cref="DeriveRematchLobbyId"/>).
+    /// </remarks>
     public async Task<RematchOutcome> RequestRematchAsync(string playerId)
     {
-        if (_match is null || !_match.IsOver || _match.OpponentId is null || !_match.IsParticipant(playerId))
+        if (_match is null || !_match.IsOver || !_match.IsParticipant(playerId) || _match.Participants.Count < 2)
             return new RematchOutcome((int)RematchStatus.Refused);
 
-        var now = clock.Now;
-        PruneExpiredReadiness(now);
-
-        state.State.RematchReadyAt[playerId] = now;
-        await state.WriteStateAsync();
-
-        var opponentId = playerId == _match.ChallengerId ? _match.OpponentId : _match.ChallengerId;
-        if (!state.State.RematchReadyAt.ContainsKey(opponentId))
-        {
-            await SafeNotifyAsync(() => notifier.RematchRequestedAsync(_match.Id, playerId));
-            return new RematchOutcome((int)RematchStatus.Waiting);
-        }
-
         if (!await GrainFactory.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync())
-            return await FailRematchAsync();
-
-        List<Question> set;
-        try
         {
-            set = [.. await questionSetBuilder.BuildAsync(_match.Lang, null, _match.QuestionIds.Count, null)];
-        }
-        catch (NotEnoughQuestionsException)
-        {
-            return await FailRematchAsync();
+            await SafeNotifyAsync(() => notifier.RematchFailedAsync(_match.Id));
+            return new RematchOutcome((int)RematchStatus.Failed);
         }
 
-        var newMatchId = await CreateRematchDuelAsync(set);
-        if (newMatchId is null) return await FailRematchAsync();
+        var lobbyId = DeriveRematchLobbyId(_match.Id);
+        var lobbyView = await CreateRematchLobbyAsync(lobbyId);
+        if (lobbyView is null)
+        {
+            await SafeNotifyAsync(() => notifier.RematchFailedAsync(_match.Id));
+            return new RematchOutcome((int)RematchStatus.Failed);
+        }
 
-        state.State.RematchReadyAt.Clear();
-        await state.WriteStateAsync();
-        await SafeNotifyAsync(() => notifier.RematchCreatedAsync(_match.Id, newMatchId));
-        return new RematchOutcome((int)RematchStatus.Created, newMatchId);
+        await InviteOthersAsync(lobbyView, playerId);
+        await SafeNotifyAsync(() => notifier.RematchCreatedAsync(_match.Id, lobbyId));
+        return new RematchOutcome((int)RematchStatus.Created, lobbyId);
     }
 
-    /// <summary>Same shape as <see cref="LiveLobbyGrain.TryCreateDuelAsync"/>: mint a collision-free
-    /// code, create the grain with the original challenger, then join the original opponent. Anything
-    /// but a clean join is a failed attempt, not a half-open duel.</summary>
-    private async Task<string?> CreateRematchDuelAsync(List<Question> set)
+    /// <summary>
+    /// A rematch lobby's id, deterministic from the finished match's own — see
+    /// <see cref="RequestRematchAsync"/>'s remarks for why that is the entire mechanism keeping
+    /// concurrent rematch requests from producing more than one lobby. The suffix can never collide
+    /// with a freshly minted match id: every id this codebase mints (<c>IIdFactory.NewId</c>) is a bare
+    /// hex GUID with no punctuation, so nothing but a string this method itself produced can end in
+    /// "-rematch". A rematch of a rematch appends the suffix again, so the chain keeps extending
+    /// ("...-rematch-rematch") without ever colliding with an earlier link in it.
+    /// </summary>
+    private static string DeriveRematchLobbyId(string matchId) => $"{matchId}-rematch";
+
+    /// <summary>
+    /// Opens the derived lobby with this duel's own settings and capacity, owned by this duel's own
+    /// owner regardless of which participant's request actually triggers the creation — deliberately
+    /// not "whoever asked first", so ownership never depends on a race between concurrent callers and
+    /// stays the same however many times, or by whom, this is called. <c>CreateLobbyAsync</c> is
+    /// idempotent, so a call that lands after the lobby already exists simply gets the existing view
+    /// back, its own (wasted) code and owner argument ignored. Mints a fresh code per attempt the same
+    /// way <c>LiveMatchmakingGrain.BuildDuelAsync</c> does; unlike that method, a collision here only
+    /// matters for whichever call turns out to be the one that actually creates the lobby, but every
+    /// call mints one anyway since there is no way to know in advance which call that will be.
+    /// </summary>
+    private async Task<LiveView?> CreateRematchLobbyAsync(string lobbyId)
     {
         var m = _match!;
         for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
@@ -320,33 +344,31 @@ public sealed class LiveMatchGrain(
             var code = ids.NewMatchCode();
             if (await archive.ByCodeAsync(code) is not null) continue;
 
-            var newMatchId = ids.NewId();
-            var grain = GrainFactory.GetGrain<ILiveMatchGrain>(newMatchId);
-            await grain.CreateAsync(code, (int)m.Lang, m.ChallengerId, [.. set.Select(q => q.Id)]);
-
-            var joinResult = (LiveJoinResult)await grain.JoinAsync(m.OpponentId!);
-            return joinResult == LiveJoinResult.Joined ? newMatchId : null;
+            var grain = GrainFactory.GetGrain<ILiveMatchGrain>(lobbyId);
+            return await grain.CreateLobbyAsync(code, m.OwnerId, (int)m.Lang, m.Settings.QuestionCount,
+                [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)], m.Capacity);
         }
 
         return null;
     }
 
-    private async Task<RematchOutcome> FailRematchAsync()
+    /// <summary>
+    /// Every participant of the finished duel gets a plain invitation to the rematch lobby, except its
+    /// actual owner (who already knows — they either created it just now or already own it from an
+    /// earlier request) and <paramref name="requesterId"/> (who already has <paramref name="lobbyView"/>'s
+    /// id from this very call's own return value). A repeat rematch press by someone other than the
+    /// owner re-sends invitations to everyone else, which is a harmless duplicate notification rather
+    /// than a correctness problem — see <c>ILiveMatchmakingGrain</c>'s own remarks on why an invitation
+    /// carries no exclusivity to violate.
+    /// </summary>
+    private async Task InviteOthersAsync(LiveView lobbyView, string requesterId)
     {
-        state.State.RematchReadyAt.Clear();
-        await state.WriteStateAsync();
-        await SafeNotifyAsync(() => notifier.RematchFailedAsync(_match!.Id));
-        return new RematchOutcome((int)RematchStatus.Failed);
-    }
-
-    /// <summary>A readiness flag older than <see cref="LiveRules.RematchExpires"/> no longer counts
-    /// towards completing the handshake — a press arriving after it starts the wait over rather than
-    /// dragging an absent player into a fresh duel.</summary>
-    private void PruneExpiredReadiness(DateTimeOffset now)
-    {
-        var cutoff = now - LiveRules.RematchExpires;
-        foreach (var stale in state.State.RematchReadyAt.Where(kv => kv.Value < cutoff).Select(kv => kv.Key).ToList())
-            state.State.RematchReadyAt.Remove(stale);
+        var matchmaking = GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        foreach (var participantId in _match!.Participants)
+        {
+            if (participantId == lobbyView.ChallengerId || participantId == requesterId) continue;
+            await SafeNotifyAsync(() => matchmaking.ChallengeAsync(ids.NewId(), lobbyView.ChallengerId, participantId, lobbyView.Id));
+        }
     }
 
     public async Task ReceiveReminder(string reminderName, TickStatus status)

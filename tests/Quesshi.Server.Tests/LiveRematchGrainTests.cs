@@ -4,10 +4,12 @@ using Quesshi.Grains.Abstractions;
 namespace Quesshi.Server.Tests;
 
 /// <summary>
-/// Coverage for <see cref="ILiveMatchGrain.RequestRematchAsync"/>: the both-must-press handshake,
-/// its idempotence, its expiry, and the two ways the second press can still fail to produce a duel
-/// (the kill switch, and <c>QuestionSetBuilder</c> running dry). Guest refusal is <see cref="LiveHub"/>'s
-/// own job (see the issue's technical notes) and is covered at the hub level instead.
+/// Coverage for <see cref="ILiveMatchGrain.RequestRematchAsync"/> under issue #51's redesign: no more
+/// symmetric readiness — the first request that reaches the grain creates a lobby with this duel's
+/// own settings and capacity, every later request (from anyone, however many times) lands on that
+/// same lobby because its id is <em>derived</em> from the finished match's id rather than minted, and
+/// every other participant is auto-invited. Guest refusal is <see cref="LiveHub"/>'s own job (see the
+/// issue's technical notes) and is covered at the hub level instead.
 /// </summary>
 [Collection(nameof(LiveClusterCollection))]
 public class LiveRematchGrainTests(LiveClusterFixture fixture)
@@ -18,7 +20,8 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
     private static int _n;
 
     /// <summary>Enough approved English questions to fill any of <c>MatchRules.QuestionCountChoices</c>,
-    /// so a rematch's own re-draw (default breadth, no preferred category) always has somewhere to draw from.</summary>
+    /// so a rematch lobby's own eventual draw (default breadth, no preferred category) always has
+    /// somewhere to draw from once it starts.</summary>
     private static Category SeedCategory()
     {
         var id = $"rm-cat-{Interlocked.Increment(ref _n)}";
@@ -35,20 +38,18 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
         return category;
     }
 
-    private static List<string> DummyQuestionIds(string prefix, int count) => [.. Enumerable.Range(0, count).Select(i => $"{prefix}-dummy-{i}")];
-
     /// <summary>A finished duel between a fresh challenger/opponent pair, joined and immediately ended
     /// as a no-contest before the clock ever advances — so no round is ever opened and no question ever
     /// has to resolve.</summary>
     private async Task<(ILiveMatchGrain Grain, string ChallengerId, string OpponentId, string MatchId)> NewFinishedDuelAsync(
-        Language lang = Language.En, int count = 10, bool seedQuestions = true)
+        Language lang = Language.En, int count = 10)
     {
         var n = Interlocked.Increment(ref _n);
         var challengerId = $"{Challenger}-{n}";
         var opponentId = $"{Opponent}-{n}";
         var matchId = Guid.NewGuid().ToString("N");
 
-        var questionIds = seedQuestions ? SeedQuestionsFor(SeedCategory().Id, count) : DummyQuestionIds(matchId, count);
+        var questionIds = SeedQuestionsFor(SeedCategory().Id, count);
 
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(matchId);
         await grain.CreateAsync($"CODE{n}", (int)lang, challengerId, questionIds);
@@ -65,18 +66,14 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task A_non_participant_is_refused_and_no_readiness_is_recorded()
+    public async Task A_non_participant_is_refused_and_nothing_is_created()
     {
-        var (grain, challengerId, _, matchId) = await NewFinishedDuelAsync();
+        var (grain, _, _, matchId) = await NewFinishedDuelAsync();
 
         var outcome = await grain.RequestRematchAsync(Stranger);
 
         Assert.Equal((int)RematchStatus.Refused, outcome.Status);
         Assert.Null(outcome.NewMatchId);
-
-        // The stranger's press must not itself be mistaken for the challenger's own readiness.
-        var second = await grain.RequestRematchAsync(challengerId);
-        Assert.Equal((int)RematchStatus.Waiting, second.Status);
         Assert.DoesNotContain(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchCreated");
     }
 
@@ -116,88 +113,126 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task One_player_ready_starts_nothing_and_notifies_the_other_side()
-    {
-        var (grain, challengerId, _, matchId) = await NewFinishedDuelAsync();
-
-        var outcome = await grain.RequestRematchAsync(challengerId);
-
-        Assert.Equal((int)RematchStatus.Waiting, outcome.Status);
-        Assert.Null(outcome.NewMatchId);
-        Assert.DoesNotContain(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchCreated");
-        Assert.Contains(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchRequested" && (string)e.Payload == challengerId);
-    }
-
-    [Fact]
-    public async Task The_same_player_pressing_twice_still_only_waits()
-    {
-        var (grain, challengerId, _, matchId) = await NewFinishedDuelAsync();
-
-        await grain.RequestRematchAsync(challengerId);
-        var again = await grain.RequestRematchAsync(challengerId);
-
-        Assert.Equal((int)RematchStatus.Waiting, again.Status);
-        Assert.DoesNotContain(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchCreated");
-    }
-
-    [Fact]
-    public async Task Both_players_ready_creates_exactly_one_duel_with_the_same_language_and_count_and_both_joined()
+    public async Task The_first_request_creates_a_lobby_with_the_same_language_and_count_and_invites_the_other_participant()
     {
         var (grain, challengerId, opponentId, matchId) = await NewFinishedDuelAsync(Language.En, 10);
 
-        var first = await grain.RequestRematchAsync(challengerId);
-        Assert.Equal((int)RematchStatus.Waiting, first.Status);
+        var outcome = await grain.RequestRematchAsync(challengerId);
 
-        var second = await grain.RequestRematchAsync(opponentId);
-        Assert.Equal((int)RematchStatus.Created, second.Status);
-        Assert.NotNull(second.NewMatchId);
-        Assert.NotEqual(matchId, second.NewMatchId);
+        Assert.Equal((int)RematchStatus.Created, outcome.Status);
+        Assert.NotNull(outcome.NewMatchId);
+        Assert.NotEqual(matchId, outcome.NewMatchId);
 
         var createdEvents = LiveShared.Notifier.EventsFor(matchId).Where(e => e.Kind == "RematchCreated").ToList();
         Assert.Single(createdEvents);
 
-        var newGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(second.NewMatchId!);
-        var newView = await newGrain.GetAsync(challengerId);
-        Assert.NotNull(newView);
-        Assert.Equal(challengerId, newView!.ChallengerId);
-        Assert.Equal(opponentId, newView.OpponentId);
-        Assert.Equal((int)Language.En, newView.Lang);
-        Assert.Equal(10, newView.TotalRounds);
-        Assert.Equal((int)LivePhase.Countdown, newView.Phase);
-        Assert.Equal((int)MatchState.InProgress, newView.State);
+        var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(outcome.NewMatchId!);
+        var lobbyView = await lobbyGrain.GetAsync(challengerId);
+        Assert.NotNull(lobbyView);
+        Assert.Equal(challengerId, lobbyView!.ChallengerId);
+        Assert.Equal((int)Language.En, lobbyView.Lang);
+        Assert.Equal((int)LivePhase.Lobby, lobbyView.Phase); // waiting for the invited participant, not auto-started
+        Assert.Equal((int)MatchState.AwaitingOpponent, lobbyView.State);
+
+        // The requester (now the lobby's owner) is not invited to their own lobby; the other
+        // participant of the finished duel is.
+        var matchmaking = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var pending = await matchmaking.PendingForAsync(opponentId);
+        Assert.Contains(pending, c => c.LobbyId == outcome.NewMatchId && c.ChallengerId == challengerId);
+        Assert.Empty(await matchmaking.PendingForAsync(challengerId));
     }
 
+    /// <summary>
+    /// The acceptance-criterion test: however many participants press rematch, however many times,
+    /// they all land on the one lobby the derived id names — because <c>CreateLobbyAsync</c> is
+    /// idempotent and nothing is ever recorded to race over.
+    /// </summary>
     [Fact]
-    public async Task Readiness_older_than_the_expiry_no_longer_completes_the_handshake()
+    public async Task Repeated_rematch_requests_from_different_participants_all_land_on_one_lobby()
     {
         var (grain, challengerId, opponentId, matchId) = await NewFinishedDuelAsync();
 
         var first = await grain.RequestRematchAsync(challengerId);
-        Assert.Equal((int)RematchStatus.Waiting, first.Status);
-
-        LiveShared.TimeProvider.Advance(LiveRules.RematchExpires + TimeSpan.FromSeconds(1));
+        Assert.Equal((int)RematchStatus.Created, first.Status);
 
         var second = await grain.RequestRematchAsync(opponentId);
+        Assert.Equal((int)RematchStatus.Created, second.Status);
 
-        Assert.Equal((int)RematchStatus.Waiting, second.Status);
-        Assert.Null(second.NewMatchId);
-        Assert.DoesNotContain(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchCreated");
+        var third = await grain.RequestRematchAsync(challengerId);
+        Assert.Equal((int)RematchStatus.Created, third.Status);
+
+        Assert.Equal(first.NewMatchId, second.NewMatchId);
+        Assert.Equal(first.NewMatchId, third.NewMatchId);
+        Assert.NotEqual(matchId, first.NewMatchId);
+
+        // Only the first call actually creates the lobby; the owner is whoever that first request
+        // named — the second and third calls' own requested ownership is simply ignored.
+        var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(first.NewMatchId!);
+        var lobbyView = await lobbyGrain.GetAsync(challengerId);
+        Assert.Equal(challengerId, lobbyView!.ChallengerId);
+    }
+
+    /// <summary>Concurrent presses are exactly what the derived id (and Orleans' one-call-at-a-time
+    /// guarantee per grain) has to survive without producing two lobbies.</summary>
+    [Fact]
+    public async Task Simultaneous_rematch_requests_still_produce_exactly_one_lobby()
+    {
+        var (grain, challengerId, opponentId, _) = await NewFinishedDuelAsync();
+
+        var results = await Task.WhenAll(
+            grain.RequestRematchAsync(challengerId),
+            grain.RequestRematchAsync(opponentId));
+
+        Assert.All(results, r => Assert.Equal((int)RematchStatus.Created, r.Status));
+        Assert.Equal(results[0].NewMatchId, results[1].NewMatchId);
+    }
+
+    /// <summary>
+    /// The chain keeps extending rather than colliding: a rematch of the rematch lobby (once *it* is
+    /// over) derives a further id from its own, distinct from both the original match and its own
+    /// direct rematch.
+    /// </summary>
+    [Fact]
+    public async Task A_rematch_of_a_started_rematch_lobby_derives_a_fresh_id()
+    {
+        var (grain, challengerId, opponentId, matchId) = await NewFinishedDuelAsync();
+
+        var firstRematch = await grain.RequestRematchAsync(challengerId);
+        Assert.Equal((int)RematchStatus.Created, firstRematch.Status);
+        var lobbyId = firstRematch.NewMatchId!;
+
+        // The invited participant joins the rematch lobby, which — at capacity 2 — starts it on the
+        // spot, then it is ended so it, too, is a finished duel eligible for its own rematch.
+        var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(lobbyId);
+        await lobbyGrain.JoinAsync(opponentId);
+        await lobbyGrain.EndAsync("test");
+
+        var secondRematch = await lobbyGrain.RequestRematchAsync(challengerId);
+
+        Assert.Equal((int)RematchStatus.Created, secondRematch.Status);
+        Assert.NotNull(secondRematch.NewMatchId);
+        Assert.NotEqual(matchId, secondRematch.NewMatchId);
+        Assert.NotEqual(lobbyId, secondRematch.NewMatchId);
+
+        // Pressing rematch again on the *original* finished duel still lands on the first lobby,
+        // proving the two chains (original->rematch1, rematch1->rematch2) never cross.
+        var repeatOfFirst = await grain.RequestRematchAsync(opponentId);
+        Assert.Equal(lobbyId, repeatOfFirst.NewMatchId);
     }
 
     [Fact]
-    public async Task Kill_switch_off_creates_no_duel_clears_readiness_and_notifies_both_sides()
+    public async Task Kill_switch_off_creates_no_lobby_and_notifies_the_finished_duels_group()
     {
         var settings = fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0);
-        var (grain, challengerId, opponentId, matchId) = await NewFinishedDuelAsync();
+        var (grain, challengerId, _, matchId) = await NewFinishedDuelAsync();
 
         await settings.SetEnabledAsync(false);
         try
         {
-            await grain.RequestRematchAsync(challengerId);
-            var second = await grain.RequestRematchAsync(opponentId);
+            var outcome = await grain.RequestRematchAsync(challengerId);
 
-            Assert.Equal((int)RematchStatus.Failed, second.Status);
-            Assert.Null(second.NewMatchId);
+            Assert.Equal((int)RematchStatus.Failed, outcome.Status);
+            Assert.Null(outcome.NewMatchId);
             Assert.Contains(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchFailed");
         }
         finally
@@ -205,25 +240,9 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
             await settings.SetEnabledAsync(true);
         }
 
-        // Readiness was cleared by the failure: one fresh press only waits again, it does not
-        // immediately complete against the stale pair.
+        // Recovery: a fresh press once the switch is back on creates the lobby normally.
         var afterRecovery = await grain.RequestRematchAsync(challengerId);
-        Assert.Equal((int)RematchStatus.Waiting, afterRecovery.Status);
-    }
-
-    [Fact]
-    public async Task When_the_question_set_cannot_be_built_no_duel_is_created_and_both_sides_are_told()
-    {
-        // No Persian question has ever been seeded into LiveShared by any test in this assembly, and
-        // a rematch's re-draw asks for the default breadth (no preferred category) — so 100 (the
-        // largest valid question count) can never be filled.
-        var (grain, challengerId, opponentId, matchId) = await NewFinishedDuelAsync(Language.Fa, 100, seedQuestions: false);
-
-        await grain.RequestRematchAsync(challengerId);
-        var second = await grain.RequestRematchAsync(opponentId);
-
-        Assert.Equal((int)RematchStatus.Failed, second.Status);
-        Assert.Null(second.NewMatchId);
-        Assert.Contains(LiveShared.Notifier.EventsFor(matchId), e => e.Kind == "RematchFailed");
+        Assert.Equal((int)RematchStatus.Created, afterRecovery.Status);
+        Assert.NotNull(afterRecovery.NewMatchId);
     }
 }

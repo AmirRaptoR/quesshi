@@ -8,8 +8,11 @@ using Quesshi.Server.Live;
 
 namespace Quesshi.Server.Tests;
 
-/// <summary>Covers <see cref="LobbyHub.Challenge"/>'s own checks — offline, not-a-friend, self — which
-/// run before the grain is ever touched, plus the one case that needs a real grain: an online friend.</summary>
+/// <summary>Covers <see cref="LobbyHub.Challenge"/>'s own checks — not-a-friend, self — which run
+/// before the grain is ever touched, plus the paths that need a real grain: opening the lobby the
+/// challenge points at, and reaching an offline friend (issue #51: an invitation is no longer refused
+/// just because the target is not connected right now — it is stored and delivered on their next
+/// connect, so a friend does not have to be online at all to be challenged).</summary>
 [Collection(nameof(LiveClusterCollection))]
 public class LobbyHubChallengeTests(LiveClusterFixture fixture)
 {
@@ -36,19 +39,21 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task Challenging_an_offline_friend_is_refused_without_touching_the_grain()
+    public async Task Challenging_an_offline_friend_still_reaches_the_grain_and_is_delivered_on_their_next_connect()
     {
         var players = new FakePlayers();
         players.Items.Add(Player.Register("me-1", "me@example.com", "Me", Language.En, DateTimeOffset.UtcNow));
         players.Items.Add(Player.Register("friend-1", "f@example.com", "Friend", Language.En, DateTimeOffset.UtcNow));
         players.Items[0].AddFriend("friend-1");
 
-        var hub = new LobbyHub(null!, new FixedPresence(online: false), new FakeLobbyNotifier(), players, new IdFactory());
+        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: false), new FakeLobbyNotifier(), players, new IdFactory());
         hub.Context = new FakeHubCallerContext(PlayerUser("me-1"));
 
         var result = await hub.Challenge("friend-1", "en", 10, [], []);
 
-        Assert.Equal((int)LiveChallengeResult.TargetOffline, result);
+        Assert.Equal((int)LiveChallengeResult.Sent, result);
+        var pending = await fixture.Cluster.GrainFactory.GetGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("friend-1");
+        Assert.Contains(pending, c => c.ChallengerId == "me-1");
     }
 
     [Fact]
@@ -92,8 +97,7 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
         var result = await hub.Challenge("friend-4", "en", 10, [], []);
 
         Assert.Equal((int)LiveChallengeResult.Sent, result);
-        var pending = await fixture.Cluster.GrainFactory.GetGrain<Grains.Abstractions.ILiveLobbyGrain>(0).PendingForAsync("friend-4");
-        Assert.NotNull(pending);
-        Assert.Equal("me-4", pending!.ChallengerId);
+        var pending = await fixture.Cluster.GrainFactory.GetGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("friend-4");
+        Assert.Contains(pending, c => c.ChallengerId == "me-4");
     }
 }

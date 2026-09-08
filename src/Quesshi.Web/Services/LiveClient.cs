@@ -27,13 +27,15 @@ public sealed class LiveClient : IAsyncDisposable
     /// question phase can show "they have answered" without polling.</summary>
     public event Action<OpponentAnsweredDto>? OpponentAnswered;
 
-    /// <summary>The other side has pressed Rematch first — the still-undecided side's Ended screen can say so.</summary>
-    public event Action<RematchRequestedDto>? RematchRequested;
-
-    /// <summary>Both sides have pressed Rematch: the fresh duel to navigate to.</summary>
+    /// <summary>
+    /// A rematch lobby now exists for this duel — pushed whether this connection's own press created
+    /// it or somebody else's did; there is no separate "the other side wants a rematch" event any
+    /// more (see <c>ILiveNotifier.RematchCreatedAsync</c>'s own remarks). Every other participant
+    /// learns about it as an ordinary invitation instead, through <see cref="LobbyClient"/>.
+    /// </summary>
     public event Action<RematchCreatedDto>? RematchCreated;
 
-    /// <summary>Both sides pressed Rematch, but the fresh duel could not be built.</summary>
+    /// <summary>The rematch lobby could not be created — the live kill switch is off.</summary>
     public event Action? RematchFailed;
 
     /// <summary>
@@ -69,7 +71,6 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<OpponentPresenceDto>("OpponentLeft", p => OpponentLeft?.Invoke(p));
         _connection.On<OpponentPresenceDto>("OpponentBack", p => OpponentBack?.Invoke(p));
         _connection.On<OpponentAnsweredDto>("OpponentAnswered", a => OpponentAnswered?.Invoke(a));
-        _connection.On<RematchRequestedDto>("RematchRequested", r => RematchRequested?.Invoke(r));
         _connection.On<RematchCreatedDto>("RematchCreated", r => RematchCreated?.Invoke(r));
         _connection.On("RematchFailed", () => RematchFailed?.Invoke());
     }

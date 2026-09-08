@@ -12,7 +12,7 @@ namespace Quesshi.Server.Tests;
 /// is gone, keep them online across a heartbeat, refuse a guest outright, and — for the random live
 /// queue — ride QueueRandom/LeaveQueue over that same connection so an entry cannot outlive the socket.
 /// A <see cref="FakePresence"/> stands in for presence; the queue and the pending-challenge check the
-/// hub runs on connect both go through the real <c>ILiveLobbyGrain</c> on
+/// hub runs on connect both go through the real <c>ILiveMatchmakingGrain</c> on
 /// <see cref="LiveClusterFixture"/>'s silo, and <see cref="LobbyHubChallengeTests"/> covers the
 /// challenge side of it.
 /// </summary>
@@ -117,7 +117,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
     [Fact]
     public void The_live_queues_TTL_matches_the_presence_TTL()
     {
-        Assert.Equal(LobbyHub.PresenceTtl, LiveLobbyGrain.Ttl);
+        Assert.Equal(LobbyHub.PresenceTtl, LiveMatchmakingGrain.Ttl);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         await c1.InvokeAsync("QueueRandom", lang, count, new List<string> { cat.Id }, new List<int>());
         await c1.InvokeAsync("LeaveQueue");
 
-        var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveLobbyGrain>(0);
+        var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
         Assert.Equal(0, await observer.WaitingCountAsync("nobody", lang, count));
     }
 
@@ -202,7 +202,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
 
         await c1.DisposeAsync();
 
-        var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveLobbyGrain>(0);
+        var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
         await LobbyHubTestHost.WaitUntilAsync(
             async () => await observer.WaitingCountAsync("nobody", lang, count) == 0,
             SignalTimeout,
@@ -222,7 +222,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
 
         await Assert.ThrowsAsync<HubException>(() => hub.QueueRandom(lang, count, [], []));
 
-        var observer = grains.GetGrain<ILiveLobbyGrain>(0);
+        var observer = grains.GetGrain<ILiveMatchmakingGrain>(0);
         Assert.Equal(0, await observer.WaitingCountAsync("nobody", lang, count));
     }
 

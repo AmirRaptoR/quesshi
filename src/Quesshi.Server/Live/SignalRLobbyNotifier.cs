@@ -13,7 +13,7 @@ public sealed class SignalRLobbyNotifier(IHubContext<LobbyHub> hub, IPlayerRepos
         var challenger = await players.GetAsync(challenge.ChallengerId, ct);
         var dto = new LiveChallengeDto(challenge.ChallengeId, challenge.ChallengerId,
             challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? challenge.ChallengerId,
-            challenge.Lang, challenge.QuestionCount, challenge.CategoryIds, challenge.Levels, challenge.ExpiresAt);
+            challenge.LobbyId, challenge.LobbyCode, challenge.ExpiresAt);
 
         await hub.Clients.Group(targetId).SendAsync("ChallengeReceived", dto, ct);
     }

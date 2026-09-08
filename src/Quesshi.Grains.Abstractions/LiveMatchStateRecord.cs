@@ -7,12 +7,12 @@ public sealed class LiveMatchStateRecord
 {
     [Id(0)] public string Json { get; set; } = "";
 
-    /// <summary>
-    /// Which participant has pressed Rematch, and when — a flag, not a counter, so a second press by
-    /// the same player is a no-op. Kept beside the match's own JSON rather than inside it: readiness
-    /// is a grain-level handshake concern, not part of the duel <see cref="LiveMatchSnapshot"/> replays.
-    /// </summary>
-    [Id(1)] public Dictionary<string, DateTimeOffset> RematchReadyAt { get; set; } = [];
+    // Id(1) used to be RematchReadyAt: the symmetric ready-flag handshake issue #51 deletes, since
+    // "everyone must press ready before it expires" only gets worse with each added participant. A
+    // rematch is idempotent by construction now (see ILiveMatchGrain.RequestRematchAsync's own
+    // remarks on the derived lobby id) and keeps no readiness state at all. Left unused rather than
+    // reused for something else, so an old persisted blob's now-meaningless dictionary is simply
+    // ignored on load rather than misread as a different field.
 
     /// <summary>
     /// Which participants' effects (result, answer stats, abandonment penalty) have already been

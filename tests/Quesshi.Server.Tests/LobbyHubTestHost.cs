@@ -19,7 +19,7 @@ namespace Quesshi.Server.Tests;
 /// <see cref="FakePresence"/> and <see cref="LiveClusterFixture"/>'s already-running silo — the same
 /// reasoning <see cref="AuthTestHost"/> and <see cref="LiveApiTestHost"/> give for building their own
 /// host rather than WebApplicationFactory. The cluster is what lets QueueRandom/LeaveQueue and the
-/// pending-challenge check the hub runs on connect reach the real <c>ILiveLobbyGrain</c>; everything
+/// pending-challenge check the hub runs on connect reach the real <c>ILiveMatchmakingGrain</c>; everything
 /// the hub needs beyond presence and that grain is faked.
 /// </summary>
 public sealed class LobbyHubTestHost : IAsyncDisposable

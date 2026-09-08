@@ -5,18 +5,18 @@ using Quesshi.Grains.Abstractions;
 namespace Quesshi.Server.Tests;
 
 /// <summary>
-/// Coverage for <see cref="ILiveLobbyGrain"/> on both of its jobs. The random queue: matching on
+/// Coverage for <see cref="ILiveMatchmakingGrain"/> on both of its jobs. The random queue: matching on
 /// language and question count, the three non-matching cases, first-queued-sets-the-terms, expiry,
 /// leaving and the two-at-once race — all on the singleton grain (key 0), each test using its own
-/// (language, question count) bucket so tests never see each other's entries. Friend challenges:
-/// sending, accepting, declining, expiry and the mutual exclusion between holding a challenge and
-/// waiting in the queue — each on a grain key of its own, because a challenge is not partitioned by
-/// bucket the way a queue entry is and two tests sharing a grain would see each other's.
+/// (language, question count) bucket so tests never see each other's entries. Invitations: sending,
+/// accepting, declining, and the two lifetime facts issue #51 changes — an invitation outlives the old
+/// 45 seconds, dies with its lobby, and carries no exclusivity at all (a target can hold several at
+/// once, and a challenger sending one is never blocked by another commitment).
 /// </summary>
 [Collection(nameof(LiveClusterCollection))]
-public class LiveLobbyGrainTests(LiveClusterFixture fixture)
+public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
 {
-    private ILiveLobbyGrain Queue => fixture.Cluster.GrainFactory.GetGrain<ILiveLobbyGrain>(0);
+    private ILiveMatchmakingGrain Queue => fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
     private static int _n;
 
     private static void Advance(TimeSpan by) => LiveShared.TimeProvider.Advance(by);
@@ -52,25 +52,19 @@ public class LiveLobbyGrainTests(LiveClusterFixture fixture)
 
     private static int _counter;
 
-    private ILiveLobbyGrain Lobby()
+    private ILiveMatchmakingGrain Matchmaking()
         // A fresh key per test so tests never see each other's challenges or queue entries.
-        => fixture.Cluster.GrainFactory.GetGrain<ILiveLobbyGrain>(Interlocked.Increment(ref _counter));
+        => fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(Interlocked.Increment(ref _counter));
 
     private static string NewPlayerId(string tag) => $"lp-{tag}-{Guid.NewGuid():N}";
 
-    /// <summary>Ten geography questions in the given language, enough for one duel.</summary>
-    private static void SeedQuestions(string prefix, Language lang = Language.En)
+    /// <summary>Opens a fresh capacity-2 lobby owned by <paramref name="ownerId"/>, seeded with its own
+    /// category so it never competes with another test's questions.</summary>
+    private async Task<LiveView> NewLobbyAsync(string ownerId, string tag, Language lang = Language.En, int capacity = 2)
     {
-        if (LiveShared.Categories.Items.All(c => c.Id != "geography"))
-            LiveShared.Categories.Items.Add(new Category("geography", "جغرافیا", "Geography", "globe", "#336699"));
-
-        for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)
-        {
-            var qid = $"{prefix}-q{slot}";
-            LiveShared.Questions.Items.Add(Question.Create(qid, lang, "geography", MatchRules.LevelForSlot(slot),
-                $"question {slot}", ["right", "wrong1", "wrong2", "wrong3"], 0, LiveShared.TimeProvider.GetUtcNow(),
-                explanation: "because", status: QuestionStatus.Approved));
-        }
+        var cat = SeedCategory(tag, lang);
+        var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(Guid.NewGuid().ToString("N"));
+        return await grain.CreateLobbyAsync($"CODE{Interlocked.Increment(ref _n)}", ownerId, (int)lang, 10, [cat.Id], [], capacity);
     }
 
     /// <summary>Polls real wall-clock time until a condition holds — a grain timer fires off the fake
@@ -85,6 +79,8 @@ public class LiveLobbyGrainTests(LiveClusterFixture fixture)
         }
         throw new TimeoutException($"Condition not reached within {timeoutMs}ms.");
     }
+
+    // --- the random queue -------------------------------------------------------------------------
 
     [Fact]
     public async Task Two_players_in_the_same_language_and_count_are_matched_into_one_duel_out_of_lobby()
@@ -313,244 +309,266 @@ public class LiveLobbyGrainTests(LiveClusterFixture fixture)
         await WaitForAsync(async () => LiveShared.LobbyNotifier.EventsFor(lonely).Any(e => e.Kind == "QueueCount" && Equals(e.Payload, 0)));
     }
 
+    // --- invitations --------------------------------------------------------------------------------
 
     [Fact]
     public async Task A_challenge_is_sent_and_delivered_to_the_target()
     {
-        var lobby = Lobby();
+        var matchmaking = Matchmaking();
         var challenger = NewPlayerId("a");
         var target = NewPlayerId("b");
+        var lobby = await NewLobbyAsync(challenger, "chal-send");
         var challengeId = Guid.NewGuid().ToString("N");
 
-        var result = (LiveChallengeResult)await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.En, 10, ["geography"], []);
+        var result = (LiveChallengeResult)await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
 
         Assert.Equal(LiveChallengeResult.Sent, result);
-        var pending = await lobby.PendingForAsync(target);
-        Assert.NotNull(pending);
-        Assert.Equal(challengeId, pending!.ChallengeId);
-        Assert.Equal(challenger, pending.ChallengerId);
+        var pending = await matchmaking.PendingForAsync(target);
+        Assert.Single(pending);
+        Assert.Equal(challengeId, pending[0].ChallengeId);
+        Assert.Equal(challenger, pending[0].ChallengerId);
+        Assert.Equal(lobby.Id, pending[0].LobbyId);
+        Assert.Equal(lobby.Code, pending[0].LobbyCode);
         Assert.Contains(LiveShared.LobbyNotifier.EventsFor(target), e => e.Kind == "ChallengeReceived");
     }
 
     [Fact]
     public async Task Challenging_yourself_is_refused()
     {
-        var lobby = Lobby();
+        var matchmaking = Matchmaking();
         var me = NewPlayerId("solo");
 
-        var result = (LiveChallengeResult)await lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), me, me, (int)Language.En, 10, [], []);
+        // No lobby needs to exist for this refusal: self-challenge is checked first.
+        var result = (LiveChallengeResult)await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), me, me, "nonexistent-lobby");
 
         Assert.Equal(LiveChallengeResult.SelfChallenge, result);
-        Assert.Null(await lobby.PendingForAsync(me));
+        Assert.Empty(await matchmaking.PendingForAsync(me));
     }
 
     [Fact]
-    public async Task Accepting_creates_a_duel_out_of_lobby_using_the_challengers_settings_and_both_are_told()
+    public async Task Challenging_into_a_lobby_that_does_not_exist_is_refused()
     {
-        var lobby = Lobby();
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("nolobby-c");
+        var target = NewPlayerId("nolobby-t");
+
+        var result = (LiveChallengeResult)await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, target, "nonexistent-lobby");
+
+        Assert.Equal(LiveChallengeResult.NotFound, result);
+        Assert.Empty(await matchmaking.PendingForAsync(target));
+    }
+
+    [Fact]
+    public async Task Accepting_joins_the_lobby_the_challenge_points_at_and_both_are_told()
+    {
+        var matchmaking = Matchmaking();
         var challenger = NewPlayerId("c1");
         var target = NewPlayerId("t1");
+        var lobby = await NewLobbyAsync(challenger, "chal-accept");
         var challengeId = Guid.NewGuid().ToString("N");
-        SeedQuestions(challengeId);
 
-        await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.En, 10, ["geography"], []);
-        var accept = await lobby.AcceptAsync(challengeId, target);
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
+        var accept = await matchmaking.AcceptAsync(challengeId, target);
 
         Assert.Equal((int)LiveChallengeResult.Accepted, accept.Result);
-        Assert.NotNull(accept.MatchId);
+        Assert.Equal(lobby.Id, accept.MatchId);
 
-        Assert.Contains(LiveShared.LobbyNotifier.EventsFor(challenger), e => e.Kind == "DuelReady" && (string)e.Payload! == accept.MatchId);
-        Assert.Contains(LiveShared.LobbyNotifier.EventsFor(target), e => e.Kind == "DuelReady" && (string)e.Payload! == accept.MatchId);
+        Assert.Contains(LiveShared.LobbyNotifier.EventsFor(challenger), e => e.Kind == "DuelReady" && (string)e.Payload! == lobby.Id);
+        Assert.Contains(LiveShared.LobbyNotifier.EventsFor(target), e => e.Kind == "DuelReady" && (string)e.Payload! == lobby.Id);
 
-        var match = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(accept.MatchId!);
+        var match = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(lobby.Id);
         var view = await match.GetAsync(target);
         Assert.NotNull(view);
         Assert.Equal(challenger, view!.ChallengerId);
         Assert.Equal(target, view.OpponentId);
-        Assert.NotEqual((int)LivePhase.Lobby, view.Phase); // the target already joined — counting down, not waiting
+        Assert.NotEqual((int)LivePhase.Lobby, view.Phase); // the target already joined — a 2-seat lobby fills and starts on the spot
     }
 
     [Fact]
     public async Task Declining_removes_the_challenge_and_tells_the_challenger()
     {
-        var lobby = Lobby();
+        var matchmaking = Matchmaking();
         var challenger = NewPlayerId("c2");
         var target = NewPlayerId("t2");
+        var lobby = await NewLobbyAsync(challenger, "chal-decline");
         var challengeId = Guid.NewGuid().ToString("N");
 
-        await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.En, 10, [], []);
-        var result = (LiveChallengeResult)await lobby.DeclineAsync(challengeId, target);
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
+        var result = (LiveChallengeResult)await matchmaking.DeclineAsync(challengeId, target);
 
         Assert.Equal(LiveChallengeResult.Declined, result);
-        Assert.Null(await lobby.PendingForAsync(target));
+        Assert.Empty(await matchmaking.PendingForAsync(target));
         Assert.Contains(LiveShared.LobbyNotifier.EventsFor(challenger), e => e.Kind == "ChallengeDeclined" && (string)e.Payload! == challengeId);
     }
 
+    /// <summary>
+    /// Issue #51's whole point for invitations: the old <c>ChallengeLifetime</c> was 45 seconds, right
+    /// for "answer right now" and wrong for something meant to wait for someone offline. This proves it
+    /// is gone — the challenge is still pending long after the old cutoff would have killed it — which
+    /// is exactly what makes <c>LobbyHub.OnConnectedAsync</c>'s reconnect delivery meaningful for a
+    /// friend who was not there to receive it the first time.
+    /// </summary>
     [Fact]
-    public async Task An_untouched_challenge_expires_45_seconds_after_it_was_sent_and_the_challenger_is_told()
+    public async Task A_challenge_outlives_the_old_45_second_lifetime()
     {
-        var lobby = Lobby();
+        var matchmaking = Matchmaking();
         var challenger = NewPlayerId("c3");
         var target = NewPlayerId("t3");
+        var lobby = await NewLobbyAsync(challenger, "chal-outlive");
         var challengeId = Guid.NewGuid().ToString("N");
 
-        await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.En, 10, [], []);
-        Assert.NotNull(await lobby.PendingForAsync(target));
-
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
         Advance(TimeSpan.FromSeconds(46));
+
+        var pending = await matchmaking.PendingForAsync(target);
+        Assert.Single(pending);
+        Assert.Equal(challengeId, pending[0].ChallengeId);
+    }
+
+    [Fact]
+    public async Task An_untouched_challenge_expires_when_its_lobby_does_and_the_challenger_is_told()
+    {
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("c4");
+        var target = NewPlayerId("t4");
+        var lobby = await NewLobbyAsync(challenger, "chal-lobbyexpire");
+        var challengeId = Guid.NewGuid().ToString("N");
+
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
+        Assert.NotEmpty(await matchmaking.PendingForAsync(target));
+
+        Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
 
         await WaitUntilAsync(async () => LiveShared.LobbyNotifier.EventsFor(challenger)
             .Any(e => e.Kind == "ChallengeExpired" && (string)e.Payload! == challengeId));
 
-        Assert.Null(await lobby.PendingForAsync(target));
+        Assert.Empty(await matchmaking.PendingForAsync(target));
     }
 
     [Fact]
-    public async Task Accepting_an_expired_challenge_is_refused_and_creates_no_duel()
+    public async Task Accepting_an_expired_challenge_is_refused_and_joins_nobody()
     {
-        var lobby = Lobby();
-        var challenger = NewPlayerId("c4");
-        var target = NewPlayerId("t4");
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("c5");
+        var target = NewPlayerId("t5");
+        var lobby = await NewLobbyAsync(challenger, "chal-acceptexpired");
         var challengeId = Guid.NewGuid().ToString("N");
 
-        await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.En, 10, [], []);
-        Advance(TimeSpan.FromSeconds(46));
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
+        Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
 
         // The fake clock's own timer machinery fires the grain's expiry callback the moment it is
         // advanced, ahead of anything the test calls next — so accepting now lands on whichever of
-        // Expired/NotFound the expiry has already reached, not on Accepted. Either way: refused, no duel.
-        var accept = await lobby.AcceptAsync(challengeId, target);
+        // Expired/NotFound the expiry has already reached, not on Accepted. Either way: refused, no join.
+        var accept = await matchmaking.AcceptAsync(challengeId, target);
         Assert.NotEqual((int)LiveChallengeResult.Accepted, accept.Result);
         Assert.True(accept.Result is (int)LiveChallengeResult.Expired or (int)LiveChallengeResult.NotFound);
         Assert.Null(accept.MatchId);
     }
 
     [Fact]
-    public async Task A_challenge_still_within_its_lifetime_shows_the_time_left_measured_from_when_it_was_sent()
+    public async Task A_challenge_still_within_its_lifetime_shows_the_time_left_measured_from_its_lobbys_own_deadline()
     {
-        var lobby = Lobby();
-        var challenger = NewPlayerId("c5");
-        var target = NewPlayerId("t5");
-        var challengeId = Guid.NewGuid().ToString("N");
-
-        await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.En, 10, [], []);
-        Advance(TimeSpan.FromSeconds(40));
-
-        var pending = await lobby.PendingForAsync(target);
-        Assert.NotNull(pending);
-        var remaining = pending!.ExpiresAt - LiveShared.TimeProvider.GetUtcNow();
-        Assert.InRange(remaining.TotalSeconds, 3, 7);
-    }
-
-    [Fact]
-    public async Task A_player_already_holding_a_pending_challenge_cannot_be_put_into_a_second_one()
-    {
-        var lobby = Lobby();
+        var matchmaking = Matchmaking();
         var challenger = NewPlayerId("c6");
         var target = NewPlayerId("t6");
-        var thirdParty = NewPlayerId("x6");
-        var firstChallengeId = Guid.NewGuid().ToString("N");
-
-        await lobby.ChallengeAsync(firstChallengeId, challenger, target, (int)Language.En, 10, [], []);
-
-        // The challenger tries to send a second challenge elsewhere: refused.
-        var second = (LiveChallengeResult)await lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, thirdParty, (int)Language.En, 10, [], []);
-        Assert.Equal(LiveChallengeResult.CallerCommitted, second);
-
-        // The target is challenged again by somebody else: refused too, and the first challenge is untouched.
-        var third = (LiveChallengeResult)await lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), thirdParty, target, (int)Language.En, 10, [], []);
-        Assert.Equal(LiveChallengeResult.TargetCommitted, third);
-
-        var pending = await lobby.PendingForAsync(target);
-        Assert.NotNull(pending);
-        Assert.Equal(firstChallengeId, pending!.ChallengeId);
-    }
-
-    [Fact]
-    public async Task A_player_waiting_in_the_random_queue_cannot_be_challenged()
-    {
-        var lobby = Lobby();
-        var queued = NewPlayerId("q1");
-        var challenger = NewPlayerId("c7");
-
-        // Nobody else is waiting in this grain's bucket, so this queues rather than matching.
-        Assert.Null(await lobby.EnqueueAsync(queued, (int)Language.En, 10, [], []));
-        Assert.Equal(1, await lobby.WaitingCountAsync("nobody", (int)Language.En, 10));
-
-        var result = (LiveChallengeResult)await lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, queued, (int)Language.En, 10, [], []);
-        Assert.Equal(LiveChallengeResult.TargetCommitted, result);
-    }
-
-    [Fact]
-    public async Task A_player_holding_a_pending_challenge_cannot_join_the_random_queue()
-    {
-        var lobby = Lobby();
-        var challenger = NewPlayerId("c8");
-        var target = NewPlayerId("t8");
-
-        await lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, target, (int)Language.En, 10, [], []);
-
-        // EnqueueAsync reports a refusal the same way it reports "queued, nobody to match": with null.
-        // What separates them is whether an entry exists afterwards, so that is what is asserted —
-        // neither side of a pending challenge may leave one behind.
-        Assert.Null(await lobby.EnqueueAsync(challenger, (int)Language.En, 10, [], []));
-        Assert.Null(await lobby.EnqueueAsync(target, (int)Language.En, 10, [], []));
-        Assert.Equal(0, await lobby.WaitingCountAsync("nobody", (int)Language.En, 10));
-    }
-
-    [Fact]
-    public async Task Two_players_challenging_the_same_target_at_the_same_instant_produce_exactly_one_pending_challenge()
-    {
-        var lobby = Lobby();
-        var target = NewPlayerId("hot");
-        var challengerA = NewPlayerId("ca");
-        var challengerB = NewPlayerId("cb");
-
-        var results = await Task.WhenAll(
-            lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), challengerA, target, (int)Language.En, 10, [], []),
-            lobby.ChallengeAsync(Guid.NewGuid().ToString("N"), challengerB, target, (int)Language.En, 10, [], []));
-
-        var sentCount = results.Count(r => (LiveChallengeResult)r == LiveChallengeResult.Sent);
-        Assert.Equal(1, sentCount);
-        Assert.Contains(results, r => (LiveChallengeResult)r == LiveChallengeResult.TargetCommitted);
-    }
-
-    [Fact]
-    public async Task After_a_challenge_is_declined_both_players_are_free_again()
-    {
-        var lobby = Lobby();
-        var challenger = NewPlayerId("c9");
-        var target = NewPlayerId("t9");
-        var firstId = Guid.NewGuid().ToString("N");
-
-        await lobby.ChallengeAsync(firstId, challenger, target, (int)Language.En, 10, [], []);
-        await lobby.DeclineAsync(firstId, target);
-
-        var secondId = Guid.NewGuid().ToString("N");
-        var result = (LiveChallengeResult)await lobby.ChallengeAsync(secondId, challenger, target, (int)Language.En, 10, [], []);
-        Assert.Equal(LiveChallengeResult.Sent, result);
-    }
-
-    [Fact]
-    public async Task When_the_duel_cannot_be_built_the_challenge_is_dropped_and_both_players_are_told()
-    {
-        var lobby = Lobby();
-        var challenger = NewPlayerId("c10");
-        var target = NewPlayerId("t10");
+        var lobby = await NewLobbyAsync(challenger, "chal-timeleft");
         var challengeId = Guid.NewGuid().ToString("N");
 
-        // Nl has no approved questions seeded anywhere in this fixture: QuestionSetBuilder cannot build a set.
-        await lobby.ChallengeAsync(challengeId, challenger, target, (int)Language.Nl, 10, [], []);
-        var accept = await lobby.AcceptAsync(challengeId, target);
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
+        var elapsed = TimeSpan.FromMinutes(2);
+        Advance(elapsed);
+
+        var pending = await matchmaking.PendingForAsync(target);
+        Assert.Single(pending);
+        var remaining = pending[0].ExpiresAt - LiveShared.TimeProvider.GetUtcNow();
+        var expected = LiveRules.LobbyExpires - elapsed;
+        Assert.InRange(remaining.TotalSeconds, expected.TotalSeconds - 2, expected.TotalSeconds + 2);
+    }
+
+    /// <summary>
+    /// The other half of issue #51's invitation change: no exclusivity at all. Being invited to
+    /// several lobbies at once — or sending several invitations, or holding one while queueing for a
+    /// random opponent too — is normal now, not a conflict the grain has to arbitrate.
+    /// </summary>
+    [Fact]
+    public async Task A_target_can_hold_several_pending_invitations_at_once()
+    {
+        var matchmaking = Matchmaking();
+        var target = NewPlayerId("multi-t");
+        var challengerA = NewPlayerId("multi-ca");
+        var challengerB = NewPlayerId("multi-cb");
+        var lobbyA = await NewLobbyAsync(challengerA, "chal-multi-a");
+        var lobbyB = await NewLobbyAsync(challengerB, "chal-multi-b");
+
+        var resultA = (LiveChallengeResult)await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), challengerA, target, lobbyA.Id);
+        var resultB = (LiveChallengeResult)await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), challengerB, target, lobbyB.Id);
+
+        Assert.Equal(LiveChallengeResult.Sent, resultA);
+        Assert.Equal(LiveChallengeResult.Sent, resultB);
+
+        var pending = await matchmaking.PendingForAsync(target);
+        Assert.Equal(2, pending.Count);
+        Assert.Contains(pending, c => c.LobbyId == lobbyA.Id);
+        Assert.Contains(pending, c => c.LobbyId == lobbyB.Id);
+    }
+
+    [Fact]
+    public async Task A_challenger_holding_a_pending_challenge_can_still_join_the_random_queue()
+    {
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("free-c");
+        var target = NewPlayerId("free-t");
+        var lobby = await NewLobbyAsync(challenger, "chal-freequeue");
+
+        await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, target, lobby.Id);
+
+        // No commitment to be blocked by: this queues an entry rather than being refused, which is
+        // exactly the difference the count proves (both a queued entry and a refusal return null).
+        Assert.Null(await matchmaking.EnqueueAsync(challenger, (int)Language.En, 10, [], []));
+        Assert.Equal(1, await matchmaking.WaitingCountAsync("nobody", (int)Language.En, 10));
+    }
+
+    [Fact]
+    public async Task When_the_lobby_has_already_started_by_the_time_of_accept_the_challenge_is_dropped_and_both_are_told()
+    {
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("c10");
+        var target = NewPlayerId("t10");
+        var thirdParty = NewPlayerId("x10");
+        var lobby = await NewLobbyAsync(challenger, "chal-full");
+        var challengeId = Guid.NewGuid().ToString("N");
+
+        await matchmaking.ChallengeAsync(challengeId, challenger, target, lobby.Id);
+
+        // Somebody else takes the only other seat directly, filling the capacity-2 lobby before the
+        // invited target ever acts on their invitation.
+        var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(lobby.Id);
+        await lobbyGrain.JoinAsync(thirdParty);
+
+        var accept = await matchmaking.AcceptAsync(challengeId, target);
 
         Assert.Equal((int)LiveChallengeResult.DuelFailed, accept.Result);
         Assert.Null(accept.MatchId);
         Assert.Contains(LiveShared.LobbyNotifier.EventsFor(challenger), e => e.Kind == "ChallengeFailed" && (string)e.Payload! == challengeId);
         Assert.Contains(LiveShared.LobbyNotifier.EventsFor(target), e => e.Kind == "ChallengeFailed" && (string)e.Payload! == challengeId);
+    }
 
-        // Both are free again: the challenger's commitment is gone, so this queues an entry instead of
-        // being refused — which is the difference the count proves, since either outcome returns null.
-        Assert.Null(await lobby.EnqueueAsync(challenger, (int)Language.En, 10, [], []));
-        Assert.Equal(1, await lobby.WaitingCountAsync("nobody", (int)Language.En, 10));
+    [Fact]
+    public async Task Challenging_into_a_lobby_that_has_already_started_is_refused()
+    {
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("c11");
+        var target = NewPlayerId("t11");
+        var thirdParty = NewPlayerId("x11");
+        var lobby = await NewLobbyAsync(challenger, "chal-started");
+
+        var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(lobby.Id);
+        await lobbyGrain.JoinAsync(thirdParty); // fills the capacity-2 lobby and starts it
+
+        var result = (LiveChallengeResult)await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, target, lobby.Id);
+
+        Assert.Equal(LiveChallengeResult.NotFound, result);
+        Assert.Empty(await matchmaking.PendingForAsync(target));
     }
 }

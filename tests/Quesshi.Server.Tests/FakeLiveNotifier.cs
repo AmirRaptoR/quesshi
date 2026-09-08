@@ -27,8 +27,6 @@ public sealed class FakeLiveNotifier : ILiveNotifier
         => Record("OpponentPresenceChanged", matchId, (playerId, online));
     public Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default)
         => Record("OpponentAnswered", matchId, (slot, playerId));
-    public Task RematchRequestedAsync(string matchId, string playerId, CancellationToken ct = default)
-        => Record("RematchRequested", matchId, playerId);
     public Task RematchCreatedAsync(string matchId, string newMatchId, CancellationToken ct = default)
         => Record("RematchCreated", matchId, newMatchId);
     public Task RematchFailedAsync(string matchId, CancellationToken ct = default)
