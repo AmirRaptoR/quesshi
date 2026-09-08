@@ -1,0 +1,477 @@
+@page "/lobby/{Code}"
+@inherits PageBase
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject Func<string, LiveClient> ClientFactory
+@inject LobbyClient LobbyConnection
+
+@*
+    Issue #53: the lobby page, for both duel kinds. It replaces the "waiting for an opponent" card
+    Duel.razor and Live.razor used to render inline — see their own OnInitializedAsync/LoadAsync, which
+    now redirect here instead the moment they see a duel still sitting in its lobby phase. A lobby is a
+    room people are standing in: the roster is the primary content, sized the same from two seats to
+    eight, with the settings and the share code beneath it rather than the other way around.
+*@
+
+<PageTitle>@L["lobby.title"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_snapshot is null)
+    {
+        <div class="empty">
+            <p>@L["join.noSuchCode"]</p>
+            <a class="btn btn--ghost" href="/">@L["common.back"]</a>
+        </div>
+    }
+    else
+    {
+        var snapshot = _snapshot;
+        var seats = LobbyPresentation.Seats(snapshot);
+        var isOwner = LobbyPresentation.IsOwner(snapshot, MeId);
+
+        @* --- roster: the primary content, legible from two seats to eight ---------------------- *@
+        <section class="card card--taq enter">
+            <span class="eyebrow">@L["lobby.roster"]</span>
+            <div class="lobby-seats" style="margin-top:1rem">
+                @foreach (var seat in seats)
+                {
+                    @if (seat is null)
+                    {
+                        <div class="lobby-seat lobby-seat--empty">
+                            <span class="avatar lobby-seat__ghost">?</span>
+                            <span class="faint" style="font-size:var(--step--1)">@L["lobby.openSeat"]</span>
+                        </div>
+                    }
+                    else
+                    {
+                        var isSeatOwner = seat.PlayerId == snapshot.Participants[0].PlayerId;
+                        <div class="lobby-seat @(seat.PlayerId == MeId ? "lobby-seat--me" : null)" @key="seat.PlayerId">
+                            <span class="avatar" style="background:@Ranks.Tint(seat.Avatar)">@Initial(seat.Name)</span>
+                            <span dir="auto">@seat.Name</span>
+                            @if (isSeatOwner) { <span class="chip chip--live-tag">@L["lobby.owner"]</span> }
+                            @if (seat.IsGuest) { <span class="chip">@L["lobby.guestTag"]</span> }
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+
+        @* --- invite a friend: the owner's own way to pull someone in without handing out the link -
+           issue #53's own gap — Profile.razor's Challenge button only ever opens a fresh 1v1, so this
+           is the one place a friend can be added to a lobby that already has other people in it. A
+           guest friend gets no button at all: OnConnectedAsync aborts every guest connection to
+           /hub/lobby outright, so an invitation minted for one would never be delivered — "link only"
+           says so plainly instead of offering a control that can never do anything. ------------------- *@
+        @if (isOwner)
+        {
+            <section class="card enter">
+                <span class="eyebrow">@L["lobby.invite.title"]</span>
+                @if (!seats.Any(s => s is null))
+                {
+                    <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["lobby.invite.full"]</p>
+                }
+                else if (_friends.Count == 0)
+                {
+                    <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["lobby.invite.empty"]</p>
+                }
+                else
+                {
+                    <div class="stack" style="margin-top:.7rem;gap:.4rem">
+                        @foreach (var friend in _friends)
+                        {
+                            var joined = snapshot.Participants.Any(p => p.PlayerId == friend.Id);
+                            <div class="row" @key="friend.Id">
+                                <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
+                                <span class="grow">@friend.DisplayName</span>
+                                @if (friend.Online)
+                                {
+                                    <span class="dot--online" title="@L["profile.online"]" aria-label="@L["profile.online"]"></span>
+                                }
+                                @if (joined)
+                                {
+                                    <span class="chip chip--live-tag">@L["lobby.invite.joined"]</span>
+                                }
+                                else if (friend.IsGuest)
+                                {
+                                    <span class="chip">@L["lobby.invite.linkOnly"]</span>
+                                }
+                                else if (_invited.Contains(friend.Id))
+                                {
+                                    <span class="chip">@L["lobby.invite.invited"]</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn--sm" disabled="@(_inviting == friend.Id)" @onclick="() => InviteAsync(friend.Id)">
+                                        @L["lobby.invite.button"]
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (_inviteError is not null) { <div class="notice notice--bad" style="margin-top:.6rem">@_inviteError</div> }
+            </section>
+        }
+
+        @* --- share code: the only way a guest is ever invited ----------------------------------- *@
+        <section class="card card--flat enter">
+            <span class="eyebrow">@L["result.share"]</span>
+            <div class="row" style="margin-top:.7rem">
+                <code class="grow live-code" dir="ltr">@snapshot.Code</code>
+                <button class="btn btn--ghost btn--sm" @onclick="CopyAsync">
+                    @(_copied ? L["result.copied"] : L["result.copyLink"])
+                </button>
+            </div>
+            <p class="faint" dir="ltr" style="margin:.5rem 0 0;font-size:var(--step--1);word-break:break-all">@ShareLink</p>
+            <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["result.shareHint"]</p>
+            @if (snapshot.IsLive)
+            {
+                <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@LobbyExpiry</p>
+            }
+        </section>
+
+        @* --- guest identity: the one moment a guest cares about their name and avatar ----------- *@
+        @if (State.IsGuest)
+        {
+            <section class="card enter">
+                <span class="eyebrow">@L["lobby.identity"]</span>
+                <div class="stack" style="margin-top:.8rem">
+                    <input class="input" maxlength="24" @bind="_identity.DisplayName" @bind:event="oninput"
+                           placeholder="@L["join.yourName"]" aria-label="@L["join.yourName"]" />
+
+                    <div class="field">
+                        <label>@L["lobby.avatarLabel"]</label>
+                        <div class="picker">
+                            @foreach (var seed in AvatarPalette.Seeds)
+                            {
+                                var pick = seed;
+                                <button type="button" class="picker__chip @(_identity.AvatarSeed == pick ? "is-on" : null)"
+                                        style="--pick:@Ranks.Tint(pick)" aria-pressed="@((_identity.AvatarSeed == pick).ToString().ToLowerInvariant())"
+                                        @onclick="() => _identity.AvatarSeed = pick">
+                                    <span class="avatar avatar--sm" style="background:@Ranks.Tint(pick)"></span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <button class="btn btn--block" disabled="@(!_identity.IsValid || _savingIdentity)" @onclick="SaveIdentityAsync">
+                        @(_identitySaved ? L["profile.saved"] : L["profile.save"])
+                    </button>
+                    @if (_identityError is not null) { <div class="notice notice--bad">@_identityError</div> }
+                </div>
+            </section>
+        }
+
+        @* --- settings: the owner's controls, or the same shape read-only for everyone else ------ *@
+        <section class="card enter">
+            <span class="eyebrow">@L["lobby.settings"]</span>
+            <DuelSettingsPicker Categories="_categories" PickedCategories="PickedCategories" PickedLevels="PickedLevels"
+                                Questions="snapshot.Settings.QuestionCount" QuestionsChanged="(int v) => ChangeSettingsAsync(questions: v)"
+                                Lang="@snapshot.Settings.Lang" LangChanged="(string v) => ChangeSettingsAsync(lang: v)"
+                                CategoryToggled="ToggleCategoryAsync" LevelToggled="ToggleLevelAsync"
+                                ReadOnly="@(!isOwner || snapshot.SettingsLocked)" />
+
+            @if (snapshot.SettingsLocked)
+            {
+                <p class="faint" style="margin-top:.5rem;font-size:var(--step--1)">@L["lobby.settingsLocked"]</p>
+            }
+        </section>
+
+        @if (_error is not null) { <div class="notice notice--bad enter">@_error</div> }
+
+        <div class="stack enter" style="margin-top:.2rem">
+            @if (isOwner)
+            {
+                <button class="btn btn--block" disabled="@(!LobbyPresentation.CanStart(snapshot, MeId) || _busy)" @onclick="StartAsync">
+                    @L["lobby.start"]
+                </button>
+                @if (snapshot.Participants.Count < 2)
+                {
+                    <p class="faint" style="margin:-.4rem 0 0;text-align:center;font-size:var(--step--1)">@L["lobby.needTwo"]</p>
+                }
+                <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leaveOwner"]</button>
+            }
+            else
+            {
+                <p class="empty">@L["lobby.waitingForOwner"]</p>
+                <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leave"]</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    /// <summary>A guest arriving by link lands here — see the guest identity card above.</summary>
+    protected override bool AllowsGuest => true;
+
+    private List<CategoryDto> _categories = [];
+    private LobbySnapshot? _snapshot;
+    private LiveClient? _client;
+    private GuestIdentityForm _identity = new();
+    private bool _copied, _busy, _savingIdentity, _identitySaved;
+    private string? _error, _identityError;
+
+    /// <summary>The owner's own friends list, fetched once on load — fresh online status and
+    /// <c>IsGuest</c>, the same way Profile.razor's own list is. Empty for anyone who is not the
+    /// owner: nobody else sees the invite section at all, so nothing else ever populates this.</summary>
+    private List<FriendDto> _friends = [];
+
+    /// <summary>Friend ids this owner has sent an in-app invitation to during this visit — cleared on
+    /// reload, not persisted. Re-inviting somebody already invited costs nothing (see
+    /// <c>ILiveMatchmakingGrain</c>'s own remarks on why an invitation carries no exclusivity), so
+    /// there is nothing to protect by asking the server to remember this instead of the page itself.</summary>
+    private readonly HashSet<string> _invited = [];
+
+    private string? _inviting, _inviteError;
+
+    private string MeId => State.Me!.Id;
+    private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_snapshot!.Code}";
+
+    private ISet<string> PickedCategories => new HashSet<string>(_snapshot?.Settings.CategoryIds ?? []);
+    private ISet<int> PickedLevels => new HashSet<int>(_snapshot?.Settings.Levels ?? []);
+
+    private string LobbyExpiry => _snapshot?.LobbyEndsAt is { } endsAt
+        ? L.Format("live.lobby.expiresIn", L.Num(RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, TimeSpan.Zero)))
+        : "";
+
+    protected override async Task LoadAsync()
+    {
+        _categories = await Api.CategoriesAsync() ?? [];
+        _identity = State.Me is { } me ? GuestIdentityForm.From(me) : new GuestIdentityForm();
+        if (!AvatarPalette.IsValid(_identity.AvatarSeed)) _identity.AvatarSeed = AvatarPalette.Seeds[0];
+
+        // A guest who already belongs to a different duel never gets to take a second seat by
+        // wandering onto someone else's link — the same rule Join.razor's own reopen-check applies,
+        // read the other way: this is the one page that would otherwise actually seat them.
+        if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
+        {
+            var invite = await Api.InviteAsync(Code);
+            if (invite is null || invite.Live != State.GuestMatchIsLive || !await BelongsToMeAsync(mine))
+            {
+                Nav.NavigateTo(State.GuestMatchIsLive ? $"/live/{mine}" : $"/duel/{mine}", replace: true);
+                return;
+            }
+        }
+
+        if (!await RefreshAsync() || _snapshot is not { Waiting: true }) return;
+
+        // Only the owner ever renders the invite section, and only a real signed-in player ever owns
+        // a lobby at all (creating one is refused for a guest well before this page exists) — so this
+        // is never spent on a visitor who could not use it.
+        if (LobbyPresentation.IsOwner(_snapshot, MeId)) _friends = (await Api.MeAsync())?.Friends ?? [];
+
+        await ConnectAsync();
+    }
+
+    /// <summary>
+    /// Sends <paramref name="friendId"/> a plain in-app invitation into this lobby via
+    /// <c>LobbyHub.InviteToLobby</c>. Unlike the owner action methods below, this never re-fetches the
+    /// lobby afterwards: sending an invitation changes nothing about the lobby itself, only who has
+    /// been told about it — the roster updates on its own, via the same <see cref="OnLobbyUpdated"/>
+    /// push every other join already drives, once (if) the friend actually accepts.
+    /// </summary>
+    private async Task InviteAsync(string friendId)
+    {
+        if (_snapshot is null || _inviting is not null) return;
+
+        _inviting = friendId;
+        _inviteError = null;
+        try
+        {
+            // 0 mirrors Quesshi.Domain.LiveChallengeResult.Sent — Quesshi.Web has no reference to
+            // Quesshi.Domain (every hub call already crosses this boundary as a bare int; see
+            // LobbyClient.InviteToLobbyAsync's own remarks), so the one value this page acts on is
+            // named here instead of shared as a type.
+            const int sent = 0;
+            var result = await LobbyConnection.InviteToLobbyAsync(friendId, _snapshot.MatchId);
+            if (result == sent) _invited.Add(friendId);
+            else _inviteError = L["common.error"];
+        }
+        finally
+        {
+            _inviting = null;
+        }
+    }
+
+    /// <summary>Whether the code this page was opened with actually resolves to the guest's own pinned
+    /// duel — checked by asking, rather than guessed from the code alone, since a code and a match id
+    /// live in different namespaces.</summary>
+    private async Task<bool> BelongsToMeAsync(string myMatchId)
+    {
+        if (State.GuestMatchIsLive)
+        {
+            var live = await Api.LiveAsync(myMatchId);
+            return live?.Code == Code;
+        }
+
+        var match = await Api.MatchAsync(myMatchId);
+        return match?.Summary.Code == Code;
+    }
+
+    /// <summary>
+    /// Re-fetches this lobby's state by joining its code again — idempotent (<c>AlreadyIn</c>) for
+    /// anyone already seated, which is every legitimate visitor to this page — and is what both the
+    /// initial load and every <see cref="LiveClient.LobbyUpdated"/> push run. There is no separate
+    /// GetAsync-by-code endpoint to call instead: the join endpoints already are that read for a
+    /// participant, live or async alike. Which endpoint to call is only ever unknown on the very
+    /// first call — a duel's kind never changes once created — so every later refresh skips the extra
+    /// invite lookup and reuses what the first one already learned.
+    /// </summary>
+    private async Task<bool> RefreshAsync()
+    {
+        bool isLive;
+        if (_snapshot is { } known)
+        {
+            isLive = known.IsLive;
+        }
+        else
+        {
+            var invite = await Api.InviteAsync(Code);
+            if (invite is null) return false;
+            isLive = invite.Live;
+        }
+
+        if (isLive)
+        {
+            var view = await Api.JoinLiveAsync(Code);
+            if (view is null) return false;
+            _snapshot = LobbyPresentation.From(view);
+        }
+        else
+        {
+            var summary = await Api.JoinAsync(Code);
+            if (summary is null) return false;
+            _snapshot = LobbyPresentation.From(summary);
+        }
+
+        if (!_snapshot.Waiting) Nav.NavigateTo(LobbyPresentation.TargetRoute(_snapshot), replace: true);
+        return true;
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (_snapshot is null) return;
+
+        _client = ClientFactory("/hub/live");
+        _client.LobbyUpdated += OnLobbyUpdated;
+
+        try
+        {
+            await _client.StartAsync();
+            if (_snapshot.IsLive) await _client.JoinAsync(_snapshot.MatchId);
+            else await _client.JoinAsyncLobbyAsync(_snapshot.MatchId);
+        }
+        catch
+        {
+            // The initial fetch above already has us a usable snapshot; without the socket, the page
+            // simply stops updating live and needs a reload to see anyone else's change.
+        }
+    }
+
+    private void OnLobbyUpdated() => _ = InvokeAsync(async () =>
+    {
+        await RefreshAsync();
+        StateHasChanged();
+    });
+
+    // --- owner actions: every one re-fetches afterwards, since none of these endpoints echoes the
+    // resulting state back — the push every other viewer gets is this same re-fetch, run locally. ---
+
+    private Task ToggleCategoryAsync(string id)
+    {
+        var current = PickedCategories;
+        if (!current.Remove(id)) current.Add(id);
+        return ChangeSettingsAsync(categories: [.. current]);
+    }
+
+    private Task ToggleLevelAsync(int level)
+    {
+        var current = PickedLevels;
+        if (!current.Remove(level)) current.Add(level);
+        return ChangeSettingsAsync(levels: [.. current]);
+    }
+
+    private async Task ChangeSettingsAsync(int? questions = null, string? lang = null,
+        List<string>? categories = null, List<int>? levels = null)
+    {
+        if (_snapshot is null || _busy) return;
+
+        _busy = true; _error = null;
+        var settings = _snapshot.Settings;
+        var dto = new UpdateDuelSettingsDto(
+            lang ?? settings.Lang,
+            categories ?? settings.CategoryIds,
+            questions ?? settings.QuestionCount,
+            levels ?? settings.Levels);
+
+        var ok = await Api.UpdateLobbySettingsAsync(_snapshot.MatchId, _snapshot.IsLive, dto);
+        if (ok) await RefreshAsync(); else _error = L["common.error"];
+        _busy = false;
+    }
+
+    private async Task StartAsync()
+    {
+        if (_snapshot is null || _busy) return;
+
+        _busy = true; _error = null;
+        var ok = await Api.StartLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
+        if (ok) await RefreshAsync(); else _error = L["common.error"];
+        _busy = false;
+    }
+
+    private async Task LeaveAsync()
+    {
+        if (_snapshot is null || _busy) return;
+
+        _busy = true;
+        await Api.LeaveLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
+        Nav.NavigateTo("/");
+    }
+
+    private async Task SaveIdentityAsync()
+    {
+        if (!_identity.IsValid || _savingIdentity) return;
+
+        _savingIdentity = true; _identityError = null; _identitySaved = false;
+        var me = await Api.SaveProfileAsync(_identity.DisplayName.Trim(), State.Lang, _identity.AvatarSeed);
+        _savingIdentity = false;
+
+        if (me is null)
+        {
+            // Expected until issue #54 lands: PUT /api/me refuses a guest outright today (403).
+            _identityError = L["common.error"];
+            return;
+        }
+
+        State.SetMe(me);
+        _identitySaved = true;
+        await RefreshAsync(); // the roster reads this player's name/avatar off the roster fetch, not off State.Me
+    }
+
+    private async Task CopyAsync()
+    {
+        _copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
+        StateHasChanged();
+    }
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_client is null) return;
+
+        _client.LobbyUpdated -= OnLobbyUpdated;
+        try { await _client.LeaveAsync(); } catch { /* the connection may already be gone */ }
+        await _client.DisposeAsync();
+    }
+}

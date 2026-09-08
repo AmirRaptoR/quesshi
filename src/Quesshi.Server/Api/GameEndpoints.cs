@@ -87,7 +87,7 @@ public static class GameEndpoints
 
         // Search results are candidates to add, not yet friends — online status has no meaning here.
         api.MapGet("/players/search", async (string? q, IPlayerRepository players) =>
-            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false)).ToList());
+            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false, p.IsGuest)).ToList());
 
         // --- leaderboards ------------------------------------------------------------
         api.MapGet("/leaderboard", async (ILeaderboard board, IPlayerRepository players) =>
@@ -197,8 +197,9 @@ public static class GameEndpoints
             var reveal = summary.CanReveal
                 ? await BuildRevealAsync(view, meId, questions, categories)
                 : [];
+            var standings = await BuildStandingsAsync(view, players);
 
-            return Results.Ok(new MatchDetailDto(summary, reveal));
+            return Results.Ok(new MatchDetailDto(summary, reveal, standings));
         }).WithMetadata(new AllowGuest());
 
         api.MapPost("/matches/{id}/next", async (string id, HttpContext ctx, IGrainFactory grains,
@@ -374,9 +375,9 @@ public static class GameEndpoints
                 .SelectMany(ParticipantIds)
                 .Concat(liveRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
                 .Distinct()]))
-            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
+            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed, p.IsGuest));
 
-        (string, string) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id);
+        (string, string, bool) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id, false);
 
         var summaries = asyncViews.Select(v => v.ToSummary(meId, Lookup))
             .Concat(liveRows.Select(r => r.ToLiveSummary(meId, Lookup)));
@@ -391,22 +392,17 @@ public static class GameEndpoints
     }
 
     /// <summary>
-    /// Every id <paramref name="v"/> actually names, for a capacity-anything async duel: the two
-    /// legacy scalars <c>ChallengerId</c>/<c>OpponentId</c> (always known — a seat is real from the
-    /// moment <c>Join</c> fills it, whether or not that player has served a question yet), plus
-    /// whoever else has a <see cref="RunView"/> in <see cref="MatchView.Runs"/> (a run exists once a
-    /// player has been served their first question, regardless of seat order). <see cref="MatchView"/>
-    /// itself still only carries two named seats — reshaping it for N is issue #53's job — so this is
-    /// the closest a caller here can get to "every real participant" without that reshape, and it is
-    /// exactly what <see cref="IsIn"/>, the name-resolution fan-out below, and every "the other
-    /// participant" lookup in this file should be built on instead of the two scalars alone: a
-    /// three-or-later seat that has played at least one question is a real, findable id here, not
-    /// silently absent the way it used to be.
+    /// Every seat <paramref name="v"/> actually holds, for a capacity-anything async duel:
+    /// <see cref="MatchView.Participants"/> directly, now that issue #53 reshaped it away from the two
+    /// legacy scalars this used to reconstruct from (plus whoever had a <see cref="RunView"/>, since a
+    /// third-or-later seat that had only just been served a question was otherwise invisible). A seat
+    /// is real from the moment <c>Join</c> fills it, whether or not that player has served a question
+    /// yet, and every "the other participant" lookup in this file is built on this instead of the
+    /// old scalar pair.
     /// </summary>
-    private static IEnumerable<string> ParticipantIds(MatchView v) =>
-        new[] { v.ChallengerId, v.OpponentId }.OfType<string>().Concat(v.Runs.Select(r => r.PlayerId)).Distinct();
+    private static IEnumerable<string> ParticipantIds(MatchView v) => v.Participants;
 
-    private static bool IsIn(MatchView v, string playerId) => ParticipantIds(v).Contains(playerId);
+    private static bool IsIn(MatchView v, string playerId) => v.Participants.Contains(playerId);
 
     private static async Task<MatchSummaryDto?> SummaryAsync(IMatchGrain grain, string meId, IPlayerRepository players)
     {
@@ -416,14 +412,14 @@ public static class GameEndpoints
 
     private static async Task<MatchSummaryDto> ToSummaryAsync(MatchView view, string meId, IPlayerRepository players)
     {
-        var names = new Dictionary<string, (string, string)>();
+        var names = new Dictionary<string, (string, string, bool)>();
         foreach (var id in ParticipantIds(view))
         {
             var p = await players.GetAsync(id);
-            names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id);
+            names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id, p?.IsGuest ?? false);
         }
 
-        return view.ToSummary(meId, id => names.GetValueOrDefault(id, ("—", id)));
+        return view.ToSummary(meId, id => names.GetValueOrDefault(id, ("—", id, false)));
     }
 
     private static async Task<List<RevealedQuestionDto>> BuildRevealAsync(MatchView view, string meId,
@@ -450,6 +446,49 @@ public static class GameEndpoints
             ToMediaDto(q.Media)))];
     }
 
+    /// <summary>
+    /// The results screen's standings list: every seat ranked purely by banked score, ties sharing a
+    /// place. An async run has no round-by-round abandonment to rank below everyone else regardless
+    /// of score the way a live duel's <c>Standing</c> does (see <c>Mappers.OutcomeFor</c>'s own
+    /// remarks) — "highest score(s) win, ties share first" is the entire rule, whether every run
+    /// finished normally or the match ended by forfeiture with some still open. Empty while the duel
+    /// is still running, and for <c>NoContest</c>, which credits nobody, mirroring a live duel's own
+    /// <c>Standings</c>.
+    /// </summary>
+    private static async Task<List<StandingRowDto>> BuildStandingsAsync(MatchView view, IPlayerRepository players)
+    {
+        var state = (MatchState)view.State;
+        if (state is not (MatchState.Resolved or MatchState.Forfeited)) return [];
+
+        var byId = (await players.GetManyAsync(view.Participants)).ToDictionary(p => p.Id);
+        (string Name, string Avatar) Lookup(string id) => byId.TryGetValue(id, out var p) ? (p.DisplayName, p.AvatarSeed) : ("—", id);
+
+        var ranked = view.Participants
+            .Select(id => (PlayerId: id, Run: view.Runs.FirstOrDefault(r => r.PlayerId == id)))
+            .OrderByDescending(p => p.Run?.Score ?? 0)
+            .ToList();
+
+        var places = new int[ranked.Count];
+        for (var i = 0; i < ranked.Count; i++)
+            places[i] = i > 0 && (ranked[i].Run?.Score ?? 0) == (ranked[i - 1].Run?.Score ?? 0) ? places[i - 1] : i + 1;
+
+        // Outcome depends on the final shape of first place, only known once every place is assigned:
+        // its sole occupant wins, several sharing it each draw, everyone else loses — the same rule
+        // LiveMatch.BuildStandings applies, so scores of 100/100/50 read as two draws and one loss here too.
+        var firstPlaceCount = places.Count(p => p == 1);
+
+        return [.. ranked.Select((p, i) =>
+        {
+            var (name, avatar) = Lookup(p.PlayerId);
+            var outcome = places[i] != 1 ? "loss" : firstPlaceCount == 1 ? "win" : "draw";
+
+            // A run that never finished before the match itself ended (forfeiture) is expired, not
+            // "still playing" — Resolved never reaches here with an unfinished run, since resolution
+            // itself requires every participant to have finished.
+            return new StandingRowDto(p.PlayerId, name, avatar, p.Run?.Score ?? 0, places[i], outcome, Expired: p.Run?.Finished != true);
+        })];
+    }
+
     private static MediaDto? ToMediaDto(MediaRef media)
         => media.Kind == MediaKind.None ? null : new MediaDto(media.Kind.ToString().ToLowerInvariant(), media.Url, media.Attribution);
 
@@ -467,7 +506,7 @@ public static class GameEndpoints
             ? []
             : await presence.OnlineAsync([.. candidates.Select(f => f.Id)]);
 
-        var friends = candidates.Select(f => new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id)));
+        var friends = candidates.Select(f => new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id), f.IsGuest));
         return [.. friends.OrderByDescending(f => f.Score)];
     }
 

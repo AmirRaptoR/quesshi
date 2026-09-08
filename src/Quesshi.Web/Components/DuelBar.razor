@@ -1,6 +1,11 @@
-@* Option A: a duel bar above the topbar, both scores visible throughout the question and reveal
+@* Option A: a duel bar above the topbar, every score visible throughout the question and reveal
    phases. Plain flex + DOM order (see .duelbar in app.css) is already direction-aware, so this
-   needs no separate rtl rule. *@
+   needs no separate rtl rule.
+
+   A capacity-2 duel (Others.Count == 1) renders exactly the two-column markup this always had —
+   nothing here reads as new for a 1v1. Beyond that, Others becomes a horizontally-scrollable strip
+   of the same side markup instead of a single column, which is what keeps up to seven other seats
+   legible without redesigning the two-player case into something worse. *@
 @using Quesshi.Shared
 @using Quesshi.Web.Services
 @using Quesshi.Web.Pages
@@ -11,20 +16,48 @@
         <span class="duelbar__name" dir="auto">@Mine.Name</span>
         <span class="numeral duelbar__score duelbar__score--mine">@L.Num(Mine.Score)</span>
     </div>
-    <div class="duelbar__side duelbar__side--theirs">
-        <span class="numeral duelbar__score">@L.Num(Theirs.Score)</span>
-        <span class="duelbar__name" dir="auto">@Theirs.Name</span>
-        <span class="avatar" style="background:@Ranks.Tint(Theirs.Avatar)">@Initial(Theirs.Name)</span>
-    </div>
+
+    @if (Others.Count == 1)
+    {
+        var theirs = Others[0];
+        <div class="duelbar__side duelbar__side--theirs">
+            <span class="numeral duelbar__score">@L.Num(theirs.Score)</span>
+            <span class="duelbar__name" dir="auto">@theirs.Name</span>
+            <span class="avatar" style="background:@Ranks.Tint(theirs.Avatar)">@Initial(theirs.Name)</span>
+        </div>
+    }
+    else if (Others.Count > 1)
+    {
+        <div class="duelbar__others">
+            @foreach (var side in Others)
+            {
+                <div class="duelbar__side duelbar__side--theirs @(Eliminated.Contains(side.PlayerId) ? "duelbar__side--out" : null)" @key="side.PlayerId">
+                    <span class="numeral duelbar__score">@L.Num(side.Score)</span>
+                    <span class="duelbar__name" dir="auto">@side.Name</span>
+                    <span class="avatar" style="background:@Ranks.Tint(side.Avatar)">@Initial(side.Name)</span>
+                </div>
+            }
+        </div>
+    }
 </div>
 
 @code {
     [Parameter] public LiveViewDto View { get; set; } = default!;
     [Parameter] public string MeId { get; set; } = "";
+
+    /// <summary>
+    /// Every eliminated participant's id, so a dropped seat among three-or-more reads as done rather
+    /// than as someone the round is still, silently, waiting on. A capacity-2 duel never needs this —
+    /// the moment its one other seat is eliminated only one active player is left, and the duel ends
+    /// outright instead of lingering in this phase with an out player still shown — so the two-column
+    /// markup above never checks it, keeping that case exactly as it always rendered.
+    /// </summary>
+    [Parameter] public IReadOnlySet<string> Eliminated { get; set; } = new HashSet<string>();
+
     [Inject] private Translator L { get; set; } = default!;
 
     private DuelBarSide Mine => DuelBarScores.Split(View, MeId).Mine;
-    private DuelBarSide Theirs => DuelBarScores.Split(View, MeId).Theirs;
+    private List<DuelBarSide> Others => DuelBarScores.Split(View, MeId).Others;
 
     private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
 }

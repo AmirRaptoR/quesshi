@@ -178,10 +178,22 @@ public sealed class LiveMatchmakingGrain(
         }
 
         // Taken, Full, Expired, SelfJoin or Unknown: the lobby moved on before this invitation was
-        // spent. Both sides are told, the same as the old "the duel could not be built" path.
+        // spent. Both sides are told the same way regardless (ChallengeFailedAsync carries no reason
+        // of its own — the challenger's banner just clears, exactly as before); it is only the
+        // accepting target's own direct return value below that tells Full and Taken apart from each
+        // other and from the pair not worth distinguishing, since that return is the one place issue
+        // #53 needs "refused gracefully" to mean more than a single generic failure.
         await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.ChallengerId, challengeId));
         await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.TargetId, challengeId));
-        return new LiveChallengeAcceptResult((int)LiveChallengeResult.DuelFailed, null, challenge.ChallengerId);
+
+        var reason = joinResult switch
+        {
+            LiveJoinResult.Full => LiveChallengeResult.LobbyFull,
+            LiveJoinResult.Taken => LiveChallengeResult.LobbyTaken,
+            LiveJoinResult.Expired => LiveChallengeResult.Expired,
+            _ => LiveChallengeResult.DuelFailed // SelfJoin, Unknown
+        };
+        return new LiveChallengeAcceptResult((int)reason, null, challenge.ChallengerId);
     }
 
     public async Task<int> DeclineAsync(string challengeId, string targetId)

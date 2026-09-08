@@ -30,6 +30,7 @@ public sealed class MatchRecoveryTestSilo : ISiloConfigurator
             services.AddSingleton<IMatchArchive>(MatchRecoveryShared.Archive);
             services.AddSingleton<ILeaderboard>(MatchRecoveryShared.Leaderboard);
             services.AddSingleton<IPlayerRepository>(MatchRecoveryShared.Players);
+            services.AddSingleton<ILiveNotifier>(MatchRecoveryShared.Notifier);
             services.AddSingleton<QuestionSetBuilder>(); // see TestSilo's identical remark
         });
     }

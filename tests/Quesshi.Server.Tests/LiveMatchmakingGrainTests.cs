@@ -548,7 +548,10 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
 
         var accept = await matchmaking.AcceptAsync(challengeId, target);
 
-        Assert.Equal((int)LiveChallengeResult.DuelFailed, accept.Result);
+        // A capacity-2 lobby can only ever close by filling (see LiveJoinResult's own remarks), so
+        // "already started" here means every seat is taken — LobbyFull, issue #53's own surfaced
+        // outcome, not the generic DuelFailed this used to collapse into.
+        Assert.Equal((int)LiveChallengeResult.LobbyFull, accept.Result);
         Assert.Null(accept.MatchId);
         Assert.Contains(LiveShared.LobbyNotifier.EventsFor(challenger), e => e.Kind == "ChallengeFailed" && (string)e.Payload! == challengeId);
         Assert.Contains(LiveShared.LobbyNotifier.EventsFor(target), e => e.Kind == "ChallengeFailed" && (string)e.Payload! == challengeId);

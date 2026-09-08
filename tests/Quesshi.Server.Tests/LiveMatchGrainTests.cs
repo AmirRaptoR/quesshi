@@ -832,12 +832,17 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
         // Every round: RoundStarted, then OpponentAnswered for the first of the two answers (both
         // players answer here, unlike the silence this test used to drive), then RoundRevealed.
+        // Issue #53's lobby page addition: Sara's join fires CountdownStarted (the phase transition
+        // it causes, handled inside AfterChangeAsync/NotifyAsync) and then LobbyUpdated (JoinAsync's
+        // own explicit push for a real new seat, fired after AfterChangeAsync returns).
         Assert.Equal("CountdownStarted", kinds[0]);
+        Assert.Equal("LobbyUpdated", kinds[1]);
         for (var slot = 0; slot < rounds; slot++)
-            Assert.Equal(["RoundStarted", "OpponentAnswered", "RoundRevealed"], kinds.Skip(1 + slot * 3).Take(3));
+            Assert.Equal(["RoundStarted", "OpponentAnswered", "RoundRevealed"], kinds.Skip(2 + slot * 3).Take(3));
         Assert.Equal("Ended", kinds[^1]);
-        Assert.Equal(1 + rounds * 3 + 1, kinds.Count);
+        Assert.Equal(2 + rounds * 3 + 1, kinds.Count);
 
+        Assert.Equal(1, kinds.Count(k => k == "LobbyUpdated"));
         Assert.Equal(1, kinds.Count(k => k == "CountdownStarted"));
         Assert.Equal(rounds, kinds.Count(k => k == "RoundStarted"));
         Assert.Equal(rounds, kinds.Count(k => k == "OpponentAnswered"));

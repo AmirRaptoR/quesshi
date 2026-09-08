@@ -156,7 +156,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
         var dto = ViewOf(result);
         Assert.Equal("countdown", dto.Phase);
-        Assert.Equal(Sara, dto.OpponentId);
+        Assert.Equal(Sara, dto.Participants[1].PlayerId);
 
         Assert.Single(LiveShared.Notifier.EventsFor(created.Id), e => e.Kind == "CountdownStarted");
     }
@@ -237,7 +237,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
         var second = await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(second));
-        Assert.Equal(Sara, ViewOf(second).OpponentId);
+        Assert.Equal(Sara, ViewOf(second).Participants[1].PlayerId);
     }
 
     [Fact]

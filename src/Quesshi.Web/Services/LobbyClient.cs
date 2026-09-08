@@ -175,6 +175,25 @@ public sealed class LobbyClient : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// <c>Lobby.razor</c>'s own invite-a-friend control: points a plain invitation at a lobby that
+    /// already exists (<paramref name="lobbyId"/>) instead of minting a fresh 1v1 the way
+    /// <see cref="ChallengeAsync"/> does. Null means the invoke could not be sent — every real result
+    /// is a defined <c>LiveChallengeResult</c> value, the same convention <see cref="ChallengeAsync"/>
+    /// already follows.
+    /// </summary>
+    public async Task<int?> InviteToLobbyAsync(string targetId, string lobbyId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _connection.InvokeAsync<int>("InviteToLobby", targetId, lobbyId, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Null means the invoke could not be sent.</summary>
     public async Task<LiveChallengeAcceptResultDto?> AcceptAsync(string challengeId, CancellationToken ct = default)
     {

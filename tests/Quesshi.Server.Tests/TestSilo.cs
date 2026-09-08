@@ -20,6 +20,7 @@ public sealed class TestSilo : ISiloConfigurator
             services.AddSingleton<IMatchArchive>(Shared.Archive);
             services.AddSingleton<ILeaderboard>(Shared.Leaderboard);
             services.AddSingleton<IPlayerRepository>(Shared.Players);
+            services.AddSingleton<ILiveNotifier>(Shared.Notifier);
 
             // MatchGrain now draws its own question set at Start/auto-start, the way LiveMatchGrain
             // already does — needed for DI to construct the grain at all, even in tests that only ever

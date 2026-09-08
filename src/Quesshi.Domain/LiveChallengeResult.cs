@@ -21,9 +21,27 @@ public enum LiveChallengeResult
     SelfChallenge,
 
     /// <summary>
-    /// The challenge was accepted, but the lobby it pointed at could not be joined — it had already
-    /// filled, started, or expired by the time this landed. Dropped either way: an invitation is
-    /// consumed the instant it is acted on, whether or not the seat was still there.
+    /// The challenge was accepted, but the lobby it pointed at could not be joined for a reason not
+    /// worth a value of its own — the target already owned the lobby, or it had vanished outright
+    /// (<c>LiveJoinResult.SelfJoin</c>/<c>Unknown</c>, neither reachable through a legitimate
+    /// invitation). Dropped either way: an invitation is consumed the instant it is acted on, whether
+    /// or not the seat was still there. See <see cref="LobbyFull"/>/<see cref="LobbyTaken"/> for the
+    /// two failure shapes worth telling apart from this one and from each other.
     /// </summary>
-    DuelFailed
+    DuelFailed,
+
+    /// <summary>
+    /// Accepted too late: every seat was already occupied by the time this landed
+    /// (<c>LiveJoinResult.Full</c>). Issue #53's own ask — surfaced separately from
+    /// <see cref="LobbyTaken"/> and <see cref="DuelFailed"/> rather than folded into one generic
+    /// failure, so the player who just missed a seat is told that, not left to guess.
+    /// </summary>
+    LobbyFull,
+
+    /// <summary>
+    /// Accepted too late a different way: the owner started the duel with the lobby still short of
+    /// full (<c>LiveJoinResult.Taken</c>) — a capacity-2 lobby can never actually produce this (it
+    /// only ever closes by filling), so it is reachable only for a wider N-player lobby.
+    /// </summary>
+    LobbyTaken
 }

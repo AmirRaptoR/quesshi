@@ -25,7 +25,8 @@ public sealed class Api(HttpClient http)
 
     // --- profile ---
     public Task<MeDto?> MeAsync() => GetAsync<MeDto>("api/me");
-    public Task<MeDto?> SaveProfileAsync(string displayName, string lang) => PutAsync<MeDto>("api/me", new UpdateProfileDto(displayName, lang));
+    public Task<MeDto?> SaveProfileAsync(string displayName, string lang, string? avatarSeed = null)
+        => PutAsync<MeDto>("api/me", new UpdateProfileDto(displayName, lang, avatarSeed));
     public Task<List<CategoryDto>?> CategoriesAsync() => GetAsync<List<CategoryDto>>("api/categories");
     public Task<List<FriendDto>?> SearchPlayersAsync(string q) => GetAsync<List<FriendDto>>($"api/players/search?q={Uri.EscapeDataString(q)}");
     public Task<bool> AddFriendAsync(string id) => SendAsync(HttpMethod.Post, $"api/friends/{id}");
@@ -52,6 +53,30 @@ public sealed class Api(HttpClient http)
     public Task<LiveViewDto?> JoinLiveAsync(string code) => PostAsync<LiveViewDto>($"api/live/join/{Uri.EscapeDataString(Code(code))}", new { });
     public Task<LiveViewDto?> LiveAsync(string id) => GetAsync<LiveViewDto>($"api/live/{id}");
     public Task<bool> CancelLiveAsync(string id) => SendAsync(HttpMethod.Delete, $"api/live/{id}");
+
+    // --- lobby (issue #53): the same three calls for either duel kind, routed by IsLive -------------
+    // Home.razor's own gap: "Invite a friend" only ever went through CreateMatchAsync above, a fixed
+    // capacity-2 duel, so a capacity above two had nowhere to go without CreateMatchLobbyAsync. The
+    // matching live gap — a live lobby wider than two, or even a plain live invite — had nowhere to go
+    // at all until CreateLiveLobbyAsync below: the endpoint existed (POST /api/live/lobby, wired for
+    // issue #52) with no client call in front of it.
+    public Task<MatchSummaryDto?> CreateMatchLobbyAsync(int capacity, string? lang, List<string>? categories = null,
+        int? questions = null, List<int>? levels = null)
+        => PostAsync<MatchSummaryDto>("api/matches/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
+
+    /// <summary>The live half of the pair above — same shape, same capacity range (2-8), landing its
+    /// caller on a lobby to share rather than an already-paired duel, because a live invite has no
+    /// "matched instantly" shortcut the way random matchmaking does.</summary>
+    public Task<LiveViewDto?> CreateLiveLobbyAsync(int capacity, string? lang, List<string>? categories = null,
+        int? questions = null, List<int>? levels = null)
+        => PostAsync<LiveViewDto>("api/live/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
+
+    public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
+    public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");
+    public Task<bool> UpdateLobbySettingsAsync(string id, bool isLive, UpdateDuelSettingsDto settings)
+        => PutJsonAsync($"{LobbyBase(isLive)}/{id}/settings", settings);
+
+    private static string LobbyBase(bool isLive) => isLive ? "api/live" : "api/matches";
 
     public Task<bool> ReportQuestionAsync(string questionId, string reason)
         => PostJsonAsync("api/report", new ReportQuestionDto(questionId, reason));
@@ -109,6 +134,12 @@ public sealed class Api(HttpClient http)
     private async Task<bool> PostJsonAsync(string url, object body)
     {
         try { return (await http.PostAsJsonAsync(url, body)).IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    private async Task<bool> PutJsonAsync(string url, object body)
+    {
+        try { return (await http.PutAsJsonAsync(url, body)).IsSuccessStatusCode; }
         catch { return false; }
     }
 

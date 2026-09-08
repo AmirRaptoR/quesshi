@@ -145,7 +145,16 @@ public sealed class LiveMatchGrain(
         // touches nothing — goes through AfterChangeAsync.
         var result = _match.TryJoin(playerId, clock.Now);
         if (result != LiveJoinResult.SelfJoin) await AfterChangeAsync(phaseBefore, wasOver);
-        if (result == LiveJoinResult.Joined) await IndexAsync(); // the opponent is now part of the row a code resolves to
+        if (result == LiveJoinResult.Joined)
+        {
+            await IndexAsync(); // the opponent is now part of the row a code resolves to
+
+            // Issue #53's lobby page: a real new seat, not AlreadyIn's idempotent no-op. Fired here
+            // rather than from AfterChangeAsync/NotifyAsync, which CreateAsync/CreateLobbyAsync also
+            // call with an identical "still in the lobby" phaseBefore — nobody has joined this hub
+            // group yet at creation time, so that push would only ever be noise.
+            await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
+        }
 
         return (int)result;
     }
@@ -170,6 +179,7 @@ public sealed class LiveMatchGrain(
         if (!_match.Start(playerId, clock.Now)) return false;
 
         await AfterChangeAsync(phaseBefore, false);
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
 
@@ -183,6 +193,7 @@ public sealed class LiveMatchGrain(
 
         await AfterChangeAsync(phaseBefore, false);
         await IndexAsync(); // the roster shrank; mirrors JoinAsync's own index refresh on a successful join
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
 
@@ -203,6 +214,7 @@ public sealed class LiveMatchGrain(
         if (!_match.UpdateSettings(playerId, settings)) return false;
 
         await SaveAsync();
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
 
@@ -221,6 +233,10 @@ public sealed class LiveMatchGrain(
         var phaseBefore = _match.Phase;
         _match.EndNoContest(clock.Now, NoContestReason.OwnerCancelled);
         await AfterChangeAsync(phaseBefore, false, reason);
+
+        // Anyone else already seated (a capacity>2 lobby, or a rejoining second player) needs to
+        // learn the lobby is gone too, not just watch it silently stop responding.
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
 
@@ -659,7 +675,7 @@ public sealed class LiveMatchGrain(
     /// </summary>
     private static IReadOnlyList<string> Participants(LiveMatch m) => m.Participants;
 
-    private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, m.ChallengerId, m.OpponentId!, m.QuestionIds.Count);
+    private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, [.. Participants(m)], m.QuestionIds.Count);
 
     private static LiveRoundCard BuildRoundCard(LiveRound round, Question question, Category? category, int totalRounds) => new(
         round.Slot, totalRounds, question.Id, question.Prompt, [.. question.Choices],
@@ -730,6 +746,9 @@ public sealed class LiveMatchGrain(
         return new LiveView(
             m.Id, [.. Participants(m)], (int)m.State, (int)m.Phase, m.PhaseEndsAt,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, players, rounds,
-            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang);
+            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang,
+            [.. m.Standings.Select(s => new LiveStandingView(s.PlayerId, s.Score, s.Place, (int)s.Outcome))],
+            m.Capacity, m.Settings.QuestionCount, [.. m.Settings.CategoryIds],
+            [.. m.Settings.Levels.Select(l => (int)l)]);
     }
 }

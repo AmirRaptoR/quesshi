@@ -81,9 +81,9 @@ public class LiveHubTests(LiveClusterFixture fixture) : IAsyncDisposable
         var result = await connection.InvokeAsync<LiveViewDto>("Join", view.Id);
 
         Assert.Equal(view.Id, result.Id);
-        Assert.Equal("Challenger", result.ChallengerName);
-        Assert.Equal("Opponent", result.OpponentName);
-        Assert.NotEqual("", result.ChallengerAvatar);
+        Assert.Equal("Challenger", result.Participants[0].Name);
+        Assert.Equal("Opponent", result.Participants[1].Name);
+        Assert.NotEqual("", result.Participants[0].Avatar);
     }
 
     [Fact]

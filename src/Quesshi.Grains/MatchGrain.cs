@@ -15,6 +15,7 @@ public sealed class MatchGrain(
     IMatchArchive archive,
     QuestionSetBuilder questionSetBuilder,
     IClock clock,
+    ILiveNotifier notifier,
     ILogger<MatchGrain> logger) : Grain, IMatchGrain, IRemindable
 {
     private const string ForfeitReminder = "forfeit";
@@ -103,6 +104,7 @@ public sealed class MatchGrain(
 
         await SaveAsync();
         await IndexAsync();
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
 
@@ -126,6 +128,7 @@ public sealed class MatchGrain(
 
         await SaveAsync();
         await IndexAsync();
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
 
@@ -139,6 +142,7 @@ public sealed class MatchGrain(
 
         await SaveAsync();
         await IndexAsync();
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
 
         // A cancelled lobby is over the instant Cancel succeeds; a freed seat never is. Mirrors
         // AnswerAsync's own "!wasOver && IsOver" trigger, so the reminder gets unregistered and the
@@ -165,7 +169,27 @@ public sealed class MatchGrain(
         if (!_match.UpdateSettings(playerId, settings)) return false;
 
         await SaveAsync();
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
+    }
+
+    /// <summary>
+    /// Mirrors <c>LiveMatchGrain</c>'s own helper of the same name exactly: a notifier failure — the
+    /// hub down, a transient SignalR error — must never fail the mutation that already succeeded and
+    /// was already persisted above. The lobby page falls back to its own polling-free "nothing pushed
+    /// recently" state until the next successful push, rather than the whole request failing for a
+    /// reason that has nothing to do with whether the join/leave/settings-change/start itself worked.
+    /// </summary>
+    private async Task SafeNotifyAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "ILiveNotifier threw for async duel {MatchId}; the duel keeps running.", _match?.Id);
+        }
     }
 
     public async Task<ServedSlot?> ServeNextAsync(string playerId)
@@ -388,7 +412,8 @@ public sealed class MatchGrain(
         if (!reveal)
             runs = [.. runs.Select(r => r.PlayerId == forPlayerId ? r : r with { Score = 0, Correct = 0 })];
 
-        return new MatchView(m.Id, m.Code, (int)m.Lang, m.ChallengerId, m.OpponentId, (int)m.State, m.WinnerId, m.IsDraw,
-            m.CreatedAt, [.. m.QuestionIds], runs);
+        return new MatchView(m.Id, m.Code, (int)m.Lang, [.. m.Participants], (int)m.State, m.WinnerId, m.IsDraw,
+            m.CreatedAt, [.. m.QuestionIds], runs, m.Capacity, m.Settings.QuestionCount,
+            [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)]);
     }
 }
