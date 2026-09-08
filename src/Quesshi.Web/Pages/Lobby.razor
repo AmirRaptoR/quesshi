@@ -3,6 +3,7 @@
 @implements IAsyncDisposable
 @inject IJSRuntime Js
 @inject Func<string, LiveClient> ClientFactory
+@inject LobbyClient LobbyConnection
 
 @*
     Issue #53: the lobby page, for both duel kinds. It replaces the "waiting for an opponent" card
@@ -62,6 +63,63 @@
                 }
             </div>
         </section>
+
+        @* --- invite a friend: the owner's own way to pull someone in without handing out the link -
+           issue #53's own gap — Profile.razor's Challenge button only ever opens a fresh 1v1, so this
+           is the one place a friend can be added to a lobby that already has other people in it. A
+           guest friend gets no button at all: OnConnectedAsync aborts every guest connection to
+           /hub/lobby outright, so an invitation minted for one would never be delivered — "link only"
+           says so plainly instead of offering a control that can never do anything. ------------------- *@
+        @if (isOwner)
+        {
+            <section class="card enter">
+                <span class="eyebrow">@L["lobby.invite.title"]</span>
+                @if (!seats.Any(s => s is null))
+                {
+                    <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["lobby.invite.full"]</p>
+                }
+                else if (_friends.Count == 0)
+                {
+                    <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["lobby.invite.empty"]</p>
+                }
+                else
+                {
+                    <div class="stack" style="margin-top:.7rem;gap:.4rem">
+                        @foreach (var friend in _friends)
+                        {
+                            var joined = snapshot.Participants.Any(p => p.PlayerId == friend.Id);
+                            <div class="row" @key="friend.Id">
+                                <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
+                                <span class="grow">@friend.DisplayName</span>
+                                @if (friend.Online)
+                                {
+                                    <span class="dot--online" title="@L["profile.online"]" aria-label="@L["profile.online"]"></span>
+                                }
+                                @if (joined)
+                                {
+                                    <span class="chip chip--live-tag">@L["lobby.invite.joined"]</span>
+                                }
+                                else if (friend.IsGuest)
+                                {
+                                    <span class="chip">@L["lobby.invite.linkOnly"]</span>
+                                }
+                                else if (_invited.Contains(friend.Id))
+                                {
+                                    <span class="chip">@L["lobby.invite.invited"]</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn--sm" disabled="@(_inviting == friend.Id)" @onclick="() => InviteAsync(friend.Id)">
+                                        @L["lobby.invite.button"]
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (_inviteError is not null) { <div class="notice notice--bad" style="margin-top:.6rem">@_inviteError</div> }
+            </section>
+        }
 
         @* --- share code: the only way a guest is ever invited ----------------------------------- *@
         <section class="card card--flat enter">
@@ -163,6 +221,19 @@
     private bool _copied, _busy, _savingIdentity, _identitySaved;
     private string? _error, _identityError;
 
+    /// <summary>The owner's own friends list, fetched once on load — fresh online status and
+    /// <c>IsGuest</c>, the same way Profile.razor's own list is. Empty for anyone who is not the
+    /// owner: nobody else sees the invite section at all, so nothing else ever populates this.</summary>
+    private List<FriendDto> _friends = [];
+
+    /// <summary>Friend ids this owner has sent an in-app invitation to during this visit — cleared on
+    /// reload, not persisted. Re-inviting somebody already invited costs nothing (see
+    /// <c>ILiveMatchmakingGrain</c>'s own remarks on why an invitation carries no exclusivity), so
+    /// there is nothing to protect by asking the server to remember this instead of the page itself.</summary>
+    private readonly HashSet<string> _invited = [];
+
+    private string? _inviting, _inviteError;
+
     private string MeId => State.Me!.Id;
     private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_snapshot!.Code}";
 
@@ -193,7 +264,43 @@
         }
 
         if (!await RefreshAsync() || _snapshot is not { Waiting: true }) return;
+
+        // Only the owner ever renders the invite section, and only a real signed-in player ever owns
+        // a lobby at all (creating one is refused for a guest well before this page exists) — so this
+        // is never spent on a visitor who could not use it.
+        if (LobbyPresentation.IsOwner(_snapshot, MeId)) _friends = (await Api.MeAsync())?.Friends ?? [];
+
         await ConnectAsync();
+    }
+
+    /// <summary>
+    /// Sends <paramref name="friendId"/> a plain in-app invitation into this lobby via
+    /// <c>LobbyHub.InviteToLobby</c>. Unlike the owner action methods below, this never re-fetches the
+    /// lobby afterwards: sending an invitation changes nothing about the lobby itself, only who has
+    /// been told about it — the roster updates on its own, via the same <see cref="OnLobbyUpdated"/>
+    /// push every other join already drives, once (if) the friend actually accepts.
+    /// </summary>
+    private async Task InviteAsync(string friendId)
+    {
+        if (_snapshot is null || _inviting is not null) return;
+
+        _inviting = friendId;
+        _inviteError = null;
+        try
+        {
+            // 0 mirrors Quesshi.Domain.LiveChallengeResult.Sent — Quesshi.Web has no reference to
+            // Quesshi.Domain (every hub call already crosses this boundary as a bare int; see
+            // LobbyClient.InviteToLobbyAsync's own remarks), so the one value this page acts on is
+            // named here instead of shared as a type.
+            const int sent = 0;
+            var result = await LobbyConnection.InviteToLobbyAsync(friendId, _snapshot.MatchId);
+            if (result == sent) _invited.Add(friendId);
+            else _inviteError = L["common.error"];
+        }
+        finally
+        {
+            _inviting = null;
+        }
     }
 
     /// <summary>Whether the code this page was opened with actually resolves to the guest's own pinned

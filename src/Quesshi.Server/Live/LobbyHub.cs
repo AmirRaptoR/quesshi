@@ -13,7 +13,8 @@ namespace Quesshi.Server.Live;
 /// <c>/hub/live</c> has. Its job is presence — mark the caller online on connect, refresh it on
 /// <see cref="Heartbeat"/>, and let the key expire on its own when the connection is gone — plus both
 /// doors into a duel: the random queue (<see cref="QueueRandom"/>, <see cref="LeaveQueue"/>) and
-/// friend challenges (<see cref="Challenge"/>, <see cref="Accept"/>, <see cref="Decline"/>, and
+/// friend challenges (<see cref="Challenge"/> for a fresh 1v1, <see cref="InviteToLobby"/> for
+/// pulling someone into a lobby that already exists, <see cref="Accept"/>, <see cref="Decline"/>, and
 /// delivery of anything pending on <see cref="OnConnectedAsync"/>). Neither door decides a duel's
 /// outcome; that is <c>ILiveMatchGrain</c>'s.
 /// </summary>
@@ -127,14 +128,52 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
 
         var me = await players.GetAsync(challengerId);
         if (me is null) return (int)LiveChallengeResult.NotFound;
-        if (!me.Friends.Contains(targetId) && !await WerePastOpponentsAsync(challengerId, targetId))
-            return (int)LiveChallengeResult.NotFound;
+        if (!await CanReachAsync(me, targetId)) return (int)LiveChallengeResult.NotFound;
 
         var resolvedLang = string.IsNullOrWhiteSpace(lang) ? me.Lang : lang.ToLanguage();
         var lobby = grains.GetGrain<ILiveMatchGrain>(ids.NewId());
         var view = await lobby.CreateLobbyAsync(ids.NewMatchCode(), challengerId, (int)resolvedLang, questionCount, categoryIds, levels, capacity: 2);
 
         return await Matchmaking.ChallengeAsync(ids.NewId(), challengerId, targetId, view.Id);
+    }
+
+    /// <summary>
+    /// <c>Lobby.razor</c>'s own "invite a friend" control: points a plain invitation at a lobby that
+    /// already exists — <paramref name="lobbyId"/>, normally the owner's own — instead of minting a
+    /// fresh capacity-2 duel the way <see cref="Challenge"/> does. The lobby already fixes
+    /// language/question count/categories/capacity, so there is nothing left for this call to carry
+    /// but who it is for and where it points; <see cref="ILiveMatchmakingGrain.ChallengeAsync"/> is
+    /// what actually checks <paramref name="lobbyId"/> still exists and is still in its lobby phase.
+    /// The friendship gate — including its former-co-participant relaxation — is identical to
+    /// <see cref="Challenge"/>'s own, via <see cref="CanReachAsync"/>.
+    ///
+    /// One refusal this method adds on top that <see cref="Challenge"/> never needed: a guest target.
+    /// <see cref="OnConnectedAsync"/> aborts every guest connection to this hub outright, so an
+    /// invitation minted for one would sit in <c>PendingForAsync</c> forever, delivered to nobody — a
+    /// silent failure a guest friend's owner would have no way to notice. Refusing here instead is
+    /// what lets <c>Lobby.razor</c> show that friend as invitable by share link only, rather than
+    /// offering a button that can never do anything.
+    ///
+    /// Ownership of <paramref name="lobbyId"/> is deliberately not checked here: any seated
+    /// participant could invite in principle, exactly as any participant's <c>RequestRematchAsync</c>
+    /// already invites every other one via this exact same grain call (see
+    /// <c>LiveMatchGrain.InviteOthersAsync</c>). <c>Lobby.razor</c>'s own UI is what narrows this to
+    /// the owner, matching the issue's ask, without this method needing to re-derive who created the
+    /// lobby just to enforce it a second time.
+    /// </summary>
+    public async Task<int> InviteToLobby(string targetId, string lobbyId)
+    {
+        if (RequirePlayer() is not { } inviterId) return (int)LiveChallengeResult.NotFound;
+        if (inviterId == targetId) return (int)LiveChallengeResult.SelfChallenge;
+
+        var me = await players.GetAsync(inviterId);
+        if (me is null) return (int)LiveChallengeResult.NotFound;
+        if (!await CanReachAsync(me, targetId)) return (int)LiveChallengeResult.NotFound;
+
+        var target = await players.GetAsync(targetId);
+        if (target is null || target.IsGuest) return (int)LiveChallengeResult.NotFound;
+
+        return await Matchmaking.ChallengeAsync(ids.NewId(), inviterId, targetId, lobbyId);
     }
 
     public Task<LiveChallengeAcceptResult> Accept(string challengeId)
@@ -146,6 +185,16 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         => RequirePlayer() is { } me ? Matchmaking.DeclineAsync(challengeId, me) : Task.FromResult((int)LiveChallengeResult.NotFound);
 
     private string? RequirePlayer() => Context.User is null || Context.User.IsGuest() ? null : Context.User.PlayerId();
+
+    /// <summary>
+    /// The one friendship gate both <see cref="Challenge"/> and <see cref="InviteToLobby"/> apply,
+    /// factored out so the two only ever say it once: reachable outright as a friend, or via the
+    /// narrow former-co-participant relaxation <see cref="WerePastOpponentsAsync"/> covers. Neither
+    /// caller does anything with the distinction between the two — both outcomes are simply "may be
+    /// challenged" — so there is nothing for this to return but a bool.
+    /// </summary>
+    private async Task<bool> CanReachAsync(Player me, string targetId)
+        => me.Friends.Contains(targetId) || await WerePastOpponentsAsync(me.Id, targetId);
 
     /// <summary>
     /// True when <paramref name="a"/> and <paramref name="b"/> both appear among the participants of

@@ -31,6 +31,15 @@ else
         }
     }
 
+    @* Accepting a challenge is refused gracefully rather than silently: LiveJoinResult already tells
+       full/started/expired apart (see LiveMatchmakingGrain.AcceptAsync), and this is what carries that
+       distinction the last step, to whichever player just tried to accept. Auto-dismisses on its own
+       timer (StartAcceptNoticeTimer) rather than waiting for the player to notice and click it away. *@
+    @if (_acceptNotice is not null)
+    {
+        <div class="notice notice--bad enter" style="position:sticky;top:0;z-index:20;margin-bottom:.6rem">@_acceptNotice</div>
+    }
+
     @Body
 
     @* A guest has exactly one page; a row of tabs to places they cannot open is worse than no tabs. *@
@@ -63,6 +72,21 @@ else
     /// duplicates an entry, in case a reconnect redelivers one already showing.</summary>
     private List<LiveChallengeDto> _challenges = [];
     private System.Threading.Timer? _ticker;
+
+    /// <summary>
+    /// Mirrors the handful of <c>Quesshi.Domain.LiveChallengeResult</c> ordinals <see cref="AcceptAsync"/>
+    /// branches on — Quesshi.Web has no reference to Quesshi.Domain (every hub call already crosses this
+    /// boundary as a bare int; see <c>LobbyClient.AcceptAsync</c>'s own remarks), so they are named here
+    /// instead of compared as magic numbers. <c>LiveChallengeResultTests</c> on the server side pins the
+    /// actual enum's ordinals down, so a reordering there would be caught long before this ever drifts.
+    /// </summary>
+    private const int ResultAccepted = 1, ResultExpired = 3, ResultLobbyFull = 8, ResultLobbyTaken = 9;
+
+    /// <summary>What to tell the player who just tried to accept a challenge whose lobby moved on
+    /// before it landed — null the rest of the time. Clears itself a few seconds after it is set; see
+    /// <see cref="ShowAcceptNotice"/>.</summary>
+    private string? _acceptNotice;
+    private System.Threading.Timer? _acceptNoticeTimer;
 
     /// <summary>Whether <see cref="Lobby"/>'s underlying connection is currently established. Set from
     /// the outcome of each connect attempt — never assumed — and cleared by <see cref="Lobby"/>'s
@@ -190,9 +214,41 @@ else
 
     private async Task AcceptAsync(LiveChallengeDto challenge)
     {
-        await Lobby.AcceptAsync(challenge.ChallengeId);
-        // Navigation happens off the DuelReady push, delivered to both players alike. The banner
-        // itself clears via the same push removing it, exactly as accepting always has.
+        var result = await Lobby.AcceptAsync(challenge.ChallengeId);
+        // Navigation on a real Accepted still happens off the DuelReady push, delivered to both
+        // players alike, exactly as before — this only ever runs for every other outcome, where the
+        // lobby moved on (filled, started, or ran out its own clock) before this landed. The banner is
+        // removed locally rather than waiting on the challenger-only ChallengeFailed push, which was
+        // never wired to also reach the target: this player already knows, right now, from the
+        // direct return value.
+        if (result is { Result: not ResultAccepted })
+        {
+            Remove(challenge.ChallengeId);
+            ShowAcceptNotice(result.Result);
+        }
+    }
+
+    /// <summary>Full/started/expired are told apart (issue #53's own ask) rather than left as one
+    /// generic "couldn't join" — everything else DuelFailed still covers (the target already owning
+    /// the lobby, or it having vanished outright) is not reachable through a legitimate accept, so a
+    /// single fallback message is enough for it.</summary>
+    private void ShowAcceptNotice(int result)
+    {
+        _acceptNotice = result switch
+        {
+            ResultLobbyFull => L["challenge.lobbyFull"],
+            ResultLobbyTaken => L["challenge.lobbyStarted"],
+            ResultExpired => L["challenge.lobbyExpired"],
+            _ => L["common.error"]
+        };
+        StateHasChanged();
+
+        _acceptNoticeTimer?.Dispose();
+        _acceptNoticeTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            _acceptNotice = null;
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(5), Timeout.InfiniteTimeSpan);
     }
 
     private async Task DeclineAsync(LiveChallengeDto challenge)
@@ -207,5 +263,6 @@ else
         Nav.LocationChanged -= OnLocationChanged;
         if (_lobbySubscribed) UnwireLobbyEvents();
         StopTicker();
+        _acceptNoticeTimer?.Dispose();
     }
 }

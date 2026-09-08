@@ -87,7 +87,7 @@ public static class GameEndpoints
 
         // Search results are candidates to add, not yet friends — online status has no meaning here.
         api.MapGet("/players/search", async (string? q, IPlayerRepository players) =>
-            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false)).ToList());
+            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false, p.IsGuest)).ToList());
 
         // --- leaderboards ------------------------------------------------------------
         api.MapGet("/leaderboard", async (ILeaderboard board, IPlayerRepository players) =>
@@ -506,7 +506,7 @@ public static class GameEndpoints
             ? []
             : await presence.OnlineAsync([.. candidates.Select(f => f.Id)]);
 
-        var friends = candidates.Select(f => new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id)));
+        var friends = candidates.Select(f => new FriendDto(f.Id, f.DisplayName, f.AvatarSeed, f.Stats.TotalScore, online.Contains(f.Id), f.IsGuest));
         return [.. friends.OrderByDescending(f => f.Score)];
     }
 
