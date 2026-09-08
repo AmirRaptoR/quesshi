@@ -18,8 +18,8 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
     private IGrainFactory Grains => fixture.Cluster.GrainFactory;
 
     private static ArchivedMatch LiveRow(string id, string code, string challengerId) => new(
-        id, code, Language.En, challengerId, null, null, false, 0, 0, MatchState.AwaitingOpponent,
-        Shared.Clock.Now, null, [], IsLive: true);
+        id, code, Language.En, challengerId, null, null, false, FakeArchive.TestResults(challengerId, null, 0, 0),
+        MatchState.AwaitingOpponent, Shared.Clock.Now, null, [], IsLive: true);
 
     [Fact]
     public async Task Async_join_refuses_a_live_code_and_touches_no_match_grain()
@@ -60,7 +60,7 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         var asyncId = Guid.NewGuid().ToString("N");
         var asyncCode = $"ASYNC-{asyncId}".ToUpperInvariant();
         Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
-            false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
+            false, FakeArchive.TestResults("p-challenger", null, 0, 0), MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
 
         var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Players,
             LiveShared.Questions, LiveShared.Categories, Shared.Clock);
@@ -79,7 +79,7 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         var asyncId = Guid.NewGuid().ToString("N");
         var asyncCode = $"ASYNC-{asyncId}".ToUpperInvariant();
         Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
-            false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
+            false, FakeArchive.TestResults("p-challenger", null, 0, 0), MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
 
         var liveInvite = (InviteDto)ValueOf(await AuthEndpoints.InviteAsync(liveCode, Shared.Archive, Shared.Players));
         var asyncInvite = (InviteDto)ValueOf(await AuthEndpoints.InviteAsync(asyncCode, Shared.Archive, Shared.Players));

@@ -427,4 +427,103 @@ public class MatchTests
             new Dictionary<string, RunSnapshot>(), []);
         Assert.True(Match.FromSnapshot(snapshot).IsOver);
     }
+
+    // ---- Migration: tolerating a snapshot written before Participants/Settings existed ----
+
+    /// <summary>
+    /// Exactly the JSON a match written before this migration produces — literal text, not a value
+    /// built from today's <see cref="MatchSnapshot"/> and then trimmed, because the whole point of this
+    /// suite is proving the *actual* old wire shape still deserializes, not a shape this test assumes.
+    /// This is what <c>MatchSnapshot</c> looked like start to finish before <c>Participants</c>,
+    /// <c>Capacity</c>, <c>Settings</c> and <c>Standings</c> existed: <c>Lang</c>, <c>ChallengerId</c>,
+    /// <c>OpponentId</c> in their place.
+    /// </summary>
+    private static string LegacyJson(string opponentIdJson, string state = "1") =>
+        $$"""
+        {"Id":"legacy-1","Code":"OLD001","Lang":1,"ChallengerId":"u-legacy-challenger","OpponentId":{{opponentIdJson}},
+         "QuestionIds":["lq1","lq2","lq3","lq4","lq5","lq6","lq7","lq8","lq9","lq10"],"State":{{state}},
+         "CreatedAt":"2026-08-19T00:00:00+00:00","EndedAt":null,"WinnerId":null,"IsDraw":false,"Runs":{} }
+        """;
+
+    [Fact]
+    public void A_legacy_snapshot_deserializes_and_restores_the_two_player_shape()
+    {
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<MatchSnapshot>(LegacyJson("\"u-legacy-opponent\""))!;
+
+        // The tell that this blob predates Participants: the field itself never appears in the JSON
+        // above, so System.Text.Json leaves the constructor argument at its default rather than
+        // throwing -- and Lang/ChallengerId/OpponentId land in the three legacy fields instead.
+        Assert.Null(snapshot.Participants);
+        Assert.Equal("u-legacy-challenger", snapshot.ChallengerId);
+
+        var m = Match.FromSnapshot(snapshot);
+
+        Assert.Equal(["u-legacy-challenger", "u-legacy-opponent"], m.Participants);
+        Assert.Equal("u-legacy-challenger", m.OwnerId);
+        Assert.Equal(2, m.Capacity);
+        Assert.Equal(Language.En, m.Settings.Language);
+        Assert.Equal(10, m.Settings.QuestionCount);
+        Assert.Empty(m.Settings.CategoryIds);
+        Assert.Empty(m.Settings.Levels);
+        Assert.Equal(10, m.QuestionIds.Count);
+    }
+
+    [Fact]
+    public void A_legacy_lobby_nobody_joined_keeps_its_free_seat()
+    {
+        // AwaitingOpponent (State: 0) with questions already drawn is exactly the subtle case the
+        // migration exists for: ServeNext/SubmitAnswer never required InProgress, so the challenger
+        // could have played their whole run alone before anyone joined.
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<MatchSnapshot>(LegacyJson("null", state: "0"))!;
+        var m = Match.FromSnapshot(snapshot);
+
+        Assert.Equal(["u-legacy-challenger"], m.Participants);
+        Assert.Null(m.OpponentId);
+
+        // The free seat still takes a joiner.
+        m.Join(Opponent, T0);
+        Assert.Equal(["u-legacy-challenger", Opponent], m.Participants);
+    }
+
+    [Fact]
+    public void A_legacy_records_settings_are_read_only_because_its_questions_are_already_drawn()
+    {
+        // "Settings are editable exactly while QuestionIds is empty" is the rule that makes a legacy
+        // record's settings read-only without any new state: its questions arrived already drawn, so
+        // DrawQuestions refuses exactly as it would for any other match past Start.
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<MatchSnapshot>(LegacyJson("null", state: "0"))!;
+        var m = Match.FromSnapshot(snapshot);
+
+        Assert.Throws<InvalidOperationException>(() => m.DrawQuestions(Ten));
+    }
+
+    [Fact]
+    public void Both_snapshot_shapes_round_trip_through_JSON()
+    {
+        var legacy = Match.FromSnapshot(System.Text.Json.JsonSerializer.Deserialize<MatchSnapshot>(LegacyJson("\"u-legacy-opponent\""))!);
+        var freshlyWritten = System.Text.Json.JsonSerializer.Deserialize<MatchSnapshot>(
+            System.Text.Json.JsonSerializer.Serialize(legacy.ToSnapshot()))!;
+
+        // A record this code writes never carries the legacy fields, even immediately after loading
+        // one that did -- ToSnapshot only ever emits the new shape.
+        Assert.Null(freshlyWritten.ChallengerId);
+        Assert.Null(freshlyWritten.Lang);
+        Assert.Equal(["u-legacy-challenger", "u-legacy-opponent"], freshlyWritten.Participants);
+
+        var restored = Match.FromSnapshot(freshlyWritten);
+        Assert.Equal(legacy.Participants, restored.Participants);
+        // DuelSettings' own record equality compares CategoryIds/Levels by reference through their
+        // IReadOnlyList<T> field type, which a JSON round trip never preserves (an array in, a List<T>
+        // out) -- so this compares the values that actually matter instead of the whole record.
+        Assert.Equal(legacy.Settings.Language, restored.Settings.Language);
+        Assert.Equal(legacy.Settings.QuestionCount, restored.Settings.QuestionCount);
+
+        // The N-player shape itself round-trips unchanged -- this is the safety net the domain step
+        // already relies on, exercised here through the same JSON path the grain actually uses.
+        var m3 = Joined3();
+        var restored3 = Match.FromSnapshot(System.Text.Json.JsonSerializer.Deserialize<MatchSnapshot>(
+            System.Text.Json.JsonSerializer.Serialize(m3.ToSnapshot()))!);
+        Assert.Equal(m3.Participants, restored3.Participants);
+        Assert.Equal(m3.Capacity, restored3.Capacity);
+    }
 }

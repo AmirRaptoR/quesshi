@@ -211,9 +211,22 @@ public sealed class MatchGrain(
     {
         var m = _match!;
         return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
-            m.RunOf(m.ChallengerId)?.Score ?? 0,
-            m.OpponentId is null ? 0 : m.RunOf(m.OpponentId)?.Score ?? 0,
-            m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds]));
+            BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds]));
+    }
+
+    /// <summary>
+    /// The archive's per-participant row: the real ranked <c>Standing</c>s once the match is over, or
+    /// each side's currently banked score with the "not yet ranked" placeholder while it is still being
+    /// played — exactly what <c>ChallengerScore</c>/<c>OpponentScore</c> always showed here before
+    /// <see cref="ParticipantResult"/> replaced them, since this method is called from <c>JoinAsync</c>
+    /// and <c>CreateAsync</c> too, long before the match is decided.
+    /// </summary>
+    private static List<ParticipantResult> BuildResults(Match m)
+    {
+        var byId = m.Standings.ToDictionary(s => s.PlayerId);
+        return [.. Sides(m).Select(s => byId.TryGetValue(s.PlayerId, out var standing)
+            ? new ParticipantResult(s.PlayerId, s.Run?.Score ?? 0, standing.Place, standing.Outcome)
+            : new ParticipantResult(s.PlayerId, s.Run?.Score ?? 0, 0, MatchOutcome.Loss))];
     }
 
     private static IEnumerable<(string PlayerId, PlayerRun? Run)> Sides(Match m)

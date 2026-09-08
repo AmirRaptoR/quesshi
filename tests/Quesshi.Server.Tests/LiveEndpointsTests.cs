@@ -125,7 +125,8 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     {
         var ids = new FakeIdFactory(LiveIdRanges.CollidingCodeRetrySeed) { CodesToRepeat = 1 }; // first NewMatchCode() collides, second is fresh
         LiveShared.Archive.Items.Add(new ArchivedMatch("someone-elses-id", ids.PeekNextCode(), Language.En,
-            "someone-else", null, null, false, 0, 0, MatchState.AwaitingOpponent, Clock.Now, null, [], IsLive: true));
+            "someone-else", null, null, false, FakeArchive.TestResults("someone-else", null, 0, 0),
+            MatchState.AwaitingOpponent, Clock.Now, null, [], IsLive: true));
 
         var result = await CreateAsync(ids);
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
@@ -137,7 +138,8 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     {
         var ids = new FakeIdFactory(LiveIdRanges.CollidingCodeGiveUpSeed) { CodesToRepeat = int.MaxValue }; // every code this factory makes already collides
         LiveShared.Archive.Items.Add(new ArchivedMatch("blocker", ids.PeekNextCode(), Language.En,
-            "someone-else", null, null, false, 0, 0, MatchState.AwaitingOpponent, Clock.Now, null, [], IsLive: true));
+            "someone-else", null, null, false, FakeArchive.TestResults("someone-else", null, 0, 0),
+            MatchState.AwaitingOpponent, Clock.Now, null, [], IsLive: true));
 
         var result = await CreateAsync(ids);
         Assert.Equal(503, CrossTypeCodeTests.StatusOf(result));

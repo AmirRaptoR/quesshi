@@ -50,4 +50,18 @@ public sealed class FakeArchive : IMatchArchive
 
     public Task<long> CountAsync(CancellationToken ct = default) { lock (_lock) return Task.FromResult((long)Items.Count); }
     public Task<long> CountLiveAsync(CancellationToken ct = default) { lock (_lock) return Task.FromResult((long)Items.Count(m => m.IsLive)); }
+
+    /// <summary>
+    /// The two-entry <see cref="ParticipantResult"/> list every test written before N-player
+    /// participants existed needs — the shape <c>ChallengerScore</c>/<c>OpponentScore</c> used to carry
+    /// positionally, now <c>Results[0]</c>/<c>Results[1]</c>. Place and outcome are the same "not yet
+    /// ranked" placeholder <c>MatchGrain</c>/<c>LiveMatchGrain</c> use for a match that has not
+    /// finished: no test in this project asserts on them, only on the scores the obsolete accessors
+    /// still project.
+    /// </summary>
+    public static List<ParticipantResult> TestResults(string challengerId, string? opponentId, int challengerScore, int opponentScore) =>
+        opponentId is null
+            ? [new ParticipantResult(challengerId, challengerScore, 0, MatchOutcome.Loss)]
+            : [new ParticipantResult(challengerId, challengerScore, 0, MatchOutcome.Loss),
+               new ParticipantResult(opponentId, opponentScore, 0, MatchOutcome.Loss)];
 }

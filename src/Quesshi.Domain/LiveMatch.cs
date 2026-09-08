@@ -349,9 +349,31 @@ public sealed class LiveMatch
         [.. _rounds.Select(r => new LiveRoundSnapshot(r.Slot, r.QuestionId, r.StartedAt, new Dictionary<string, LiveAnswer>(r.Answers)))],
         new Dictionary<string, int>(_missStreak), CreatedAt, EndedAt, WinnerId, IsDraw, [.. _abandoners], [.. _standings], Reason);
 
+    /// <summary>
+    /// Rebuilds a live duel from its persisted shape — either shape. See <see cref="LiveMatchSnapshot"/>'s
+    /// own remarks for why a pre-migration blob is a real possibility rather than a hypothetical, and
+    /// <see cref="Match.FromSnapshot"/>'s remarks for why a legacy record's settings can only be
+    /// reconstructed (language and count from the drawn question set; categories and levels empty,
+    /// since they are display-only and were never recorded per-duel before now). The one thing genuinely
+    /// live-specific here is <see cref="Abandoners"/>: a legacy record carries at most a single quitter's
+    /// id in <see cref="LiveMatchSnapshot.AbandonedBy"/>, because the two-player shape could never produce
+    /// more than one, and with only one abandoner there is nothing to rank it against — the round slot it
+    /// dropped in genuinely does not matter, unlike for an N-player record where it decides ties.
+    ///
+    /// Like its async counterpart, this branch is permanent rather than a step towards deleting it:
+    /// nothing calls ClearStateAsync, and the async history listing reactivates a finished duel's grain
+    /// to build its rows, so a blob this old remains a live possibility indefinitely. Removing it would
+    /// take an explicit, offline rewrite of every retained grain state in Redis, not the mere passage
+    /// of time.
+    /// </summary>
     public static LiveMatch FromSnapshot(LiveMatchSnapshot s)
     {
-        var m = new LiveMatch(s.Id, s.Code, s.Participants[0], s.Settings, s.Capacity, s.QuestionIds, s.CreatedAt)
+        var legacy = s.Participants is not { Count: > 0 };
+        var participants = legacy ? LegacyParticipants(s.ChallengerId!, s.OpponentId) : s.Participants;
+        var settings = legacy ? new DuelSettings(s.Lang!.Value, s.QuestionIds.Count, [], []) : s.Settings;
+        var capacity = legacy ? 2 : s.Capacity; // every pre-lobby duel was exactly two seats
+
+        var m = new LiveMatch(s.Id, s.Code, participants[0], settings, capacity, s.QuestionIds, s.CreatedAt)
         {
             State = s.State,
             Phase = s.Phase,
@@ -361,15 +383,30 @@ public sealed class LiveMatch
             IsDraw = s.IsDraw,
             Reason = s.Reason
         };
-        m._participants.AddRange(s.Participants.Skip(1));
+        m._participants.AddRange(participants.Skip(1));
         foreach (var round in s.Rounds)
             m._rounds.Add(LiveRound.Restore(round.Slot, round.QuestionId, round.StartedAt, round.Answers));
         foreach (var (playerId, streak) in s.MissStreaks)
             m._missStreak[playerId] = streak;
-        m._abandoners.AddRange(s.Abandoners);
-        m._standings.AddRange(s.Standings);
+
+        if (legacy)
+        {
+            if (s.AbandonedBy is { } abandonedBy) m._abandoners.Add(new Abandonment(abandonedBy, RoundSlot: 0));
+        }
+        else
+        {
+            m._abandoners.AddRange(s.Abandoners);
+        }
+
+        m._standings.AddRange(s.Standings ?? []);
         return m;
     }
+
+    /// <summary>The two-player pair every live duel had before <see cref="Participants"/> existed, as
+    /// the ordered list <see cref="Participants"/> replaced it with. A null opponent means nobody had
+    /// joined yet — a one-seat list, not a phantom second participant.</summary>
+    private static List<string> LegacyParticipants(string challengerId, string? opponentId) =>
+        opponentId is null ? [challengerId] : [challengerId, opponentId];
 
     /// <summary>Advances at most one phase boundary. Returns whether it did.</summary>
     private bool StepOnce(DateTimeOffset now)

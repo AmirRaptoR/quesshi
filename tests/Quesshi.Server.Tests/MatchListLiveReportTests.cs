@@ -28,7 +28,7 @@ public class MatchListLiveReportTests
 
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "livereport-1", "livereport-1", Language.En, me, rival, WinnerId: null, IsDraw: false,
-            ChallengerScore: 0, OpponentScore: 0, MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
+            Results: FakeArchive.TestResults(me, rival, 0, 0), MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
             QuestionIds: [liveQuestionId], IsLive: true));
 
         var mine = await GameEndpoints.ReportAsync(new ReportQuestionDto(liveQuestionId, "WrongAnswer"), me,

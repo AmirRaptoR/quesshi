@@ -246,21 +246,52 @@ public sealed class Match
         _runs.ToDictionary(kv => kv.Key, kv => new RunSnapshot([.. kv.Value.Answers], kv.Value.ServedAt)),
         [.. _standings]);
 
+    /// <summary>
+    /// Rebuilds a match from its persisted shape — either shape. Empty <see cref="MatchSnapshot.Participants"/>
+    /// is the tell for a record written before that field existed: grain state in Redis is never cleared
+    /// (see <see cref="MatchSnapshot"/>'s own remarks), so a blob this old is a real, ongoing possibility,
+    /// not a hypothetical. Such a record is a lobby whose questions are already drawn — <see cref="ServeNext"/>
+    /// and <see cref="SubmitAnswer"/> never required <c>InProgress</c>, so a challenger could finish an
+    /// entire run while still <c>AwaitingOpponent</c> — and its settings can only be reconstructed, never
+    /// recovered exactly: language and question count are read off the question set that already exists,
+    /// while categories and levels were never recorded per-duel before <see cref="DuelSettings"/> existed,
+    /// so they come back empty. That is not a loss for this record: <see cref="DuelSettings.CategoryIds"/>
+    /// and <see cref="DuelSettings.Levels"/> are display-only and never used to draw, and a legacy match's
+    /// questions are never drawn again — see <see cref="DrawQuestions"/>'s guard, which a legacy record
+    /// satisfies for the same reason it can still join a joiner: <see cref="QuestionIds"/> is already full.
+    ///
+    /// This branch is permanent, not a step on the way to deleting it: the async history listing
+    /// reactivates a finished match's grain to build its rows, so a blob written before this record
+    /// existed can surface years from now exactly as it can today. Removing this branch would take an
+    /// explicit, offline rewrite of every retained grain state in Redis -- there is no natural moment to
+    /// run one and nothing to fall back on if it is wrong -- not the passage of time.
+    /// </summary>
     public static Match FromSnapshot(MatchSnapshot s)
     {
-        var m = new Match(s.Id, s.Code, s.Participants[0], s.Settings, s.Capacity, s.QuestionIds, s.CreatedAt)
+        var legacy = s.Participants is not { Count: > 0 };
+        var participants = legacy ? LegacyParticipants(s.ChallengerId!, s.OpponentId) : s.Participants;
+        var settings = legacy ? new DuelSettings(s.Lang!.Value, s.QuestionIds.Count, [], []) : s.Settings;
+        var capacity = legacy ? 2 : s.Capacity; // every pre-lobby match was exactly two seats
+
+        var m = new Match(s.Id, s.Code, participants[0], settings, capacity, s.QuestionIds, s.CreatedAt)
         {
             State = s.State,
             EndedAt = s.EndedAt,
             WinnerId = s.WinnerId,
             IsDraw = s.IsDraw
         };
-        m._participants.AddRange(s.Participants.Skip(1));
+        m._participants.AddRange(participants.Skip(1));
         foreach (var (playerId, run) in s.Runs)
             m._runs[playerId] = PlayerRun.Restore(s.QuestionIds.Count, run.Answers, run.ServedAt);
-        m._standings.AddRange(s.Standings);
+        m._standings.AddRange(s.Standings ?? []);
         return m;
     }
+
+    /// <summary>The two-player pair every match had before <see cref="Participants"/> existed, as the
+    /// ordered list <see cref="Participants"/> replaced it with. A null opponent means nobody had
+    /// joined yet — a one-seat list, not a phantom second participant.</summary>
+    private static List<string> LegacyParticipants(string challengerId, string? opponentId) =>
+        opponentId is null ? [challengerId] : [challengerId, opponentId];
 
     /// <summary>
     /// Resolves once every seated participant has finished their run — never earlier, and never for

@@ -52,7 +52,7 @@ public class AdminDashboardLiveTests(LiveClusterFixture fixture) : IAsyncDisposa
         LiveShared.Directory.ConnectedCount = 7;
         LiveShared.Directory.QueueDepth = 3;
         LiveShared.Archive.Items.Add(new ArchivedMatch("adl-match", "ADLM01", Language.En, "p1", "p2", null, false,
-            0, 0, MatchState.InProgress, DateTimeOffset.UtcNow, null, [], IsLive: true));
+            FakeArchive.TestResults("p1", "p2", 0, 0), MatchState.InProgress, DateTimeOffset.UtcNow, null, [], IsLive: true));
 
         using var client = AdminClient();
         var dto = await client.GetFromJsonAsync<AdminDashboardDto>("/api/admin/dashboard");
