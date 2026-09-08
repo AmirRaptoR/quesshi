@@ -140,7 +140,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var second = await grain.CreateAsync("TESTCODE", (int)Language.En, "someone-else", questionIds);
 
         Assert.Equal(first.Id, second.Id);
-        Assert.Equal(Amir, second.ChallengerId); // still the original challenger, not overwritten
+        Assert.Equal(Amir, second.Participants[0]); // still the original challenger, not overwritten
 
         var freshGrain = NewGrain(out _, out var badList);
         badList.RemoveAt(0); // wrong count
@@ -566,7 +566,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
         var rehydrated = await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id).GetAsync(Amir);
         Assert.NotNull(rehydrated);
-        Assert.Equal(Sara, rehydrated!.OpponentId);
+        Assert.Equal(Sara, rehydrated!.Participants[1]);
         Assert.True(rehydrated.Rounds.Single().Answers.Single(a => a.PlayerId == Amir).Answered);
     }
 

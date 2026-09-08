@@ -216,7 +216,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
     {
         var grains = fixture.Cluster.GrainFactory;
         var presence = new FakePresence();
-        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory()) { Context = new FakeHubCallerContext(Guest("lhb-guest").Id, isGuest: true) };
+        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory(), new FakeArchive()) { Context = new FakeHubCallerContext(Guest("lhb-guest").Id, isGuest: true) };
         var lang = (int)Language.En;
         var count = 4010 + (int)Interlocked.Increment(ref _n);
 
@@ -231,7 +231,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
     {
         var grains = fixture.Cluster.GrainFactory;
         var presence = new FakePresence();
-        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory()) { Context = new FakeHubCallerContext(Guest("lhb-guest2").Id, isGuest: true) };
+        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory(), new FakeArchive()) { Context = new FakeHubCallerContext(Guest("lhb-guest2").Id, isGuest: true) };
 
         await Assert.ThrowsAsync<HubException>(() => hub.LeaveQueue());
     }

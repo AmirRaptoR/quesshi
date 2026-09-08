@@ -48,7 +48,7 @@ public class LobbyHubGuestGateTests
     {
         // A guest is refused before the hub ever reaches the grain factory, so a null one here still
         // proves the point: touching it at all would throw a NullReferenceException and fail the test.
-        var hub = new LobbyHub(null!, new NeverOnlinePresence(), new FakeLobbyNotifier(), new FakePlayers(), new ThrowingIdFactory());
+        var hub = new LobbyHub(null!, new NeverOnlinePresence(), new FakeLobbyNotifier(), new FakePlayers(), new ThrowingIdFactory(), new FakeArchive());
         hub.Context = new FakeHubCallerContext(user);
         return hub;
     }
@@ -108,7 +108,7 @@ public class LobbyHubGuestGateTests
     {
         var presence = new TrackingPresence();
         var notifier = new FakeLobbyNotifier();
-        var hub = new LobbyHub(null!, presence, notifier, new FakePlayers(), new ThrowingIdFactory());
+        var hub = new LobbyHub(null!, presence, notifier, new FakePlayers(), new ThrowingIdFactory(), new FakeArchive());
         var context = new FakeHubCallerContext(GuestUser());
         hub.Context = context;
 

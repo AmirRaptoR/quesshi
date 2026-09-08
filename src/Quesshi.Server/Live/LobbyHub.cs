@@ -19,10 +19,19 @@ namespace Quesshi.Server.Live;
 /// </summary>
 [Authorize]
 public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNotifier notifier,
-    IPlayerRepository players, IIdFactory ids) : Hub
+    IPlayerRepository players, IIdFactory ids, IMatchArchive archive) : Hub
 {
     /// <summary>Three heartbeats' worth, so two dropped beats don't flicker an online player offline.</summary>
     public static readonly TimeSpan PresenceTtl = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How many of the challenger's most recent duels (either kind) <see cref="WerePastOpponentsAsync"/>
+    /// looks through for the target. "Former co-participant" is deliberately scoped to recent history,
+    /// not the whole archive: the relaxation exists for "you just played this stranger", not "you were
+    /// ever, at any point, in the same duel as this account" — the latter would make the friendship
+    /// gate meaningless for anyone with enough matches behind them.
+    /// </summary>
+    private const int CoParticipantLookback = 20;
 
     private ILiveMatchmakingGrain Matchmaking => grains.GetGrain<ILiveMatchmakingGrain>(0);
 
@@ -103,6 +112,13 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     /// target is online right now: an invitation outlives the recipient's connection and is delivered
     /// on their next connect (see <see cref="OnConnectedAsync"/>), which is the entire point of it no
     /// longer expiring in 45 seconds. Returns a <c>Quesshi.Domain.LiveChallengeResult</c> as <c>int</c>.
+    ///
+    /// The friendship gate has one narrow, explicit relaxation: a target who is not (yet) a friend but
+    /// who demonstrably just played the challenger in some other duel — a former co-participant — may
+    /// still be challenged. This exists for the random opponent you have just finished playing, who a
+    /// strict friendship check would make unreachable in-app the moment the duel ends, even though the
+    /// two of you were, a moment ago, sitting in the very same lobby. Anyone else — a stranger with no
+    /// shared match at all — still needs the friendship; see <see cref="WerePastOpponentsAsync"/>.
     /// </summary>
     public async Task<int> Challenge(string targetId, string? lang, int questionCount, List<string> categoryIds, List<int> levels)
     {
@@ -110,7 +126,9 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         if (challengerId == targetId) return (int)LiveChallengeResult.SelfChallenge;
 
         var me = await players.GetAsync(challengerId);
-        if (me is null || !me.Friends.Contains(targetId)) return (int)LiveChallengeResult.NotFound;
+        if (me is null) return (int)LiveChallengeResult.NotFound;
+        if (!me.Friends.Contains(targetId) && !await WerePastOpponentsAsync(challengerId, targetId))
+            return (int)LiveChallengeResult.NotFound;
 
         var resolvedLang = string.IsNullOrWhiteSpace(lang) ? me.Lang : lang.ToLanguage();
         var lobby = grains.GetGrain<ILiveMatchGrain>(ids.NewId());
@@ -128,6 +146,22 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         => RequirePlayer() is { } me ? Matchmaking.DeclineAsync(challengeId, me) : Task.FromResult((int)LiveChallengeResult.NotFound);
 
     private string? RequirePlayer() => Context.User is null || Context.User.IsGuest() ? null : Context.User.PlayerId();
+
+    /// <summary>
+    /// True when <paramref name="a"/> and <paramref name="b"/> both appear among the participants of
+    /// some duel in <paramref name="a"/>'s own recent history (<see cref="CoParticipantLookback"/> most
+    /// recent, either kind) — "demonstrably just played together", the one narrow relaxation of
+    /// <see cref="Challenge"/>'s friendship gate. Checks <see cref="ArchivedMatch.Results"/> first,
+    /// which already lists every real participant of a duel regardless of how many it held, and falls
+    /// back to the legacy <c>ChallengerId</c>/<c>OpponentId</c> pair only for a row old enough to
+    /// predate <see cref="ParticipantResult"/> — the same tolerate-both-shapes discipline the
+    /// persistence layer already applies everywhere else a row this old can surface.
+    /// </summary>
+    private async Task<bool> WerePastOpponentsAsync(string a, string b)
+    {
+        var recent = await archive.ForPlayerAsync(a, CoParticipantLookback);
+        return recent.Any(m => m.Results.Any(r => r.PlayerId == b) || m.ChallengerId == b || m.OpponentId == b);
+    }
 
     private static LiveChallengeNotice ToNotice(LiveChallengeView c)
         => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt);

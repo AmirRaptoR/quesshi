@@ -376,13 +376,19 @@ internal static class MatchListBench
     /// Records the plan and execution statistics for the exact query <c>MongoMatchArchive.ForPlayerAsync</c>
     /// issues, against the 40-duel account. Recording only — nothing here changes the plan.
     /// </summary>
+    /// <remarks>
+    /// This must track <c>MongoMatchArchive.ForPlayerAsync</c>'s actual filter, not a snapshot of it:
+    /// issue #50 swapped that method's own <c>Or(Eq(ChallengerId), Eq(OpponentId))</c> for a single
+    /// <c>AnyEq(Participants, playerId)</c> over the multikey index <c>MongoContext.EnsureIndexesAsync</c>
+    /// now builds, and this harness measures whatever that method actually runs — a query it stopped
+    /// running is not "the exact query" any more, whatever the plan for it still looks like. An
+    /// equality filter on an array field is Mongo's own "any element equals" — the multikey index this
+    /// targets is exactly why <c>{Participants: playerId}</c> alone is the equivalent of the old
+    /// two-clause <c>$or</c>, not a narrower query that happens to return the same rows today.
+    /// </remarks>
     private static async Task<ExplainResult> ExplainArchiveQueryAsync(MongoContext db, string playerId)
     {
-        var filter = new BsonDocument("$or", new BsonArray
-        {
-            new BsonDocument("ChallengerId", playerId),
-            new BsonDocument("OpponentId", playerId)
-        });
+        var filter = new BsonDocument("Participants", playerId);
 
         var command = new BsonDocument
         {

@@ -75,7 +75,15 @@ public static class Mappers
     public static MatchSummaryDto ToSummary(this MatchView v, string me, Func<string, (string Name, string Avatar)> lookup)
     {
         var myRun = v.Runs.FirstOrDefault(r => r.PlayerId == me);
-        var otherId = v.ChallengerId == me ? v.OpponentId : v.ChallengerId;
+
+        // "The other side" for this DTO's own two-player shape (theirs, singular) — reads Runs too,
+        // not just the ChallengerId/OpponentId pair, since a capacity>2 duel's third-or-later seat has
+        // a real run of their own the moment they have served a question, and picking only from the
+        // two legacy scalars would silently prefer showing the owner over them. For a capacity-2 duel
+        // this names exactly the one other participant it always did. Outcome below is unaffected —
+        // OutcomeFor already ranks every one of v.Runs, never just this single "theirs" pick.
+        var otherId = new[] { v.ChallengerId, v.OpponentId }.OfType<string>().Concat(v.Runs.Select(r => r.PlayerId))
+            .FirstOrDefault(id => id != me);
         var theirRun = otherId is null ? null : v.Runs.FirstOrDefault(r => r.PlayerId == otherId);
 
         var (myName, myAvatar) = lookup(me);
@@ -92,14 +100,33 @@ public static class Mappers
         var over = state is MatchState.Resolved or MatchState.Forfeited;
         var canReveal = mine.Finished || over;
 
-        var outcome = !over ? "pending"
-            : v.IsDraw ? "draw"
-            : v.WinnerId == me ? "win"
-            : v.WinnerId is null ? "draw" : "loss";
+        var outcome = !over ? "pending" : OutcomeFor(me, v.Runs);
 
         return new MatchSummaryDto(v.Id, v.Code, ((Language)v.Lang).Code(), state.ToString().ToLowerInvariant(),
             mine, theirs, v.WinnerId, v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
             v.QuestionIds.Count);
+    }
+
+    /// <summary>
+    /// A per-player outcome ranked from every run's own banked score, never from the match's
+    /// <c>WinnerId</c>/<c>IsDraw</c> scalars — those name only the top of the standings, and reading
+    /// them for an arbitrary player's own result is exactly the bug that would hand a global "draw" to
+    /// everyone once first place is shared, not just to whoever actually shares it. For scores of
+    /// 100, 100, 50 this gives the two 100s "win"/"draw" (they share first) and the 50 "loss", never
+    /// three draws. Ranking purely by score is correct for <see cref="RunView"/>'s own domain, unlike
+    /// <c>LiveMatch.Standings</c>: an async run has no per-round abandonment to rank below everyone
+    /// else regardless of score (see <c>Match.Standings</c>'s own remarks), so "highest score(s) win,
+    /// ties share first" is the entire rule.
+    /// </summary>
+    private static string OutcomeFor(string playerId, IReadOnlyList<RunView> runs)
+    {
+        var mine = runs.FirstOrDefault(r => r.PlayerId == playerId);
+        if (mine is null || runs.Count == 0) return "loss";
+
+        var top = runs.Max(r => r.Score);
+        if (mine.Score != top) return "loss";
+
+        return runs.Count(r => r.Score == top) > 1 ? "draw" : "win";
     }
 
     /// <summary>
@@ -110,10 +137,18 @@ public static class Mappers
     /// </summary>
     public static MatchSummaryDto ToLiveSummary(this ArchivedMatch m, string me, Func<string, (string Name, string Avatar)> lookup)
     {
-        var otherId = m.ChallengerId == me ? m.OpponentId : m.ChallengerId;
-        var (myScore, otherScore) = m.ChallengerId == me
-            ? (m.ChallengerScore, m.OpponentScore)
-            : (m.OpponentScore, m.ChallengerScore);
+        // Every score, mine and theirs, is read off Results by matching PlayerId — never off the
+        // legacy ChallengerId/OpponentId-keyed ChallengerScore/OpponentScore this used to switch on.
+        // That pair only ever names the first two seats, so for a capacity>2 duel's third-or-later
+        // player the old ternary attributed *whichever of those two slots was not literally
+        // ChallengerId* to "mine" the instant this player was seated third or later — a live scoring
+        // bug (the wrong player's score, shown as this player's own), not a display nicety. otherId
+        // still names only a single "opponent" — this DTO's two-sided shape is issue #53's rework, not
+        // this one's — but it is now picked from Results, the one place that lists every real seat, so
+        // it can never coincide with `me`.
+        var myScore = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Score ?? 0;
+        var otherId = m.Results.Select(r => r.PlayerId).FirstOrDefault(id => id != me);
+        var otherScore = otherId is null ? 0 : m.Results.FirstOrDefault(r => r.PlayerId == otherId)?.Score ?? 0;
 
         var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
 
@@ -127,10 +162,23 @@ public static class Mappers
             theirs = new PlayerSideDto(otherId, name, avatar, otherScore, 0, 0, over);
         }
 
-        var outcome = !over ? "pending"
-            : m.IsDraw ? "draw"
-            : m.WinnerId == me ? "win"
-            : m.WinnerId is null ? "draw" : "loss";
+        // Every per-player outcome reads Results — the real per-participant Standing this archive row
+        // carries — never the two match-wide scalars: WinnerId/IsDraw name only who occupies (or
+        // shares) first place, and reading them for an arbitrary player's own result is exactly the
+        // bug that hands a global "draw" to everyone once first place is shared. For scores of 100,
+        // 100, 50 this reads two "win"/"draw" results and one "loss" from Results, never three draws.
+        // NoContest is its own case, kept exactly as before: it credits nobody, so Results carries
+        // only the unranked Loss placeholder (see ParticipantResult's own remarks) rather than a real
+        // Standing, and "draw" — nobody won, not "everybody lost" — is the honest reading of that.
+        string outcome;
+        if (!over) outcome = "pending";
+        else if (m.State == MatchState.NoContest) outcome = "draw";
+        else outcome = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Outcome switch
+        {
+            MatchOutcome.Win => "win",
+            MatchOutcome.Draw => "draw",
+            _ => "loss"
+        };
 
         return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), m.State.ToString().ToLowerInvariant(),
             mine, theirs, m.WinnerId, m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
@@ -144,8 +192,7 @@ public static class Mappers
     /// </summary>
     public static async Task<Func<string, (string Name, string Avatar, bool IsGuest)>> LiveLookupAsync(this IPlayerRepository players, LiveView v)
     {
-        List<string> ids = v.OpponentId is null ? [v.ChallengerId] : [v.ChallengerId, v.OpponentId];
-        var byId = (await players.GetManyAsync(ids)).ToDictionary(p => p.Id);
+        var byId = (await players.GetManyAsync(v.Participants)).ToDictionary(p => p.Id);
         return id => byId.TryGetValue(id, out var p) ? (p.DisplayName, p.AvatarSeed, p.IsGuest) : ("—", id, false);
     }
 
@@ -158,6 +205,13 @@ public static class Mappers
     /// the prompt/choices/media a client needs to render it and, once revealed, its explanation.
     /// The correct index is never added here beyond what <see cref="LiveView.Rounds"/> already
     /// redacts: <see cref="LiveRoundCardDto"/> has no such field.
+    ///
+    /// <see cref="LiveViewDto"/> itself still only names a challenger and an opponent — carrying a
+    /// third-or-later seat over this wire shape is issue #53's job, not this one's — so this reads
+    /// only <see cref="LiveView.Participants"/>' first two entries, exactly the pair
+    /// <c>ChallengerId</c>/<c>OpponentId</c> used to be. For a capacity-2 duel that is every seat
+    /// there is, so nothing observable changes; a capacity-&gt;2 duel's third-plus player is simply
+    /// not named here yet, same as before this method's own view started carrying them at all.
     /// </summary>
     public static async Task<LiveViewDto> ToLiveDtoAsync(this LiveView v, DateTimeOffset serverNow,
         IQuestionRepository questions, ICategoryRepository categories, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
@@ -183,11 +237,14 @@ public static class Mappers
             }
         }
 
-        var (challengerName, challengerAvatar, challengerIsGuest) = lookup(v.ChallengerId);
-        var (opponentName, opponentAvatar, opponentIsGuest) = v.OpponentId is null ? (null, null, false) : ((string?, string?, bool))lookup(v.OpponentId);
+        var challengerId = v.Participants[0];
+        var opponentId = v.Participants.Count > 1 ? v.Participants[1] : null;
+
+        var (challengerName, challengerAvatar, challengerIsGuest) = lookup(challengerId);
+        var (opponentName, opponentAvatar, opponentIsGuest) = opponentId is null ? (null, null, false) : ((string?, string?, bool))lookup(opponentId);
 
         return new LiveViewDto(
-            v.Id, v.ChallengerId, v.OpponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
+            v.Id, challengerId, opponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
             phase.ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
             [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
             [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
@@ -212,7 +269,12 @@ public static class Mappers
 
     public static LiveEndedDto ToDto(this LiveEnded e) => new(
         e.State.ToString().ToLowerInvariant(), e.WinnerId, e.IsDraw, e.AbandonedBy,
-        [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))], e.Reason);
+        [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))],
+        [.. e.Standings.Select(s => new StandingDto(s.PlayerId, s.Score, s.Place, s.Outcome.ToString().ToLowerInvariant()))],
+        e.Reason);
 
-    public static RematchOutcomeDto ToDto(this RematchOutcome o) => new(((RematchStatus)o.Status).ToString().ToLowerInvariant(), o.NewMatchId);
+    public static LivePlayerEliminatedDto ToDto(this LivePlayerEliminated e) => new(e.PlayerId, e.RoundSlot);
+
+    public static RematchOutcomeDto ToDto(this RematchOutcome o) =>
+        new(((RematchStatus)o.Status).ToString().ToLowerInvariant(), o.NewMatchId, o.NewMatchCode);
 }

@@ -68,7 +68,93 @@ public static class LiveEndpoints
 
         api.MapDelete("/{id}", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await CancelAsync(id, ctx.User.PlayerId()!, grains));
+
+        // --- lobby lifecycle (issue #52) ----------------------------------------------------------
+        // Join is deliberately not repeated here: /join/{code} above already calls the same
+        // capacity-aware ILiveMatchGrain.JoinAsync a 2-to-8-seat lobby needs, so an N-player lobby is
+        // joined exactly as a 1v1 always was.
+        api.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids,
+            IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
+            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, archive, players, questions, categories, clock))
+            .WithMetadata(new RequiresLiveEnabled());
+
+        api.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
+            await grains.GetGrain<ILiveMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "cannot_leave" }));
+
+        api.MapPost("/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
+            await grains.GetGrain<ILiveMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "cannot_start" }));
+
+        api.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
+            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
     }
+
+    /// <summary>
+    /// Opens an N-player lobby (2-8 seats) with these settings, drawing no questions yet — <c>Start</c>
+    /// draws them from whatever the settings say at that instant. <paramref name="body"/>'s question
+    /// count is coerced to the default rather than rejected when it is not one of
+    /// <c>MatchRules.QuestionCountChoices</c>, mirroring exactly what <see cref="QuestionSetBuilder.BuildAsync"/>
+    /// already does for the plain <see cref="CreateAsync"/> path — <c>DuelSettings.Create</c> validates
+    /// strictly and would otherwise throw for a count nobody typed on purpose. Capacity is validated
+    /// here, before the domain ever sees it, for the same reason: <c>LiveMatch.Create</c> throws for
+    /// anything outside 2-8, and an HTTP caller deserves a 400, not a 500, for a bad request body.
+    /// </summary>
+    internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
+        IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions,
+        ICategoryRepository categories, IClock clock)
+    {
+        if (body.Capacity is < 2 or > 8) return Results.BadRequest(new { error = "bad_capacity" });
+
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var count = CoerceQuestionCount(body.Questions);
+        var levels = CoerceLevels(body.Levels);
+
+        for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
+        {
+            var code = ids.NewMatchCode();
+            if (await archive.ByCodeAsync(code) is not null) continue;
+
+            var matchId = ids.NewId();
+            var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
+            var view = await grain.CreateLobbyAsync(code, meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+            var lookup = await players.LiveLookupAsync(view);
+            return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
+        }
+
+        return Results.Problem("Could not allocate a share code.", statusCode: 503);
+    }
+
+    internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
+        IGrainFactory grains, IPlayerRepository players)
+    {
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var count = CoerceQuestionCount(body.Questions);
+        var levels = CoerceLevels(body.Levels);
+
+        var ok = await grains.GetGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
+    }
+
+    /// <summary>Mirrors <see cref="QuestionSetBuilder.BuildAsync"/>'s own coercion: a count nobody
+    /// picked from the offered choices is not a request worth refusing, just one worth defaulting.</summary>
+    private static int CoerceQuestionCount(int? questionCount)
+    {
+        var count = questionCount ?? MatchRules.QuestionsPerMatch;
+        return MatchRules.IsValidCount(count) ? count : MatchRules.QuestionsPerMatch;
+    }
+
+    /// <summary>Anything outside 1..5 is dropped rather than rejected — the same coercion every other
+    /// creation path in this file applies.</summary>
+    private static List<int> CoerceLevels(List<int>? levels) => [.. (levels ?? []).Where(l => l is >= 1 and <= 5)];
 
     /// <summary>
     /// Extracted so a test can drive it directly, the same way <see cref="GameEndpoints.JoinMatchAsync"/> is.

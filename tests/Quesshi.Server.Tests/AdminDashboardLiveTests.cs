@@ -47,7 +47,7 @@ public class AdminDashboardLiveTests(LiveClusterFixture fixture) : IAsyncDisposa
     public async Task Reports_the_in_flight_count_the_connected_and_queue_counters_and_the_live_total()
     {
         LiveShared.Directory.Rows.Clear();
-        LiveShared.Directory.Rows["adl-row"] = new LiveDirectoryRow("adl-row", "ADLROW", "p1", "p2",
+        LiveShared.Directory.Rows["adl-row"] = new LiveDirectoryRow("adl-row", "ADLROW", ["p1", "p2"],
             (int)Language.En, 0, 10, (int)LivePhase.Lobby, DateTimeOffset.UtcNow);
         LiveShared.Directory.ConnectedCount = 7;
         LiveShared.Directory.QueueDepth = 3;

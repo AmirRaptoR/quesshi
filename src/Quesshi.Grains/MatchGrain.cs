@@ -325,11 +325,18 @@ public sealed class MatchGrain(
             : new ParticipantResult(s.PlayerId, s.Run?.Score ?? 0, 0, MatchOutcome.Loss))];
     }
 
-    private static IEnumerable<(string PlayerId, PlayerRun? Run)> Sides(Match m)
-    {
-        yield return (m.ChallengerId, m.RunOf(m.ChallengerId));
-        if (m.OpponentId is not null) yield return (m.OpponentId, m.RunOf(m.OpponentId));
-    }
+    /// <summary>
+    /// Every seated player, not just the first two: <see cref="Match.Participants"/> directly, rather
+    /// than the obsolete <c>ChallengerId</c>/<c>OpponentId</c> pair this used to yield. A
+    /// capacity-&gt;2 async lobby is fully N-player at the domain level already — <see cref="Match"/>'s
+    /// own <c>BuildStandings</c> ranks every participant, not just two — so this was the one place
+    /// still truncating that back down to two on the way out to a grain caller: <see cref="View"/>'s
+    /// <c>Runs</c>, <see cref="BuildResults"/>'s archived row, and <see cref="SettleAsync"/>'s
+    /// per-player settlement loop all read this. The identical bug, for the identical reason, that
+    /// <c>LiveMatchGrain</c>'s own <c>Participants</c> helper was fixed for on the live side.
+    /// </summary>
+    private static IEnumerable<(string PlayerId, PlayerRun? Run)> Sides(Match m) =>
+        m.Participants.Select(pid => (pid, m.RunOf(pid)));
 
     private SettlementProgress? LoadProgress()
         => string.IsNullOrEmpty(state.State.SettlementJson)

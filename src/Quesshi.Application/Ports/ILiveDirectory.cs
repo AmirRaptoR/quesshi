@@ -2,11 +2,15 @@ namespace Quesshi.Application.Ports;
 
 /// <summary>
 /// One row of the in-flight live-duel index — everything <c>/admin/live</c> renders for one duel,
-/// without activating its grain: code, both players, language, round <c>n</c> of total, phase and
-/// when it started. <see cref="OpponentId"/> is null for a lobby nobody has joined yet.
+/// without activating its grain: code, every seated player, language, round <c>n</c> of total, phase
+/// and when it started. <see cref="Participants"/> is in join order, exactly as
+/// <c>LiveMatch.Participants</c> defines it — one entry for a lobby nobody has joined yet, more as
+/// seats fill. This used to be a fixed <c>ChallengerId</c>/<c>string? OpponentId</c> pair, which is
+/// exactly why a capacity>2 duel's third-and-later players never showed up in <c>/admin/live</c>: an
+/// admin watching a four-player duel saw two names and nothing telling them two more were missing.
 /// </summary>
 public sealed record LiveDirectoryRow(
-    string MatchId, string Code, string ChallengerId, string? OpponentId, int Lang,
+    string MatchId, string Code, List<string> Participants, int Lang,
     int RoundIndex, int TotalRounds, int Phase, DateTimeOffset StartedAt);
 
 /// <summary>

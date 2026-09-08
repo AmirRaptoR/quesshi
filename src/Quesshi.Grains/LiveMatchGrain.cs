@@ -27,6 +27,7 @@ public sealed class LiveMatchGrain(
     LiveMatchSettlement settlement,
     IIdFactory ids,
     IClock clock,
+    IPlayerRepository players,
     ILogger<LiveMatchGrain> logger) : Grain, ILiveMatchGrain, IRemindable
 {
     private const string SafetyNetReminder = "live-safety-net";
@@ -46,6 +47,11 @@ public sealed class LiveMatchGrain(
     private int _startedThrough;
     private int _revealedThrough;
 
+    /// <summary>How many entries of <c>LiveMatch.Abandoners</c> have already had <c>PlayerEliminated</c>
+    /// emitted, in this activation's lifetime — the same "already announced, don't replay" bookkeeping
+    /// <see cref="_startedThrough"/>/<see cref="_revealedThrough"/> do for rounds.</summary>
+    private int _eliminatedThrough;
+
     public override async Task OnActivateAsync(CancellationToken ct)
     {
         if (string.IsNullOrEmpty(state.State.Json)) return;
@@ -55,6 +61,7 @@ public sealed class LiveMatchGrain(
         // reactivating must not replay it, only pick the clock back up from here.
         _startedThrough = _match.Rounds.Count;
         _revealedThrough = ClosedRoundCount(_match);
+        _eliminatedThrough = _match.Abandoners.Count;
 
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
@@ -310,8 +317,8 @@ public sealed class LiveMatchGrain(
         }
 
         await InviteOthersAsync(lobbyView, playerId);
-        await SafeNotifyAsync(() => notifier.RematchCreatedAsync(_match.Id, lobbyId));
-        return new RematchOutcome((int)RematchStatus.Created, lobbyId);
+        await SafeNotifyAsync(() => notifier.RematchCreatedAsync(_match.Id, lobbyId, lobbyView.Code));
+        return new RematchOutcome((int)RematchStatus.Created, lobbyId, lobbyView.Code);
     }
 
     /// <summary>
@@ -353,21 +360,34 @@ public sealed class LiveMatchGrain(
     }
 
     /// <summary>
-    /// Every participant of the finished duel gets a plain invitation to the rematch lobby, except its
-    /// actual owner (who already knows — they either created it just now or already own it from an
-    /// earlier request) and <paramref name="requesterId"/> (who already has <paramref name="lobbyView"/>'s
-    /// id from this very call's own return value). A repeat rematch press by someone other than the
-    /// owner re-sends invitations to everyone else, which is a harmless duplicate notification rather
-    /// than a correctness problem — see <c>ILiveMatchmakingGrain</c>'s own remarks on why an invitation
-    /// carries no exclusivity to violate.
+    /// Every non-guest participant of the finished duel gets a plain in-app invitation to the rematch
+    /// lobby, except its actual owner (who already knows — they either created it just now or already
+    /// own it from an earlier request) and <paramref name="requesterId"/> (who already has
+    /// <paramref name="lobbyView"/>'s id and code from this very call's own return value). A repeat
+    /// rematch press by someone other than the owner re-sends invitations to everyone else, which is a
+    /// harmless duplicate notification rather than a correctness problem — see
+    /// <c>ILiveMatchmakingGrain</c>'s own remarks on why an invitation carries no exclusivity to
+    /// violate.
+    ///
+    /// A guest is skipped here entirely, not merely left to fail: <c>LobbyHub.OnConnectedAsync</c>
+    /// aborts every guest connection outright, so a challenge minted for one would sit in
+    /// <c>PendingForAsync</c> forever, never delivered, never accepted. Guests already reached this
+    /// duel by link, so they are reached the same way for its rematch — the lobby's share code goes
+    /// out on <see cref="NotifyAsync"/>'s own <c>RematchCreatedAsync</c> push instead, to the whole
+    /// finished duel's group, which a guest participant is connected to by definition.
     /// </summary>
     private async Task InviteOthersAsync(LiveView lobbyView, string requesterId)
     {
         var matchmaking = GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var lobbyOwnerId = lobbyView.Participants[0];
         foreach (var participantId in _match!.Participants)
         {
-            if (participantId == lobbyView.ChallengerId || participantId == requesterId) continue;
-            await SafeNotifyAsync(() => matchmaking.ChallengeAsync(ids.NewId(), lobbyView.ChallengerId, participantId, lobbyView.Id));
+            if (participantId == lobbyOwnerId || participantId == requesterId) continue;
+
+            var participant = await players.GetAsync(participantId);
+            if (participant is { IsGuest: true }) continue;
+
+            await SafeNotifyAsync(() => matchmaking.ChallengeAsync(ids.NewId(), lobbyOwnerId, participantId, lobbyView.Id));
         }
     }
 
@@ -462,6 +482,18 @@ public sealed class LiveMatchGrain(
             }
         }
 
+        // Elimination is discovered inside CloseRound, which only ever runs as part of closing a
+        // round — so by the time the reveal loop above has caught this activation up on every
+        // newly-closed round, every abandoner CloseRound found along the way is already in
+        // m.Abandoners too. Announced after the reveal it happened alongside, not before: a client
+        // sees "here is what happened in that round" and only then "and that is who it cost".
+        for (var i = _eliminatedThrough; i < m.Abandoners.Count; i++)
+        {
+            var elimination = m.Abandoners[i];
+            await SafeNotifyAsync(() => notifier.PlayerEliminatedAsync(m.Id, new LivePlayerEliminated(elimination.PlayerId, elimination.RoundSlot)));
+        }
+        _eliminatedThrough = m.Abandoners.Count;
+
         if (!wasOver && m.IsOver)
         {
             await IndexAsync(); // the row has to read NoContest/Resolved/Abandoned before anyone can be told
@@ -551,11 +583,13 @@ public sealed class LiveMatchGrain(
     }
 
     /// <summary>Writes this duel's row to the in-flight index — everything <c>/admin/live</c> needs
-    /// without activating this grain. Called on every phase change while the duel is still running.</summary>
+    /// without activating this grain. Called on every phase change while the duel is still running.
+    /// Every seated player via <see cref="Participants"/>, not the old two-scalar pair: the same
+    /// truncation this helper already exists to fix everywhere else it feeds a view or a notification.</summary>
     private Task UpsertDirectoryAsync()
     {
         var m = _match!;
-        var row = new LiveDirectoryRow(m.Id, m.Code, m.ChallengerId, m.OpponentId, (int)m.Lang,
+        var row = new LiveDirectoryRow(m.Id, m.Code, [.. Participants(m)], (int)m.Lang,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, (int)m.Phase, m.CreatedAt);
         return SafeDirectoryAsync(() => directory.UpsertAsync(row));
     }
@@ -615,11 +649,15 @@ public sealed class LiveMatchGrain(
     /// last while it is still open for answers, or all of them otherwise.</summary>
     private static int ClosedRoundCount(LiveMatch m) => m.Phase == LivePhase.Question ? Math.Max(0, m.Rounds.Count - 1) : m.Rounds.Count;
 
-    private static IEnumerable<string> Participants(LiveMatch m)
-    {
-        yield return m.ChallengerId;
-        if (m.OpponentId is not null) yield return m.OpponentId;
-    }
+    /// <summary>
+    /// Every seated player, not just the first two: <see cref="LiveMatch.Participants"/> directly,
+    /// rather than the obsolete <c>ChallengerId</c>/<c>OpponentId</c> pair this used to yield. A
+    /// capacity-&gt;2 duel is fully N-player at the domain and grain-API level already; this helper
+    /// feeding every view/notification builder below off the two-scalar compatibility accessors
+    /// instead was the one place that silently truncated it back down to two on the way out — round
+    /// reveals, the in-flight view, and the archived row all read this.
+    /// </summary>
+    private static IReadOnlyList<string> Participants(LiveMatch m) => m.Participants;
 
     private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, m.ChallengerId, m.OpponentId!, m.QuestionIds.Count);
 
@@ -648,6 +686,7 @@ public sealed class LiveMatchGrain(
     private static LiveEnded BuildEnded(LiveMatch m, string? reason) => new(
         m.State, m.WinnerId, m.IsDraw, m.AbandonedBy,
         [.. Participants(m).Select(pid => new LivePlayerScore(pid, m.Score(pid), CorrectCount(m, pid)))],
+        [.. m.Standings],
         reason);
 
     private static int CorrectCount(LiveMatch m, string playerId) => m.Rounds.Count(r => r.Answers.TryGetValue(playerId, out var a) && a.Correct);
@@ -689,7 +728,7 @@ public sealed class LiveMatchGrain(
             m.MissStreak(pid))).ToList();
 
         return new LiveView(
-            m.Id, m.ChallengerId, m.OpponentId, (int)m.State, (int)m.Phase, m.PhaseEndsAt,
+            m.Id, [.. Participants(m)], (int)m.State, (int)m.Phase, m.PhaseEndsAt,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, players, rounds,
             m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang);
     }

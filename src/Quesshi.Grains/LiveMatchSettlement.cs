@@ -49,7 +49,12 @@ public sealed class LiveMatchSettlement(
         var byId = (await questions.GetManyAsync(m.QuestionIds)).ToDictionary(q => q.Id);
         var categories = m.Rounds.Select(r => byId.GetValueOrDefault(r.QuestionId)?.CategoryId ?? "unknown").ToList();
 
-        foreach (var playerId in Participants(m))
+        // Every seated player, not just the first two: this used to walk a private Participants(m)
+        // iterator that yielded only ChallengerId and OpponentId, so a capacity>2 duel silently
+        // skipped every player past the second here — no stats, no leaderboard, no abandonment
+        // penalty for them, ever, and nothing about it failed loudly since the obsolete accessors it
+        // read from still compile. LiveMatch.Participants is the one list that actually has everyone.
+        foreach (var playerId in m.Participants)
         {
             if (alreadySettled?.Contains(playerId) == true) continue;
 
@@ -80,6 +85,11 @@ public sealed class LiveMatchSettlement(
     // the grain writes 0/0 until settlement knows the real ones. m.Code is the duel's actual share
     // code; passing m.Id here instead — as this once did — would overwrite that code with the id on
     // every settlement and break code resolution for it from then on.
+    // m.ChallengerId/m.OpponentId here are ArchivedMatch's own legacy two-scalar fields, kept for the
+    // rows and readers that still switch on them (MatchDoc's ChallengerScore/OpponentScore backfill
+    // path, Mappers.ToLiveSummary's compat projection); they are not where this row's participant set
+    // lives any more. BuildResults below is: it walks m.Participants, not these two, so every seat —
+    // third and later included — gets a real ParticipantResult regardless of what these two say.
     private static ArchivedMatch ToArchived(LiveMatch m, Language lang) => new(
         m.Id, m.Code, lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
         BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true);
@@ -98,14 +108,8 @@ public sealed class LiveMatchSettlement(
     private static List<ParticipantResult> BuildResults(LiveMatch m)
     {
         var byId = m.Standings.ToDictionary(s => s.PlayerId);
-        return [.. Participants(m).Select(pid => byId.TryGetValue(pid, out var s)
+        return [.. m.Participants.Select(pid => byId.TryGetValue(pid, out var s)
             ? new ParticipantResult(pid, m.Score(pid), s.Place, s.Outcome)
             : new ParticipantResult(pid, m.Score(pid), 0, MatchOutcome.Loss))];
-    }
-
-    private static IEnumerable<string> Participants(LiveMatch m)
-    {
-        yield return m.ChallengerId;
-        if (m.OpponentId is not null) yield return m.OpponentId;
     }
 }

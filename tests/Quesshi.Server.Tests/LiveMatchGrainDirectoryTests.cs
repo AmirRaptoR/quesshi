@@ -59,8 +59,7 @@ public class LiveMatchGrainDirectoryTests(LiveClusterFixture fixture)
         var view = await grain.CreateAsync("DIRTEST1", (int)Language.En, Amir, questionIds);
 
         Assert.True(LiveShared.Directory.Rows.TryGetValue(id, out var row));
-        Assert.Equal(Amir, row!.ChallengerId);
-        Assert.Null(row.OpponentId);
+        Assert.Equal([Amir], row!.Participants);
         Assert.Equal((int)LivePhase.Lobby, row.Phase);
         Assert.Equal(view.Id, row.MatchId);
     }
@@ -73,7 +72,7 @@ public class LiveMatchGrainDirectoryTests(LiveClusterFixture fixture)
         await grain.JoinAsync(Sara);
 
         var row = LiveShared.Directory.Rows[id];
-        Assert.Equal(Sara, row.OpponentId);
+        Assert.Equal([Amir, Sara], row.Participants);
     }
 
     [Fact]

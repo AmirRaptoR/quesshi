@@ -152,7 +152,7 @@ public static class AuthEndpoints
         await players.UpsertAsync(guest);
 
         var view = (await grain.GetAsync(guest.Id))!;
-        var challenger = await players.GetAsync(view.ChallengerId);
+        var challenger = await players.GetAsync(view.Participants[0]);
         var lookup = (string id) => id == guest.Id
             ? (guest.DisplayName, guest.AvatarSeed, true)
             : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id, challenger?.IsGuest ?? false);

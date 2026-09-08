@@ -54,7 +54,14 @@ public sealed class MatchDoc
     {
         Id = m.Id, Code = m.Code, Lang = (int)m.Lang, ChallengerId = m.ChallengerId, OpponentId = m.OpponentId,
         OwnerId = m.ChallengerId,
-        Participants = m.OpponentId is null ? [m.ChallengerId] : [m.ChallengerId, m.OpponentId],
+        // Every real seat, from m.Results — not the two-scalar ChallengerId/OpponentId pair this used
+        // to build the array from. Participants is the field the multikey index and ForPlayerAsync's
+        // AnyEq filter both query, so building it from only the first two seats meant a capacity>2
+        // duel's third-and-later players could never find their own match in "/api/matches" at all:
+        // the archive row existed, carried their real ParticipantResult, and was simply unreachable by
+        // their own id. m.Results already lists every participant that actually exists (see its own
+        // remarks), so this needs nothing beyond projecting PlayerId out of it.
+        Participants = [.. m.Results.Select(r => r.PlayerId)],
         WinnerId = m.WinnerId, IsDraw = m.IsDraw,
         Results = [.. m.Results.Select(r => new ParticipantResultDoc
         {

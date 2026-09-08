@@ -156,6 +156,26 @@ public static class GameEndpoints
             IMatchArchive archive, IPlayerRepository players) =>
             await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players));
 
+        // --- async lobby lifecycle (issue #52) -----------------------------------------------------
+        // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
+        // capacity-aware IMatchGrain.JoinAsync a 2-to-8-seat lobby needs, so an N-player async lobby is
+        // joined exactly as a 1v1 always was.
+        api.MapPost("/matches/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
+            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
+
+        api.MapPost("/matches/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
+            await grains.GetGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "cannot_leave" }));
+
+        api.MapPost("/matches/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
+            await grains.GetGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "cannot_start" }));
+
+        api.MapPut("/matches/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
+            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
+
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
         // report a question you were actually served, and only once.
         api.MapPost("/report", async (ReportQuestionDto body, HttpContext ctx,
@@ -239,6 +259,59 @@ public static class GameEndpoints
     }
 
     /// <summary>
+    /// Opens an N-player async lobby (2-8 seats) with these settings, drawing no questions yet —
+    /// <c>Start</c> draws them from whatever the settings say at that instant. Mirrors
+    /// <see cref="LiveEndpoints.CreateLobbyAsync"/> exactly, capacity validation and question-count
+    /// coercion included, other than not retrying a colliding code — the plain <c>POST /matches</c>
+    /// above does not either, and a lobby-create should not behave differently from the creation path
+    /// it sits beside.
+    /// </summary>
+    internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
+        IIdFactory ids, IPlayerRepository players)
+    {
+        if (body.Capacity is < 2 or > 8) return Results.BadRequest(new { error = "bad_capacity" });
+
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var count = CoerceQuestionCount(body.Questions);
+        var levels = CoerceLevels(body.Levels);
+
+        var matchId = ids.NewId();
+        var grain = grains.GetGrain<IMatchGrain>(matchId);
+        var view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+
+        return Results.Ok(await ToSummaryAsync(view, meId, players));
+    }
+
+    internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
+        IGrainFactory grains, IPlayerRepository players)
+    {
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var count = CoerceQuestionCount(body.Questions);
+        var levels = CoerceLevels(body.Levels);
+
+        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
+    }
+
+    /// <summary>Mirrors <see cref="QuestionSetBuilder.BuildAsync"/>'s own coercion: a count nobody
+    /// picked from the offered choices is not a request worth refusing, just one worth defaulting.</summary>
+    private static int CoerceQuestionCount(int? questionCount)
+    {
+        var count = questionCount ?? MatchRules.QuestionsPerMatch;
+        return MatchRules.IsValidCount(count) ? count : MatchRules.QuestionsPerMatch;
+    }
+
+    /// <summary>Anything outside 1..5 is dropped rather than rejected — the same coercion every other
+    /// creation path in this file applies.</summary>
+    private static List<int> CoerceLevels(List<int>? levels) => [.. (levels ?? []).Where(l => l is >= 1 and <= 5)];
+
+    /// <summary>
     /// Extracted out of the endpoint delegate so a report's guard can be driven directly in a test,
     /// the same way <see cref="JoinMatchAsync"/> and <see cref="ListMatchesAsync"/> are. A live duel's
     /// archive row carries its <c>QuestionIds</c> just as an async one does, so a question served in
@@ -298,9 +371,9 @@ public static class GameEndpoints
         // ago has an opponent the row does not know about yet. A live duel has no such lag — its row
         // is the only source there is — so its ids come from the row instead. One query either way.
         var names = (await players.GetManyAsync([.. asyncViews
-                .SelectMany(v => new[] { v.ChallengerId, v.OpponentId })
-                .Concat(liveRows.SelectMany(r => new[] { r.ChallengerId, r.OpponentId }))
-                .OfType<string>().Distinct()]))
+                .SelectMany(ParticipantIds)
+                .Concat(liveRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
+                .Distinct()]))
             .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
 
         (string, string) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id);
@@ -317,7 +390,23 @@ public static class GameEndpoints
             : [.. summaries];
     }
 
-    private static bool IsIn(MatchView v, string playerId) => v.ChallengerId == playerId || v.OpponentId == playerId;
+    /// <summary>
+    /// Every id <paramref name="v"/> actually names, for a capacity-anything async duel: the two
+    /// legacy scalars <c>ChallengerId</c>/<c>OpponentId</c> (always known — a seat is real from the
+    /// moment <c>Join</c> fills it, whether or not that player has served a question yet), plus
+    /// whoever else has a <see cref="RunView"/> in <see cref="MatchView.Runs"/> (a run exists once a
+    /// player has been served their first question, regardless of seat order). <see cref="MatchView"/>
+    /// itself still only carries two named seats — reshaping it for N is issue #53's job — so this is
+    /// the closest a caller here can get to "every real participant" without that reshape, and it is
+    /// exactly what <see cref="IsIn"/>, the name-resolution fan-out below, and every "the other
+    /// participant" lookup in this file should be built on instead of the two scalars alone: a
+    /// three-or-later seat that has played at least one question is a real, findable id here, not
+    /// silently absent the way it used to be.
+    /// </summary>
+    private static IEnumerable<string> ParticipantIds(MatchView v) =>
+        new[] { v.ChallengerId, v.OpponentId }.OfType<string>().Concat(v.Runs.Select(r => r.PlayerId)).Distinct();
+
+    private static bool IsIn(MatchView v, string playerId) => ParticipantIds(v).Contains(playerId);
 
     private static async Task<MatchSummaryDto?> SummaryAsync(IMatchGrain grain, string meId, IPlayerRepository players)
     {
@@ -328,7 +417,7 @@ public static class GameEndpoints
     private static async Task<MatchSummaryDto> ToSummaryAsync(MatchView view, string meId, IPlayerRepository players)
     {
         var names = new Dictionary<string, (string, string)>();
-        foreach (var id in new[] { view.ChallengerId, view.OpponentId }.OfType<string>().Distinct())
+        foreach (var id in ParticipantIds(view))
         {
             var p = await players.GetAsync(id);
             names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id);
@@ -344,7 +433,13 @@ public static class GameEndpoints
         var cats = (await categories.AllAsync()).ToDictionary(c => c.Id);
 
         var mine = view.Runs.FirstOrDefault(r => r.PlayerId == meId)?.Choices ?? [];
-        var otherId = view.ChallengerId == meId ? view.OpponentId : view.ChallengerId;
+
+        // RevealedQuestionDto is a two-sided (mine/theirs) shape, same reasoning as MatchSummaryDto's
+        // own mine/theirs: for a capacity-2 duel "theirs" is unambiguous and this picks exactly the id
+        // it always did. For a capacity>2 duel there is no single "other side" any more, so this names
+        // whichever other real participant (see ParticipantIds) sorts first — a real answer set, never
+        // a made-up id — rather than pretending the duel is still 1v1 or crashing on a missing choice.
+        var otherId = ParticipantIds(view).FirstOrDefault(id => id != meId);
         var theirs = otherId is null ? [] : view.Runs.FirstOrDefault(r => r.PlayerId == otherId)?.Choices ?? [];
 
         return [.. all.Select((q, slot) => new RevealedQuestionDto(slot, q.Id, q.Prompt, [.. q.Choices], q.CorrectIndex,

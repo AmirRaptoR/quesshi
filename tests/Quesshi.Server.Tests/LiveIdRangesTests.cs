@@ -24,6 +24,7 @@ public class LiveIdRangesTests
         new("Create_gives_up_after_repeated_collisions_and_returns_503 (fixed seed)",
             LiveIdRanges.CollidingCodeGiveUpSeed, LiveIdRanges.FixedSeedWidth),
         new("LiveEndpointsTests.NewIds() pool", LiveIdRanges.NewIdsPoolStart, LiveIdRanges.NewIdsPoolWidth),
+        new("LiveLobbyEndpointsTests.NewIds() pool", LiveIdRanges.LobbyEndpointsPoolStart, LiveIdRanges.LobbyEndpointsPoolWidth),
     ];
 
     /// <summary>LiveApiTestHost/AdminApiTestHost mint from their own disjoint 100,000-wide chunks

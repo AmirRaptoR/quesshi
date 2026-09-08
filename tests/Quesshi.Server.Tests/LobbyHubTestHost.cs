@@ -53,6 +53,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                     services.AddSingleton<ILobbyNotifier, FakeLobbyNotifier>();
                     services.AddSingleton<IPlayerRepository, FakePlayers>();
                     services.AddSingleton<IIdFactory, IdFactory>();
+                    services.AddSingleton<IMatchArchive, FakeArchive>();
                 });
                 web.Configure(app =>
                 {

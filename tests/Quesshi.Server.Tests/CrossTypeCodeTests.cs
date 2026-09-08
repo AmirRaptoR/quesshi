@@ -95,7 +95,15 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
         const string opponent = "p-live-opponent";
         var id = Guid.NewGuid().ToString("N");
         var code = $"LIVE-{id}".ToUpperInvariant();
-        Shared.Archive.Items.Add(LiveRow(id, code, challenger) with { OpponentId = opponent });
+        // `with { OpponentId = opponent }` alone would leave Results as LiveRow's own one-entry list
+        // (built for a lobby nobody had joined yet) — inconsistent with the row it is describing, and
+        // exactly the kind of mismatch that would make Results-based lookups (FakeArchive.ForPlayerAsync
+        // included) fail to find the opponent even though the legacy scalar says they are seated.
+        Shared.Archive.Items.Add(LiveRow(id, code, challenger) with
+        {
+            OpponentId = opponent,
+            Results = FakeArchive.TestResults(challenger, opponent, 0, 0)
+        });
 
         var challengerSpy = GrainActivationSpy.Wrap(Grains, out var challengerRequests);
         var opponentSpy = GrainActivationSpy.Wrap(Grains, out var opponentRequests);

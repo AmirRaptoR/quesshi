@@ -46,4 +46,11 @@ public static class LiveIdRanges
     /// <summary>Headroom for 350 <see cref="LiveEndpointsTests.NewIds"/> calls before the pool would
     /// reach <see cref="LiveApiTestHost"/>'s zone.</summary>
     public const int NewIdsPoolWidth = 70_000;
+
+    /// <summary>Reserved for <see cref="LiveLobbyEndpointsTests.NewIds"/>'s own per-test pool (issue
+    /// #52) — the same convention as <see cref="NewIdsPoolStart"/>, in the gap still clear between it
+    /// and <see cref="LiveApiTestHost"/>'s zone.</summary>
+    public const int LobbyEndpointsPoolStart = 90_000;
+
+    public const int LobbyEndpointsPoolWidth = 10_000;
 }

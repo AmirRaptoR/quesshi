@@ -35,8 +35,11 @@ public sealed class SignalRLiveNotifier(IHubContext<LiveHub> hub) : ILiveNotifie
     public Task OpponentAnsweredAsync(string matchId, int slot, string playerId, CancellationToken ct = default)
         => Group(matchId).SendAsync("OpponentAnswered", new OpponentAnsweredDto(matchId, slot, playerId), ct);
 
-    public Task RematchCreatedAsync(string matchId, string newMatchId, CancellationToken ct = default)
-        => Group(matchId).SendAsync("RematchCreated", new RematchCreatedDto(newMatchId), ct);
+    public Task PlayerEliminatedAsync(string matchId, LivePlayerEliminated elimination, CancellationToken ct = default)
+        => Group(matchId).SendAsync("PlayerEliminated", elimination.ToDto(), ct);
+
+    public Task RematchCreatedAsync(string matchId, string newMatchId, string newMatchCode, CancellationToken ct = default)
+        => Group(matchId).SendAsync("RematchCreated", new RematchCreatedDto(newMatchId, newMatchCode), ct);
 
     public Task RematchFailedAsync(string matchId, CancellationToken ct = default)
         => Group(matchId).SendAsync("RematchFailed", ct);
