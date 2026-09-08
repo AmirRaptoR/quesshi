@@ -144,7 +144,16 @@ So the list becomes order-independent: insert `at` in timestamp order, and compu
 entries lying in `[at - AbandonmentWindow, at]` — the window around the *event*, not around whenever
 the code happens to run. Pruning becomes a separate, purely-lazy concern (drop entries older than the
 window relative to the newest entry) and can never change a penalty. With the dedup marker preventing
-a second insert for the same match, the result is identical no matter what order settlements land in.
+a second insert for the same match, no abandonment is ever counted twice and no penalty is ever
+inflated by arrival order.
+
+*Ceiling, stated rather than papered over:* this makes the penalty **never overcharged**, not fully
+order-independent. If Wednesday's duel settles before Monday's, Wednesday's tier was computed over a
+list that did not yet contain Monday, so it may be one tier low; inserting Monday afterwards does not
+retroactively raise it. Making that exact would mean storing each event's applied penalty and
+reconciling the whole window on every late arrival — real machinery for a case that needs a settlement
+to lag another by days. The penalty is a deterrent, and a deterrent that occasionally undercharges is
+a fair trade for one that can never overcharge.
 
 **Stats deduplicate on the player document.** That one call records the match id in a capped list of
 settled match ids on `Player`, written in the *same* `UpsertAsync` as the stat change — one Mongo
@@ -438,7 +447,28 @@ one player can have legitimately abandoned *before* an outage forces the duel to
 on the set alone would then punish that player for the server's failure.
 
 So `NoContest` records **why**: `AllAbandoned`, `Stale`, or `LobbyExpired`. The penalty applies on
-`AllAbandoned` only. `Stale` and `LobbyExpired` leave `PlayerStats` exactly as they found it, abandoners
+`AllAbandoned` only.
+
+**The staleness test has to be widened, or the reason code makes things worse.** `Advance`'s guard is
+`Phase == LivePhase.Question && CurrentRound is { Answers.Count: 0 } && now - round.StartedAt >
+StaleAfter` (`LiveMatch.cs:143-147`). An outage that begins in `Countdown` or `Reveal` — or in
+`Question` after a single player has answered — misses it entirely, and the `while (StepOnce(now))`
+loop below then simulates every remaining round with nobody answering. At
+`LiveRules.MissesBeforeAbandon = 3`, three simulated rounds mark **every** player abandoned. Today
+that lands on `NoContest` with nobody penalised, so it is invisible; under the rule above it would
+become `AllAbandoned` and bill every player for the server's downtime. The reason code would convert
+a latent bug into a live one.
+
+So staleness stops being a special case of one phase: if `now` is past the current phase's deadline
+by more than `StaleAfter`, the process was away, whatever the phase and whoever had answered. That
+boundary already exists as `NextDueAt`, which is defined for every phase and is the same value
+`StepOnce` steps against, so the two cannot drift. `Lobby` keeps its own reason (`LobbyExpired`)
+since a lobby passing its deadline is expiry, not absence.
+
+This also changes an existing behaviour deliberately: a round where one player had answered before
+the process went away is now `Stale` rather than simulated to a conclusion. That is the conservative
+direction — no stats, no penalties, no result — and it is the honest reading of a duel nobody was
+present for. `Stale` and `LobbyExpired` leave `PlayerStats` exactly as they found it, abandoners
 in the set or not — the original guarantee that a duel lost to a restart costs nobody anything,
 now stated in terms that survive a third player. Stats, leaderboard and standings remain suppressed
 for every `NoContest`; only the `AllAbandoned` penalty crosses.
