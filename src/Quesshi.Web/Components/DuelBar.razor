@@ -1,0 +1,30 @@
+@* Option A: a duel bar above the topbar, both scores visible throughout the question and reveal
+   phases. Plain flex + DOM order (see .duelbar in app.css) is already direction-aware, so this
+   needs no separate rtl rule. *@
+@using Quesshi.Shared
+@using Quesshi.Web.Services
+@using Quesshi.Web.Pages
+
+<div class="duelbar">
+    <div class="duelbar__side">
+        <span class="avatar" style="background:@Ranks.Tint(Mine.Avatar)">@Initial(Mine.Name)</span>
+        <span class="duelbar__name" dir="auto">@Mine.Name</span>
+        <span class="numeral duelbar__score duelbar__score--mine">@L.Num(Mine.Score)</span>
+    </div>
+    <div class="duelbar__side duelbar__side--theirs">
+        <span class="numeral duelbar__score">@L.Num(Theirs.Score)</span>
+        <span class="duelbar__name" dir="auto">@Theirs.Name</span>
+        <span class="avatar" style="background:@Ranks.Tint(Theirs.Avatar)">@Initial(Theirs.Name)</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public LiveViewDto View { get; set; } = default!;
+    [Parameter] public string MeId { get; set; } = "";
+    [Inject] private Translator L { get; set; } = default!;
+
+    private DuelBarSide Mine => DuelBarScores.Split(View, MeId).Mine;
+    private DuelBarSide Theirs => DuelBarScores.Split(View, MeId).Theirs;
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+}

@@ -23,10 +23,14 @@ services:
       ConnectionStrings__Mongo: mongodb://mongo:27017
       ConnectionStrings__Redis: redis:6379
 
-      # Sign-in codes and reset links are always mailed. Locally that is Mailpit, which accepts
-      # anything and shows it in a browser, so no address has to be real and nothing is echoed back
-      # to the caller. A server overrides all three from its own settings file.
-      Smtp__Host: ${SMTP_HOST:-mailpit}
+      # Sign-in codes and reset links are mailed. Locally that is Mailpit, which accepts anything and
+      # shows it in a browser, so no address has to be real and nothing is echoed back to the caller.
+      # A server overrides all three from its own settings file.
+      #
+      # No colon in the default: `SMTP_HOST=` in .env then means an empty host rather than falling
+      # back to Mailpit, and an empty host is how a machine says it wants no mail at all — the app
+      # logs the code instead. `:-` would read that empty value as "unset" and hand back Mailpit.
+      Smtp__Host: ${SMTP_HOST-mailpit}
       Smtp__Port: ${SMTP_PORT:-1025}
       Smtp__UseTls: ${SMTP_TLS:-false}
 

@@ -13,5 +13,6 @@
     <Project Path="tests/Quesshi.Application.Tests/Quesshi.Application.Tests.csproj" />
     <Project Path="tests/Quesshi.Domain.Tests/Quesshi.Domain.Tests.csproj" />
     <Project Path="tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj" />
+    <Project Path="tests/Quesshi.Web.Tests/Quesshi.Web.Tests.csproj" />
   </Folder>
 </Solution>

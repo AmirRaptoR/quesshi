@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.11" />
     <PackageReference Include="Microsoft.Orleans.Clustering.Redis" Version="10.2.2" />
     <PackageReference Include="Microsoft.Orleans.Persistence.Redis" Version="10.2.2" />
     <PackageReference Include="Microsoft.Orleans.Reminders.Redis" Version="10.2.2" />
@@ -26,6 +27,11 @@
   <!-- Seed data and server-side translations are read from disk at runtime. -->
   <ItemGroup>
     <Content Update="i18n\**;Seed\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The match-list handler is internal; its test needs to call it without widening the API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quesshi.Server.Tests" />
   </ItemGroup>
 
 </Project>

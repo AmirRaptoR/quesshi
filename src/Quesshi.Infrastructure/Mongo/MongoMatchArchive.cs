@@ -14,6 +14,10 @@ public sealed class MongoMatchArchive(MongoContext db) : IMatchArchive
         return (await db.Matches.Find(m => m.Code == normalized).FirstOrDefaultAsync(ct))?.ToDomain();
     }
 
+    /// <summary>
+    /// A player's live and async rows alike, newest first: <c>GameEndpoints.ListMatchesAsync</c> is
+    /// the one that splits a live row away from the grain fan-out, so this query does not need to.
+    /// </summary>
     public async Task<IReadOnlyList<ArchivedMatch>> ForPlayerAsync(string playerId, int take, CancellationToken ct = default)
         => [.. (await db.Matches
             .Find(Builders<MatchDoc>.Filter.Or(
@@ -23,4 +27,7 @@ public sealed class MongoMatchArchive(MongoContext db) : IMatchArchive
 
     public Task<long> CountAsync(CancellationToken ct = default)
         => db.Matches.CountDocumentsAsync(Builders<MatchDoc>.Filter.Empty, cancellationToken: ct);
+
+    public Task<long> CountLiveAsync(CancellationToken ct = default)
+        => db.Matches.CountDocumentsAsync(Builders<MatchDoc>.Filter.Eq(m => m.IsLive, true), cancellationToken: ct);
 }

@@ -1,0 +1,166 @@
+using Microsoft.AspNetCore.Http;
+using Quesshi.Application.Ports;
+using Quesshi.Domain;
+using Quesshi.Grains.Abstractions;
+using Quesshi.Server.Api;
+using Quesshi.Server.Auth;
+using Quesshi.Shared;
+
+namespace Quesshi.Server.Tests;
+
+/// <summary>
+/// Async and live duels share one code namespace through <see cref="IMatchArchive"/>. Each side must
+/// refuse a code that belongs to the other kind rather than half-acting on it.
+/// </summary>
+[Collection(nameof(ClusterCollection))]
+public class CrossTypeCodeTests(ClusterFixture fixture)
+{
+    private IGrainFactory Grains => fixture.Cluster.GrainFactory;
+
+    private static ArchivedMatch LiveRow(string id, string code, string challengerId) => new(
+        id, code, Language.En, challengerId, null, null, false, 0, 0, MatchState.AwaitingOpponent,
+        Shared.Clock.Now, null, [], IsLive: true);
+
+    [Fact]
+    public async Task Async_join_refuses_a_live_code_and_touches_no_match_grain()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var code = $"LIVE-{id}";
+        Shared.Archive.Items.Add(LiveRow(id, code, "p-challenger"));
+
+        var result = await GameEndpoints.JoinMatchAsync(code, "p-joiner", Grains, Shared.Archive, Shared.Players);
+
+        Assert.Equal(400, StatusOf(result));
+        Assert.Equal("not_an_async_code", ErrorOf(result));
+
+        // The row is untouched: nothing about it looks like the async grain ever ran a join against it.
+        var view = await Grains.GetGrain<IMatchGrain>(id).GetAsync("p-joiner");
+        Assert.Null(view);
+    }
+
+    [Fact]
+    public async Task Guest_join_refuses_a_live_code_and_creates_no_guest()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var code = $"LIVE-{id}".ToUpperInvariant();
+        Shared.Archive.Items.Add(LiveRow(id, code, "p-challenger"));
+        var playersBefore = Shared.Players.Items.Count;
+
+        var result = await AuthEndpoints.GuestJoinAsync(code, new GuestJoinDto("Newcomer"), Shared.Archive,
+            Shared.Players, Grains, Issuer, new FakeIdFactory(), Shared.Clock);
+
+        Assert.Equal(400, StatusOf(result));
+        Assert.Equal("not_an_async_code", ErrorOf(result));
+        Assert.Equal(playersBefore, Shared.Players.Items.Count);
+    }
+
+    [Fact]
+    public async Task Live_join_refuses_an_async_code_and_touches_no_live_match_grain()
+    {
+        var asyncId = Guid.NewGuid().ToString("N");
+        var asyncCode = $"ASYNC-{asyncId}".ToUpperInvariant();
+        Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
+            false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
+
+        var result = await LiveEndpoints.JoinAsync(asyncCode, "p-joiner", Grains, Shared.Archive, Shared.Players,
+            LiveShared.Questions, LiveShared.Categories, Shared.Clock);
+
+        Assert.Equal(400, StatusOf(result));
+        Assert.Equal("not_a_live_code", ErrorOf(result));
+    }
+
+    [Fact]
+    public async Task Invite_reports_live_correctly_for_both_kinds()
+    {
+        var liveId = Guid.NewGuid().ToString("N");
+        var liveCode = $"LIVE-{liveId}".ToUpperInvariant();
+        Shared.Archive.Items.Add(LiveRow(liveId, liveCode, "p-challenger"));
+
+        var asyncId = Guid.NewGuid().ToString("N");
+        var asyncCode = $"ASYNC-{asyncId}".ToUpperInvariant();
+        Shared.Archive.Items.Add(new ArchivedMatch(asyncId, asyncCode, Language.En, "p-challenger", null, null,
+            false, 0, 0, MatchState.AwaitingOpponent, Shared.Clock.Now, null, []));
+
+        var liveInvite = (InviteDto)ValueOf(await AuthEndpoints.InviteAsync(liveCode, Shared.Archive, Shared.Players));
+        var asyncInvite = (InviteDto)ValueOf(await AuthEndpoints.InviteAsync(asyncCode, Shared.Archive, Shared.Players));
+
+        Assert.True(liveInvite.Live);
+        Assert.False(asyncInvite.Live);
+    }
+
+    [Fact]
+    public async Task A_live_row_appears_in_the_match_list_for_both_players_marked_live_and_not_playable()
+    {
+        const string challenger = "p-live-challenger";
+        const string opponent = "p-live-opponent";
+        var id = Guid.NewGuid().ToString("N");
+        var code = $"LIVE-{id}".ToUpperInvariant();
+        Shared.Archive.Items.Add(LiveRow(id, code, challenger) with { OpponentId = opponent });
+
+        var challengerSpy = GrainActivationSpy.Wrap(Grains, out var challengerRequests);
+        var opponentSpy = GrainActivationSpy.Wrap(Grains, out var opponentRequests);
+
+        var challengerRows = await GameEndpoints.ListMatchesAsync(challenger, false, null, Shared.Archive, Shared.Players, challengerSpy);
+        var opponentRows = await GameEndpoints.ListMatchesAsync(opponent, false, null, Shared.Archive, Shared.Players, opponentSpy);
+
+        var challengerRow = challengerRows.Single(r => r.Id == id);
+        var opponentRow = opponentRows.Single(r => r.Id == id);
+
+        Assert.True(challengerRow.IsLive);
+        Assert.False(challengerRow.CanPlay);
+        Assert.True(opponentRow.IsLive);
+        Assert.False(opponentRow.CanPlay);
+
+        Assert.DoesNotContain(challengerRequests, r => r.GrainInterface == typeof(IMatchGrain) && r.Key == id);
+        Assert.DoesNotContain(opponentRequests, r => r.GrainInterface == typeof(IMatchGrain) && r.Key == id);
+    }
+
+    /// <summary>
+    /// Regression coverage for issue #34: <see cref="ValueOf"/> used to read a null-forgiven
+    /// <c>GetProperty("Value")</c> and throw a bare <see cref="NullReferenceException"/> that named
+    /// neither the result shape nor its status code, for any minimal-API result without a public
+    /// <c>Value</c> property — <c>ProblemHttpResult</c> among them.
+    /// </summary>
+    [Fact]
+    public void ValueOf_on_a_result_with_no_public_Value_property_names_the_shape_it_received()
+    {
+        var result = Results.Problem("unavailable", statusCode: 503);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ValueOf(result));
+
+        Assert.Contains("ProblemHttpResult", ex.Message);
+    }
+
+    private static readonly TokenIssuer Issuer = new(new JwtOptions
+    {
+        Key = "a-test-signing-key-long-enough-to-use", Issuer = "quesshi", Audience = "quesshi", Days = 1
+    });
+
+    /// <summary>
+    /// Minimal-API results (<c>Results.BadRequest</c>, <c>Results.NotFound</c>, ...) are internal
+    /// generic types; reading them back through reflection avoids pulling the whole ASP.NET Core
+    /// hosting surface into these grain-level tests just to assert a status code and an error body.
+    /// </summary>
+    internal static int StatusOf(object result) => (int)result.GetType().GetProperty("StatusCode")!.GetValue(result)!;
+
+    internal static string ErrorOf(object result)
+    {
+        var value = ValueOf(result);
+        return (string)value.GetType().GetProperty("error")!.GetValue(value)!;
+    }
+
+    internal static object ValueOf(object result)
+    {
+        var type = result.GetType();
+        var value = type.GetProperty("Value")?.GetValue(result);
+        if (value is not null) return value;
+
+        // Several minimal-API result shapes (ProblemHttpResult, NotFound, UnauthorizedHttpResult, the
+        // parameterless Ok) expose no public Value property at all — reflection returns null rather
+        // than throwing, which a bare `!` used to hide behind a NullReferenceException naming neither
+        // the shape nor why it has nothing to read. Name both instead.
+        var statusCode = type.GetProperty("StatusCode")?.GetValue(result);
+        throw new InvalidOperationException(
+            $"{type.Name} (StatusCode={statusCode}) has no public Value property to read via reflection.");
+    }
+}

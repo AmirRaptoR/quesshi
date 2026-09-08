@@ -1,10 +1,15 @@
 @page "/profile"
 @inherits PageBase
+@inject LobbyClient Lobby
 
 <PageTitle>@L["nav.profile"] · @L["app.name"]</PageTitle>
 
 <div class="shell">
-    @if (Loading || State.Me is null)
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading || State.Me is null)
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }
@@ -84,7 +89,17 @@
                     <div class="row">
                         <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
                         <span class="grow">@friend.DisplayName</span>
+                        @if (friend.Online)
+                        {
+                            <span class="dot--online" title="@L["profile.online"]" aria-label="@L["profile.online"]"></span>
+                        }
                         <span class="numeral faint">@L.Num(friend.Score)</span>
+                        @if (friend.Online)
+                        {
+                            <button class="btn btn--sm" disabled="@(_challenging == friend.Id)" @onclick="() => ChallengeAsync(friend.Id)">
+                                @L["profile.challenge"]
+                            </button>
+                        }
                         <button class="btn btn--ghost btn--sm btn--icon" title="@L["profile.remove"]"
                                 aria-label="@L["profile.remove"]" @onclick="() => RemoveAsync(friend.Id)">
                             <Icon Name="close" />
@@ -92,6 +107,8 @@
                     </div>
                 }
             </div>
+
+            @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.85rem">@_error</div> }
         </section>
 
         <section class="card enter">
@@ -124,6 +141,8 @@
     private List<FriendDto> _found = [];
     private List<CategoryDto> _categories = [];
     private bool _busy, _saved;
+    private string? _challenging;
+    private string? _error;
 
     protected override async Task LoadAsync()
     {
@@ -155,6 +174,27 @@
     private async Task RemoveAsync(string id)
     {
         if (await Api.RemoveFriendAsync(id)) await RefreshMeAsync();
+    }
+
+    /// <summary>The same language / question count / categories / levels last chosen on Home.razor, or the defaults.</summary>
+    private async Task ChallengeAsync(string targetId)
+    {
+        _challenging = targetId;
+        _error = null;
+        try
+        {
+            var result = await Lobby.ChallengeAsync(targetId,
+                State.LastLiveLang ?? State.Lang,
+                State.LastLiveQuestionCount ?? 10,
+                State.LastLiveCategories ?? [],
+                State.LastLiveLevels ?? []);
+
+            if (result is null) _error = L["common.error"];
+        }
+        finally
+        {
+            _challenging = null;
+        }
     }
 
     private async Task RefreshMeAsync()

@@ -25,7 +25,7 @@ public static class AdminEndpoints
 
         admin.MapGet("/dashboard", async (IPlayerRepository players, IQuestionRepository questions,
             IMatchArchive matches, IGenerationLog log, IQuestionGenerator generator, TopUpOptions topUp,
-            IAiSpendLog spend, IClock clock, OpenRouterOptions ai) =>
+            IAiSpendLog spend, IClock clock, OpenRouterOptions ai, ILiveDirectory live, IGrainFactory grains) =>
         {
             var buckets = await questions.BucketCountsAsync();
             var thin = buckets.Where(b => b.Approved + b.Pending < topUp.TargetPerBucket)
@@ -45,7 +45,54 @@ public static class AdminEndpoints
                 generator.IsConfigured,
                 (await spend.TotalsAsync()).ToDto(),
                 (await spend.TotalsAsync(clock.Now.AddDays(-30))).ToDto(),
-                ai.Model);
+                ai.Model,
+                await live.CountAsync(),
+                await live.ConnectedCountAsync(),
+                await live.QueueDepthAsync(),
+                await matches.CountLiveAsync(),
+                await grains.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync());
+        });
+
+        // --- live duels ----------------------------------------------------------------
+
+        // A row whose duel could no longer be running — a hard process kill left it behind — is
+        // dropped from the response and the index, so a wedged ghost cannot outlive its own duel.
+        admin.MapGet("/live", async (ILiveDirectory live, IPlayerRepository players, IClock clock) =>
+        {
+            var rows = await live.AllAsync();
+            var alive = new List<LiveDirectoryRow>();
+            foreach (var row in rows)
+            {
+                var maxAge = LiveRules.LobbyExpires + (row.TotalRounds * (MatchRules.QuestionTime + LiveRules.RevealTime)) + TimeSpan.FromMinutes(1);
+                if (clock.Now - row.StartedAt > maxAge) { await live.RemoveAsync(row.MatchId); continue; }
+                alive.Add(row);
+            }
+
+            var ids = alive.SelectMany(r => new[] { r.ChallengerId, r.OpponentId }).Where(id => id is not null).Cast<string>().Distinct().ToList();
+            var names = (await players.GetManyAsync(ids)).ToDictionary(p => p.Id, p => p.DisplayName);
+
+            var ordered = alive.OrderBy(r => r.StartedAt).Take(200)
+                .Select(r => new AdminLiveRowDto(r.MatchId, r.Code, names.GetValueOrDefault(r.ChallengerId, r.ChallengerId),
+                    r.OpponentId is null ? "" : names.GetValueOrDefault(r.OpponentId, r.OpponentId),
+                    ((Language)r.Lang).Code(), r.RoundIndex, r.TotalRounds, ((LivePhase)r.Phase).ToString().ToLowerInvariant(), r.StartedAt))
+                .ToList();
+
+            return new AdminLivePageDto(ordered, alive.Count);
+        });
+
+        // No-contest only: no result, no stats, no leaderboard, for either player. Ending an
+        // already-finished duel, or an id no live duel ever used, is a no-op that still answers 200 —
+        // ILiveMatchGrain.EndAsync already does nothing once the duel is over or never existed.
+        admin.MapPost("/live/{id}/end", async (string id, IGrainFactory grains) =>
+        {
+            await grains.GetGrain<ILiveMatchGrain>(id).EndAsync("ended by an administrator");
+            return Results.Ok();
+        });
+
+        admin.MapPost("/live/enabled", async (bool value, IGrainFactory grains) =>
+        {
+            await grains.GetGrain<ILiveSettingsGrain>(0).SetEnabledAsync(value);
+            return Results.Ok();
         });
 
         // --- questions ---------------------------------------------------------------

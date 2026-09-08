@@ -1,8 +1,9 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AppState State
 @inject Translator L
 @inject NavigationManager Nav
+@inject LobbyClient Lobby
 
 @if (!State.Ready)
 {
@@ -10,6 +11,21 @@
 }
 else
 {
+    @* Behind the same gate as the tab bar below: a guest has no friends list, so nothing here is ever theirs to see. *@
+    @if (State.SignedIn && !State.IsGuest && _challenge is { } challenge)
+    {
+        <div class="card card--taq enter" style="position:sticky;top:0;z-index:20;margin-bottom:.6rem">
+            <div class="row row--between">
+                <span>@L.Format("challenge.title", challenge.ChallengerName)</span>
+                <span class="numeral faint">@L.Format("challenge.timeLeft", Math.Max(0, (int)(challenge.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds))</span>
+            </div>
+            <div class="row" style="margin-top:.6rem;gap:.5rem">
+                <button class="btn btn--sm" @onclick="AcceptAsync">@L["challenge.accept"]</button>
+                <button class="btn btn--ghost btn--sm" @onclick="DeclineAsync">@L["challenge.decline"]</button>
+            </div>
+        </div>
+    }
+
     @Body
 
     @* A guest has exactly one page; a row of tabs to places they cannot open is worse than no tabs. *@
@@ -36,19 +52,147 @@ else
     /// <summary>The admin panel has its own navigation; it should not wear the game's chrome.</summary>
     private bool IsAdminArea => new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
 
+    private LiveChallengeDto? _challenge;
+    private System.Threading.Timer? _ticker;
+
+    /// <summary>Whether <see cref="Lobby"/>'s underlying connection is currently established. Set from
+    /// the outcome of each connect attempt — never assumed — and cleared by <see cref="Lobby"/>'s
+    /// <c>Closed</c> event, so a later sync retries rather than believing a dead connection is live.</summary>
+    private bool _lobbyConnected;
+
+    /// <summary>Separate from <see cref="_lobbyConnected"/>: whether the challenge events, ticker and
+    /// <c>Closed</c> handler are wired. Tracks sign-in state, not connect success, so a failed connect
+    /// attempt still leaves the player able to receive a challenge once some other path — a button's own
+    /// <see cref="LobbyClient.EnsureConnectedAsync"/> — brings the connection up, and a later successful
+    /// sync never wires the same handlers a second time.</summary>
+    private bool _lobbySubscribed;
+
     protected override async Task OnInitializedAsync()
     {
-        State.Changed += StateHasChanged;
+        State.Changed += OnStateChanged;
         Nav.LocationChanged += OnLocationChanged;
         await State.InitialiseAsync();
+        await SyncLobbyConnectionAsync();
+    }
+
+    private void OnStateChanged()
+    {
+        StateHasChanged();
+        _ = SyncLobbyConnectionAsync();
+    }
+
+    /// <summary>The same "signed in and not a guest" condition the tab bar above already gates on: a
+    /// guest has no door into presence, the queue or a challenge, so it never opens this connection.</summary>
+    private async Task SyncLobbyConnectionAsync()
+    {
+        var shouldConnect = State.SignedIn && !State.IsGuest;
+
+        if (shouldConnect && !_lobbySubscribed)
+        {
+            _lobbySubscribed = true;
+            WireLobbyEvents();
+            StartTicker();
+        }
+        else if (!shouldConnect && _lobbySubscribed)
+        {
+            _lobbySubscribed = false;
+            UnwireLobbyEvents();
+            StopTicker();
+            _challenge = null;
+        }
+
+        if (shouldConnect)
+        {
+            // Idempotent: a connection a button already brought up via EnsureConnectedAsync resolves
+            // to true here with no second start attempt, rather than assuming it is still down.
+            _lobbyConnected = await Lobby.EnsureConnectedAsync();
+        }
+        else if (_lobbyConnected)
+        {
+            _lobbyConnected = false;
+            await Lobby.StopAsync();
+        }
+    }
+
+    private void WireLobbyEvents()
+    {
+        Lobby.ChallengeReceived += OnChallengeReceived;
+        Lobby.ChallengeExpired += OnChallengeCleared;
+        Lobby.ChallengeDeclined += OnChallengeCleared;
+        Lobby.ChallengeFailed += OnChallengeCleared;
+        Lobby.DuelReady += OnDuelReady;
+        Lobby.Closed += OnLobbyClosed;
+    }
+
+    private void UnwireLobbyEvents()
+    {
+        Lobby.ChallengeReceived -= OnChallengeReceived;
+        Lobby.ChallengeExpired -= OnChallengeCleared;
+        Lobby.ChallengeDeclined -= OnChallengeCleared;
+        Lobby.ChallengeFailed -= OnChallengeCleared;
+        Lobby.DuelReady -= OnDuelReady;
+        Lobby.Closed -= OnLobbyClosed;
+    }
+
+    /// <summary>Fires for a drop as much as for our own intentional <c>StopAsync</c> above — either way,
+    /// the connection is down, so the flag should say so. It does not itself restart anything: recovery
+    /// is on-demand, off whichever <see cref="SyncLobbyConnectionAsync"/> or button press comes next.</summary>
+    private void OnLobbyClosed() => _lobbyConnected = false;
+
+    private void OnChallengeReceived(LiveChallengeDto challenge)
+        => InvokeAsync(() => { _challenge = challenge; StateHasChanged(); });
+
+    private void OnChallengeCleared(string challengeId) => ClearIfCurrent(challengeId);
+
+    private void OnDuelReady(string matchId) => InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"));
+
+    private void ClearIfCurrent(string challengeId)
+    {
+        if (_challenge?.ChallengeId == challengeId)
+            InvokeAsync(() => { _challenge = null; StateHasChanged(); });
+    }
+
+    /// <summary>The banner's time-left counts down locally; a challenge past its deadline hides itself
+    /// even before any server round trip confirms it.</summary>
+    private void StartTicker()
+    {
+        _ticker ??= new System.Threading.Timer(_ =>
+        {
+            if (_challenge is { } c && c.ExpiresAt <= DateTimeOffset.UtcNow)
+                ClearIfCurrent(c.ChallengeId);
+            else
+                InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private void StopTicker()
+    {
+        _ticker?.Dispose();
+        _ticker = null;
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => StateHasChanged();
 
-    public void Dispose()
+    private async Task AcceptAsync()
     {
-        State.Changed -= StateHasChanged;
+        if (_challenge is not { } challenge) return;
+        await Lobby.AcceptAsync(challenge.ChallengeId);
+        // Navigation happens off the DuelReady push, delivered to both players alike.
+    }
+
+    private async Task DeclineAsync()
+    {
+        if (_challenge is not { } challenge) return;
+        _challenge = null;
+        await Lobby.DeclineAsync(challenge.ChallengeId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        State.Changed -= OnStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        if (_lobbySubscribed) UnwireLobbyEvents();
+        StopTicker();
     }
 }

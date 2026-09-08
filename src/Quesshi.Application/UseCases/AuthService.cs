@@ -8,7 +8,7 @@ namespace Quesshi.Application.UseCases;
 /// <summary>Passwordless sign-in: a one-time email code, or Google. Both land on the same player record.</summary>
 public sealed class AuthService(IPlayerRepository players, IOtpStore otps, IOtpSender sender, IClock clock, IIdFactory ids)
 {
-    /// <summary>Returns the code only when the sender is a dev stub, so the sign-in screen can show it locally.</summary>
+    /// <summary>Null: the code reaches the player by mail or by log, never as the answer to this call.</summary>
     public async Task<string?> RequestOtpAsync(string email, Language lang, CancellationToken ct = default)
     {
         var code = OtpChallenge.NewCode();

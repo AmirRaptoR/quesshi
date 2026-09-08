@@ -19,3 +19,9 @@ deploy/
 # Per-machine compose settings, and the media bind-mount a local stack writes into.
 .env
 .media/
+
+# Scratch written by whatever tooling someone drives this checkout with. Nothing
+# here is the project's, and an uncommitted file in the working tree is not
+# harmless: deploy refuses to ship over tracked changes, so a stray edit stops a
+# release rather than riding along with it.
+.superpowers/

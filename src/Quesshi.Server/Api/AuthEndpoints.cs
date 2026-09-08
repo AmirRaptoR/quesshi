@@ -41,44 +41,21 @@ public static class AuthEndpoints
         // Anonymous on purpose: an invite link has to say who is challenging before anyone is asked
         // to identify themselves. It reveals nothing a person holding the code should not see.
         app.MapGet("/api/invite/{code}", async (string code, IMatchArchive archive, IPlayerRepository players) =>
-        {
-            var match = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
-            if (match is null) return Results.NotFound(new { error = "no_such_code" });
-
-            var challenger = await players.GetAsync(match.ChallengerId);
-            return Results.Ok(new InviteDto(match.Code, challenger?.DisplayName ?? "—",
-                challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
-                match.State == MatchState.AwaitingOpponent));
-        });
+            await InviteAsync(code, archive, players));
 
         // Becoming a guest and taking the seat are one call, so a name typed against a duel that has
         // already been taken never leaves a player record behind.
         group.MapPost("/guest/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
             IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock) =>
-        {
-            var name = body.Name?.Trim() ?? "";
-            if (name.Length is < 2 or > 24) return Results.BadRequest(new { error = "name_length" });
+            await GuestJoinAsync(code, body, archive, players, grains, tokens, ids, clock));
 
-            var found = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
-            if (found is null) return Results.NotFound(new { error = "no_such_code" });
-            if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
-
-            var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
-            await players.UpsertAsync(guest);
-
-            var grain = grains.GetGrain<IMatchGrain>(found.Id);
-            if (!await grain.JoinAsync(guest.Id)) return Results.BadRequest(new { error = "cannot_join" });
-
-            var view = await grain.GetAsync(guest.Id);
-            if (view is null) return Results.BadRequest(new { error = "cannot_join" });
-
-            var challenger = await players.GetAsync(found.ChallengerId);
-            var summary = view.ToSummary(guest.Id, id => id == guest.Id
-                ? (guest.DisplayName, guest.AvatarSeed)
-                : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id));
-
-            return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), summary));
-        });
+        // The live twin: a person following an invite link holds no token yet, so POST
+        // /api/live/join/{code} cannot serve them. Becoming a guest and taking the lobby seat are
+        // one call here too — the join itself is what validates the code before any Player exists.
+        group.MapPost("/guest/live/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
+            IPlayerRepository players, IGrainFactory grains, IQuestionRepository questions, ICategoryRepository categories,
+            TokenIssuer tokens, IIdFactory ids, IClock clock) =>
+            await GuestJoinLiveAsync(code, body, archive, players, grains, questions, categories, tokens, ids, clock));
 
         group.MapPost("/google", async (GoogleSignInDto body, AuthOptions auth, AuthService service,
             TokenIssuer tokens, IHttpClientFactory http, ILoggerFactory logs) =>
@@ -93,6 +70,94 @@ public static class AuthEndpoints
 
             return Results.Ok(SignIn(player, tokens));
         });
+    }
+
+    /// <summary>
+    /// The one lookup every consumer of a code shares; who to route it to reads <see cref="InviteDto.Live"/>
+    /// off this same call rather than guessing by trying an endpoint of one kind first.
+    /// </summary>
+    internal static async Task<IResult> InviteAsync(string code, IMatchArchive archive, IPlayerRepository players)
+    {
+        var match = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (match is null) return Results.NotFound(new { error = "no_such_code" });
+
+        var challenger = await players.GetAsync(match.ChallengerId);
+        return Results.Ok(new InviteDto(match.Code, challenger?.DisplayName ?? "—",
+            challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
+            match.State == MatchState.AwaitingOpponent, match.IsLive));
+    }
+
+    /// <summary>
+    /// Becoming a guest and taking the seat are one call, so a name typed against a duel that has
+    /// already been taken never leaves a player record behind. Extracted so a wrong-kind code can be
+    /// driven directly in a test, the same way <see cref="GameEndpoints.JoinMatchAsync"/> is.
+    /// </summary>
+    internal static async Task<IResult> GuestJoinAsync(string code, GuestJoinDto body, IMatchArchive archive,
+        IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock)
+    {
+        var name = body.Name?.Trim() ?? "";
+        if (name.Length is < 2 or > 24) return Results.BadRequest(new { error = "name_length" });
+
+        var found = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
+        if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
+
+        var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
+        await players.UpsertAsync(guest);
+
+        var grain = grains.GetGrain<IMatchGrain>(found.Id);
+        if (!await grain.JoinAsync(guest.Id)) return Results.BadRequest(new { error = "cannot_join" });
+
+        var view = await grain.GetAsync(guest.Id);
+        if (view is null) return Results.BadRequest(new { error = "cannot_join" });
+
+        var challenger = await players.GetAsync(found.ChallengerId);
+        var summary = view.ToSummary(guest.Id, id => id == guest.Id
+            ? (guest.DisplayName, guest.AvatarSeed)
+            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id));
+
+        return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), summary));
+    }
+
+    /// <summary>
+    /// The live twin of <see cref="GuestJoinAsync"/>. The lobby is checked by actually joining it —
+    /// via <see cref="ILiveMatchGrain.JoinAsync"/>, with a freshly minted but not-yet-persisted
+    /// player id — before <c>players.UpsertAsync</c> ever runs, so a refused join leaves no guest
+    /// record behind the same way the async path promises.
+    /// </summary>
+    internal static async Task<IResult> GuestJoinLiveAsync(string code, GuestJoinDto body, IMatchArchive archive,
+        IPlayerRepository players, IGrainFactory grains, IQuestionRepository questions, ICategoryRepository categories,
+        TokenIssuer tokens, IIdFactory ids, IClock clock)
+    {
+        var name = body.Name?.Trim() ?? "";
+        if (name.Length is < 2 or > 24) return Results.BadRequest(new { error = "name_length" });
+
+        var found = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (!found.IsLive) return Results.BadRequest(new { error = "not_a_live_code" });
+
+        var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
+        var grain = grains.GetGrain<ILiveMatchGrain>(found.Id);
+        var result = (LiveJoinResult)await grain.JoinAsync(guest.Id);
+
+        if (result is not (LiveJoinResult.Joined or LiveJoinResult.AlreadyIn))
+            return result switch
+            {
+                LiveJoinResult.SelfJoin => Results.BadRequest(new { error = "self_join" }),
+                LiveJoinResult.Expired => Results.BadRequest(new { error = "lobby_expired" }),
+                _ => Results.BadRequest(new { error = "cannot_join" })
+            };
+
+        await players.UpsertAsync(guest);
+
+        var view = (await grain.GetAsync(guest.Id))!;
+        var challenger = await players.GetAsync(view.ChallengerId);
+        var lookup = (string id) => id == guest.Id
+            ? (guest.DisplayName, guest.AvatarSeed, true)
+            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id, challenger?.IsGuest ?? false);
+        return Results.Ok(new GuestLiveResultDto(tokens.Issue(guest), guest.ToMeDto([]),
+            await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup)));
     }
 
     /// <summary>

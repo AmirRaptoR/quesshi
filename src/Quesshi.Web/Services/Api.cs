@@ -18,6 +18,9 @@ public sealed class Api(HttpClient http)
     public Task<GuestResultDto?> JoinAsGuestAsync(string code, string name, string lang)
         => PostAsync<GuestResultDto>($"api/auth/guest/{Uri.EscapeDataString(Code(code))}", new GuestJoinDto(name, lang));
 
+    public Task<GuestLiveResultDto?> JoinAsGuestLiveAsync(string code, string name, string lang)
+        => PostAsync<GuestLiveResultDto>($"api/auth/guest/live/{Uri.EscapeDataString(Code(code))}", new GuestJoinDto(name, lang));
+
     private static string Code(string code) => code.Trim().ToUpperInvariant();
 
     // --- profile ---
@@ -33,9 +36,22 @@ public sealed class Api(HttpClient http)
         int? questions = null, List<int>? levels = null)
         => PostAsync<MatchSummaryDto>("api/matches", new { random, lang, categories, questions, levels });
     public Task<MatchSummaryDto?> JoinAsync(string code) => PostAsync<MatchSummaryDto>($"api/matches/join/{Uri.EscapeDataString(Code(code))}", new { });
-    public Task<List<MatchSummaryDto>?> MatchesAsync() => GetAsync<List<MatchSummaryDto>>("api/matches");
+    /// <summary>The duels page wants them all; the home page wants the eight it will show.</summary>
+    public Task<List<MatchSummaryDto>?> MatchesAsync(bool activeOnly = false, int? take = null)
+    {
+        var query = string.Join('&', new[] { activeOnly ? "active=true" : null, take is { } n ? $"take={n}" : null }
+            .OfType<string>());
+        return GetAsync<List<MatchSummaryDto>>(query.Length == 0 ? "api/matches" : $"api/matches?{query}");
+    }
     public Task<MatchDetailDto?> MatchAsync(string id) => GetAsync<MatchDetailDto>($"api/matches/{id}");
     public Task<AnswerResultDto?> AnswerAsync(string id, int slot, int choice) => PostAsync<AnswerResultDto>($"api/matches/{id}/answer", new { slot, choiceIndex = choice });
+
+    // --- live duels ---
+    public Task<LiveViewDto?> CreateLiveAsync(string? lang, List<string>? categories = null, int? questions = null, List<int>? levels = null)
+        => PostAsync<LiveViewDto>("api/live", new { random = false, lang, categories, questions, levels });
+    public Task<LiveViewDto?> JoinLiveAsync(string code) => PostAsync<LiveViewDto>($"api/live/join/{Uri.EscapeDataString(Code(code))}", new { });
+    public Task<LiveViewDto?> LiveAsync(string id) => GetAsync<LiveViewDto>($"api/live/{id}");
+    public Task<bool> CancelLiveAsync(string id) => SendAsync(HttpMethod.Delete, $"api/live/{id}");
 
     public Task<bool> ReportQuestionAsync(string questionId, string reason)
         => PostJsonAsync("api/report", new ReportQuestionDto(questionId, reason));

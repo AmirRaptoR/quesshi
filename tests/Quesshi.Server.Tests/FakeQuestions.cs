@@ -10,8 +10,9 @@ public sealed class FakeQuestions : IQuestionRepository
     public readonly List<Question> Items = [];
 
     public Task<Question?> GetAsync(string id, CancellationToken ct = default) => Task.FromResult(Items.FirstOrDefault(q => q.Id == id));
+    // Mirrors MongoQuestionRepository.GetManyAsync: a missing id is skipped, not an error.
     public Task<IReadOnlyList<Question>> GetManyAsync(IReadOnlyList<string> ids, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<Question>>([.. ids.Select(i => Items.First(q => q.Id == i))]);
+        => Task.FromResult<IReadOnlyList<Question>>([.. ids.Select(i => Items.FirstOrDefault(q => q.Id == i)).Where(q => q is not null)!]);
     public Task<IReadOnlyList<Question>> FindAsync(QuestionFilter f, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Question>>([.. Items]);
     public Task<long> CountAsync(QuestionFilter f, CancellationToken ct = default) => Task.FromResult((long)Items.Count);
     public Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string c, Difficulty l, int n, IReadOnlyCollection<string> ex, CancellationToken ct = default)

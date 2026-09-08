@@ -10,6 +10,13 @@ public sealed class MongoPlayerRepository(MongoContext db) : IPlayerRepository
     public async Task<Player?> GetAsync(string id, CancellationToken ct = default)
         => (await db.Players.Find(p => p.Id == id).FirstOrDefaultAsync(ct))?.ToDomain();
 
+    public async Task<IReadOnlyList<Player>> GetManyAsync(IReadOnlyList<string> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0) return [];
+        var found = await db.Players.Find(Builders<PlayerDoc>.Filter.In(p => p.Id, ids)).ToListAsync(ct);
+        return [.. found.Select(d => d.ToDomain())];
+    }
+
     public async Task<Player?> GetByEmailAsync(string email, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLowerInvariant();

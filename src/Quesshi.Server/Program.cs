@@ -1,6 +1,4 @@
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using Orleans.Configuration;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
@@ -15,6 +13,7 @@ using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Redis;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Hubs;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Seed;
 using StackExchange.Redis;
@@ -47,6 +46,12 @@ builder.UseOrleans(silo =>
     var nightly = builder.Configuration.GetValue("Generation:Nightly", false);
     silo.AddStartupTask(async (services, ct) =>
         await services.GetRequiredService<IGrainFactory>().GetGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly));
+
+    // Seeds, never overwrites: a runtime toggle through POST /api/admin/live/enabled must survive
+    // the next restart, so this only ever writes into a grain that has never persisted a value.
+    var liveEnabled = builder.Configuration.GetValue("Live:Enabled", true);
+    silo.AddStartupTask(async (services, ct) =>
+        await services.GetRequiredService<IGrainFactory>().GetGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled));
 });
 
 // --- configuration objects -----------------------------------------------------------
@@ -68,12 +73,18 @@ builder.Services.AddSingleton(mongoOptions);
 // --- infrastructure ------------------------------------------------------------------
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
+
+// Against the same Redis connection everything else here already requires — no new setting,
+// nothing to add to the configuration table. LiveHub and its notifier are #13's.
+builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
+builder.Services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
     Path.Combine(builder.Environment.ContentRootPath, "i18n"),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger<JsonFileTranslator>()));
 builder.Services.AddSingleton<IIdFactory, IdFactory>();
+builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
@@ -84,7 +95,9 @@ builder.Services.AddSingleton<IMatchArchive, MongoMatchArchive>();
 builder.Services.AddSingleton<IGenerationLog, MongoGenerationLog>();
 builder.Services.AddSingleton<IAiSpendLog, MongoAiSpendLog>();
 builder.Services.AddSingleton<ILeaderboard, RedisLeaderboard>();
+builder.Services.AddSingleton<ILiveDirectory, RedisLiveDirectory>();
 builder.Services.AddSingleton<IOtpStore, RedisOtpStore>();
+builder.Services.AddSingleton<IPresence, RedisPresence>();
 builder.Services.AddSingleton<QuestionPromptBuilder>();
 builder.Services.AddSingleton<IQuestionGenerator, OpenRouterQuestionGenerator>();
 
@@ -94,10 +107,33 @@ imageOptions.StorageRoot = Path.Combine(builder.Environment.WebRootPath ?? "wwwr
 builder.Services.AddSingleton(imageOptions);
 builder.Services.AddSingleton<IQuestionImageProvider, WikipediaImageProvider>();
 
-// Codes and reset links are mailed, everywhere, with no exception for development: a local catcher
-// such as Mailpit gives you the mail without a mailbox, which is what the echo used to be for.
-builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
-builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
+// Codes and reset links are mailed wherever an SMTP host is configured; a local catcher such as
+// Mailpit gives you the mail without a mailbox. A machine that wants no mail in the loop can have
+// them written to the log instead, but it has to say so — Smtp:LogInsteadOfSending, or simply being
+// a development machine. A server that has merely lost its Smtp:Host looks identical from here, and
+// the difference between the two is a log full of credentials, so the third case refuses to start.
+//
+// Neither sender hands the value back to the caller: that is what the echo was, and an endpoint
+// returning the code it has just issued signs in as anyone who has an address.
+switch (smtpOptions.Delivery(builder.Environment.IsDevelopment()))
+{
+    case MailDelivery.Smtp:
+        builder.Services.AddSingleton<IOtpSender, SmtpOtpSender>();
+        builder.Services.AddSingleton<IAdminMailer, SmtpAdminMailer>();
+        break;
+
+    case MailDelivery.Log:
+        builder.Services.AddSingleton<IOtpSender, LoggingOtpSender>();
+        builder.Services.AddSingleton<IAdminMailer, LoggingAdminMailer>();
+        break;
+
+    default:
+        throw new InvalidOperationException(
+            $"No Smtp:Host is configured and this is not a development machine, so a sign-in code " +
+            $"has nowhere to go. Set Smtp:Host to deliver mail, or Smtp:LogInsteadOfSending to true " +
+            $"to write codes to the log instead — which is a development convenience and puts live " +
+            $"credentials in {builder.Environment.EnvironmentName} logs.");
+}
 
 // --- application ---------------------------------------------------------------------
 builder.Services.AddSingleton<AuthService>();
@@ -113,27 +149,10 @@ var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions);
 builder.Services.AddSingleton(tokenIssuer);
 builder.Services.AddSingleton(adminTokenIssuer);
 
-// Two schemes, two audiences, two signing keys. A player token cannot be presented as an admin
-// token even if something else goes wrong, because it will not validate against the admin scheme.
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidIssuer = jwtOptions.Issuer,
-        ValidAudience = jwtOptions.Audience,
-        IssuerSigningKey = tokenIssuer.SigningKey,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
-    })
-    .AddJwtBearer(AdminTokenIssuer.Scheme, options => options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidIssuer = adminAuthOptions.Issuer,
-        ValidAudience = AdminTokenIssuer.Audience,
-        IssuerSigningKey = adminTokenIssuer.SigningKey,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
-    });
+// Registers the player scheme (default) and the admin scheme, including the /hub query-string
+// token hook the player scheme needs for SignalR. See AuthenticationSetup for why this is an
+// extension method rather than inline here: a test host calls the exact same code.
+builder.Services.AddQuesshiAuthentication(jwtOptions, adminAuthOptions, tokenIssuer, adminTokenIssuer);
 
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("admin", policy => policy
@@ -146,11 +165,12 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
-if (string.IsNullOrWhiteSpace(smtpOptions.Host))
+if (smtpOptions.Delivery(app.Environment.IsDevelopment()) == MailDelivery.Log)
 {
     app.Logger.LogWarning(
-        "No Smtp:Host is configured, so sign-in codes and password resets cannot be delivered and " +
-        "nobody can sign in. Bring up the mailpit service, or point Smtp:Host at a real server.");
+        "No Smtp:Host is configured, so sign-in codes and password resets are written to this log " +
+        "rather than sent. Anyone who can read these logs can sign in as anyone. A deployment " +
+        "points Smtp:Host at a real server, or brings up the mailpit service to catch mail locally.");
 }
 
 // The Blazor bundle is fingerprinted at build time, so it is served from the asset manifest
@@ -171,8 +191,11 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
+app.MapLive();
+app.MapHub<LiveHub>("/hub/live");
 app.MapAdminAuth();
 app.MapAdminAccounts();
 app.MapAdmin();
@@ -278,10 +301,36 @@ if (args is ["approve-ai", ..])
     return 0;
 }
 
+// `dotnet run --project src/Quesshi.Server -- bench-matches seed|measure`
+// The harness for issue #4: what GET /api/matches costs against real Mongo and Redis. See
+// docs/match-list-measurement.md. Unlike add-admin/approve-ai above, this needs the silo running
+// (it calls grains), so it starts the host and stops it again rather than falling through to Run.
+if (args is ["bench-matches", var benchSubcommand, ..])
+{
+    await app.StartAsync();
+    try
+    {
+        return benchSubcommand switch
+        {
+            "seed" => await Quesshi.Server.Bench.MatchListBench.SeedAsync(app.Services),
+            "measure" => await Quesshi.Server.Bench.MatchListBench.MeasureAsync(app.Services),
+            _ => Fail($"Unknown bench-matches subcommand \"{benchSubcommand}\". Use \"seed\" or \"measure\".")
+        };
+    }
+    finally
+    {
+        await app.StopAsync();
+    }
+}
 
 app.Run();
 return 0;
 
+static int Fail(string message)
+{
+    Console.Error.WriteLine(message);
+    return 1;
+}
 
 public partial class Program
 {

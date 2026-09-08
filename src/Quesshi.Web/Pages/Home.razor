@@ -1,5 +1,7 @@
 @page "/play"
 @inherits PageBase
+@using Microsoft.AspNetCore.SignalR.Client
+@inject LobbyClient Lobby
 
 <PageTitle>@L["app.name"]</PageTitle>
 
@@ -14,7 +16,11 @@
         }
     </header>
 
-    @if (Loading)
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
     {
         <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
     }
@@ -90,17 +96,40 @@
                     </p>
                 </div>
 
-                <div class="stack" style="margin-top:1rem">
-                    <button class="btn btn--block" disabled="@_busy" @onclick="() => StartAsync(random: false)">
-                        <span>@L["home.friend"]</span>
-                    </button>
-                    <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.friendHint"]</p>
+                @if (_liveWaiting)
+                {
+                    <div class="stack" style="margin-top:1rem">
+                        <div class="notice" style="text-align:center">
+                            <div class="spinner" role="status" aria-label="@L["home.liveWaiting"]"></div>
+                            <p style="margin:.5rem 0 0">@L["home.liveWaiting"]</p>
+                            <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
+                                @L.Format("home.liveOthersWaiting", L.Num(_liveOthers))
+                            </p>
+                        </div>
+                        <button class="btn btn--ghost btn--block" @onclick="CancelLiveQueueAsync">
+                            <span>@L["home.liveCancel"]</span>
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="stack" style="margin-top:1rem">
+                        <button class="btn btn--block" disabled="@_busy" @onclick="() => StartAsync(random: false)">
+                            <span>@L["home.friend"]</span>
+                        </button>
+                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.friendHint"]</p>
 
-                    <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="() => StartAsync(random: true)">
-                        <span>@L["home.random"]</span>
-                    </button>
-                    <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.randomHint"]</p>
-                </div>
+                        <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="() => StartAsync(random: true)">
+                            <span>@L["home.random"]</span>
+                        </button>
+                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.randomHint"]</p>
+
+                        <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="StartLiveRandomAsync">
+                            <span>@L["home.liveRandom"]</span>
+                        </button>
+                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.liveRandomHint"]</p>
+                    </div>
+                }
 
                 @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.85rem">@_error</div> }
             </section>
@@ -153,6 +182,10 @@
     private string? _error;
     private bool _busy;
 
+    private bool _liveWaiting;
+    private int _liveOthers;
+    private readonly List<IDisposable> _liveSubs = [];
+
     protected override async Task LoadAsync()
     {
         // The duel's language starts as the one you read the app in, and is then yours to change:
@@ -160,8 +193,67 @@
         _lang = State.Lang;
         _categories = await Api.CategoriesAsync() ?? [];
 
-        var all = await Api.MatchesAsync() ?? [];
-        _active = [.. all.Where(m => m.State is "awaitingopponent" or "inprogress").OrderByDescending(m => m.CanPlay).Take(8)];
+        // Only the duels still in play: this used to fetch the last forty and throw thirty-two away,
+        // which cost a grain activation each. The eight shown are still chosen here, so a duel you
+        // can play still outranks one you are waiting on.
+        var active = await Api.MatchesAsync(activeOnly: true, take: 8) ?? [];
+        _active = [.. active.OrderByDescending(m => m.CanPlay)];
+
+        SubscribeLive();
+    }
+
+    /// <summary>The three pushes ILiveLobbyGrain sends over this same connection while this card is
+    /// in the waiting state — unsubscribed on Dispose so leaving the page never double-registers.</summary>
+    private void SubscribeLive()
+    {
+        _liveSubs.Add(Lobby.Connection.On<string>("Matched", async matchId =>
+            await InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"))));
+
+        _liveSubs.Add(Lobby.Connection.On<int>("QueueCount", async count =>
+            await InvokeAsync(() => { _liveOthers = count; StateHasChanged(); })));
+
+        _liveSubs.Add(Lobby.Connection.On("QueueFailed", async () =>
+            await InvokeAsync(() => { _liveWaiting = false; _error = L["common.error"]; StateHasChanged(); })));
+    }
+
+    private async Task StartLiveRandomAsync()
+    {
+        _liveWaiting = true; _liveOthers = 0; _error = null;
+
+        // A button press can outlive the layout's own connection attempt — this is what lets a socket
+        // that died between deployments come back up on the first click rather than just erroring.
+        if (!await Lobby.EnsureConnectedAsync())
+        {
+            _liveWaiting = false;
+            _error = L["common.error"];
+            return;
+        }
+
+        // Translator.All is ["fa","en","nl"] in exactly Quesshi.Domain.Language's declared order
+        // (Fa=0, En=1, Nl=2) — Quesshi.Web has no reference to Quesshi.Domain to cast against directly.
+        var lang = Array.IndexOf(Translator.All, _lang);
+        var result = await Lobby.QueueRandomAsync(lang, _questions, _picked.Count == 0 ? [] : [.. _picked],
+            _levels.Count == 0 ? [] : [.. _levels.Order()]);
+
+        if (!result.Sent) { _liveWaiting = false; _error = L["common.error"]; return; }
+        if (result.MatchId is { Length: > 0 }) Nav.NavigateTo($"/live/{result.MatchId}");
+    }
+
+    private async Task CancelLiveQueueAsync()
+    {
+        _liveWaiting = false;
+        await Lobby.LeaveQueueAsync();
+    }
+
+    public override void Dispose()
+    {
+        foreach (var sub in _liveSubs) sub.Dispose();
+
+        // Not a new route, so navigating away is the only "cancel" a player who leaves without
+        // pressing the button gets — the queue entry must not outlive this card.
+        if (_liveWaiting) _ = Lobby.LeaveQueueAsync();
+
+        base.Dispose();
     }
 
     /// <summary>Whether this category holds anything in the language the duel will be played in.</summary>
@@ -191,8 +283,11 @@
         _busy = true; _error = null;
 
         // Nothing picked means "surprise me" — the server draws three categories itself.
-        var match = await Api.CreateMatchAsync(random, _lang, _picked.Count == 0 ? null : [.. _picked], _questions,
-            _levels.Count == 0 ? null : [.. _levels.Order()]);
+        var categories = _picked.Count == 0 ? null : (List<string>?)[.. _picked];
+        var levels = _levels.Count == 0 ? null : (List<int>?)[.. _levels.Order()];
+        State.SetLastLiveSettings(_lang, _questions, categories, levels);
+
+        var match = await Api.CreateMatchAsync(random, _lang, categories, _questions, levels);
         _busy = false;
 
         if (match is null) { _error = L["common.error"]; return; }
@@ -203,6 +298,20 @@
     private async Task JoinAsync()
     {
         _busy = true; _error = null;
+
+        // One invite lookup decides the kind, so the right join endpoint is called on the first
+        // try rather than guessing by trial — the same branch Join.razor makes off /join/{code}.
+        var invite = await Api.InviteAsync(_code);
+        if (invite is null) { _busy = false; _error = L["common.error"]; return; }
+
+        if (invite.Live)
+        {
+            var live = await Api.JoinLiveAsync(_code);
+            _busy = false;
+            if (live is null) { _error = L["common.error"]; return; }
+            Nav.NavigateTo($"/live/{live.Id}");
+            return;
+        }
 
         var match = await Api.JoinAsync(_code);
         _busy = false;
