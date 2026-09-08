@@ -61,6 +61,40 @@ public class MatchGrainTests(ClusterFixture fixture)
         Assert.True(Shared.Leaderboard.Scores[Amir] > 0);
     }
 
+    /// <summary>
+    /// The acceptance criterion for issue #48's async slice, spelled out: settlement moves both
+    /// <c>PlayerStats</c> and the leaderboard, not just the leaderboard the way the pre-restructuring
+    /// code happened to. Uses its own ids rather than the file's shared <see cref="Amir"/>/<see cref="Sara"/>
+    /// constants — most other tests in this class also drive those two through a real, distinct
+    /// settlement, and <see cref="Shared.Players"/> is one process-wide store for the whole run, so an
+    /// exact-count assertion (as opposed to the ">0" the other test above makes do with) needs ids no
+    /// other test in the file ever settles a match for.
+    /// </summary>
+    [Fact]
+    public async Task A_finished_async_duel_moves_player_stats_and_the_leaderboard()
+    {
+        const string winner = "p-settle-async-winner";
+        const string loser = "p-settle-async-loser";
+        await Shared.Players.UpsertAsync(Player.Register(winner, $"{winner}@example.com", "Amir", Language.En, Shared.Clock.Now));
+        await Shared.Players.UpsertAsync(Player.Register(loser, $"{loser}@example.com", "Sara", Language.En, Shared.Clock.Now));
+
+        var grain = NewMatch(out _, out var questionIds);
+        await grain.CreateAsync((int)Language.En, winner, questionIds, "SETASY");
+        await grain.JoinAsync(loser);
+
+        await PlayAsync(grain, winner, correctCount: 5);
+        await PlayAsync(grain, loser, correctCount: 2);
+
+        var winnerStats = (await Shared.Players.GetAsync(winner))!.Stats;
+        var loserStats = (await Shared.Players.GetAsync(loser))!.Stats;
+        Assert.Equal(1, winnerStats.Wins);
+        Assert.True(winnerStats.TotalScore > 0);
+        Assert.Equal(1, loserStats.Losses);
+
+        Assert.Equal(winnerStats.TotalScore, Shared.Leaderboard.Scores[winner]);
+        Assert.Equal(loserStats.TotalScore, Shared.Leaderboard.Scores[loser]);
+    }
+
     [Fact]
     public async Task The_opponents_answers_are_not_in_the_object_you_receive_until_you_finish()
     {
