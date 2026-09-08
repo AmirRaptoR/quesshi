@@ -176,8 +176,7 @@ public static class Mappers
     /// </summary>
     public static async Task<Func<string, (string Name, string Avatar, bool IsGuest)>> LiveLookupAsync(this IPlayerRepository players, LiveView v)
     {
-        List<string> ids = v.OpponentId is null ? [v.ChallengerId] : [v.ChallengerId, v.OpponentId];
-        var byId = (await players.GetManyAsync(ids)).ToDictionary(p => p.Id);
+        var byId = (await players.GetManyAsync(v.Participants)).ToDictionary(p => p.Id);
         return id => byId.TryGetValue(id, out var p) ? (p.DisplayName, p.AvatarSeed, p.IsGuest) : ("—", id, false);
     }
 
@@ -190,6 +189,13 @@ public static class Mappers
     /// the prompt/choices/media a client needs to render it and, once revealed, its explanation.
     /// The correct index is never added here beyond what <see cref="LiveView.Rounds"/> already
     /// redacts: <see cref="LiveRoundCardDto"/> has no such field.
+    ///
+    /// <see cref="LiveViewDto"/> itself still only names a challenger and an opponent — carrying a
+    /// third-or-later seat over this wire shape is issue #53's job, not this one's — so this reads
+    /// only <see cref="LiveView.Participants"/>' first two entries, exactly the pair
+    /// <c>ChallengerId</c>/<c>OpponentId</c> used to be. For a capacity-2 duel that is every seat
+    /// there is, so nothing observable changes; a capacity-&gt;2 duel's third-plus player is simply
+    /// not named here yet, same as before this method's own view started carrying them at all.
     /// </summary>
     public static async Task<LiveViewDto> ToLiveDtoAsync(this LiveView v, DateTimeOffset serverNow,
         IQuestionRepository questions, ICategoryRepository categories, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
@@ -215,11 +221,14 @@ public static class Mappers
             }
         }
 
-        var (challengerName, challengerAvatar, challengerIsGuest) = lookup(v.ChallengerId);
-        var (opponentName, opponentAvatar, opponentIsGuest) = v.OpponentId is null ? (null, null, false) : ((string?, string?, bool))lookup(v.OpponentId);
+        var challengerId = v.Participants[0];
+        var opponentId = v.Participants.Count > 1 ? v.Participants[1] : null;
+
+        var (challengerName, challengerAvatar, challengerIsGuest) = lookup(challengerId);
+        var (opponentName, opponentAvatar, opponentIsGuest) = opponentId is null ? (null, null, false) : ((string?, string?, bool))lookup(opponentId);
 
         return new LiveViewDto(
-            v.Id, v.ChallengerId, v.OpponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
+            v.Id, challengerId, opponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
             phase.ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
             [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
             [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
@@ -244,7 +253,9 @@ public static class Mappers
 
     public static LiveEndedDto ToDto(this LiveEnded e) => new(
         e.State.ToString().ToLowerInvariant(), e.WinnerId, e.IsDraw, e.AbandonedBy,
-        [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))], e.Reason);
+        [.. e.Scores.Select(s => new LivePlayerScoreDto(s.PlayerId, s.Score, s.Correct))],
+        [.. e.Standings.Select(s => new StandingDto(s.PlayerId, s.Score, s.Place, s.Outcome.ToString().ToLowerInvariant()))],
+        e.Reason);
 
     public static LivePlayerEliminatedDto ToDto(this LivePlayerEliminated e) => new(e.PlayerId, e.RoundSlot);
 

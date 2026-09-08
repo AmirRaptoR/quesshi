@@ -20,6 +20,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
     private const string Amir = "ale-amir";
     private const string Sara = "ale-sara";
     private const string Stranger = "ale-stranger";
+    private const string Vahid = "ale-vahid";
     private const string Category = "ale-geography";
 
     private IGrainFactory Grains => fixture.Cluster.GrainFactory;
@@ -30,6 +31,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         Shared.Players.Items.Add(Player.Register(Amir, "ale-amir@example.com", "Amir", Language.En, Shared.Clock.Now));
         Shared.Players.Items.Add(Player.Register(Sara, "ale-sara@example.com", "Sara", Language.En, Shared.Clock.Now));
         Shared.Players.Items.Add(Player.Register(Stranger, "ale-stranger@example.com", "Stranger", Language.En, Shared.Clock.Now));
+        Shared.Players.Items.Add(Player.Register(Vahid, "ale-vahid@example.com", "Vahid", Language.En, Shared.Clock.Now));
 
         if (Shared.Categories.Items.All(c => c.Id != Category))
             Shared.Categories.Items.Add(new Category(Category, "جغرافیا", "Geography", "globe", "#336699"));
@@ -61,6 +63,32 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         var view = await Grains.GetGrain<IMatchGrain>(lobby.Id).GetAsync(Amir);
         Assert.Equal((int)MatchState.AwaitingOpponent, view!.State);
         Assert.Empty(view.Runs); // seated, but nobody has called ServeNext yet
+    }
+
+    /// <summary>
+    /// The async twin of <c>LiveEliminationTests</c>'s own "not just two" proof: <c>MatchGrain</c>'s
+    /// <c>Sides</c> helper used to yield only <c>ChallengerId</c>/<c>OpponentId</c>, so a third-plus
+    /// seat's run never reached <see cref="MatchView.Runs"/> no matter how many questions it served —
+    /// the identical truncation issue #52 already fixed on the live side's own internal helper.
+    /// </summary>
+    [Fact]
+    public async Task A_full_capacity_three_lobby_reports_every_participants_run_not_just_two()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 3);
+        var grain = Grains.GetGrain<IMatchGrain>(lobby.Id);
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, drawing the question set
+
+        // Every seated player takes their first turn, so each has a PlayerRun to report -- a run is
+        // created lazily on first ServeNext, exactly like a capacity-2 match's opponent.
+        Assert.NotNull(await grain.ServeNextAsync(Amir));
+        Assert.NotNull(await grain.ServeNextAsync(Sara));
+        Assert.NotNull(await grain.ServeNextAsync(Vahid));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.InProgress, view!.State);
+        Assert.Equal(3, view.Runs.Count);
+        Assert.Contains(view.Runs, r => r.PlayerId == Vahid);
     }
 
     [Fact]

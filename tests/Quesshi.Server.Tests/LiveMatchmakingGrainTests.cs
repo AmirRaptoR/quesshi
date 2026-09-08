@@ -101,8 +101,8 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
 
         Assert.NotNull(view1);
         Assert.NotNull(view2);
-        Assert.Equal(p1, view1!.ChallengerId);
-        Assert.Equal(p2, view1.OpponentId);
+        Assert.Equal(p1, view1!.Participants[0]);
+        Assert.Equal(p2, view1.Participants[1]);
         Assert.NotEqual((int)LivePhase.Lobby, view1.Phase);
         Assert.Equal((int)MatchState.InProgress, view1.State);
 
@@ -379,8 +379,8 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
         var match = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(lobby.Id);
         var view = await match.GetAsync(target);
         Assert.NotNull(view);
-        Assert.Equal(challenger, view!.ChallengerId);
-        Assert.Equal(target, view.OpponentId);
+        Assert.Equal(challenger, view!.Participants[0]);
+        Assert.Equal(target, view.Participants[1]);
         Assert.NotEqual((int)LivePhase.Lobby, view.Phase); // the target already joined — a 2-seat lobby fills and starts on the spot
     }
 

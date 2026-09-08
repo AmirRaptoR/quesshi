@@ -379,14 +379,15 @@ public sealed class LiveMatchGrain(
     private async Task InviteOthersAsync(LiveView lobbyView, string requesterId)
     {
         var matchmaking = GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var lobbyOwnerId = lobbyView.Participants[0];
         foreach (var participantId in _match!.Participants)
         {
-            if (participantId == lobbyView.ChallengerId || participantId == requesterId) continue;
+            if (participantId == lobbyOwnerId || participantId == requesterId) continue;
 
             var participant = await players.GetAsync(participantId);
             if (participant is { IsGuest: true }) continue;
 
-            await SafeNotifyAsync(() => matchmaking.ChallengeAsync(ids.NewId(), lobbyView.ChallengerId, participantId, lobbyView.Id));
+            await SafeNotifyAsync(() => matchmaking.ChallengeAsync(ids.NewId(), lobbyOwnerId, participantId, lobbyView.Id));
         }
     }
 
@@ -683,6 +684,7 @@ public sealed class LiveMatchGrain(
     private static LiveEnded BuildEnded(LiveMatch m, string? reason) => new(
         m.State, m.WinnerId, m.IsDraw, m.AbandonedBy,
         [.. Participants(m).Select(pid => new LivePlayerScore(pid, m.Score(pid), CorrectCount(m, pid)))],
+        [.. m.Standings],
         reason);
 
     private static int CorrectCount(LiveMatch m, string playerId) => m.Rounds.Count(r => r.Answers.TryGetValue(playerId, out var a) && a.Correct);
@@ -724,7 +726,7 @@ public sealed class LiveMatchGrain(
             m.MissStreak(pid))).ToList();
 
         return new LiveView(
-            m.Id, m.ChallengerId, m.OpponentId, (int)m.State, (int)m.Phase, m.PhaseEndsAt,
+            m.Id, [.. Participants(m)], (int)m.State, (int)m.Phase, m.PhaseEndsAt,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, players, rounds,
             m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang);
     }

@@ -69,7 +69,10 @@ public sealed class LiveHub(
         var view = await grain.GetAsync(meId);
         if (view is null) return new RematchOutcomeDto("refused");
 
-        var opponentId = view.ChallengerId == meId ? view.OpponentId : view.ChallengerId;
+        // Rematch is still a two-player press: "the other seat", found the same way for a bigger
+        // lobby too (the first participant that is not the caller) even though nothing here builds
+        // the N-player rematch flow itself — that is issue #53's job, not this one's.
+        var opponentId = view.Participants.FirstOrDefault(id => id != meId);
         if (opponentId is null) return new RematchOutcomeDto("refused"); // a lobby nobody joined has nobody to rematch with
 
         var opponent = await players.GetAsync(opponentId);

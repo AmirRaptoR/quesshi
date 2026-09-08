@@ -90,12 +90,70 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         Assert.Equal(3, view.Players.Count);
         Assert.Contains(view.Players, p => p.PlayerId == Vahid);
 
+        // The view's own top-level roster -- LiveView.Participants, replacing the two-scalar
+        // ChallengerId/OpponentId pair -- names every seat too, not just the first two. This is the
+        // one place issue #52's own Participants-helper fix (see this class's own remarks) never
+        // reached: it fed the round/player collections above off the helper already, but LiveView's
+        // own constructor still spelled out ChallengerId/OpponentId by hand.
+        Assert.Equal([Amir, Sara, Vahid], view.Participants);
+
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         var opened = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
 
         // The round's own answer list is every seated player, not just the first two.
         Assert.Equal(3, opened.Rounds[0].Answers.Count);
         Assert.Contains(opened.Rounds[0].Answers, a => a.PlayerId == Vahid);
+    }
+
+    /// <summary>
+    /// The other half of issue #53's gap: not just that <c>LiveView.Participants</c> names every
+    /// seat while play is still going, but that <c>LiveEnded.Standings</c> ranks every seat once it
+    /// is over. Amir answers every round correctly and Sara and Vahid never do, so the podium is
+    /// unambiguous — Amir alone in first, Sara and Vahid tied for second — and specifically not a
+    /// three-way draw, which is exactly the failure mode a global <c>IsDraw</c> would produce for a
+    /// tie anywhere but the top.
+    /// </summary>
+    [Fact]
+    public async Task A_three_player_duel_resolves_with_every_participant_and_their_standings_in_view_and_ended()
+    {
+        var (grain, id) = await NewLobbyAsync("LET-STAND3", Amir, capacity: 3);
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid);
+
+        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
+
+        for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)
+        {
+            Assert.True(await grain.AnswerAsync(Amir, slot, 0));
+            Assert.True(await grain.AnswerAsync(Sara, slot, 1));
+            Assert.True(await grain.AnswerAsync(Vahid, slot, 1));
+
+            await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Reveal || v.State != (int)MatchState.InProgress);
+
+            Advance(LiveRules.RevealTime + TimeSpan.FromMilliseconds(50));
+            if (slot < MatchRules.QuestionsPerMatch - 1)
+                await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == slot + 1);
+        }
+
+        var final = await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.Resolved, timeoutMs: 10_000);
+        Assert.Equal([Amir, Sara, Vahid], final.Participants);
+        Assert.Equal(Amir, final.WinnerId);
+        Assert.False(final.IsDraw); // Sara/Vahid sharing second is not a draw -- only a shared first place is
+
+        await WaitForEventAsync(id, "Ended", 1);
+        var ended = (LiveEnded)LiveShared.Notifier.EventsFor(id).Single(e => e.Kind == "Ended").Payload;
+        Assert.Equal(Amir, ended.WinnerId);
+        Assert.False(ended.IsDraw);
+
+        Assert.Equal(3, ended.Standings.Count);
+        var byId = ended.Standings.ToDictionary(s => s.PlayerId);
+        Assert.Equal(1, byId[Amir].Place);
+        Assert.Equal(MatchOutcome.Win, byId[Amir].Outcome);
+        Assert.Equal(2, byId[Sara].Place);
+        Assert.Equal(MatchOutcome.Loss, byId[Sara].Outcome);
+        Assert.Equal(2, byId[Vahid].Place);
+        Assert.Equal(MatchOutcome.Loss, byId[Vahid].Outcome);
     }
 
     [Fact]

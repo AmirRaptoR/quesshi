@@ -129,7 +129,7 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
         var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(outcome.NewMatchId!);
         var lobbyView = await lobbyGrain.GetAsync(challengerId);
         Assert.NotNull(lobbyView);
-        Assert.Equal(challengerId, lobbyView!.ChallengerId);
+        Assert.Equal(challengerId, lobbyView!.Participants[0]);
         Assert.Equal((int)Language.En, lobbyView.Lang);
         Assert.Equal((int)LivePhase.Lobby, lobbyView.Phase); // waiting for the invited participant, not auto-started
         Assert.Equal((int)MatchState.AwaitingOpponent, lobbyView.State);
@@ -169,7 +169,7 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
         // named — the second and third calls' own requested ownership is simply ignored.
         var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(first.NewMatchId!);
         var lobbyView = await lobbyGrain.GetAsync(challengerId);
-        Assert.Equal(challengerId, lobbyView!.ChallengerId);
+        Assert.Equal(challengerId, lobbyView!.Participants[0]);
     }
 
     /// <summary>Concurrent presses are exactly what the derived id (and Orleans' one-call-at-a-time
