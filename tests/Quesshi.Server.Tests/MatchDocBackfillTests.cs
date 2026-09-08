@@ -47,6 +47,29 @@ public class MatchDocBackfillTests
     }
 
     /// <summary>
+    /// <see cref="MatchDoc.From"/> used to build <c>Participants</c> straight off the two-scalar
+    /// <c>ChallengerId</c>/<c>OpponentId</c> pair, so a capacity&gt;2 duel's third-and-later seats never
+    /// made it into the array the multikey index and <c>MongoMatchArchive.ForPlayerAsync</c>'s
+    /// <c>AnyEq</c> filter both query — their own <see cref="ParticipantResult"/> sat right there in
+    /// <c>Results</c>, and the row still could not be found by their own id. Now that
+    /// <c>Participants</c> is built from <see cref="ArchivedMatch.Results"/> directly, every real seat
+    /// is in it regardless of how many there are.
+    /// </summary>
+    [Fact]
+    public void From_backfills_every_seat_for_a_capacity_three_match_not_just_the_first_two()
+    {
+        var m = new ArchivedMatch("m4", "CODE04", Language.En, "u-owner", "u-second", "u-owner", false,
+            [new ParticipantResult("u-owner", 90, 1, MatchOutcome.Win),
+             new ParticipantResult("u-second", 60, 2, MatchOutcome.Loss),
+             new ParticipantResult("u-third", 30, 3, MatchOutcome.Loss)],
+            MatchState.Resolved, T0, T0, ["q1", "q2", "q3"], IsLive: true);
+
+        var doc = MatchDoc.From(m);
+
+        Assert.Equal(["u-owner", "u-second", "u-third"], doc.Participants);
+    }
+
+    /// <summary>
     /// A document written before <c>Results</c> existed has an empty <see cref="MatchDoc.Results"/> —
     /// BSON leaves an absent array field at its default — so <see cref="MatchDoc.ToDomain"/> has to
     /// fall back to the legacy <c>ChallengerScore</c>/<c>OpponentScore</c> fields, which every such row

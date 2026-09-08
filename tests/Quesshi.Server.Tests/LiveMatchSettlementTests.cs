@@ -37,6 +37,41 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
     private static LiveMatch NewDuel(string id, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset start)
         => LiveMatch.Create(id, id.ToUpperInvariant(), Language.En, challengerId, questionIds, start);
 
+    /// <summary>The capacity-aware counterpart of <see cref="NewDuel"/>, for a lobby of more than two:
+    /// the capacity-2 overload above always draws its own two-player question set at construction, but
+    /// a wider lobby has to go through <c>DuelSettings</c> and <see cref="LiveMatch.DrawQuestions"/>
+    /// separately — the shape every capacity&gt;2 duel is actually built through in the product.</summary>
+    private static LiveMatch NewLobby(string id, string ownerId, IReadOnlyList<string> questionIds, int capacity, DateTimeOffset start)
+    {
+        var settings = DuelSettings.Create(Language.En, questionIds.Count, [], []);
+        var m = LiveMatch.Create(id, id.ToUpperInvariant(), ownerId, settings, capacity, start);
+        m.DrawQuestions(questionIds);
+        return m;
+    }
+
+    /// <summary>Plays a capacity-3 duel to its natural end the same way <see cref="PlayToResolved"/>
+    /// does for two — every round answered by all three, instantly.</summary>
+    private static LiveMatch PlayThreePlayerDuelToResolved(string id, List<string> questionIds,
+        string a, string b, string c, int aCorrect, int bCorrect, int cCorrect, DateTimeOffset start)
+    {
+        var m = NewLobby(id, a, questionIds, capacity: 3, start);
+        m.Join(b, start);
+        m.Join(c, start); // fills capacity -- auto-starts, exactly as a 1v1's second join does
+        var now = start + LiveRules.StartCountdown;
+        m.Advance(now); // opens round 0
+
+        for (var slot = 0; slot < questionIds.Count; slot++)
+        {
+            m.Answer(a, slot, slot < aCorrect ? 0 : 1, slot < aCorrect, now, MatchRules.LevelForSlot(slot));
+            m.Answer(b, slot, slot < bCorrect ? 0 : 1, slot < bCorrect, now, MatchRules.LevelForSlot(slot));
+            m.Answer(c, slot, slot < cCorrect ? 0 : 1, slot < cCorrect, now, MatchRules.LevelForSlot(slot));
+            now += LiveRules.RevealTime;
+            m.Advance(now); // opens the next round, or resolves on the last one
+        }
+
+        return m;
+    }
+
     /// <summary>Plays a live duel to its natural end: every round answered by both sides, instantly, so
     /// every correct answer scores the same maximum the async path would for an equally instant answer.</summary>
     private static LiveMatch PlayToResolved(string id, List<string> questionIds, string a, string b, int aCorrect, int bCorrect, DateTimeOffset start)
@@ -283,5 +318,54 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var onEnd = Shared.Archive.Items.Single(x => x.Id == "mirror-1");
         Assert.Equal(MatchState.Resolved, onEnd.State);
         Assert.True(onEnd.ChallengerScore > 0);
+    }
+
+    /// <summary>
+    /// The regression this issue exists for: <see cref="LiveMatchSettlement"/> used to walk a private
+    /// two-entry <c>Participants(LiveMatch)</c> iterator that yielded only <c>ChallengerId</c> and
+    /// <c>OpponentId</c>, so a capacity&gt;2 duel's third-and-later seats were silently skipped by
+    /// settlement outright — no stats, no leaderboard entry, no archived result, ever, for anyone past
+    /// the second seat, with nothing failing loudly because the obsolete accessors it read from still
+    /// compile. This drives a real capacity-3 duel to <see cref="MatchState.Resolved"/> and checks
+    /// every one of the three actually got settled, not just the first two.
+    /// </summary>
+    [Fact]
+    public async Task A_resolved_capacity_three_duel_settles_every_participant_not_just_the_first_two()
+    {
+        const string first = "p-cap3-first";
+        const string second = "p-cap3-second";
+        const string third = "p-cap3-third";
+        foreach (var id in new[] { first, second, third })
+            await Shared.Players.UpsertAsync(Player.Register(id, $"{id}@example.com", id, Language.En, Shared.Clock.Now));
+
+        var m = PlayThreePlayerDuelToResolved("cap3-settle", SeedQuestions("cap3-settle"),
+            first, second, third, aCorrect: 8, bCorrect: 4, cCorrect: 1, Shared.Clock.Now);
+        Assert.Equal(MatchState.Resolved, m.State);
+
+        await Sut.SettleAsync(m, Language.En);
+
+        // Stats: all three, not just the first two -- the third seat is the one the bug dropped.
+        var firstStats = (await Shared.Players.GetAsync(first))!.Stats;
+        var secondStats = (await Shared.Players.GetAsync(second))!.Stats;
+        var thirdStats = (await Shared.Players.GetAsync(third))!.Stats;
+        Assert.Equal(1, firstStats.Wins);
+        Assert.Equal(1, secondStats.Losses);
+        Assert.Equal(1, thirdStats.Losses); // was 0/0/untouched before this fix
+        Assert.True(thirdStats.TotalScore > 0);
+
+        // Leaderboard: all three get a real entry, ranked by their own actual score.
+        Assert.True(Shared.Leaderboard.Scores.ContainsKey(third));
+        Assert.True(Shared.Leaderboard.Scores[first] > Shared.Leaderboard.Scores[second]);
+        Assert.True(Shared.Leaderboard.Scores[second] > Shared.Leaderboard.Scores[third]);
+
+        // Archived result: a real, correctly-ranked ParticipantResult for every one of the three.
+        var archived = Shared.Archive.Items.Single(x => x.Id == "cap3-settle");
+        Assert.Equal(3, archived.Results.Count);
+        var byId = archived.Results.ToDictionary(r => r.PlayerId);
+        Assert.Equal(1, byId[first].Place);
+        Assert.Equal(MatchOutcome.Win, byId[first].Outcome);
+        Assert.Equal(3, byId[third].Place);
+        Assert.Equal(MatchOutcome.Loss, byId[third].Outcome);
+        Assert.True(byId[third].Score > 0);
     }
 }

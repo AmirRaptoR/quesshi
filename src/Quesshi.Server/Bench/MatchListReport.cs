@@ -81,9 +81,11 @@ internal static class MatchListReport
 
         sb.AppendLine("## Archive query: `explain(\"executionStats\")`");
         sb.AppendLine();
-        sb.AppendLine($"Query: `{{ $or: [ {{ChallengerId: <heavy id>}}, {{OpponentId: <heavy id>}} ] }}`, " +
-            "`sort: {CreatedAt: -1}, limit: 40`, against the 40-duel account, given the compound indexes at " +
-            "`src/Quesshi.Infrastructure/Mongo/MongoContext.cs:62-66`.");
+        sb.AppendLine($"Query: `{{ Participants: <heavy id> }}`, " +
+            "`sort: {CreatedAt: -1}, limit: 40`, against the 40-duel account, given the multikey index over " +
+            "`Participants` at `src/Quesshi.Infrastructure/Mongo/MongoContext.cs:62-66` — the single index " +
+            "that replaced the old `ChallengerId`/`OpponentId` compound pair once issue #50 swapped this " +
+            "query for an `AnyEq(Participants, playerId)`.");
         sb.AppendLine();
         sb.AppendLine($"- Winning plan stage: `{explain.WinningPlanStage}`");
         sb.AppendLine($"- `nReturned`: {explain.NReturned}");

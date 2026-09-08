@@ -116,7 +116,7 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
         LiveShared.Directory.Rows.Clear();
         var challenger = NewPlayer("chal");
         var opponent = NewPlayer("opp");
-        LiveShared.Directory.Rows["row-1"] = new LiveDirectoryRow("row-1", "ABC123", challenger.Id, opponent.Id,
+        LiveShared.Directory.Rows["row-1"] = new LiveDirectoryRow("row-1", "ABC123", [challenger.Id, opponent.Id],
             (int)Language.En, 2, 10, (int)LivePhase.Question, DateTimeOffset.UtcNow);
 
         using var client = AdminClient();
@@ -139,7 +139,7 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
     {
         LiveShared.Directory.Rows.Clear();
         var challenger = NewPlayer("noquery");
-        LiveShared.Directory.Rows["row-nq"] = new LiveDirectoryRow("row-nq", "NOQ001", challenger.Id, null,
+        LiveShared.Directory.Rows["row-nq"] = new LiveDirectoryRow("row-nq", "NOQ001", [challenger.Id],
             (int)Language.En, 0, 10, (int)LivePhase.Lobby, DateTimeOffset.UtcNow);
         LiveShared.Archive.ResetCounters();
 
@@ -158,7 +158,7 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
     {
         LiveShared.Directory.Rows.Clear();
         var challenger = NewPlayer("solo");
-        LiveShared.Directory.Rows["row-2"] = new LiveDirectoryRow("row-2", "SOLO12", challenger.Id, null,
+        LiveShared.Directory.Rows["row-2"] = new LiveDirectoryRow("row-2", "SOLO12", [challenger.Id],
             (int)Language.En, 0, 10, (int)LivePhase.Lobby, DateTimeOffset.UtcNow);
 
         using var client = AdminClient();
@@ -171,14 +171,46 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
         LiveShared.Directory.Rows.Clear();
     }
 
+    /// <summary>
+    /// <c>LiveDirectoryRow</c> used to be a fixed <c>ChallengerId</c>/<c>string? OpponentId</c> pair,
+    /// so an admin watching a capacity&gt;2 duel saw exactly two names no matter how many were actually
+    /// seated — the third and fourth simply never made it into the row <c>UpsertDirectoryAsync</c>
+    /// wrote. <c>AdminLiveRowDto</c> itself still only has two string fields (reshaping it for N seats
+    /// is issue #53's job, on the Web side), so every seat past the owner now rides along
+    /// comma-joined in <c>OpponentName</c> instead — every participant's name is somewhere in the row,
+    /// even though it is not yet four columns.
+    /// </summary>
+    [Fact]
+    public async Task A_four_player_duel_names_every_participant_not_just_the_first_two()
+    {
+        LiveShared.Directory.Rows.Clear();
+        var owner = NewPlayer("four-owner");
+        var second = NewPlayer("four-second");
+        var third = NewPlayer("four-third");
+        var fourth = NewPlayer("four-fourth");
+        LiveShared.Directory.Rows["row-four"] = new LiveDirectoryRow("row-four", "FOUR001",
+            [owner.Id, second.Id, third.Id, fourth.Id], (int)Language.En, 0, 10, (int)LivePhase.Question, DateTimeOffset.UtcNow);
+
+        using var client = AdminClient();
+        var page = await client.GetFromJsonAsync<AdminLivePageDto>("/api/admin/live");
+
+        var row = Assert.Single(page!.Items);
+        Assert.Equal(owner.DisplayName, row.ChallengerName);
+        Assert.Contains(second.DisplayName, row.OpponentName);
+        Assert.Contains(third.DisplayName, row.OpponentName);
+        Assert.Contains(fourth.DisplayName, row.OpponentName);
+
+        LiveShared.Directory.Rows.Clear();
+    }
+
     [Fact]
     public async Task Rows_are_ordered_oldest_first()
     {
         LiveShared.Directory.Rows.Clear();
         var older = DateTimeOffset.UtcNow.AddMinutes(-5);
         var newer = DateTimeOffset.UtcNow;
-        LiveShared.Directory.Rows["row-newer"] = new LiveDirectoryRow("row-newer", "NEW001", "p1", "p2", (int)Language.En, 0, 10, (int)LivePhase.Lobby, newer);
-        LiveShared.Directory.Rows["row-older"] = new LiveDirectoryRow("row-older", "OLD001", "p1", "p2", (int)Language.En, 0, 10, (int)LivePhase.Lobby, older);
+        LiveShared.Directory.Rows["row-newer"] = new LiveDirectoryRow("row-newer", "NEW001", ["p1", "p2"], (int)Language.En, 0, 10, (int)LivePhase.Lobby, newer);
+        LiveShared.Directory.Rows["row-older"] = new LiveDirectoryRow("row-older", "OLD001", ["p1", "p2"], (int)Language.En, 0, 10, (int)LivePhase.Lobby, older);
 
         using var client = AdminClient();
         var page = await client.GetFromJsonAsync<AdminLivePageDto>("/api/admin/live");
@@ -194,7 +226,7 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
         LiveShared.Directory.Rows.Clear();
         var maxAge = LiveRules.LobbyExpires + (10 * (MatchRules.QuestionTime + LiveRules.RevealTime)) + TimeSpan.FromMinutes(1);
         var longDead = LiveShared.TimeProvider.GetUtcNow() - maxAge - TimeSpan.FromSeconds(1);
-        LiveShared.Directory.Rows["row-ghost"] = new LiveDirectoryRow("row-ghost", "GHOST1", "p1", "p2", (int)Language.En, 0, 10, (int)LivePhase.Question, longDead);
+        LiveShared.Directory.Rows["row-ghost"] = new LiveDirectoryRow("row-ghost", "GHOST1", ["p1", "p2"], (int)Language.En, 0, 10, (int)LivePhase.Question, longDead);
 
         using var client = AdminClient();
         var page = await client.GetFromJsonAsync<AdminLivePageDto>("/api/admin/live");

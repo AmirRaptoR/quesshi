@@ -371,9 +371,9 @@ public static class GameEndpoints
         // ago has an opponent the row does not know about yet. A live duel has no such lag — its row
         // is the only source there is — so its ids come from the row instead. One query either way.
         var names = (await players.GetManyAsync([.. asyncViews
-                .SelectMany(v => new[] { v.ChallengerId, v.OpponentId })
-                .Concat(liveRows.SelectMany(r => new[] { r.ChallengerId, r.OpponentId }))
-                .OfType<string>().Distinct()]))
+                .SelectMany(ParticipantIds)
+                .Concat(liveRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
+                .Distinct()]))
             .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
 
         (string, string) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id);
@@ -390,7 +390,23 @@ public static class GameEndpoints
             : [.. summaries];
     }
 
-    private static bool IsIn(MatchView v, string playerId) => v.ChallengerId == playerId || v.OpponentId == playerId;
+    /// <summary>
+    /// Every id <paramref name="v"/> actually names, for a capacity-anything async duel: the two
+    /// legacy scalars <c>ChallengerId</c>/<c>OpponentId</c> (always known — a seat is real from the
+    /// moment <c>Join</c> fills it, whether or not that player has served a question yet), plus
+    /// whoever else has a <see cref="RunView"/> in <see cref="MatchView.Runs"/> (a run exists once a
+    /// player has been served their first question, regardless of seat order). <see cref="MatchView"/>
+    /// itself still only carries two named seats — reshaping it for N is issue #53's job — so this is
+    /// the closest a caller here can get to "every real participant" without that reshape, and it is
+    /// exactly what <see cref="IsIn"/>, the name-resolution fan-out below, and every "the other
+    /// participant" lookup in this file should be built on instead of the two scalars alone: a
+    /// three-or-later seat that has played at least one question is a real, findable id here, not
+    /// silently absent the way it used to be.
+    /// </summary>
+    private static IEnumerable<string> ParticipantIds(MatchView v) =>
+        new[] { v.ChallengerId, v.OpponentId }.OfType<string>().Concat(v.Runs.Select(r => r.PlayerId)).Distinct();
+
+    private static bool IsIn(MatchView v, string playerId) => ParticipantIds(v).Contains(playerId);
 
     private static async Task<MatchSummaryDto?> SummaryAsync(IMatchGrain grain, string meId, IPlayerRepository players)
     {
@@ -401,7 +417,7 @@ public static class GameEndpoints
     private static async Task<MatchSummaryDto> ToSummaryAsync(MatchView view, string meId, IPlayerRepository players)
     {
         var names = new Dictionary<string, (string, string)>();
-        foreach (var id in new[] { view.ChallengerId, view.OpponentId }.OfType<string>().Distinct())
+        foreach (var id in ParticipantIds(view))
         {
             var p = await players.GetAsync(id);
             names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id);
@@ -417,7 +433,13 @@ public static class GameEndpoints
         var cats = (await categories.AllAsync()).ToDictionary(c => c.Id);
 
         var mine = view.Runs.FirstOrDefault(r => r.PlayerId == meId)?.Choices ?? [];
-        var otherId = view.ChallengerId == meId ? view.OpponentId : view.ChallengerId;
+
+        // RevealedQuestionDto is a two-sided (mine/theirs) shape, same reasoning as MatchSummaryDto's
+        // own mine/theirs: for a capacity-2 duel "theirs" is unambiguous and this picks exactly the id
+        // it always did. For a capacity>2 duel there is no single "other side" any more, so this names
+        // whichever other real participant (see ParticipantIds) sorts first — a real answer set, never
+        // a made-up id — rather than pretending the duel is still 1v1 or crashing on a missing choice.
+        var otherId = ParticipantIds(view).FirstOrDefault(id => id != meId);
         var theirs = otherId is null ? [] : view.Runs.FirstOrDefault(r => r.PlayerId == otherId)?.Choices ?? [];
 
         return [.. all.Select((q, slot) => new RevealedQuestionDto(slot, q.Id, q.Prompt, [.. q.Choices], q.CorrectIndex,

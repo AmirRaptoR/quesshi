@@ -91,6 +91,29 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         Assert.Contains(view.Runs, r => r.PlayerId == Vahid);
     }
 
+    /// <summary>
+    /// The other half of the same truncation, one layer down: <c>MatchDoc.From</c> used to build the
+    /// archive row's <c>Participants</c> array — the one field the multikey index and
+    /// <c>MongoMatchArchive.ForPlayerAsync</c>'s <c>AnyEq</c> filter both query — off the two-scalar
+    /// <c>ChallengerId</c>/<c>OpponentId</c> pair, not off <c>Results</c> (which already lists every
+    /// real seat). A capacity&gt;2 lobby's third-and-later seats therefore had a real
+    /// <see cref="ParticipantResult"/> sitting in a row nobody querying by their own id could ever
+    /// find: fixed now, so Vahid's own "/api/matches" turns up a lobby he only ever joined, never
+    /// created or "opponent"-ed into.
+    /// </summary>
+    [Fact]
+    public async Task A_capacity_three_lobby_appears_in_the_third_players_own_matches_listing()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 3);
+        var grain = Grains.GetGrain<IMatchGrain>(lobby.Id);
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, indexing the archive row again
+
+        var list = await GameEndpoints.ListMatchesAsync(Vahid, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
+
+        Assert.Contains(list, m => m.Id == lobby.Id);
+    }
+
     [Fact]
     public async Task Create_refuses_a_capacity_outside_2_to_8()
     {

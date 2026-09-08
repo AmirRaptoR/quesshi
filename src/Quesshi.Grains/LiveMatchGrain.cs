@@ -583,11 +583,13 @@ public sealed class LiveMatchGrain(
     }
 
     /// <summary>Writes this duel's row to the in-flight index — everything <c>/admin/live</c> needs
-    /// without activating this grain. Called on every phase change while the duel is still running.</summary>
+    /// without activating this grain. Called on every phase change while the duel is still running.
+    /// Every seated player via <see cref="Participants"/>, not the old two-scalar pair: the same
+    /// truncation this helper already exists to fix everywhere else it feeds a view or a notification.</summary>
     private Task UpsertDirectoryAsync()
     {
         var m = _match!;
-        var row = new LiveDirectoryRow(m.Id, m.Code, m.ChallengerId, m.OpponentId, (int)m.Lang,
+        var row = new LiveDirectoryRow(m.Id, m.Code, [.. Participants(m)], (int)m.Lang,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, (int)m.Phase, m.CreatedAt);
         return SafeDirectoryAsync(() => directory.UpsertAsync(row));
     }

@@ -75,7 +75,15 @@ public static class Mappers
     public static MatchSummaryDto ToSummary(this MatchView v, string me, Func<string, (string Name, string Avatar)> lookup)
     {
         var myRun = v.Runs.FirstOrDefault(r => r.PlayerId == me);
-        var otherId = v.ChallengerId == me ? v.OpponentId : v.ChallengerId;
+
+        // "The other side" for this DTO's own two-player shape (theirs, singular) — reads Runs too,
+        // not just the ChallengerId/OpponentId pair, since a capacity>2 duel's third-or-later seat has
+        // a real run of their own the moment they have served a question, and picking only from the
+        // two legacy scalars would silently prefer showing the owner over them. For a capacity-2 duel
+        // this names exactly the one other participant it always did. Outcome below is unaffected —
+        // OutcomeFor already ranks every one of v.Runs, never just this single "theirs" pick.
+        var otherId = new[] { v.ChallengerId, v.OpponentId }.OfType<string>().Concat(v.Runs.Select(r => r.PlayerId))
+            .FirstOrDefault(id => id != me);
         var theirRun = otherId is null ? null : v.Runs.FirstOrDefault(r => r.PlayerId == otherId);
 
         var (myName, myAvatar) = lookup(me);
@@ -129,10 +137,18 @@ public static class Mappers
     /// </summary>
     public static MatchSummaryDto ToLiveSummary(this ArchivedMatch m, string me, Func<string, (string Name, string Avatar)> lookup)
     {
-        var otherId = m.ChallengerId == me ? m.OpponentId : m.ChallengerId;
-        var (myScore, otherScore) = m.ChallengerId == me
-            ? (m.ChallengerScore, m.OpponentScore)
-            : (m.OpponentScore, m.ChallengerScore);
+        // Every score, mine and theirs, is read off Results by matching PlayerId — never off the
+        // legacy ChallengerId/OpponentId-keyed ChallengerScore/OpponentScore this used to switch on.
+        // That pair only ever names the first two seats, so for a capacity>2 duel's third-or-later
+        // player the old ternary attributed *whichever of those two slots was not literally
+        // ChallengerId* to "mine" the instant this player was seated third or later — a live scoring
+        // bug (the wrong player's score, shown as this player's own), not a display nicety. otherId
+        // still names only a single "opponent" — this DTO's two-sided shape is issue #53's rework, not
+        // this one's — but it is now picked from Results, the one place that lists every real seat, so
+        // it can never coincide with `me`.
+        var myScore = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Score ?? 0;
+        var otherId = m.Results.Select(r => r.PlayerId).FirstOrDefault(id => id != me);
+        var otherScore = otherId is null ? 0 : m.Results.FirstOrDefault(r => r.PlayerId == otherId)?.Score ?? 0;
 
         var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
 

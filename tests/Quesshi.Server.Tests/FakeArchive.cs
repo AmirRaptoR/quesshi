@@ -43,9 +43,16 @@ public sealed class FakeArchive : IMatchArchive
     {
         Queries++;
         if (DelayMs > 0) await Task.Delay(DelayMs, ct);
-        // Mirrors MongoMatchArchive.ForPlayerAsync: live and async rows alike, newest first.
+        // Mirrors MongoMatchArchive.ForPlayerAsync: live and async rows alike, newest first. Matched
+        // by Results, not the legacy ChallengerId/OpponentId pair — issue #50 moved the real query
+        // onto the Participants array precisely so a duel is found by any seat a player ever held,
+        // and this fake drifted from that the moment it did: filtering on the two scalars here meant
+        // this test double kept reporting a capacity>2 duel as findable only by its first two seats
+        // even after the real Mongo query (and MatchDoc.From's own Participants array) stopped
+        // agreeing, so a third participant's own match silently never turned up in any test built on
+        // this fake, the real code's fix notwithstanding.
         lock (_lock)
-            return [.. Items.Where(m => m.ChallengerId == p || m.OpponentId == p).OrderByDescending(m => m.CreatedAt).Take(take)];
+            return [.. Items.Where(m => m.Results.Any(r => r.PlayerId == p)).OrderByDescending(m => m.CreatedAt).Take(take)];
     }
 
     public Task<long> CountAsync(CancellationToken ct = default) { lock (_lock) return Task.FromResult((long)Items.Count); }

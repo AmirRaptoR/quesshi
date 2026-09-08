@@ -68,12 +68,17 @@ public static class AdminEndpoints
                 alive.Add(row);
             }
 
-            var ids = alive.SelectMany(r => new[] { r.ChallengerId, r.OpponentId }).Where(id => id is not null).Cast<string>().Distinct().ToList();
+            var ids = alive.SelectMany(r => r.Participants).Distinct().ToList();
             var names = (await players.GetManyAsync(ids)).ToDictionary(p => p.Id, p => p.DisplayName);
 
+            // AdminLiveRowDto still only has room for two names — reshaping it for N seats is
+            // Quesshi.Web's job (issue #53 rebuilds this table), not this endpoint's. Until then, every
+            // seat after the owner's rides along comma-joined in the one field the DTO gives it, so a
+            // four-player duel still names all four somewhere in the row instead of losing two of them
+            // outright — "an admin sees four players" just does not yet mean "four columns".
             var ordered = alive.OrderBy(r => r.StartedAt).Take(200)
-                .Select(r => new AdminLiveRowDto(r.MatchId, r.Code, names.GetValueOrDefault(r.ChallengerId, r.ChallengerId),
-                    r.OpponentId is null ? "" : names.GetValueOrDefault(r.OpponentId, r.OpponentId),
+                .Select(r => new AdminLiveRowDto(r.MatchId, r.Code, names.GetValueOrDefault(r.Participants[0], r.Participants[0]),
+                    string.Join(", ", r.Participants.Skip(1).Select(id => names.GetValueOrDefault(id, id))),
                     ((Language)r.Lang).Code(), r.RoundIndex, r.TotalRounds, ((LivePhase)r.Phase).ToString().ToLowerInvariant(), r.StartedAt))
                 .ToList();
 
