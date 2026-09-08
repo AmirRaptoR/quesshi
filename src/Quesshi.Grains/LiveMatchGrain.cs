@@ -100,12 +100,38 @@ public sealed class LiveMatchGrain(
         return await ViewAsync(_match, challengerId);
     }
 
+    /// <summary>The lobby-aware create path: see the interface's own remarks. Shares everything past
+    /// construction with <see cref="CreateAsync"/> — only how the domain object itself is built differs.</summary>
+    public async Task<LiveView> CreateLobbyAsync(string code, string ownerId, int lang, int questionCount,
+        List<string> categoryIds, List<int> levels, int capacity)
+    {
+        if (_match is not null) return await ViewAsync(_match, ownerId);
+
+        var settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
+        _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, ownerId, settings, capacity, clock.Now);
+
+        await this.RegisterOrUpdateReminder(SafetyNetReminder, ReminderPeriod, ReminderPeriod);
+        await AfterChangeAsync(LivePhase.Lobby, false);
+        await IndexAsync();
+        return await ViewAsync(_match, ownerId);
+    }
+
     public async Task<int> JoinAsync(string playerId)
     {
         if (_match is null) return (int)LiveJoinResult.Unknown;
 
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
+
+        // The join that fills the last seat also starts the duel, synchronously, inside TryJoin
+        // itself — exactly as it always has for a capacity-2 lobby (see LiveMatch.Join's own remarks).
+        // That means the question set has to already exist the instant this call is made: DrawQuestions
+        // refuses once the duel has left the lobby phase, which this join is about to do. Drawing here,
+        // one join early, is what lets a bigger lobby's very last join behave identically to a 1v1's
+        // second one — the legacy, pre-drawn creation path never hits this (QuestionIds is never empty
+        // there), so it costs that path nothing.
+        if (_match.QuestionIds.Count == 0 && !_match.IsParticipant(playerId) && _match.Participants.Count + 1 == _match.Capacity)
+            await DrawQuestionsAsync();
 
         // TryJoin settles the clock first even on a call that is then refused (the lobby may have
         // just expired) — that still has to be persisted, so every outcome but SelfJoin — which
@@ -117,13 +143,77 @@ public sealed class LiveMatchGrain(
         return (int)result;
     }
 
-    public async Task<bool> CancelAsync(string playerId)
+    /// <summary>Draws this lobby's question set from its own <c>Settings</c> and hands it to
+    /// <see cref="LiveMatch.DrawQuestions"/> — the one bit of IO the domain cannot do for itself.
+    /// Shared by <see cref="JoinAsync"/>'s auto-start branch and <see cref="StartAsync"/>.</summary>
+    private async Task DrawQuestionsAsync()
     {
-        if (_match is null || playerId != _match.ChallengerId || _match.Phase != LivePhase.Lobby) return false;
+        var m = _match!;
+        var set = await questionSetBuilder.BuildAsync(m.Settings.Language, m.Settings.CategoryIds, m.Settings.QuestionCount, m.Settings.Levels);
+        m.DrawQuestions([.. set.Select(q => q.Id)]);
+    }
+
+    public async Task<bool> StartAsync(string playerId)
+    {
+        if (_match is null || _match.Phase != LivePhase.Lobby) return false;
+        if (playerId != _match.OwnerId || _match.Participants.Count < 2) return false;
 
         var phaseBefore = _match.Phase;
-        _match.EndNoContest(clock.Now);
-        await AfterChangeAsync(phaseBefore, false, "cancelled by challenger");
+        if (_match.QuestionIds.Count == 0) await DrawQuestionsAsync();
+        if (!_match.Start(playerId, clock.Now)) return false;
+
+        await AfterChangeAsync(phaseBefore, false);
+        return true;
+    }
+
+    public async Task<bool> LeaveAsync(string playerId)
+    {
+        if (_match is null) return false;
+        if (playerId == _match.OwnerId) return await EndByOwnerAsync(playerId, "left by owner");
+
+        var phaseBefore = _match.Phase;
+        if (!_match.Leave(playerId, clock.Now)) return false;
+
+        await AfterChangeAsync(phaseBefore, false);
+        await IndexAsync(); // the roster shrank; mirrors JoinAsync's own index refresh on a successful join
+        return true;
+    }
+
+    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels)
+    {
+        if (_match is null) return false;
+
+        DuelSettings settings;
+        try
+        {
+            settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
+        }
+        catch (ArgumentException)
+        {
+            return false; // an invalid combination refuses the change outright, same as at creation
+        }
+
+        if (!_match.UpdateSettings(playerId, settings)) return false;
+
+        await SaveAsync();
+        return true;
+    }
+
+    public Task<bool> CancelAsync(string playerId) => EndByOwnerAsync(playerId, "cancelled by owner");
+
+    /// <summary>
+    /// Shared by <see cref="CancelAsync"/> and <see cref="LeaveAsync"/>'s owner branch: ends the lobby
+    /// as a no-contest with <see cref="NoContestReason.OwnerCancelled"/> — never <see cref="NoContestReason.LobbyExpired"/>,
+    /// which would misreport a deliberate departure as a clock running out. Owner-only and lobby-only,
+    /// exactly like the original <c>CancelAsync</c> this preserves the contract of.
+    /// </summary>
+    private async Task<bool> EndByOwnerAsync(string playerId, string reason)
+    {
+        if (_match is null || playerId != _match.OwnerId || _match.Phase != LivePhase.Lobby) return false;
+
+        var phaseBefore = _match.Phase;
+        _match.EndNoContest(clock.Now, NoContestReason.OwnerCancelled);
+        await AfterChangeAsync(phaseBefore, false, reason);
         return true;
     }
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Orleans.Storage;
 using Orleans.TestingHost;
 using Quesshi.Application.Ports;
+using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 
 namespace Quesshi.Server.Tests;
@@ -25,9 +26,11 @@ public sealed class MatchRecoveryTestSilo : ISiloConfigurator
             services.AddKeyedSingleton<IGrainStorage>("hot", MatchRecoveryShared.Storage);
             services.AddSingleton<IClock>(MatchRecoveryShared.Clock);
             services.AddSingleton<IQuestionRepository>(MatchRecoveryShared.Questions);
+            services.AddSingleton<ICategoryRepository>(MatchRecoveryShared.Categories);
             services.AddSingleton<IMatchArchive>(MatchRecoveryShared.Archive);
             services.AddSingleton<ILeaderboard>(MatchRecoveryShared.Leaderboard);
             services.AddSingleton<IPlayerRepository>(MatchRecoveryShared.Players);
+            services.AddSingleton<QuestionSetBuilder>(); // see TestSilo's identical remark
         });
     }
 }

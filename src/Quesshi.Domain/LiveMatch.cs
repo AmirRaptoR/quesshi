@@ -34,8 +34,10 @@ public sealed class LiveMatch
     /// lives in, mirrored into <c>IMatchArchive</c> so it can be resolved by code at all.</summary>
     public string Code { get; }
 
-    /// <summary>What the lobby's owner picked, and what the question set is drawn from at start.</summary>
-    public DuelSettings Settings { get; }
+    /// <summary>What the lobby's owner picked, and what the question set is drawn from at start.
+    /// Privately settable rather than init-only: see <see cref="UpdateSettings"/>, the one place it
+    /// ever changes after construction.</summary>
+    public DuelSettings Settings { get; private set; }
 
     public Language Lang => Settings.Language;
 
@@ -215,14 +217,71 @@ public sealed class LiveMatch
 
         // A capacity-2 lobby starting the instant its second seat fills is not a special case of
         // this rule — it is this rule, with Capacity == 2. That is exactly what keeps 1v1 behaviour
-        // unchanged: the owner-presses-Start affordance a bigger lobby needs is a later step's
-        // concern, and a two-seat lobby can never be in a state where it applies.
-        if (_participants.Count == Capacity)
-        {
-            State = MatchState.InProgress;
-            Phase = LivePhase.Countdown;
-            PhaseEndsAt = now + LiveRules.StartCountdown;
-        }
+        // unchanged: the owner-presses-Start affordance a bigger lobby needs (see Start) never gets a
+        // chance to apply, because a two-seat lobby can never be in a state where it is needed — the
+        // very join that seats the second player is always also the one that reaches Capacity.
+        if (_participants.Count == Capacity) BeginDuel(now);
+    }
+
+    /// <summary>
+    /// The actual state flip out of the lobby, shared by the two doors that reach it: <see cref="Join"/>
+    /// reaching <see cref="Capacity"/> on its own, and the owner's explicit <see cref="Start"/>. Neither
+    /// caller may invoke this before the question set is ready — <see cref="Join"/>'s auto-start relies
+    /// on the grain having drawn it one join earlier (see <c>LiveMatchGrain.JoinAsync</c>'s own remarks),
+    /// and <see cref="Start"/> checks <see cref="QuestionIds"/> itself before ever calling in here.
+    /// </summary>
+    private void BeginDuel(DateTimeOffset now)
+    {
+        State = MatchState.InProgress;
+        Phase = LivePhase.Countdown;
+        PhaseEndsAt = now + LiveRules.StartCountdown;
+    }
+
+    /// <summary>
+    /// The owner's explicit counterpart to <see cref="Join"/>'s auto-start: starts the duel once at
+    /// least two are seated, for a lobby with room to spare that nobody is going to fill the rest of.
+    /// Refused for anyone but the owner, below two participants, once the lobby has already left
+    /// <see cref="LivePhase.Lobby"/>, or — the one condition <see cref="Join"/>'s own auto-start never
+    /// has to check, because the grain always draws first — while <see cref="QuestionIds"/> is still
+    /// empty. The grain draws the question set (via <see cref="DrawQuestions"/>) before ever calling
+    /// this, since that needs the question bank it owns, not this class.
+    /// </summary>
+    public bool Start(string playerId, DateTimeOffset now)
+    {
+        if (Phase != LivePhase.Lobby || playerId != OwnerId || _participants.Count < 2 || _questionIds.Count == 0)
+            return false;
+
+        BeginDuel(now);
+        return true;
+    }
+
+    /// <summary>
+    /// A seated, non-owner player gives up their seat before the duel starts, freeing it for someone
+    /// else to take. The owner cannot leave this way — there is no ownership transfer, so an owner's
+    /// departure has to end the whole lobby instead (the grain does this with <see cref="EndNoContest"/>
+    /// and <see cref="NoContestReason.OwnerCancelled"/>, not through this method). Settles the clock
+    /// first, mirroring <see cref="Join"/>. Returns false if nothing changed: the lobby has already
+    /// left <see cref="LivePhase.Lobby"/>, the caller is the owner, or the caller was never seated.
+    /// </summary>
+    public bool Leave(string playerId, DateTimeOffset now)
+    {
+        Advance(now);
+        return Phase == LivePhase.Lobby && playerId != OwnerId && _participants.Remove(playerId);
+    }
+
+    /// <summary>
+    /// The owner changes what <see cref="DrawQuestions"/> will draw. "Settings are editable exactly
+    /// while the question set is empty" is the one flag this checks — deliberately not a second,
+    /// separate "locked" bit, so a legacy record (whose questions are always already drawn, see
+    /// <see cref="FromSnapshot"/>) is correctly locked out of this too, with no extra state to keep in
+    /// step. Refused for anyone but the owner.
+    /// </summary>
+    public bool UpdateSettings(string playerId, DuelSettings settings)
+    {
+        if (playerId != OwnerId || _questionIds.Count > 0) return false;
+
+        Settings = settings;
+        return true;
     }
 
     /// <summary>
@@ -247,9 +306,15 @@ public sealed class LiveMatch
         catch (InvalidOperationException)
         {
             // Join settles the clock before it throws, so State already reflects why this failed:
-            // NoContest means the lobby's own clock ran out; anything else means the lobby closed
-            // some other way — full, or already under way — before this caller got a seat.
-            return State == MatchState.NoContest ? LiveJoinResult.Expired : LiveJoinResult.Taken;
+            // NoContest means the lobby's own clock ran out. Otherwise the lobby closed some other
+            // way before this caller got a seat — and now there are two of those to tell apart: every
+            // seat is actually occupied (Full), or the owner started early with room still unfilled
+            // (Taken, the same value this always returned back when "closed" and "full" were the same
+            // thing for every lobby). A capacity-2 lobby can only ever close by filling, so a stranger
+            // arriving after it has always seen, and still sees, exactly one of these two — just Full
+            // now instead of Taken, since that is what actually happened.
+            if (State == MatchState.NoContest) return LiveJoinResult.Expired;
+            return _participants.Count >= Capacity ? LiveJoinResult.Full : LiveJoinResult.Taken;
         }
     }
 

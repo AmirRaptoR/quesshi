@@ -4,6 +4,7 @@ using Orleans;
 using Quesshi.Grains.Abstractions;
 using Orleans.Runtime;
 using Quesshi.Application.Ports;
+using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 
 namespace Quesshi.Grains;
@@ -12,6 +13,7 @@ public sealed class MatchGrain(
     [PersistentState("match", "hot")] IPersistentState<MatchStateRecord> state,
     IQuestionRepository questions,
     IMatchArchive archive,
+    QuestionSetBuilder questionSetBuilder,
     IClock clock,
     ILogger<MatchGrain> logger) : Grain, IMatchGrain, IRemindable
 {
@@ -62,10 +64,33 @@ public sealed class MatchGrain(
         return View(_match, challengerId);
     }
 
+    /// <summary>The lobby-aware create path: see the interface's own remarks. Shares everything past
+    /// construction with <see cref="CreateAsync"/> — only how the domain object itself is built differs.</summary>
+    public async Task<MatchView> CreateLobbyAsync(string code, string ownerId, int lang, int questionCount,
+        List<string> categoryIds, List<int> levels, int capacity)
+    {
+        if (_match is not null) return View(_match, ownerId);
+
+        var settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
+        _match = Match.Create(this.GetPrimaryKeyString(), code, ownerId, settings, capacity, clock.Now);
+        await SaveAsync();
+        await IndexAsync();
+
+        await this.RegisterOrUpdateReminder(ForfeitReminder, MatchRules.ForfeitAfter, TimeSpan.FromHours(6));
+        return View(_match, ownerId);
+    }
+
     public async Task<bool> JoinAsync(string playerId)
     {
         if (_match is null) return false;
         if (_match.IsParticipant(playerId)) return true;
+
+        // The join that fills the last seat also starts the duel, synchronously, inside Join itself —
+        // exactly as it always has for a capacity-2 match. Drawing the question set here, one join
+        // early, is what lets a bigger lobby's very last join behave identically to a 1v1's second one;
+        // the legacy, pre-drawn creation path never hits this (QuestionIds is never empty there).
+        if (_match.QuestionIds.Count == 0 && _match.Participants.Count + 1 == _match.Capacity)
+            await DrawQuestionsAsync();
 
         try
         {
@@ -78,6 +103,68 @@ public sealed class MatchGrain(
 
         await SaveAsync();
         await IndexAsync();
+        return true;
+    }
+
+    /// <summary>Draws this lobby's question set from its own <c>Settings</c> and hands it to
+    /// <see cref="Match.DrawQuestions"/> — the one bit of IO the domain cannot do for itself. Shared by
+    /// <see cref="JoinAsync"/>'s auto-start branch and <see cref="StartAsync"/>.</summary>
+    private async Task DrawQuestionsAsync()
+    {
+        var m = _match!;
+        var set = await questionSetBuilder.BuildAsync(m.Settings.Language, m.Settings.CategoryIds, m.Settings.QuestionCount, m.Settings.Levels);
+        m.DrawQuestions([.. set.Select(q => q.Id)]);
+    }
+
+    public async Task<bool> StartAsync(string playerId)
+    {
+        if (_match is null || _match.State != MatchState.AwaitingOpponent) return false;
+        if (playerId != _match.OwnerId || _match.Participants.Count < 2) return false;
+
+        if (_match.QuestionIds.Count == 0) await DrawQuestionsAsync();
+        if (!_match.Start(playerId, clock.Now)) return false;
+
+        await SaveAsync();
+        await IndexAsync();
+        return true;
+    }
+
+    public async Task<bool> LeaveAsync(string playerId)
+    {
+        if (_match is null) return false;
+
+        var wasOver = _match.IsOver;
+        var ok = playerId == _match.OwnerId ? _match.Cancel(playerId, clock.Now) : _match.Leave(playerId, clock.Now);
+        if (!ok) return false;
+
+        await SaveAsync();
+        await IndexAsync();
+
+        // A cancelled lobby is over the instant Cancel succeeds; a freed seat never is. Mirrors
+        // AnswerAsync's own "!wasOver && IsOver" trigger, so the reminder gets unregistered and the
+        // archive row reads NoContest rather than being left to a forfeit tick that will never come
+        // (a cancelled lobby has already left AwaitingOpponent, so TryForfeit can no longer reach it).
+        if (!wasOver && _match.IsOver) await SettleAsync();
+        return true;
+    }
+
+    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels)
+    {
+        if (_match is null) return false;
+
+        DuelSettings settings;
+        try
+        {
+            settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
+        }
+        catch (ArgumentException)
+        {
+            return false; // an invalid combination refuses the change outright, same as at creation
+        }
+
+        if (!_match.UpdateSettings(playerId, settings)) return false;
+
+        await SaveAsync();
         return true;
     }
 
@@ -163,37 +250,46 @@ public sealed class MatchGrain(
 
         var settled = new HashSet<string>(progress.SettledPlayers);
 
-        var byId = (await questions.GetManyAsync(m.QuestionIds)).ToDictionary(q => q.Id);
-        var categories = m.QuestionIds.Select(id => byId.GetValueOrDefault(id)?.CategoryId ?? "unknown").ToList();
-
-        foreach (var (playerId, run) in Sides(m))
+        // A cancelled lobby has nothing to settle: LeaveAsync's Cancel path leaves WinnerId null and
+        // IsDraw false for a reason that has nothing to do with anyone's run ("nobody in first place",
+        // not "everybody lost") — scoring that as a Loss would penalise a lone owner who had already
+        // served themself some questions before cancelling. Mirrors LiveMatchSettlement's identical
+        // guard for its own NoContest. Added here for the first time: before LeaveAsync/Cancel, an
+        // async match could never actually reach NoContest, so this branch was unreachable.
+        if (m.State != MatchState.NoContest)
         {
-            if (run is null || settled.Contains(playerId)) continue;
+            var byId = (await questions.GetManyAsync(m.QuestionIds)).ToDictionary(q => q.Id);
+            var categories = m.QuestionIds.Select(id => byId.GetValueOrDefault(id)?.CategoryId ?? "unknown").ToList();
 
-            var outcome = m.IsDraw ? MatchOutcome.Draw : (m.WinnerId == playerId ? MatchOutcome.Win : MatchOutcome.Loss);
-            var correct = run.Answers.Select(a => a.Correct).ToList();
-            var answeredCategories = categories.Take(correct.Count).ToList();
+            foreach (var (playerId, run) in Sides(m))
+            {
+                if (run is null || settled.Contains(playerId)) continue;
 
-            // No abandonment on the async path: TryForfeit ends the match but does not distinguish a
-            // quitter from an ordinary loser the way a live duel's abandonment does, so abandonedAt is
-            // always null here. The grain owns nothing else — PlayerGrain applies the result, and the
-            // guest exclusion and the unconditional leaderboard projection are its job, not this one's.
-            //
-            // If this throws — a real or simulated storage failure inside PlayerGrain — it propagates
-            // straight out of SettleAsync without touching `settled` or the checkpoint below, so a
-            // retry (the next reminder tick, or the next activation) attempts this exact player again
-            // rather than silently skipping them as done.
-            await GrainFactory.GetGrain<IPlayerGrain>(playerId).SettleMatchAsync(m.Id, (int)outcome, run.Score, answeredCategories, correct, null);
+                var outcome = m.IsDraw ? MatchOutcome.Draw : (m.WinnerId == playerId ? MatchOutcome.Win : MatchOutcome.Loss);
+                var correct = run.Answers.Select(a => a.Correct).ToList();
+                var answeredCategories = categories.Take(correct.Count).ToList();
 
-            settled.Add(playerId);
+                // No abandonment on the async path: TryForfeit ends the match but does not distinguish a
+                // quitter from an ordinary loser the way a live duel's abandonment does, so abandonedAt is
+                // always null here. The grain owns nothing else — PlayerGrain applies the result, and the
+                // guest exclusion and the unconditional leaderboard projection are its job, not this one's.
+                //
+                // If this throws — a real or simulated storage failure inside PlayerGrain — it propagates
+                // straight out of SettleAsync without touching `settled` or the checkpoint below, so a
+                // retry (the next reminder tick, or the next activation) attempts this exact player again
+                // rather than silently skipping them as done.
+                await GrainFactory.GetGrain<IPlayerGrain>(playerId).SettleMatchAsync(m.Id, (int)outcome, run.Score, answeredCategories, correct, null);
 
-            // Checkpointed after every participant's effect, not once at the end: a crash between two
-            // participants leaves exactly the one already applied on record, so a resume only ever
-            // re-attempts whoever it never actually finished. PlayerGrain's own per-(match, player)
-            // dedup marker is what actually makes a repeated attempt for the same player safe — this
-            // checkpoint only saves re-deriving and re-applying an effect that dedup would have turned
-            // into a no-op anyway, which is why losing this exact write can no longer corrupt anything.
-            await SaveProgressAsync(new SettlementProgress(false, [.. settled]));
+                settled.Add(playerId);
+
+                // Checkpointed after every participant's effect, not once at the end: a crash between two
+                // participants leaves exactly the one already applied on record, so a resume only ever
+                // re-attempts whoever it never actually finished. PlayerGrain's own per-(match, player)
+                // dedup marker is what actually makes a repeated attempt for the same player safe — this
+                // checkpoint only saves re-deriving and re-applying an effect that dedup would have turned
+                // into a no-op anyway, which is why losing this exact write can no longer corrupt anything.
+                await SaveProgressAsync(new SettlementProgress(false, [.. settled]));
+            }
         }
 
         await SaveProgressAsync(new SettlementProgress(true, [.. settled]));
