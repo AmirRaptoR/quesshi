@@ -84,13 +84,38 @@ something already authoritative — `Player.Stats.TotalScore`, which `RecordResu
 a no-op by construction, the floor stops being duplicated in two places, and `PenaliseAsync`'s
 "two penalties racing past the floor" problem disappears with the method.
 
-**Stats deduplicate on the player document.** `ApplyResultAsync` and `RecordAbandonmentAsync` take
-the match id and record it in a capped list of settled match ids on `Player`, written in the *same*
-`UpsertAsync` as the stat change — one Mongo write, so the marker and the effect cannot come apart. A
-second call for the same match id is a no-op.
+**One player operation per match, not two.** Settlement today calls `ApplyResultAsync` and then, for
+a quitter, `RecordAbandonmentAsync` — two writes for one player's settlement. A single settled-match
+marker cannot guard both: recording the result would mark the match settled and turn the abandonment
+penalty into a no-op. Rather than key the marker by `(matchId, effectKind)` and keep the two-call
+dance, the two collapse into one grain call — `SettleMatchAsync(matchId, outcome, score, categoryIds,
+correct, abandoned)` — which applies the result and, if `abandoned`, the penalty, in a single
+mutation. `RecordAbandonmentAsync`'s penalty return value disappears with it: the penalty moves
+`TotalScore`, and the leaderboard projection below reads that.
+
+**Stats deduplicate on the player document.** That one call records the match id in a capped list of
+settled match ids on `Player`, written in the *same* `UpsertAsync` as the stat change — one Mongo
+write, so the marker and the effect cannot come apart. A second call for the same match id skips the
+mutation.
 *Ceiling:* the list is capped (200 entries, oldest evicted), so a duel settling later than 200
 subsequent duels for the same player could double-apply. That is far outside the retry window this
 guards, and the alternative is an unbounded list on a hot document.
+
+**The leaderboard projection is written unconditionally, outside the dedup guard.** Mongo and Redis
+are two stores: the stat write and its marker can commit and the `SetAsync` that follows can still
+fail. If the retry saw the marker and skipped everything, the leaderboard would stay stale forever
+while the match happily marked itself settled. So the order inside the grain call is: apply the stats
+if the marker says they are not applied, then **always** project `Stats.TotalScore` with `SetAsync`,
+then return. Repeating an absolute write costs nothing, which is precisely why it can be
+unconditional — a duplicate call is what repairs the leaderboard rather than what corrupts it.
+
+**A failed write must not leave the cache believing it succeeded.** `PlayerGrain` mutates `_player`
+and *then* awaits `players.UpsertAsync(_player)`. When that write fails, the activation is left
+holding stats and a settled-match marker Mongo never stored — and a retry inside the same activation
+would read that marker and skip an effect that was never persisted. So every write path invalidates
+the cache on a failed or ambiguous write: `_player` is dropped and reloaded from the repository
+before the next use, and the failure is rethrown so the caller retries against a truthful cache. The
+test that matters here is a retry *within one activation*, not across a reactivation.
 
 **With those two, the grain checkpoint is only an optimisation** — it saves re-walking participants,
 and its loss can no longer corrupt anything. It stays for that reason: `SettledPlayers` plus a
@@ -422,8 +447,12 @@ set — with categories and levels left empty, which is only ever displayed, nev
 
 This same rule is what keeps a live legacy record coherent: it too has its questions and cannot have
 them changed.
-- `MatchDoc` gets the same tolerance plus a one-time backfill (`Participants = [ChallengerId,
-  OpponentId]`, `OwnerId = ChallengerId`). `MongoContext`'s two compound indexes — `ChallengerId` +
+- `MatchDoc` gets the same tolerance plus a one-time backfill: `OwnerId = ChallengerId`, and
+  `Participants = [ChallengerId]` **plus `OpponentId` only when it is not null**. A legacy lobby
+  nobody joined has a null opponent, and including it would invent a phantom second participant —
+  which would both corrupt its standings and contradict the free seat the record is meant to keep
+  open. The same filter applies to snapshot conversion, and participant results are constructed only
+  for participants that exist. `MongoContext`'s two compound indexes — `ChallengerId` +
   `CreatedAt` descending, and `OpponentId` + `CreatedAt` descending — are then replaced by one
   multikey compound index on `Participants` + `CreatedAt` descending, and `MongoMatchArchive`'s
   `Eq(ChallengerId) || Eq(OpponentId)` filter becomes a single `AnyEq`. The unique index on `Code`,
@@ -445,7 +474,21 @@ Redis migration — waiting will not make it safe, and the spec should not prete
 
 ## 6. Order of work
 
-Each step green before the next.
+Each step green before the next — which is a promise the steps cannot keep on their own. Replacing
+`ChallengerId`/`OpponentId`, changing `Create`'s signature and swapping `ArchivedMatch`'s two score
+fields breaks every grain, mapper and test that names them, all of which live in later steps. Keeping
+step 1 green therefore requires **temporary compatibility adapters, written as part of step 1 and
+deleted in step 8**:
+
+- `ChallengerId` and `OpponentId` survive as computed accessors over `Participants` (`Participants[0]`
+  and `Participants.ElementAtOrDefault(1)`), marked obsolete.
+- `Create` keeps its current overload, delegating to the settings-based one with a capacity of 2 and
+  the question set pre-drawn.
+- `ArchivedMatch` keeps `ChallengerScore`/`OpponentScore` as computed projections of the first two
+  participant results.
+
+Each adapter dies with the step that migrates its last consumer, and step 8 fails the build if any
+survive. Without them the sequence is not a sequence — it is one commit pretending to be eight.
 
 0. **Connect live settlement** — the prerequisite above. Call `LiveMatchSettlement` from
    `LiveMatchGrain`, fix its archive mapper's code field, add durable per-player settlement progress
@@ -468,11 +511,15 @@ Each step green before the next.
    `AllowGuest` on the `PUT`, the avatar field, and the leaderboard moved inside the grain as an
    absolute `SetAsync`. Independent of the lobby work and fixes two live bugs, so it can move earlier
    — and step 0 wants the `SetAsync` change anyway, so in practice that part lands with step 0.
-7. **Guest upgrade** — last, because it depends only on step 6 and should not hold the rest up.
+7. **Guest upgrade** — depends only on step 6 and should not hold the rest up.
+8. **Delete the adapters** — the obsolete accessors, the legacy `Create` overload and the archive
+   score projections listed above. Nothing but this step removes them, and leaving them is how a
+   two-shape domain becomes permanent.
 
 Step 0 is visible — live duels start affecting stats and the leaderboard, which they should have been
 doing all along. Steps 1 and 2 are invisible; the app otherwise behaves exactly as it does now until
-step 3. That is deliberate — work can stop after any step and still leave a working game.
+step 3. That is deliberate — work can stop after any step and still leave a working game, though
+stopping before step 8 leaves the adapters in place.
 
 ## Out of scope
 
