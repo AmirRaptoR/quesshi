@@ -308,6 +308,34 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .stand-row__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stand-row__score { font-size: var(--step-1); }
 
+/* --- lobby: a room people are standing in, from two seats to eight -------- */
+/* Every seat renders the same size and shape whether it holds someone or not, wrapped and centred
+   rather than stretched — a two-player lobby is two tiles side by side, not two tiles pretending to
+   fill an eight-wide row, which is what would make it read as emptier than it does today. */
+.lobby-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
+.lobby-seat {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 9rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: rgb(47 191 176 / 0.06);
+}
+.lobby-seat--me { border-color: var(--line-2); background: rgb(232 168 58 / 0.09); }
+.lobby-seat--empty {
+  justify-content: center;
+  color: var(--sadaf-3);
+  border-style: dashed;
+  background: transparent;
+}
+.lobby-seat__ghost {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  color: var(--sadaf-3);
+}
+
 /* --- presence: who could actually play right now -------------------------- */
 .dot--online {
   flex: none;

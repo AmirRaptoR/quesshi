@@ -1,0 +1,102 @@
+@* The four controls a duel's shape is picked from: length, language, difficulty, categories. Home.razor
+   originated all four; issue #53 pulls them out here so the lobby page's owner edits a lobby's
+   DuelSettings with the exact same taps rather than a second, slightly-different picker — "reuse
+   rather than reinvent" is the whole point. ReadOnly disables every control without hiding them, which
+   is what a non-owner (or an owner once the question set is drawn) sees: the same shape, inert. *@
+@using Quesshi.Shared
+@inject Translator L
+
+<div class="field" style="margin-top:.9rem">
+    <label>@L["home.length"]</label>
+    <div class="segmented" role="group" aria-label="@L["home.length"]">
+        @foreach (var count in QuestionCounts)
+        {
+            var value = count;
+            <button type="button" class="segmented__option @(Questions == value ? "is-on" : null)"
+                    aria-pressed="@((Questions == value).ToString().ToLowerInvariant())"
+                    disabled="@ReadOnly" @onclick="() => SetQuestionsAsync(value)">
+                @L.Num(value)
+            </button>
+        }
+    </div>
+</div>
+
+<div class="field">
+    <label>@L["lang.pick"]</label>
+    <div class="segmented" role="group" aria-label="@L["lang.pick"]">
+        @foreach (var code in Translator.All)
+        {
+            var pick = code;
+            <button type="button" class="segmented__option @(Lang == pick ? "is-on" : null)"
+                    aria-pressed="@((Lang == pick).ToString().ToLowerInvariant())"
+                    disabled="@ReadOnly" @onclick="() => SetLangAsync(pick)">@L["lang." + pick]</button>
+        }
+    </div>
+</div>
+
+<div class="field" style="margin-top:.9rem">
+    <label>@L["home.levels"]</label>
+    <div class="picker">
+        @foreach (var level in Levels)
+        {
+            var value = level;
+            <button type="button" class="picker__chip @(PickedLevels.Contains(value) ? "is-on" : null)"
+                    style="--pick:var(--zaferan)" aria-pressed="@(PickedLevels.Contains(value).ToString().ToLowerInvariant())"
+                    disabled="@ReadOnly" @onclick="() => ToggleLevelAsync(value)">
+                @L["level." + value]
+            </button>
+        }
+    </div>
+    <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
+        @(PickedLevels.Count == 0 ? L["home.anyLevel"] : L.Format("home.pickedCount", L.Num(PickedLevels.Count)))
+    </p>
+</div>
+
+<div class="field" style="margin-top:.9rem">
+    <label>@L["home.categories"]</label>
+    <div class="picker">
+        @foreach (var category in Categories)
+        {
+            var id = category.Id;
+            var playable = category.Langs is null || category.Langs.Contains(Lang);
+            <button type="button" class="picker__chip @(PickedCategories.Contains(id) ? "is-on" : null)"
+                    style="--pick:@category.Color" disabled="@(ReadOnly || !playable)"
+                    title="@(playable ? null : L["home.noneInLanguage"])"
+                    aria-pressed="@(PickedCategories.Contains(id).ToString().ToLowerInvariant())"
+                    @onclick="() => ToggleCategoryAsync(id)">
+                <span aria-hidden="true">@category.Icon</span> @category.Name
+            </button>
+        }
+    </div>
+    <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
+        @(PickedCategories.Count == 0 ? L["home.anyCategory"] : L.Format("home.pickedCount", L.Num(PickedCategories.Count)))
+    </p>
+</div>
+
+@code {
+    /// <summary>Mirrors MatchRules.QuestionCountChoices; the server rejects anything else anyway.</summary>
+    private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
+
+    /// <summary>Mirrors Difficulty. Nothing picked means the whole ramp, as with categories.</summary>
+    private static readonly int[] Levels = [1, 2, 3, 4, 5];
+
+    [Parameter, EditorRequired] public List<CategoryDto> Categories { get; set; } = [];
+    [Parameter, EditorRequired] public ISet<string> PickedCategories { get; set; } = new HashSet<string>();
+    [Parameter, EditorRequired] public ISet<int> PickedLevels { get; set; } = new HashSet<int>();
+    [Parameter] public int Questions { get; set; }
+    [Parameter] public EventCallback<int> QuestionsChanged { get; set; }
+    [Parameter] public string Lang { get; set; } = "";
+    [Parameter] public EventCallback<string> LangChanged { get; set; }
+    [Parameter] public EventCallback<string> CategoryToggled { get; set; }
+    [Parameter] public EventCallback<int> LevelToggled { get; set; }
+
+    /// <summary>Every control renders exactly as it does for the owner, just inert — a non-owner (or
+    /// an owner once the question set is drawn) sees the identical shape the owner is choosing from,
+    /// not a second, cut-down summary of it.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    private Task SetQuestionsAsync(int value) => ReadOnly ? Task.CompletedTask : QuestionsChanged.InvokeAsync(value);
+    private Task SetLangAsync(string value) => ReadOnly ? Task.CompletedTask : LangChanged.InvokeAsync(value);
+    private Task ToggleLevelAsync(int value) => ReadOnly ? Task.CompletedTask : LevelToggled.InvokeAsync(value);
+    private Task ToggleCategoryAsync(string id) => ReadOnly ? Task.CompletedTask : CategoryToggled.InvokeAsync(id);
+}

@@ -114,8 +114,8 @@ public static class AuthEndpoints
 
         var challenger = await players.GetAsync(found.ChallengerId);
         var summary = view.ToSummary(guest.Id, id => id == guest.Id
-            ? (guest.DisplayName, guest.AvatarSeed)
-            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id));
+            ? (guest.DisplayName, guest.AvatarSeed, true)
+            : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id, challenger?.IsGuest ?? false));
 
         return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), summary));
     }

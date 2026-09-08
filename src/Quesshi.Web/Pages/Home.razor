@@ -30,71 +30,10 @@
             <section class="card card--taq enter">
                 <span class="eyebrow">@L["home.newDuel"]</span>
 
-                <div class="field" style="margin-top:.9rem">
-                    <label>@L["home.length"]</label>
-                    <div class="segmented" role="group" aria-label="@L["home.length"]">
-                        @foreach (var count in QuestionCounts)
-                        {
-                            var value = count;
-                            <button type="button" class="segmented__option @(_questions == value ? "is-on" : null)"
-                                    aria-pressed="@((_questions == value).ToString().ToLowerInvariant())" @onclick="() => _questions = value">
-                                @L.Num(value)
-                            </button>
-                        }
-                    </div>
-                </div>
-
-                <div class="field">
-                    <label>@L["lang.pick"]</label>
-                    <div class="segmented" role="group" aria-label="@L["lang.pick"]">
-                        @foreach (var code in Translator.All)
-                        {
-                            var pick = code;
-                            <button type="button" class="segmented__option @(_lang == pick ? "is-on" : null)"
-                                    aria-pressed="@((_lang == pick).ToString().ToLowerInvariant())"
-                                    @onclick="() => ChooseLang(pick)">@L["lang." + pick]</button>
-                        }
-                    </div>
-                </div>
-
-                <div class="field" style="margin-top:.9rem">
-                    <label>@L["home.levels"]</label>
-                    <div class="picker">
-                        @foreach (var level in Levels)
-                        {
-                            var value = level;
-                            <button type="button" class="picker__chip @(_levels.Contains(value) ? "is-on" : null)"
-                                    style="--pick:var(--zaferan)" aria-pressed="@(_levels.Contains(value).ToString().ToLowerInvariant())"
-                                    @onclick="() => ToggleLevel(value)">
-                                @L["level." + value]
-                            </button>
-                        }
-                    </div>
-                    <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
-                        @(_levels.Count == 0 ? L["home.anyLevel"] : L.Format("home.pickedCount", L.Num(_levels.Count)))
-                    </p>
-                </div>
-
-                <div class="field" style="margin-top:.9rem">
-                    <label>@L["home.categories"]</label>
-                    <div class="picker">
-                        @foreach (var category in _categories)
-                        {
-                            var id = category.Id;
-                            var playable = Playable(category);
-                            <button type="button" class="picker__chip @(_picked.Contains(id) ? "is-on" : null)"
-                                    style="--pick:@category.Color" disabled="@(!playable)"
-                                    title="@(playable ? null : L["home.noneInLanguage"])"
-                                    aria-pressed="@(_picked.Contains(id).ToString().ToLowerInvariant())"
-                                    @onclick="() => Toggle(id)">
-                                <span aria-hidden="true">@category.Icon</span> @category.Name
-                            </button>
-                        }
-                    </div>
-                    <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
-                        @(_picked.Count == 0 ? L["home.anyCategory"] : L.Format("home.pickedCount", L.Num(_picked.Count)))
-                    </p>
-                </div>
+                <DuelSettingsPicker Categories="_categories" PickedCategories="_picked" PickedLevels="_levels"
+                                    Questions="_questions" QuestionsChanged="(int v) => _questions = v"
+                                    Lang="@_lang" LangChanged="ChooseLang"
+                                    CategoryToggled="Toggle" LevelToggled="ToggleLevel" />
 
                 @if (_liveWaiting)
                 {
@@ -168,9 +107,6 @@
 
     /// <summary>Mirrors MatchRules.QuestionCountChoices; the server rejects anything else anyway.</summary>
     private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
-
-    /// <summary>Mirrors Difficulty. Nothing picked means the whole ramp, as with categories.</summary>
-    private static readonly int[] Levels = [1, 2, 3, 4, 5];
 
     private List<MatchSummaryDto> _active = [];
     private List<CategoryDto> _categories = [];

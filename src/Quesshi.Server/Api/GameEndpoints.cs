@@ -375,9 +375,9 @@ public static class GameEndpoints
                 .SelectMany(ParticipantIds)
                 .Concat(liveRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
                 .Distinct()]))
-            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed));
+            .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed, p.IsGuest));
 
-        (string, string) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id);
+        (string, string, bool) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id, false);
 
         var summaries = asyncViews.Select(v => v.ToSummary(meId, Lookup))
             .Concat(liveRows.Select(r => r.ToLiveSummary(meId, Lookup)));
@@ -412,14 +412,14 @@ public static class GameEndpoints
 
     private static async Task<MatchSummaryDto> ToSummaryAsync(MatchView view, string meId, IPlayerRepository players)
     {
-        var names = new Dictionary<string, (string, string)>();
+        var names = new Dictionary<string, (string, string, bool)>();
         foreach (var id in ParticipantIds(view))
         {
             var p = await players.GetAsync(id);
-            names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id);
+            names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id, p?.IsGuest ?? false);
         }
 
-        return view.ToSummary(meId, id => names.GetValueOrDefault(id, ("—", id)));
+        return view.ToSummary(meId, id => names.GetValueOrDefault(id, ("—", id, false)));
     }
 
     private static async Task<List<RevealedQuestionDto>> BuildRevealAsync(MatchView view, string meId,

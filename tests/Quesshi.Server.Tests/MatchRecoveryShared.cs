@@ -19,4 +19,5 @@ public static class MatchRecoveryShared
     public static readonly FakeLeaderboard Leaderboard = new();
     public static readonly FakePlayers Players = new();
     public static readonly FaultyMatchStorage Storage = new();
+    public static readonly FakeLiveNotifier Notifier = new();
 }

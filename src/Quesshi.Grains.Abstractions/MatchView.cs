@@ -20,4 +20,14 @@ public sealed record MatchView(
     [property: Id(6)] bool IsDraw,
     [property: Id(7)] DateTimeOffset CreatedAt,
     [property: Id(8)] List<string> QuestionIds,
-    [property: Id(9)] List<RunView> Runs);
+    [property: Id(9)] List<RunView> Runs,
+    /// <summary>How many seats this lobby has, fixed at creation — issue #53's lobby page addition.
+    /// Every pre-lobby match was exactly two seats, which is why every reader built before this field
+    /// existed can keep assuming that by simply not looking at it.</summary>
+    [property: Id(10)] int Capacity = 2,
+    /// <summary>The rest of <c>Match.Settings</c> — language already crosses as <see cref="Lang"/>.
+    /// <see cref="QuestionCount"/> is the owner's *pick*, not <see cref="QuestionIds"/>.Count, which
+    /// stays zero until Start draws the set; the two agree only once that has happened.</summary>
+    [property: Id(11)] int QuestionCount = 0,
+    [property: Id(12)] List<string>? CategoryIds = null,
+    [property: Id(13)] List<int>? Levels = null);

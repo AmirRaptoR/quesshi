@@ -1,7 +1,6 @@
 @page "/live/{MatchId}"
 @inherits PageBase
 @implements IAsyncDisposable
-@inject IJSRuntime Js
 @inject Func<string, LiveClient> ClientFactory
 
 <PageTitle>@L["live.title"] · @L["app.name"]</PageTitle>
@@ -33,24 +32,10 @@
 
         @if (body == LiveBody.Lobby)
         {
-            <section class="card card--taq enter" style="text-align:center">
-                <span class="eyebrow">@L["live.lobby.waiting"]</span>
-                <p class="faint" style="margin-top:.5rem">@LobbyExpiry</p>
-            </section>
-
-            <section class="card card--flat enter">
-                <span class="eyebrow">@L["result.share"]</span>
-                <div class="row" style="margin-top:.7rem">
-                    <code class="grow live-code" dir="ltr">@_view.Code</code>
-                    <button class="btn btn--ghost btn--sm" @onclick="CopyAsync">
-                        @(_copied ? L["result.copied"] : L["result.copyLink"])
-                    </button>
-                </div>
-                <p class="faint" dir="ltr" style="margin:.5rem 0 0;font-size:var(--step--1);word-break:break-all">@ShareLink</p>
-                <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["result.shareHint"]</p>
-            </section>
-
-            <button class="btn btn--ghost btn--block enter" style="margin-top:1rem" @onclick="CancelLobbyAsync">@L["live.lobby.cancel"]</button>
+            @* Issue #53: replaced by a redirect to /lobby/{code} — see ConnectAsync's own remarks.
+               This branch is never actually reached; it stays only so LivePhaseSelector's five bodies
+               still cover every phase this switch could in principle see. *@
+            <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
         }
         else if (body == LiveBody.Countdown)
         {
@@ -298,7 +283,6 @@
 
     private bool _locked;
     private int? _myChoice;
-    private bool _copied;
 
     /// <summary>
     /// Every id in here has hit <c>LiveRules.MissesBeforeAbandon</c> and is done playing for good — a
@@ -396,6 +380,11 @@
         SyncLocalAnswerState();
         SyncEliminatedFromView();
         _boundMatchId = MatchId;
+
+        // Issue #53: a duel still sitting in its lobby phase has nothing for this page to show — that
+        // is now /lobby/{code}'s job, roster and share code both, replacing the inline "waiting for
+        // your opponent" card this page used to render for LiveBody.Lobby.
+        if (_view is { Phase: "lobby" }) Nav.NavigateTo($"/lobby/{_view.Code}", replace: true);
     }
 
     private Task Toggle(bool reconnecting)
@@ -546,12 +535,6 @@
         catch { /* rejected as late or duplicate — the reveal that follows is authoritative */ }
     }
 
-    private async Task CancelLobbyAsync()
-    {
-        await Api.CancelLiveAsync(MatchId);
-        Nav.NavigateTo("/");
-    }
-
     private async Task RequestRematchAsync()
     {
         if (_client is null) return;
@@ -577,21 +560,10 @@
         }
     }
 
-    private async Task CopyAsync()
-    {
-        _copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
-        StateHasChanged();
-    }
-
     // --- derived state ------------------------------------------------------------------------------
 
     private bool TimeUp => _view?.CurrentCard is { } c && DateTimeOffset.UtcNow + Skew >= c.EndsAt;
     private TimeSpan Skew => _client?.Skew ?? TimeSpan.Zero;
-    private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_view!.Code}";
-
-    private string LobbyExpiry => _view?.LobbyEndsAt is { } endsAt
-        ? L.Format("live.lobby.expiresIn", L.Num(RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew)))
-        : "";
 
     private int CountdownDigit => _view?.PhaseEndsAt is { } endsAt
         ? RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew)

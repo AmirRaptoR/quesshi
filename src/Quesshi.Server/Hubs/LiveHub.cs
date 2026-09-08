@@ -43,6 +43,29 @@ public sealed class LiveHub(
     public Task Leave(string matchId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId));
 
     /// <summary>
+    /// The async-lobby twin of <see cref="Join"/> — issue #53's one bit of new plumbing. An async duel
+    /// has no gameplay transport of its own (<c>ServeNext</c>/<c>Answer</c> stay plain REST: a run
+    /// advances on the player's own schedule, not a shared clock), but its lobby phase wants the same
+    /// live roster/settings push a live lobby gets, and <see cref="ILiveNotifier.LobbyUpdatedAsync"/>
+    /// already reaches this hub's per-match group regardless of which grain fired it. Rather than
+    /// stand up a second hub — one that would have to re-earn guest access <c>LobbyHub</c> deliberately
+    /// refuses — this just adds the connection to the same group. It returns nothing: unlike
+    /// <see cref="Join"/>'s <see cref="LiveViewDto"/>, there is no matching async view type this hub
+    /// could build without pulling in the whole of <c>Mappers.ToSummary</c>'s dependencies for a page
+    /// that already has to call <c>GET /api/matches/{id}</c> over REST anyway.
+    /// </summary>
+    public async Task JoinAsyncLobby(string matchId)
+    {
+        var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
+        var view = await grains.GetGrain<IMatchGrain>(matchId).GetAsync(meId);
+        if (view is null) throw new HubException("not_a_participant");
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId));
+    }
+
+    public Task LeaveAsyncLobby(string matchId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId));
+
+    /// <summary>
     /// No return value on purpose: right/wrong is withheld until <c>RoundRevealed</c> reaches both
     /// players together, and the grain's own answer already returns nothing but success either way.
     /// </summary>

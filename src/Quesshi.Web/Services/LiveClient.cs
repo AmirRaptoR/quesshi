@@ -17,6 +17,11 @@ public sealed class LiveClient : IAsyncDisposable
     private readonly HubConnection _connection;
     private string? _matchId;
 
+    /// <summary>Set by <see cref="JoinAsyncLobbyAsync"/>, cleared by <see cref="LeaveAsync"/> — which
+    /// hub method a reconnect's rejoin (<see cref="OnReconnectedAsync"/>) and a deliberate leave
+    /// invoke depends on this, since an async lobby has no <c>Join</c>/catch-up view to rejoin with.</summary>
+    private bool _asyncLobby;
+
     public event Action<LiveRoundCardDto>? RoundStarted;
     public event Action<LiveRoundRevealDto>? RoundRevealed;
     public event Action<LiveEndedDto>? Ended;
@@ -44,6 +49,14 @@ public sealed class LiveClient : IAsyncDisposable
 
     /// <summary>The rematch lobby could not be created — the live kill switch is off.</summary>
     public event Action? RematchFailed;
+
+    /// <summary>
+    /// Issue #53's lobby page: the roster or the settings changed while the lobby is still open.
+    /// Carries no payload — see <c>ILiveNotifier.LobbyUpdatedAsync</c>'s own remarks — so a listener
+    /// re-fetches (<c>Api.JoinAsync</c>/<c>JoinLiveAsync</c>, both idempotent for someone already
+    /// seated) rather than reading a pushed view straight off the event.
+    /// </summary>
+    public event Action? LobbyUpdated;
 
     /// <summary>
     /// Fires after a reconnect's automatic rejoin completes, with the fresh catch-up view. Whatever
@@ -81,6 +94,7 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<LivePlayerEliminatedDto>("PlayerEliminated", e => PlayerEliminated?.Invoke(e));
         _connection.On<RematchCreatedDto>("RematchCreated", r => RematchCreated?.Invoke(r));
         _connection.On("RematchFailed", () => RematchFailed?.Invoke());
+        _connection.On("LobbyUpdated", () => LobbyUpdated?.Invoke());
     }
 
     internal HubConnection Connection => _connection;
@@ -100,6 +114,7 @@ public sealed class LiveClient : IAsyncDisposable
     public async Task<LiveViewDto> JoinAsync(string matchId, CancellationToken ct = default)
     {
         _matchId = matchId;
+        _asyncLobby = false;
         var view = JoinInvokerOverrideForTests is { } overriddenJoin
             ? await overriddenJoin(matchId)
             : await _connection.InvokeAsync<LiveViewDto>("Join", matchId, ct);
@@ -108,11 +123,40 @@ public sealed class LiveClient : IAsyncDisposable
         return view;
     }
 
+    /// <summary>
+    /// Issue #53's lobby page: the async-lobby twin of <see cref="JoinAsync"/>, against
+    /// <c>LiveHub.JoinAsyncLobby</c>. No catch-up view comes back over this hub method — an async
+    /// duel's state is already fetched over plain REST (<c>GET /api/matches/{id}</c>, called via a
+    /// join-by-code that is idempotent for someone already seated) — this only proves membership and
+    /// joins the same per-match group so <see cref="LobbyUpdated"/> pushes arrive. False means the
+    /// invoke could not be sent, the same convention every other bool-returning method here uses.
+    /// </summary>
+    public async Task<bool> JoinAsyncLobbyAsync(string matchId, CancellationToken ct = default)
+    {
+        _matchId = matchId;
+        _asyncLobby = true;
+        try
+        {
+            await _connection.InvokeAsync("JoinAsyncLobby", matchId, ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Leaves whichever group this connection last joined — <see cref="JoinAsync"/>'s live
+    /// duel or <see cref="JoinAsyncLobbyAsync"/>'s async lobby — and clears the state a reconnect
+    /// would otherwise rejoin against.</summary>
     public Task LeaveAsync(CancellationToken ct = default)
     {
         var matchId = _matchId;
+        var wasAsyncLobby = _asyncLobby;
         _matchId = null;
-        return matchId is null ? Task.CompletedTask : _connection.InvokeAsync("Leave", matchId, ct);
+        _asyncLobby = false;
+        if (matchId is null) return Task.CompletedTask;
+        return _connection.InvokeAsync(wasAsyncLobby ? "LeaveAsyncLobby" : "Leave", matchId, ct);
     }
 
     public Task AnswerAsync(string matchId, int round, int choiceIndex, CancellationToken ct = default)
@@ -121,9 +165,13 @@ public sealed class LiveClient : IAsyncDisposable
     public Task<RematchOutcomeDto> RematchAsync(string matchId, CancellationToken ct = default)
         => _connection.InvokeAsync<RematchOutcomeDto>("Rematch", matchId, ct);
 
-    /// <summary>The reconnected handler: without this, a page that survives a drop would be stuck on stale state forever.</summary>
-    internal Task OnReconnectedAsync(string? connectionId)
-        => _matchId is { } id ? RejoinAsync(id) : Task.CompletedTask;
+    /// <summary>The reconnected handler: without this, a page that survives a drop would be stuck on
+    /// stale state forever. An async lobby has no catch-up view to rejoin with — it simply rejoins the
+    /// group, and the lobby page's own state is whatever it last fetched over REST until the next
+    /// <see cref="LobbyUpdated"/> push (or a manual refresh) brings it current.</summary>
+    internal Task OnReconnectedAsync(string? connectionId) => _matchId is not { } id
+        ? Task.CompletedTask
+        : _asyncLobby ? _connection.InvokeAsync("JoinAsyncLobby", id) : RejoinAsync(id);
 
     private async Task RejoinAsync(string matchId)
     {

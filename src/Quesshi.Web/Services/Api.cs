@@ -25,7 +25,8 @@ public sealed class Api(HttpClient http)
 
     // --- profile ---
     public Task<MeDto?> MeAsync() => GetAsync<MeDto>("api/me");
-    public Task<MeDto?> SaveProfileAsync(string displayName, string lang) => PutAsync<MeDto>("api/me", new UpdateProfileDto(displayName, lang));
+    public Task<MeDto?> SaveProfileAsync(string displayName, string lang, string? avatarSeed = null)
+        => PutAsync<MeDto>("api/me", new UpdateProfileDto(displayName, lang, avatarSeed));
     public Task<List<CategoryDto>?> CategoriesAsync() => GetAsync<List<CategoryDto>>("api/categories");
     public Task<List<FriendDto>?> SearchPlayersAsync(string q) => GetAsync<List<FriendDto>>($"api/players/search?q={Uri.EscapeDataString(q)}");
     public Task<bool> AddFriendAsync(string id) => SendAsync(HttpMethod.Post, $"api/friends/{id}");
@@ -52,6 +53,14 @@ public sealed class Api(HttpClient http)
     public Task<LiveViewDto?> JoinLiveAsync(string code) => PostAsync<LiveViewDto>($"api/live/join/{Uri.EscapeDataString(Code(code))}", new { });
     public Task<LiveViewDto?> LiveAsync(string id) => GetAsync<LiveViewDto>($"api/live/{id}");
     public Task<bool> CancelLiveAsync(string id) => SendAsync(HttpMethod.Delete, $"api/live/{id}");
+
+    // --- lobby (issue #53): the same three calls for either duel kind, routed by IsLive -------------
+    public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
+    public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");
+    public Task<bool> UpdateLobbySettingsAsync(string id, bool isLive, UpdateDuelSettingsDto settings)
+        => PutJsonAsync($"{LobbyBase(isLive)}/{id}/settings", settings);
+
+    private static string LobbyBase(bool isLive) => isLive ? "api/live" : "api/matches";
 
     public Task<bool> ReportQuestionAsync(string questionId, string reason)
         => PostJsonAsync("api/report", new ReportQuestionDto(questionId, reason));
@@ -109,6 +118,12 @@ public sealed class Api(HttpClient http)
     private async Task<bool> PostJsonAsync(string url, object body)
     {
         try { return (await http.PostAsJsonAsync(url, body)).IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    private async Task<bool> PutJsonAsync(string url, object body)
+    {
+        try { return (await http.PutAsJsonAsync(url, body)).IsSuccessStatusCode; }
         catch { return false; }
     }
 

@@ -40,6 +40,24 @@ public class LiveClientTests
     }
 
     /// <summary>
+    /// Issue #53's lobby page: the async-lobby twin of JoinAsync, against a never-started connection —
+    /// the same "without a live socket" case QueueRandomAsync/ChallengeAsync/etc. all prove for
+    /// LobbyClient. Unlike JoinAsync (which has no such guard and lets a real invoke failure surface,
+    /// since JoinInvokerOverrideForTests exists specifically to avoid ever hitting the wire in a test),
+    /// this returns false rather than throwing — there is no override seam for it, so a real duel
+    /// grain would have to answer, and a page calling this while disconnected must not crash on it.
+    /// </summary>
+    [Fact]
+    public async Task JoinAsyncLobbyAsync_does_not_throw_when_the_connection_is_not_active()
+    {
+        await using var client = NewClient();
+
+        var joined = await client.JoinAsyncLobbyAsync("m1");
+
+        Assert.False(joined);
+    }
+
+    /// <summary>
     /// Never started, so this is exactly "without a live socket". Invokes the connection's own
     /// Reconnected delegate directly (rather than calling LiveClient's handler by name) so this
     /// actually proves the handler was subscribed to HubConnection.Reconnected, not merely that the

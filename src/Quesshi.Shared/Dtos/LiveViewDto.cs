@@ -33,4 +33,17 @@ public sealed record LiveViewDto(
     string Code = "",
     DateTimeOffset? LobbyEndsAt = null,
     LiveRoundCardDto? CurrentCard = null,
-    string? CurrentExplanation = null);
+    string? CurrentExplanation = null,
+    /// <summary>How many seats this lobby has — issue #53's lobby page addition, fixed at creation
+    /// and unrelated to <see cref="Participants"/>.Count, which only ever names the seats actually
+    /// filled so far. Defaulted to 2 for callers built before this field existed.</summary>
+    int Capacity = 2,
+    /// <summary>What the owner picked (or, for a legacy record, what can be reconstructed of it —
+    /// see <c>DuelSettingsDto</c>'s own remarks). Never null on a live duel: every <c>LiveMatch</c>
+    /// carries a <c>Settings</c> from creation, lobby or not.</summary>
+    DuelSettingsDto? Settings = null,
+    /// <summary>Mirrors the one existing rule this whole page is built around: settings stop being
+    /// editable once the question set is drawn (<c>QuestionIds</c> non-empty), which is exactly
+    /// <see cref="TotalRounds"/> &gt; 0 — see <c>LiveMatchGrain</c>'s own <c>ViewAsync</c>, where
+    /// <c>TotalRounds</c> is literally <c>QuestionIds.Count</c>.</summary>
+    bool SettingsLocked = false);

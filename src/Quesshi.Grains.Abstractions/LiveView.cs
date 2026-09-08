@@ -39,4 +39,14 @@ public sealed record LiveView(
     /// has already ended, cannot rebuild this from the fields above — <see cref="AbandonedBy"/> names
     /// at most one abandoner, so a duel with two would rank the second by score instead of below the
     /// first. The domain already knows the answer exactly; there is no reason for a reader to guess it.</summary>
-    [property: Id(16)] List<LiveStandingView> Standings);
+    [property: Id(16)] List<LiveStandingView> Standings,
+    /// <summary>How many seats this lobby has, fixed at creation — issue #53's lobby page addition.
+    /// Every pre-lobby duel was exactly two seats, which is why every reader built before this field
+    /// existed can keep assuming that by simply not looking at it.</summary>
+    [property: Id(17)] int Capacity = 2,
+    /// <summary>The rest of <c>LiveMatch.Settings</c> — language already crosses as <see cref="Lang"/>.
+    /// <see cref="QuestionCount"/> is the owner's *pick*, not <see cref="TotalRounds"/>, which stays
+    /// zero until Start draws the set; the two agree only once that has happened.</summary>
+    [property: Id(18)] int QuestionCount = 0,
+    [property: Id(19)] List<string>? CategoryIds = null,
+    [property: Id(20)] List<int>? Levels = null);

@@ -72,7 +72,7 @@ public static class Mappers
     /// Turns the grain's view into what this player is allowed to see. The grain has already
     /// redacted the opponent's answers; this only decides wording and what the UI may offer.
     /// </summary>
-    public static MatchSummaryDto ToSummary(this MatchView v, string me, Func<string, (string Name, string Avatar)> lookup)
+    public static MatchSummaryDto ToSummary(this MatchView v, string me, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
     {
         var myRun = v.Runs.FirstOrDefault(r => r.PlayerId == me);
 
@@ -86,13 +86,13 @@ public static class Mappers
         var otherId = v.Participants.FirstOrDefault(id => id != me);
         var theirRun = otherId is null ? null : v.Runs.FirstOrDefault(r => r.PlayerId == otherId);
 
-        var (myName, myAvatar) = lookup(me);
+        var (myName, myAvatar, _) = lookup(me);
         var mine = new PlayerSideDto(me, myName, myAvatar, myRun?.Score ?? 0, myRun?.Correct ?? 0, myRun?.Answered ?? 0, myRun?.Finished ?? false);
 
         PlayerSideDto? theirs = null;
         if (otherId is not null)
         {
-            var (name, avatar) = lookup(otherId);
+            var (name, avatar, _) = lookup(otherId);
             theirs = new PlayerSideDto(otherId, name, avatar, theirRun?.Score ?? 0, theirRun?.Correct ?? 0, theirRun?.Answered ?? 0, theirRun?.Finished ?? false);
         }
 
@@ -102,9 +102,21 @@ public static class Mappers
 
         var outcome = !over ? "pending" : OutcomeFor(me, v.Runs);
 
+        // Issue #53's lobby page addition: the whole roster, in join order, plus the settings the
+        // owner picked (or, for a legacy pre-drawn record, reconstructed with empty categories/levels
+        // — see DuelSettings' own remarks) and Capacity. Every field the two-sided Me/Opponent shape
+        // above cannot express for a capacity>2 lobby.
+        var participants = v.Participants.Select(id =>
+        {
+            var (name, avatar, isGuest) = lookup(id);
+            return new LiveParticipantDto(id, name, avatar, isGuest);
+        }).ToList();
+        var settings = new DuelSettingsDto(((Language)v.Lang).Code(), v.QuestionCount, v.CategoryIds ?? [], v.Levels ?? []);
+
         return new MatchSummaryDto(v.Id, v.Code, ((Language)v.Lang).Code(), state.ToString().ToLowerInvariant(),
             mine, theirs, v.WinnerId, v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
-            v.QuestionIds.Count);
+            v.QuestionIds.Count, IsLive: false, Participants: participants, Capacity: v.Capacity,
+            Settings: settings, SettingsLocked: v.QuestionIds.Count > 0);
     }
 
     /// <summary>
@@ -135,7 +147,7 @@ public static class Mappers
     /// holds every field the list needs. A live duel is never <c>CanPlay</c> — it advances on its own
     /// clock whether or not this player is looking — so the row offers Rejoin instead of Play.
     /// </summary>
-    public static MatchSummaryDto ToLiveSummary(this ArchivedMatch m, string me, Func<string, (string Name, string Avatar)> lookup)
+    public static MatchSummaryDto ToLiveSummary(this ArchivedMatch m, string me, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
     {
         // Every score, mine and theirs, is read off Results by matching PlayerId — never off the
         // legacy ChallengerId/OpponentId-keyed ChallengerScore/OpponentScore this used to switch on.
@@ -152,13 +164,13 @@ public static class Mappers
 
         var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
 
-        var (myName, myAvatar) = lookup(me);
+        var (myName, myAvatar, _) = lookup(me);
         var mine = new PlayerSideDto(me, myName, myAvatar, myScore, 0, 0, over);
 
         PlayerSideDto? theirs = null;
         if (otherId is not null)
         {
-            var (name, avatar) = lookup(otherId);
+            var (name, avatar, _) = lookup(otherId);
             theirs = new PlayerSideDto(otherId, name, avatar, otherScore, 0, 0, over);
         }
 
@@ -251,7 +263,9 @@ public static class Mappers
             BuildColdStandings(v, state, lookup),
             v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code,
             phase == LivePhase.Lobby ? v.CreatedAt + LiveRules.LobbyExpires : null,
-            card, explanation);
+            card, explanation, v.Capacity,
+            new DuelSettingsDto(((Language)v.Lang).Code(), v.QuestionCount, v.CategoryIds ?? [], v.Levels ?? []),
+            SettingsLocked: v.TotalRounds > 0);
     }
 
     /// <summary>

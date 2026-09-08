@@ -48,4 +48,17 @@ public interface ILiveNotifier
 
     /// <summary>The lobby could not be created — the live kill switch was off.</summary>
     Task RematchFailedAsync(string matchId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Issue #53's lobby page: the roster or the settings changed while it is still open — a join, a
+    /// leave, an owner's settings edit, or the owner pressing Start. No payload, deliberately: unlike
+    /// every push above, a lobby page load already has to fetch its full state over plain REST (there
+    /// is no lobby-only "GetAsync" equivalent that fits this interface's live-duel-shaped methods), so
+    /// this is a pure "something changed, re-fetch" signal rather than a second copy of that mapping.
+    /// Fired by both <c>LiveMatchGrain</c> and <c>MatchGrain</c> — the one interface both grains share
+    /// a notifier through, and the reason an async lobby needs no notifier of its own: the transport
+    /// this reuses (<c>LiveHub</c>'s per-match SignalR group) already exists and already reaches
+    /// guests, which a brand-new hub would have to re-earn.
+    /// </summary>
+    Task LobbyUpdatedAsync(string matchId, CancellationToken ct = default);
 }

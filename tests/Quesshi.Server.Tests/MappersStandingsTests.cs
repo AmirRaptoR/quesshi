@@ -16,7 +16,7 @@ namespace Quesshi.Server.Tests;
 /// </summary>
 public class MappersStandingsTests
 {
-    private static (string Name, string Avatar) Lookup(string id) => (id, id);
+    private static (string Name, string Avatar, bool IsGuest) Lookup(string id) => (id, id, false);
 
     [Fact]
     public void ToLiveSummary_100_100_50_reads_two_draws_and_a_loss_from_Results_not_the_scalars()

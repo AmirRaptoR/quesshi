@@ -33,6 +33,8 @@ public sealed class FakeLiveNotifier : ILiveNotifier
         => Record("RematchCreated", matchId, (newMatchId, newMatchCode));
     public Task RematchFailedAsync(string matchId, CancellationToken ct = default)
         => Record("RematchFailed", matchId, matchId);
+    public Task LobbyUpdatedAsync(string matchId, CancellationToken ct = default)
+        => Record("LobbyUpdated", matchId, matchId);
 
     private Task Record(string kind, string matchId, object payload)
     {
