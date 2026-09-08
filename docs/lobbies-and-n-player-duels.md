@@ -88,10 +88,28 @@ a no-op by construction, the floor stops being duplicated in two places, and `Pe
 a quitter, `RecordAbandonmentAsync` — two writes for one player's settlement. A single settled-match
 marker cannot guard both: recording the result would mark the match settled and turn the abandonment
 penalty into a no-op. Rather than key the marker by `(matchId, effectKind)` and keep the two-call
-dance, the two collapse into one grain call — `SettleMatchAsync(matchId, outcome, score, categoryIds,
-correct, abandoned)` — which applies the result and, if `abandoned`, the penalty, in a single
-mutation. `RecordAbandonmentAsync`'s penalty return value disappears with it: the penalty moves
-`TotalScore`, and the leaderboard projection below reads that.
+dance, the two collapse into one grain call, applied as a single mutation:
+
+```
+SettleMatchAsync(string matchId, MatchOutcome? outcome, int score,
+                 List<string> categoryIds, List<bool> correct,
+                 DateTimeOffset? abandonedAt)
+```
+
+**Both effects are optional, because `NoContest` needs a penalty with no result.** `MatchOutcome` is
+`{ Win, Loss, Draw }` — it has no value meaning "nothing happened" — and the `NoContest` rule above
+requires penalising an abandoner while leaving wins, losses, draws and answer stats untouched. So a
+null `outcome` records no result and no answer stats, and a null `abandonedAt` applies no penalty.
+Every combination is one atomic mutation under one marker.
+
+**`abandonedAt` is an event time, not a processing time.** `Player.RecordAbandonment(now)` uses its
+argument twice: it prunes entries older than `LiveRules.AbandonmentWindow` (seven days) and appends
+`now` as the moment this abandonment counts from, and `LiveRules.AbandonmentPenalty` scales with how
+many are inside the window. A boolean plus wall-clock would mean a retry an hour later — or a
+recovery a day later — computes a different penalty and extends how long it counts against the
+player. The caller passes the match's `EndedAt`, which is fixed the moment the duel ends and is
+therefore identical on every retry. `RecordAbandonmentAsync`'s penalty return value disappears with
+the merge: the penalty moves `TotalScore`, and the leaderboard projection below reads that.
 
 **Stats deduplicate on the player document.** That one call records the match id in a capped list of
 settled match ids on `Player`, written in the *same* `UpsertAsync` as the stat change — one Mongo
@@ -347,9 +365,21 @@ alternative is a placement-aware rating system, which is a different project.
 
 **Async, N-player.** One `PlayerRun` per player as now. The match resolves when every participant's
 run is finished, or when `Match.TryForfeit`'s clock ends it, at which point unfinished runs score
-whatever they banked. `CanReveal` keeps its rule — you see others only once your own run is finished
-— and what you then see is every participant who has also finished, with the rest marked as still
-playing. Standings land when the last run does.
+whatever they banked.
+
+While the match is running, `CanReveal` keeps its rule — you see others only once your own run is
+finished — and what you then see is every participant who has also finished, with the rest marked as
+still playing.
+
+**Forfeiture finalises everything.** Standings cannot wait for "the last run to finish" when
+forfeiture is precisely the case where some run never will, and a player who never finished cannot be
+held behind their own `CanReveal` forever. So the terminal state is authoritative: forfeiture
+computes standings from whatever each player banked, and results are revealed to **everyone**,
+finished or not. This is the rule `MatchGrain` already applies — `var reveal = m.CanReveal(forPlayerId)
+|| m.IsOver;` (`MatchGrain.cs:172`) — carried into the N-player standings rather than left to apply
+only to the two-score view. Unfinished runs are marked **expired**, not "still playing": the duel is
+over, and showing a live-looking state for a run that can never resume is a lie the UI would have to
+keep telling.
 
 ## 4. Guest identity and upgrade
 
