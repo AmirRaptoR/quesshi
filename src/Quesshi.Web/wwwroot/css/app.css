@@ -573,6 +573,27 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .segmented__option:hover { color: var(--sadaf); }
 .segmented__option.is-on { color: var(--shab); background: var(--firouzeh); }
 
+/* --- stepper: "how many seats", a control that matters only occasionally sitting quietly beside
+   the button that matters every time, rather than a whole segmented row daring you to notice it --- */
+.stepper { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.55rem; border: 1px solid var(--line); border-radius: 999px; }
+.stepper__btn {
+  width: 1.6rem; height: 1.6rem;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font: inherit;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--sadaf);
+  background: rgb(47 191 176 / 0.14);
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+.stepper__btn:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+.stepper__btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.stepper__value { min-width: 1.1rem; text-align: center; }
+
 .picker { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .picker__chip {
   display: inline-flex;

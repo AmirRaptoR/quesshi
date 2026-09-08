@@ -55,6 +55,15 @@ public sealed class Api(HttpClient http)
     public Task<bool> CancelLiveAsync(string id) => SendAsync(HttpMethod.Delete, $"api/live/{id}");
 
     // --- lobby (issue #53): the same three calls for either duel kind, routed by IsLive -------------
+    // Home.razor's own gap: "Invite a friend" only ever went through CreateMatchAsync above, a fixed
+    // capacity-2 duel, so a capacity above two has nowhere to go without this. It stays the async
+    // lobby specifically — CreateMatchLobbyAsync mirrors CreateMatchAsync's own duel kind rather than
+    // introducing a live one "Invite a friend" never offered either, so the button's meaning does not
+    // shift underneath a player who only ever asked for more seats.
+    public Task<MatchSummaryDto?> CreateMatchLobbyAsync(int capacity, string? lang, List<string>? categories = null,
+        int? questions = null, List<int>? levels = null)
+        => PostAsync<MatchSummaryDto>("api/matches/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
+
     public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
     public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");
     public Task<bool> UpdateLobbySettingsAsync(string id, bool isLive, UpdateDuelSettingsDto settings)

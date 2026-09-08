@@ -53,10 +53,26 @@
                 else
                 {
                     <div class="stack" style="margin-top:1rem">
-                        <button class="btn btn--block" disabled="@_busy" @onclick="() => StartAsync(random: false)">
-                            <span>@L["home.friend"]</span>
-                        </button>
-                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.friendHint"]</p>
+                        <div class="row">
+                            <button class="btn grow" disabled="@_busy" @onclick="InviteFriendAsync">
+                                <span>@L["home.friend"]</span>
+                            </button>
+
+                            @* A two-player duel needs no choice at all — the stepper simply starts on the
+                               default it has always created, so pressing the button beside it is still
+                               the entire flow. Reaching for it is the only extra step, and only for the
+                               player who wants more than two. *@
+                            <div class="stepper" role="group" aria-label="@L["home.seats"]">
+                                <button type="button" class="stepper__btn" disabled="@(_busy || _capacity <= 2)"
+                                        aria-label="@L["home.seatsFewer"]" @onclick="() => SetCapacity(_capacity - 1)">−</button>
+                                <span class="stepper__value numeral">@L.Num(_capacity)</span>
+                                <button type="button" class="stepper__btn" disabled="@(_busy || _capacity >= 8)"
+                                        aria-label="@L["home.seatsMore"]" @onclick="() => SetCapacity(_capacity + 1)">+</button>
+                            </div>
+                        </div>
+                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">
+                            @(_capacity == 2 ? L["home.friendHint"] : L.Format("home.friendHintLobby", L.Num(_capacity)))
+                        </p>
 
                         <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="() => StartAsync(random: true)">
                             <span>@L["home.random"]</span>
@@ -113,6 +129,11 @@
     private readonly HashSet<string> _picked = [];
     private readonly HashSet<int> _levels = [];
     private int _questions = QuestionCounts[0];
+
+    /// <summary>Two is the effortless default — the overwhelmingly common case — and the only value
+    /// that keeps "Invite a friend" behaving exactly as it always has; see InviteFriendAsync.</summary>
+    private int _capacity = 2;
+
     private string _code = "";
     private string _lang = "";
     private string? _error;
@@ -214,13 +235,19 @@
         if (!_levels.Remove(level)) _levels.Add(level);
     }
 
+    private void SetCapacity(int value) => _capacity = Math.Clamp(value, 2, 8);
+
+    /// <summary>What both "Invite a friend" and "Random opponent" send: nothing picked means
+    /// "surprise me", the server draws it itself.</summary>
+    private (List<string>? Categories, List<int>? Levels) Selection()
+        => (_picked.Count == 0 ? null : (List<string>?)[.. _picked],
+            _levels.Count == 0 ? null : (List<int>?)[.. _levels.Order()]);
+
     private async Task StartAsync(bool random)
     {
         _busy = true; _error = null;
 
-        // Nothing picked means "surprise me" — the server draws three categories itself.
-        var categories = _picked.Count == 0 ? null : (List<string>?)[.. _picked];
-        var levels = _levels.Count == 0 ? null : (List<int>?)[.. _levels.Order()];
+        var (categories, levels) = Selection();
         State.SetLastLiveSettings(_lang, _questions, categories, levels);
 
         var match = await Api.CreateMatchAsync(random, _lang, categories, _questions, levels);
@@ -228,7 +255,31 @@
 
         if (match is null) { _error = L["common.error"]; return; }
 
-        Nav.NavigateTo(match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}");
+        Nav.NavigateTo(InviteFriendPlan.Route(match));
+    }
+
+    /// <summary>
+    /// "Invite a friend" itself: capacity 2 is indistinguishable from what this button always did,
+    /// down to the exact endpoint and the exact landing page — see <see cref="InviteFriendPlan"/>'s
+    /// own remarks for why that branch is the one worth a named seam. Anything wider opens the async
+    /// lobby instead (issue #53's addition the button never reached before this), and sends the owner
+    /// to share its code rather than into a duel that has no opponent yet.
+    /// </summary>
+    private async Task InviteFriendAsync()
+    {
+        if (!InviteFriendPlan.NeedsLobby(_capacity)) { await StartAsync(random: false); return; }
+
+        _busy = true; _error = null;
+
+        var (categories, levels) = Selection();
+        State.SetLastLiveSettings(_lang, _questions, categories, levels);
+
+        var lobby = await Api.CreateMatchLobbyAsync(_capacity, _lang, categories, _questions, levels);
+        _busy = false;
+
+        if (lobby is null) { _error = L["common.error"]; return; }
+
+        Nav.NavigateTo(InviteFriendPlan.LobbyRoute(lobby.Code));
     }
 
     private async Task JoinAsync()
