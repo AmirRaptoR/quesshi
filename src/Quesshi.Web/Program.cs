@@ -22,8 +22,11 @@ builder.Services.AddTransient<Func<string, LiveClient>>(sp => hubUrl =>
 
 // One LobbyClient for the whole session, unlike LiveClient above — the app shell holds it so an
 // invitation arrives wherever the player is, not just on one page — and MainLayout starts and stops
-// it as the player signs in and out.
-builder.Services.AddSingleton(sp =>
+// it as the player signs in and out. Scoped, not singleton: WebAssemblyHost renders the component
+// tree inside its own scope, so a singleton here would capture a second, never-initialised AppState
+// and hand the hub a null token — a 401 on every negotiate. One scope per WASM app makes scoped and
+// "for the whole session" the same thing anyway.
+builder.Services.AddScoped(sp =>
 {
     var appState = sp.GetRequiredService<AppState>();
     var hubUrl = new Uri(new Uri(builder.HostEnvironment.BaseAddress), "hub/lobby").ToString();
