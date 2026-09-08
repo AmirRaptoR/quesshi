@@ -21,9 +21,7 @@ namespace Quesshi.Grains;
 public sealed class LiveMatchSettlement(
     IGrainFactory grainFactory,
     IQuestionRepository questions,
-    IMatchArchive archive,
-    IPlayerRepository players,
-    ILeaderboard leaderboard)
+    IMatchArchive archive)
 {
     /// <summary>Mirrors a live duel into the archive so it can be listed and found by code — call this
     /// on start and, via <see cref="SettleAsync"/>, again on end, exactly as <c>MatchGrain.IndexAsync</c> does.</summary>
@@ -49,18 +47,15 @@ public sealed class LiveMatchSettlement(
             // The quitter forfeits everything banked in this duel; a bonus for the other side is
             // exactly what would make abandonment farmable, so they get their real score and nothing more.
             var score = isQuitter ? 0 : m.Score(playerId);
+            var abandonedAt = isQuitter ? m.EndedAt ?? DateTimeOffset.UtcNow : (DateTimeOffset?)null;
 
-            await grainFactory.GetGrain<IPlayerGrain>(playerId).ApplyResultAsync((int)outcome, score, categories, correct);
-
-            // A guest keeps their own result but stays off the board, as MatchGrain.SettleAsync requires.
-            var isGuest = (await players.GetAsync(playerId))?.IsGuest == true;
-            if (!isGuest) await leaderboard.AddAsync(playerId, score);
-
-            if (isQuitter)
-            {
-                var penalty = await grainFactory.GetGrain<IPlayerGrain>(playerId).RecordAbandonmentAsync(m.EndedAt ?? DateTimeOffset.UtcNow);
-                if (!isGuest && penalty > 0) await leaderboard.PenaliseAsync(playerId, penalty);
-            }
+            // One grain call for both effects: the result and, for the side that walked away, the
+            // abandonment penalty. A single settled-match marker cannot guard two separate grain
+            // calls without one of them silently no-opping the other, so they have to land together.
+            // The grain itself owns the guest exclusion and the unconditional leaderboard projection —
+            // this class no longer touches IPlayerRepository or ILeaderboard directly.
+            await grainFactory.GetGrain<IPlayerGrain>(playerId)
+                .SettleMatchAsync(m.Id, (int)outcome, score, categories, correct, abandonedAt);
         }
     }
 

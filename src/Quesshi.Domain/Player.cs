@@ -5,6 +5,15 @@ public sealed class Player
     private readonly Dictionary<string, CategoryRecord> _byCategory = [];
     private readonly HashSet<string> _friends = [];
     private readonly List<DateTimeOffset> _abandonments = [];
+    private readonly List<string> _settledMatchIds = [];
+
+    /// <summary>
+    /// How many settled match ids one player document remembers for dedup. A duel that somehow
+    /// settles later than this many subsequent duels for the same player could double-apply — far
+    /// outside any real retry or recovery window — and the alternative is an unbounded list on what
+    /// is otherwise a small, hot document.
+    /// </summary>
+    public const int MaxSettledMatchIds = 200;
 
     private Player(string id, string email, string displayName, Language lang, DateTimeOffset createdAt)
     {
@@ -37,6 +46,9 @@ public sealed class Player
     /// <summary>Every abandonment still inside the rolling window, oldest first, as of the last time one was recorded.</summary>
     public IReadOnlyList<DateTimeOffset> Abandonments => _abandonments;
 
+    /// <summary>The most recent <see cref="MaxSettledMatchIds"/> match ids this player has been settled for, oldest first.</summary>
+    public IReadOnlyList<string> SettledMatchIds => _settledMatchIds;
+
     public static Player Register(string id, string email, string displayName, Language lang, DateTimeOffset now)
         => new(id, email.Trim().ToLowerInvariant(), displayName.Trim(), lang, now);
 
@@ -65,19 +77,72 @@ public sealed class Player
     }
 
     /// <summary>
-    /// A live duel walked away from. Prunes anything outside <see cref="LiveRules.AbandonmentWindow"/>,
-    /// counts this one in, and charges whatever that count costs straight out of the score already
-    /// banked — floored at zero, same as every other place a score can move. Returns the penalty so
-    /// the caller can apply the identical amount to the leaderboard.
+    /// A live duel walked away from. <paramref name="at"/> is an event time — the match's own
+    /// <c>EndedAt</c> — not wall-clock, and it need not arrive in order: a settlement that fails and
+    /// retries, or a recovery days later, can settle a duel that ended after one that ended earlier.
+    /// So <paramref name="at"/> is inserted into <see cref="_abandonments"/> in timestamp order, and
+    /// the tier is computed from whatever is on record inside the window around <paramref name="at"/>
+    /// itself — <c>(at - AbandonmentWindow, at]</c> — rather than around whenever this happens to run.
+    /// An abandonment whose timestamp is after <paramref name="at"/> is excluded by that upper bound
+    /// regardless of when it was inserted, which is what keeps a late-processed but early-dated
+    /// abandonment from being charged for one that, from its own point in time, had not happened yet.
+    /// The penalty is charged straight out of the score already banked, floored at zero same as every
+    /// other place a score can move. Returns the penalty so the caller can mirror it onto the
+    /// leaderboard.
     /// </summary>
-    public int RecordAbandonment(DateTimeOffset now)
+    /// <remarks>
+    /// This can only ever undercharge relative to a fully order-aware reconciliation, never
+    /// overcharge: if a later-dated duel settles first, its tier is computed without an earlier duel
+    /// that has not been inserted yet, and inserting that earlier duel afterwards does not retroactively
+    /// raise a tier already applied. Making that exact would mean storing every event's applied penalty
+    /// and reconciling the whole window on every late arrival — real machinery for a case that needs a
+    /// settlement to lag another by days. A deterrent that occasionally undercharges is a fair trade for
+    /// one that can never overcharge.
+    /// </remarks>
+    public int RecordAbandonment(DateTimeOffset at)
     {
-        _abandonments.RemoveAll(at => now - at >= LiveRules.AbandonmentWindow);
-        _abandonments.Add(now);
+        var index = _abandonments.BinarySearch(at);
+        _abandonments.Insert(index < 0 ? ~index : index, at);
 
-        var penalty = LiveRules.AbandonmentPenalty(_abandonments.Count);
+        var windowStart = at - LiveRules.AbandonmentWindow;
+        var countInWindow = _abandonments.Count(a => a > windowStart && a <= at);
+
+        var penalty = LiveRules.AbandonmentPenalty(countInWindow);
         if (penalty > 0) Stats = Stats with { TotalScore = Stats.TotalScore - penalty };
+
+        PruneAbandonments();
         return penalty;
+    }
+
+    /// <summary>
+    /// Drops entries that can no longer count towards any future tier — older than the window
+    /// relative to the newest entry on record. Purely a lazy eviction of history, run after the tier
+    /// above is already computed and applied, so it can never be the reason a penalty changes; it only
+    /// keeps the list from growing forever.
+    /// </summary>
+    private void PruneAbandonments()
+    {
+        if (_abandonments.Count == 0) return;
+        var newest = _abandonments[^1];
+        _abandonments.RemoveAll(a => newest - a >= LiveRules.AbandonmentWindow);
+    }
+
+    /// <summary>
+    /// Test-and-record: applies <paramref name="applyStatChange"/> and remembers <paramref name="matchId"/>
+    /// as settled in the same call, so the two can never come apart — there is no gap where a crash
+    /// could leave a stat mutation applied but unmarked, or marked but never applied. A repeat for the
+    /// same id runs the mutation zero times and returns false, which is what makes a retried settlement
+    /// call idempotent. Ids evict oldest-first past <see cref="MaxSettledMatchIds"/>.
+    /// </summary>
+    public bool TryRecordSettledMatch(string matchId, Action applyStatChange)
+    {
+        if (_settledMatchIds.Contains(matchId)) return false;
+
+        applyStatChange();
+
+        _settledMatchIds.Add(matchId);
+        if (_settledMatchIds.Count > MaxSettledMatchIds) _settledMatchIds.RemoveAt(0);
+        return true;
     }
 
     public void RecordAnswer(string categoryId, bool correct)
@@ -97,7 +162,7 @@ public sealed class Player
     public void RemoveFriend(string playerId) => _friends.Remove(playerId);
 
     public PlayerSnapshot ToSnapshot() => new(Id, Email, DisplayName, AvatarSeed, Lang, IsBanned, CreatedAt, Stats,
-        new Dictionary<string, CategoryRecord>(_byCategory), [.. _friends], IsGuest, [.. _abandonments]);
+        new Dictionary<string, CategoryRecord>(_byCategory), [.. _friends], IsGuest, [.. _abandonments], [.. _settledMatchIds]);
 
     public static Player FromSnapshot(PlayerSnapshot s)
     {
@@ -111,6 +176,7 @@ public sealed class Player
         foreach (var (k, v) in s.ByCategory) p._byCategory[k] = v;
         foreach (var f in s.Friends) p._friends.Add(f);
         if (s.Abandonments is not null) p._abandonments.AddRange(s.Abandonments);
+        if (s.SettledMatchIds is not null) p._settledMatchIds.AddRange(s.SettledMatchIds);
         return p;
     }
 }

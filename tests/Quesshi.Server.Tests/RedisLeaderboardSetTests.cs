@@ -4,12 +4,12 @@ using StackExchange.Redis;
 namespace Quesshi.Server.Tests;
 
 /// <summary>
-/// <see cref="RedisLeaderboard.PenaliseAsync"/> against a real Redis, proving the Lua script itself —
-/// not just <see cref="FakeLeaderboard"/>'s in-memory stand-in — floors at zero and never creates a
-/// member that was not already on the board. Skips itself when no Redis endpoint is reachable, so a
-/// container-free run never fails on it, matching how the rest of the suite treats no-containers.
+/// <see cref="RedisLeaderboard.SetAsync"/> against a real Redis, proving it overwrites a member's
+/// score outright rather than incrementing it — the property settlement's retry safety depends on.
+/// Skips itself when no Redis endpoint is reachable, so a container-free run never fails on it,
+/// matching how the rest of the suite treats no-containers.
 /// </summary>
-public class RedisLeaderboardPenaltyTests
+public class RedisLeaderboardSetTests
 {
     /// <summary>The same "localhost:6379" default <c>Program.cs</c> falls back to with no connection string.</summary>
     private const string Endpoint = "localhost:6379";
@@ -31,30 +31,34 @@ public class RedisLeaderboardPenaltyTests
     }
 
     [Fact]
-    public async Task A_penalty_floors_at_zero_and_never_creates_a_missing_member()
+    public async Task Setting_a_score_twice_overwrites_rather_than_accumulating()
     {
         await using var redis = await TryConnectAsync();
         if (redis is null) return; // No Redis reachable: this is what a container-free run looks like.
 
         // Randomised so this test can never collide with a real player, or with another run of
         // itself, on a Redis shared with anything else.
-        var real = $"p-redistest-{Guid.NewGuid():N}";
-        var ghost = $"p-redistest-ghost-{Guid.NewGuid():N}";
+        var id = $"p-redistest-{Guid.NewGuid():N}";
         var db = redis.GetDatabase();
         try
         {
             var board = new RedisLeaderboard(redis);
 
-            await board.AddAsync(real, 50);
-            await board.PenaliseAsync(real, 200);
-            Assert.Equal(0, await db.SortedSetScoreAsync(Key, real));
+            await board.SetAsync(id, 500);
+            Assert.Equal(500, await db.SortedSetScoreAsync(Key, id));
 
-            await board.PenaliseAsync(ghost, 200);
-            Assert.Null(await db.SortedSetScoreAsync(Key, ghost));
+            // A repeat call with the identical total — exactly what a retried settlement does — is a
+            // true no-op; a lower total, as a stale Player.Stats.TotalScore projection would produce
+            // an accidental discount, is honoured as the new absolute value, not ignored or summed.
+            await board.SetAsync(id, 500);
+            Assert.Equal(500, await db.SortedSetScoreAsync(Key, id));
+
+            await board.SetAsync(id, 300);
+            Assert.Equal(300, await db.SortedSetScoreAsync(Key, id));
         }
         finally
         {
-            await db.SortedSetRemoveAsync(Key, [real, ghost]);
+            await db.SortedSetRemoveAsync(Key, id);
         }
     }
 }

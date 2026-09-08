@@ -132,12 +132,17 @@ public sealed class MatchGrain(
             var correct = run.Answers.Select(a => a.Correct).ToList();
             var answeredCategories = categories.Take(correct.Count).ToList();
 
-            await GrainFactory.GetGrain<IPlayerGrain>(playerId).ApplyResultAsync((int)outcome, run.Score, answeredCategories, correct);
+            // No abandonment on the async path yet (forfeit is out of scope here), so abandonedAt is
+            // always null. ILeaderboard.AddAsync/PenaliseAsync no longer exist — SettleMatchAsync now
+            // also projects the leaderboard itself, but this call is kept too (minimal edit to compile;
+            // this method is being restructured for durable settlement separately) so the leaderboard
+            // still reflects the true total even before that restructuring lands.
+            await GrainFactory.GetGrain<IPlayerGrain>(playerId).SettleMatchAsync(m.Id, (int)outcome, run.Score, answeredCategories, correct, null);
 
             // A guest keeps their own result but stays off the board: a throwaway name typed once
             // should not be able to take a rank from someone playing under their own.
-            if ((await players.GetAsync(playerId))?.IsGuest != true)
-                await leaderboard.AddAsync(playerId, run.Score);
+            if (await players.GetAsync(playerId) is { IsGuest: false } player)
+                await leaderboard.SetAsync(playerId, player.Stats.TotalScore);
         }
     }
 

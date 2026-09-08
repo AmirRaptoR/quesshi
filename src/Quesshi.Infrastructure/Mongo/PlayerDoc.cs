@@ -27,6 +27,9 @@ public sealed class PlayerDoc
     /// <summary>Absent on every document written before live duels existed; the driver defaults a missing list to empty.</summary>
     public List<DateTime> Abandonments { get; set; } = [];
 
+    /// <summary>Absent on every document written before settlement dedup existed; the driver defaults a missing list to empty.</summary>
+    public List<string> SettledMatchIds { get; set; } = [];
+
     public static PlayerDoc From(Player p)
     {
         var s = p.ToSnapshot();
@@ -38,7 +41,8 @@ public sealed class PlayerDoc
             Streak = s.Stats.Streak, BestStreak = s.Stats.BestStreak, TotalScore = s.Stats.TotalScore,
             ByCategory = s.ByCategory.ToDictionary(kv => kv.Key, kv => new[] { kv.Value.Asked, kv.Value.Correct }),
             Friends = s.Friends,
-            Abandonments = [.. (s.Abandonments ?? []).Select(a => a.UtcDateTime)]
+            Abandonments = [.. (s.Abandonments ?? []).Select(a => a.UtcDateTime)],
+            SettledMatchIds = s.SettledMatchIds ?? []
         };
     }
 
@@ -46,5 +50,5 @@ public sealed class PlayerDoc
         Id, Email, DisplayName, AvatarSeed, (Language)Lang, IsBanned, new DateTimeOffset(CreatedAt, TimeSpan.Zero),
         new PlayerStats(Wins, Losses, Draws, Streak, BestStreak, TotalScore),
         ByCategory.ToDictionary(kv => kv.Key, kv => new CategoryRecord(kv.Value[0], kv.Value.Length > 1 ? kv.Value[1] : 0)),
-        Friends, IsGuest, [.. Abandonments.Select(a => new DateTimeOffset(a, TimeSpan.Zero))]));
+        Friends, IsGuest, [.. Abandonments.Select(a => new DateTimeOffset(a, TimeSpan.Zero))], SettledMatchIds));
 }

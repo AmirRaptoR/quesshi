@@ -90,4 +90,50 @@ public class AbandonmentPenaltyTests
 
         Assert.Equal(0, player.Stats.TotalScore);
     }
+
+    /// <summary>
+    /// Settlements do not arrive in event order — a retry, a recovery, or two live grains finishing at
+    /// once can settle a later duel before an earlier one. <see cref="Player.RecordAbandonment"/> has
+    /// to insert order-independently and compute each tier from the window around its own event, not
+    /// around whatever else happens to be in the list yet.
+    /// </summary>
+    [Fact]
+    public void An_abandonment_settled_before_an_earlier_one_computes_its_tier_from_its_own_window_only()
+    {
+        var player = Player.Register("p1", "a@example.com", "Amir", Language.En, Day0);
+        var monday = Day0;
+        var wednesday = Day0.AddDays(2);
+
+        // Wednesday settles first (out of event order): nothing is on record yet, so it is free.
+        Assert.Equal(0, player.RecordAbandonment(wednesday));
+
+        // Monday settles second, even though it happened earlier. Wednesday's timestamp is *after*
+        // Monday's, so it falls outside Monday's own (Monday - 7d, Monday] window regardless of
+        // having been inserted first — Monday is still a first offence from its own point in time.
+        Assert.Equal(0, player.RecordAbandonment(monday));
+
+        Assert.Equal([monday, wednesday], player.Abandonments);
+    }
+
+    /// <summary>
+    /// The flip side of the test above, stated as the doc's ceiling: out-of-order settlement can only
+    /// ever undercharge relative to a fully order-aware reconciliation, never overcharge. Once a third,
+    /// later event arrives, it correctly counts both of the out-of-order ones already on record — nothing
+    /// was permanently lost, but neither earlier tier is retroactively raised by what came after it.
+    /// </summary>
+    [Fact]
+    public void A_later_abandonment_still_counts_every_out_of_order_entry_already_on_record()
+    {
+        var player = Player.Register("p1", "a@example.com", "Amir", Language.En, Day0);
+        var monday = Day0;
+        var wednesday = Day0.AddDays(2);
+        var thursday = Day0.AddDays(3);
+
+        Assert.Equal(0, player.RecordAbandonment(wednesday));  // 1st from its own point of view
+        Assert.Equal(0, player.RecordAbandonment(monday));     // also 1st: wednesday is in its future
+        // Thursday's window contains all three (monday, wednesday, thursday itself): the third
+        // occurrence, so it costs the third tier, not the second — the earlier under-charge is not
+        // corrected, but nothing here overcharges either.
+        Assert.Equal(400, player.RecordAbandonment(thursday));
+    }
 }

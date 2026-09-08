@@ -106,4 +106,56 @@ public class PlayerTests
 
         Assert.False(Player.FromSnapshot(snapshot).IsGuest);
     }
+
+    [Fact]
+    public void TryRecordSettledMatch_runs_the_change_once_and_skips_a_repeat()
+    {
+        var p = New();
+        var runs = 0;
+
+        Assert.True(p.TryRecordSettledMatch("m1", () => runs++));
+        Assert.False(p.TryRecordSettledMatch("m1", () => runs++));
+
+        Assert.Equal(1, runs);
+        Assert.Equal(["m1"], p.SettledMatchIds);
+    }
+
+    [Fact]
+    public void TryRecordSettledMatch_caps_the_list_and_evicts_the_oldest_first()
+    {
+        var p = New();
+        for (var i = 0; i < Player.MaxSettledMatchIds + 5; i++)
+            p.TryRecordSettledMatch($"m{i}", () => { });
+
+        Assert.Equal(Player.MaxSettledMatchIds, p.SettledMatchIds.Count);
+        Assert.DoesNotContain("m0", p.SettledMatchIds);
+        Assert.DoesNotContain("m4", p.SettledMatchIds);
+        Assert.Contains("m5", p.SettledMatchIds); // the oldest survivor once eviction has caught up
+        Assert.Contains($"m{Player.MaxSettledMatchIds + 4}", p.SettledMatchIds); // the newest entry
+    }
+
+    /// <summary>The marker and the mutation it guards travel together through a snapshot round trip,
+    /// exactly as they land together in one Mongo write in <c>PlayerGrain</c>.</summary>
+    [Fact]
+    public void Settled_match_ids_survive_a_snapshot_round_trip_and_keep_deduplicating()
+    {
+        var p = New();
+        p.TryRecordSettledMatch("m1", () => p.RecordResult(MatchOutcome.Win, 10));
+
+        var restored = Player.FromSnapshot(p.ToSnapshot());
+
+        Assert.Equal(["m1"], restored.SettledMatchIds);
+        Assert.False(restored.TryRecordSettledMatch("m1", () => restored.RecordResult(MatchOutcome.Win, 999)));
+        Assert.Equal(10, restored.Stats.TotalScore);
+    }
+
+    /// <summary>A snapshot written before settlement dedup existed carries no such list at all.</summary>
+    [Fact]
+    public void A_snapshot_with_no_settled_match_ids_restores_with_an_empty_list()
+    {
+        var snapshot = new PlayerSnapshot("p1", "someone@example.com", "Someone", "p1", Language.En, false,
+            T0, PlayerStats.Empty, [], []);
+
+        Assert.Empty(Player.FromSnapshot(snapshot).SettledMatchIds);
+    }
 }

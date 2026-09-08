@@ -6,4 +6,6 @@ public sealed record PlayerSnapshot(
     /// <summary>Last and defaulted: player documents written before guests existed simply have none.</summary>
     bool IsGuest = false,
     /// <summary>Defaulted for the same reason: no player abandoned a live duel before this existed.</summary>
-    List<DateTimeOffset>? Abandonments = null);
+    List<DateTimeOffset>? Abandonments = null,
+    /// <summary>Defaulted for the same reason: no match id was deduplicated before settlement existed.</summary>
+    List<string>? SettledMatchIds = null);
