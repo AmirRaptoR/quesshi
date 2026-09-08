@@ -268,6 +268,7 @@
   "live.end.noContest": "Niemand scoorde. Het telt niet mee.",
   "live.lobby.cancel": "Annuleren",
   "live.lobby.expiresIn": "Verloopt over {0}s",
+  "live.lobby.expiresInMinutes": "Verloopt over {0} min",
   "live.lobby.waiting": "Wachten op je tegenstander…",
   "live.opponentAway": "De verbinding van je tegenstander viel weg.",
   "live.question.locked": "Antwoord vastgelegd",

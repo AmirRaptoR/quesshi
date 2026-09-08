@@ -310,9 +310,25 @@
     private ISet<string> PickedCategories => new HashSet<string>(_snapshot?.Settings.CategoryIds ?? []);
     private ISet<int> PickedLevels => new HashSet<int>(_snapshot?.Settings.Levels ?? []);
 
-    private string LobbyExpiry => _snapshot?.LobbyEndsAt is { } endsAt
-        ? L.Format("live.lobby.expiresIn", L.Num(RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, TimeSpan.Zero)))
-        : "";
+    /// <summary>
+    /// How long this lobby has left, in whichever unit reads as a duration rather than a number. The
+    /// seconds form is inherited from the old live waiting screen, where a wait really was measured in
+    /// them; a lobby lasts ten minutes, and "Expires in 588s" is arithmetic the reader has to do
+    /// themselves. Minutes round up, so the label never says "0 min" while there is still time on the
+    /// clock, and the last minute counts down in seconds where that precision starts to matter.
+    /// </summary>
+    private string LobbyExpiry
+    {
+        get
+        {
+            if (_snapshot?.LobbyEndsAt is not { } endsAt) return "";
+
+            var seconds = RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, TimeSpan.Zero);
+            return seconds >= 60
+                ? L.Format("live.lobby.expiresInMinutes", L.Num((seconds + 59) / 60))
+                : L.Format("live.lobby.expiresIn", L.Num(seconds));
+        }
+    }
 
     protected override async Task LoadAsync()
     {
