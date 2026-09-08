@@ -179,10 +179,35 @@ the cache on a failed or ambiguous write: `_player` is dropped and reloaded from
 before the next use, and the failure is rethrown so the caller retries against a truthful cache. The
 test that matters here is a retry *within one activation*, not across a reactivation.
 
-**With those two, the grain checkpoint is only an optimisation** — it saves re-walking participants,
-and its loss can no longer corrupt anything. It stays for that reason: `SettledPlayers` plus a
-`SettlementComplete` flag in grain state. `archive.SaveAsync` is a whole-row upsert and was always
-safe to repeat.
+**For duels that end after this ships, the grain checkpoint is only an optimisation** — it saves
+re-walking participants, and its loss can no longer corrupt anything. It stays for that reason:
+`SettledPlayers` plus a `SettlementComplete` flag in grain state. `archive.SaveAsync` is a whole-row
+upsert and was always safe to repeat.
+
+### Historical matches must not be settled a second time
+
+For duels that ended *before* this ships, the checkpoint is not an optimisation — it is the only
+thing standing between the upgrade and a mass double-settlement, and getting its default backwards
+would be the most damaging bug in this document.
+
+Every finished match ever played still has its grain state in Redis, because nothing calls
+`ClearStateAsync`. Those records were written by code that had no settlement fields, so a naive
+deserialisation gives `SettlementComplete = false`. Resume-on-activation then reads "over, and not
+settled" and settles it again — and `MatchGrain` is reactivated for archived rows by the async
+history listing (`GameEndpoints.cs:286`), so this fires in bulk the first time anyone opens their
+duels. The per-player dedup marker cannot save it either: historical matches were settled long before
+the marker existed, so their ids are in nobody's settled list.
+
+So the flag is **tri-state, not boolean**, and legacy means settled:
+
+- absent (no settlement block in the persisted record) — written by the old code, therefore already
+  settled by the old code. **Never settle.**
+- `false` — written by the new code, settlement started and did not finish. Resume.
+- `true` — finished.
+
+Only matches that end after the upgrade are ever eligible for resume, which is exactly the set whose
+settlement the new code is responsible for. The test is explicit: load a pre-upgrade finished record,
+activate it, and assert nothing is applied.
 
 ### Settlement needs a retry trigger, not just reactivation
 
