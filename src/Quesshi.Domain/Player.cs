@@ -65,6 +65,19 @@ public sealed class Player
     public void SetLanguage(Language lang) => Lang = lang;
     public void SetBanned(bool banned) => IsBanned = banned;
 
+    /// <summary>
+    /// Swaps which of the fixed avatar swatches this player renders as. <see cref="AvatarSeed"/> is
+    /// set to <see cref="Id"/> at construction purely so it is never empty — every player rendered
+    /// something before this setter existed — and carries no other meaning: it is not derived from
+    /// anything about the player and nothing downstream depends on its original value surviving.
+    /// Whether <paramref name="seed"/> is actually one of the offered swatches is deliberately not this
+    /// method's job — the same division <see cref="Rename"/> already draws with the caller-side length
+    /// check in <c>GameEndpoints</c> — because the palette itself (<c>Quesshi.Shared.AvatarPalette</c>)
+    /// lives above this project: <c>Quesshi.Domain</c> takes no dependency on it, or on anything else
+    /// that is a client/server wire concern rather than a player-record concern.
+    /// </summary>
+    public void SetAvatar(string seed) => AvatarSeed = seed;
+
     public void RecordResult(MatchOutcome outcome, long score = 0)
     {
         var s = Stats;

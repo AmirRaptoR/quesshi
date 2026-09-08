@@ -100,4 +100,36 @@ public sealed class PlayerGrain(IPlayerRepository players, ILeaderboard leaderbo
     [ReadOnly]
     public Task<PlayerCard?> CardAsync()
         => Task.FromResult(_player is null ? null : new PlayerCard(_player.Id, _player.DisplayName, _player.AvatarSeed));
+
+    /// <summary>
+    /// See <see cref="IPlayerGrain.UpdateProfileAsync"/> for why this exists: it is the entire body
+    /// <c>PUT /api/me</c> used to run against the repository directly. <paramref name="avatarSeed"/>
+    /// null is "leave it" rather than "clear it" — the same convention <c>UpdateProfileDto</c> already
+    /// documents — so a caller that only ever sends name and language (an old client, say) cannot
+    /// accidentally blank an avatar it never meant to touch.
+    /// </summary>
+    public async Task<bool> UpdateProfileAsync(string displayName, int lang, string? avatarSeed)
+    {
+        var player = await EnsurePlayerAsync();
+        if (player is null) return false;
+
+        player.Rename(displayName);
+        player.SetLanguage((Language)lang);
+        if (avatarSeed is not null) player.SetAvatar(avatarSeed);
+
+        await UpsertOrInvalidateAsync(player);
+        return true;
+    }
+
+    /// <summary>See <see cref="IPlayerGrain.SetBannedAsync"/> for why this exists: it is the entire
+    /// body <c>POST /admin/users/{id}/ban</c> used to run against the repository directly.</summary>
+    public async Task<bool> SetBannedAsync(bool banned)
+    {
+        var player = await EnsurePlayerAsync();
+        if (player is null) return false;
+
+        player.SetBanned(banned);
+        await UpsertOrInvalidateAsync(player);
+        return true;
+    }
 }
