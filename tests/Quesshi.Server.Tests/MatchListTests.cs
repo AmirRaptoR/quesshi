@@ -170,7 +170,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
         // A grain persists itself before it is mirrored into Mongo, so this is the state the list
         // can genuinely observe between the two writes: the duel has an opponent, the row does not.
         var row = Shared.Archive.Items.Single(m => m.Id == "lag-m0");
-        await Shared.Archive.SaveAsync(row with { OpponentId = null, OpponentScore = 0, State = MatchState.AwaitingOpponent });
+        await Shared.Archive.SaveAsync(row with { OpponentId = null, State = MatchState.AwaitingOpponent });
 
         var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 

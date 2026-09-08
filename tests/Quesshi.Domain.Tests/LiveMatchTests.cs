@@ -1076,6 +1076,115 @@ public class LiveMatchTests
         Assert.Equal(m.Abandoners, restored.Abandoners);
         Assert.Equal(m.Reason, restored.Reason);
     }
+
+    // ---- Migration: tolerating a snapshot written before Participants/Settings/Abandoners existed ----
+
+    /// <summary>
+    /// Exactly the JSON a live duel written before this migration produces — literal text, not a value
+    /// built from today's <see cref="LiveMatchSnapshot"/> and trimmed, since the point is proving the
+    /// *actual* old wire shape still deserializes. This is what <c>LiveMatchSnapshot</c> looked like
+    /// before <c>Participants</c>, <c>Capacity</c>, <c>Settings</c>, <c>Abandoners</c>, <c>Standings</c>
+    /// and <c>Reason</c> existed: <c>Lang</c>, <c>ChallengerId</c>, <c>OpponentId</c> and a plain
+    /// <c>AbandonedBy</c> id in their place.
+    /// </summary>
+    private static string LegacyJson(string opponentIdJson, string abandonedByJson, string state = "1", string phase = "1") =>
+        $$"""
+        {"Id":"live-legacy-1","Code":"LOLD01","Lang":1,"ChallengerId":"u-legacy-challenger","OpponentId":{{opponentIdJson}},
+         "QuestionIds":["lq1","lq2","lq3","lq4","lq5"],"State":{{state}},"Phase":{{phase}},"PhaseEndsAt":null,
+         "Rounds":[],"MissStreaks":{},"CreatedAt":"2026-08-19T12:00:00+00:00","EndedAt":null,
+         "WinnerId":null,"IsDraw":false,"AbandonedBy":{{abandonedByJson}} }
+        """;
+
+    [Fact]
+    public void A_legacy_snapshot_deserializes_and_restores_the_two_player_shape()
+    {
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            LegacyJson("\"u-legacy-opponent\"", "null"))!;
+
+        // The tell that this blob predates Participants: the field never appears in the JSON above,
+        // so it comes back null rather than throwing, and Lang/ChallengerId/OpponentId land in the
+        // three legacy fields instead.
+        Assert.Null(snapshot.Participants);
+        Assert.Equal("u-legacy-challenger", snapshot.ChallengerId);
+
+        var m = LiveMatch.FromSnapshot(snapshot);
+
+        Assert.Equal(["u-legacy-challenger", "u-legacy-opponent"], m.Participants);
+        Assert.Equal("u-legacy-challenger", m.OwnerId);
+        Assert.Equal(2, m.Capacity);
+        Assert.Equal(Language.En, m.Settings.Language);
+        Assert.Equal(5, m.Settings.QuestionCount);
+        Assert.Empty(m.Settings.CategoryIds);
+        Assert.Empty(m.Settings.Levels);
+    }
+
+    [Fact]
+    public void A_legacy_abandoned_duel_converts_its_plain_AbandonedBy_into_the_ordered_list()
+    {
+        // State 4 = Abandoned, Phase 4 = Over: a finished duel the opponent walked away from, exactly
+        // the shape LiveMatchGrain reactivates from the async history listing or a direct navigation
+        // years later. The round slot recorded is 0 and that is fine — a two-player record can only
+        // ever have one abandoner, so nothing ever compares it against another's.
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            LegacyJson("\"u-legacy-opponent\"", "\"u-legacy-opponent\"", state: "4", phase: "4"))!;
+        var m = LiveMatch.FromSnapshot(snapshot);
+
+        Assert.True(m.IsOver);
+        Assert.Equal([new Abandonment("u-legacy-opponent", 0)], m.Abandoners);
+        Assert.Equal("u-legacy-opponent", m.AbandonedBy);
+    }
+
+    [Fact]
+    public void A_legacy_lobby_nobody_joined_keeps_its_free_seat()
+    {
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            LegacyJson("null", "null", state: "0", phase: "0"))!;
+        var m = LiveMatch.FromSnapshot(snapshot);
+
+        Assert.Equal(["u-legacy-challenger"], m.Participants);
+        Assert.Null(m.OpponentId);
+
+        Assert.Equal(LiveJoinResult.Joined, m.TryJoin(Opponent, T0));
+        Assert.Equal(["u-legacy-challenger", Opponent], m.Participants);
+    }
+
+    [Fact]
+    public void A_legacy_records_settings_are_read_only_because_its_questions_are_already_drawn()
+    {
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            LegacyJson("null", "null", state: "0", phase: "0"))!;
+        var m = LiveMatch.FromSnapshot(snapshot);
+
+        Assert.Throws<InvalidOperationException>(() => m.DrawQuestions(Ten));
+    }
+
+    [Fact]
+    public void Both_snapshot_shapes_round_trip_through_JSON()
+    {
+        var legacy = LiveMatch.FromSnapshot(System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            LegacyJson("\"u-legacy-opponent\"", "null"))!);
+        var freshlyWritten = System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            System.Text.Json.JsonSerializer.Serialize(legacy.ToSnapshot()))!;
+
+        // A record this code writes never carries the legacy fields, even immediately after loading
+        // one that did -- ToSnapshot only ever emits the new shape.
+        Assert.Null(freshlyWritten.ChallengerId);
+        Assert.Null(freshlyWritten.AbandonedBy);
+        Assert.Equal(["u-legacy-challenger", "u-legacy-opponent"], freshlyWritten.Participants);
+
+        var restored = LiveMatch.FromSnapshot(freshlyWritten);
+        Assert.Equal(legacy.Participants, restored.Participants);
+        Assert.Equal(legacy.Settings.Language, restored.Settings.Language);
+        Assert.Equal(legacy.Settings.QuestionCount, restored.Settings.QuestionCount);
+
+        // The N-player shape itself round-trips unchanged through the same JSON path the grain uses.
+        var m3 = PlayFullDuelToResolution();
+        var restored3 = LiveMatch.FromSnapshot(System.Text.Json.JsonSerializer.Deserialize<LiveMatchSnapshot>(
+            System.Text.Json.JsonSerializer.Serialize(m3.ToSnapshot()))!);
+        Assert.Equal(m3.Participants, restored3.Participants);
+        Assert.Equal(m3.Standings, restored3.Standings);
+        Assert.Equal(m3.Abandoners, restored3.Abandoners);
+    }
 }
 
 #pragma warning restore CS0618

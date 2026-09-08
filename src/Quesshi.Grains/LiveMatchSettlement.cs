@@ -82,8 +82,26 @@ public sealed class LiveMatchSettlement(
     // every settlement and break code resolution for it from then on.
     private static ArchivedMatch ToArchived(LiveMatch m, Language lang) => new(
         m.Id, m.Code, lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
-        m.Score(m.ChallengerId), m.OpponentId is null ? 0 : m.Score(m.OpponentId),
-        m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true);
+        BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true);
+
+    /// <summary>
+    /// Score here is always the raw round total from <see cref="LiveMatch.Score"/>, never zeroed for a
+    /// quitter the way <c>Standing.Score</c> is: this is the archived history row, "what actually
+    /// happened in the game", not the stats effect — <see cref="SettleAsync"/>'s own <c>score</c> local
+    /// above already applies the zero-for-abandoner rule separately, for <c>PlayerStats</c> and the
+    /// leaderboard. Place and outcome do come from <see cref="LiveMatch.Standings"/>, the only place
+    /// that knows them for N players; a duel that ended <see cref="MatchState.NoContest"/> has no
+    /// standings at all (nobody is credited), so every participant reads as unranked there — exactly
+    /// what <c>ChallengerScore</c>/<c>OpponentScore</c> always showed for a no-contest before this type
+    /// existed, since nothing reads placement once <c>State</c> alone says nobody won.
+    /// </summary>
+    private static List<ParticipantResult> BuildResults(LiveMatch m)
+    {
+        var byId = m.Standings.ToDictionary(s => s.PlayerId);
+        return [.. Participants(m).Select(pid => byId.TryGetValue(pid, out var s)
+            ? new ParticipantResult(pid, m.Score(pid), s.Place, s.Outcome)
+            : new ParticipantResult(pid, m.Score(pid), 0, MatchOutcome.Loss))];
+    }
 
     private static IEnumerable<string> Participants(LiveMatch m)
     {

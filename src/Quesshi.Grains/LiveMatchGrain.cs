@@ -495,7 +495,8 @@ public sealed class LiveMatchGrain(
     {
         var m = _match!;
         return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
-            0, 0, m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true));
+            [.. Participants(m).Select(pid => new ParticipantResult(pid, 0, 0, MatchOutcome.Loss))],
+            m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true));
     }
 
     /// <summary>How many of the current rounds are closed (revealed or done) — every round but the

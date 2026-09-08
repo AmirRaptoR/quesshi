@@ -25,7 +25,7 @@ public class MatchListLiveTests(ClusterFixture fixture)
 
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "livelist-1", "livelist-1", Language.En, me, rival, WinnerId: null, IsDraw: false,
-            ChallengerScore: 0, OpponentScore: 0, MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
+            Results: FakeArchive.TestResults(me, rival, 0, 0), MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
             QuestionIds: [], IsLive: true));
 
         var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
@@ -60,7 +60,7 @@ public class MatchListLiveTests(ClusterFixture fixture)
         // A live duel, newer than the async one, but never playable.
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "livecap-live", "livecap-live", Language.En, me, rival, WinnerId: null, IsDraw: false,
-            ChallengerScore: 0, OpponentScore: 0, MatchState.InProgress,
+            Results: FakeArchive.TestResults(me, rival, 0, 0), MatchState.InProgress,
             Shared.Clock.Now.AddMinutes(1), EndedAt: null, QuestionIds: [], IsLive: true));
 
         var one = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: 1, Shared.Archive, Shared.Players, Grains);
@@ -80,7 +80,7 @@ public class MatchListLiveTests(ClusterFixture fixture)
 
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "livenograin-1", "livenograin-1", Language.En, me, rival, WinnerId: null, IsDraw: false,
-            ChallengerScore: 3, OpponentScore: 1, MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
+            Results: FakeArchive.TestResults(me, rival, 3, 1), MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
             QuestionIds: [], IsLive: true));
 
         var spy = GrainActivationSpy.Wrap(Grains, out var requests);
@@ -101,7 +101,7 @@ public class MatchListLiveTests(ClusterFixture fixture)
 
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "livenc-1", "livenc-1", Language.En, me, rival, WinnerId: null, IsDraw: false,
-            ChallengerScore: 0, OpponentScore: 0, MatchState.NoContest, Shared.Clock.Now, EndedAt: Shared.Clock.Now,
+            Results: FakeArchive.TestResults(me, rival, 0, 0), MatchState.NoContest, Shared.Clock.Now, EndedAt: Shared.Clock.Now,
             QuestionIds: [], IsLive: true));
 
         var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
@@ -117,7 +117,7 @@ public class MatchListLiveTests(ClusterFixture fixture)
 
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "livelobby-1", "livelobby-1", Language.En, me, OpponentId: null, WinnerId: null, IsDraw: false,
-            ChallengerScore: 0, OpponentScore: 0, MatchState.AwaitingOpponent, Shared.Clock.Now, EndedAt: null,
+            Results: FakeArchive.TestResults(me, null, 0, 0), MatchState.AwaitingOpponent, Shared.Clock.Now, EndedAt: null,
             QuestionIds: [], IsLive: true));
 
         var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
@@ -137,11 +137,11 @@ public class MatchListLiveTests(ClusterFixture fixture)
 
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "liveactive-inprogress", "liveactive-inprogress", Language.En, me, rival, WinnerId: null, IsDraw: false,
-            ChallengerScore: 0, OpponentScore: 0, MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
+            Results: FakeArchive.TestResults(me, rival, 0, 0), MatchState.InProgress, Shared.Clock.Now, EndedAt: null,
             QuestionIds: [], IsLive: true));
         await Shared.Archive.SaveAsync(new ArchivedMatch(
             "liveactive-resolved", "liveactive-resolved", Language.En, me, rival, WinnerId: me, IsDraw: false,
-            ChallengerScore: 5, OpponentScore: 2, MatchState.Resolved, Shared.Clock.Now, EndedAt: Shared.Clock.Now,
+            Results: FakeArchive.TestResults(me, rival, 5, 2), MatchState.Resolved, Shared.Clock.Now, EndedAt: Shared.Clock.Now,
             QuestionIds: [], IsLive: true));
 
         var list = await GameEndpoints.ListMatchesAsync(me, activeOnly: true, take: null, Shared.Archive, Shared.Players, Grains);
