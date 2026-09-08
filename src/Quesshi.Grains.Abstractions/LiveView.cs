@@ -33,4 +33,10 @@ public sealed record LiveView(
     [property: Id(12)] DateTimeOffset CreatedAt,
     [property: Id(13)] DateTimeOffset? EndedAt,
     [property: Id(14)] string Code,
-    [property: Id(15)] int Lang);
+    [property: Id(15)] int Lang,
+    /// <summary>The finished duel's ranking, straight off <c>LiveMatch.Standings</c> and empty while it
+    /// is still running. Carried rather than reconstructed: a client that loads a duel cold, after it
+    /// has already ended, cannot rebuild this from the fields above — <see cref="AbandonedBy"/> names
+    /// at most one abandoner, so a duel with two would rank the second by score instead of below the
+    /// first. The domain already knows the answer exactly; there is no reason for a reader to guess it.</summary>
+    [property: Id(16)] List<LiveStandingView> Standings);

@@ -730,6 +730,7 @@ public sealed class LiveMatchGrain(
         return new LiveView(
             m.Id, [.. Participants(m)], (int)m.State, (int)m.Phase, m.PhaseEndsAt,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, players, rounds,
-            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang);
+            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang,
+            [.. m.Standings.Select(s => new LiveStandingView(s.PlayerId, s.Score, s.Place, (int)s.Outcome))]);
     }
 }

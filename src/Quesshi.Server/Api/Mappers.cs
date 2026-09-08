@@ -255,49 +255,33 @@ public static class Mappers
     }
 
     /// <summary>
-    /// A best-effort standings list for whoever loads (or reloads) this duel after it is already
-    /// over, rather than watching it end live. A connected client never needs this: the "Ended" push
-    /// carries <c>LiveEndedDto.Standings</c>, computed straight off <c>LiveMatch.Standings</c> with
-    /// every abandoner correctly ranked below every finisher. This reconstruction cannot do the same,
-    /// because <see cref="LiveView.AbandonedBy"/> is still <c>LiveView</c>'s own single-id
-    /// compatibility adapter over the domain's ordered abandoners list (migrated in a later step of
-    /// issue #47, alongside <c>LiveMatchGrain</c>'s and <c>LiveEnded</c>'s identical fields) — so at
-    /// most one abandoner can be ranked last here. That is exactly the two-player case this app has
-    /// always had, and it is also the only case this method can ever be wrong about: a duel with two
-    /// or more abandoners that is reloaded cold, rather than watched live, would show the second
-    /// abandoner ranked by their (zeroed) score instead of below the first. Scores of 100/100/50 with
-    /// no abandoner still read as two draws and one loss, which is the case this exists to get right.
+    /// The standings for whoever loads (or reloads) this duel after it is already over, rather than
+    /// watching it end live. A connected client never needs this — the "Ended" push carries
+    /// <c>LiveEndedDto.Standings</c> — but a cold load has to get the same answer, and the only way to
+    /// be sure of that is to carry the domain's own ranking rather than rebuild one from the fields
+    /// around it. An earlier version reconstructed it here and could not rank a second abandoner
+    /// correctly, because <see cref="LiveView.AbandonedBy"/> names at most one; <c>LiveMatch</c> has
+    /// always known the exact order, so it is simply passed through.
     /// </summary>
     private static List<StandingRowDto> BuildColdStandings(LiveView v, MatchState state, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
     {
         if (state is not (MatchState.Resolved or MatchState.Abandoned)) return [];
 
-        var ranked = v.Players
-            .Select(p => (p.PlayerId, p.Score, IsAbandoner: p.PlayerId == v.AbandonedBy))
-            .OrderBy(p => p.IsAbandoner)
-            .ThenByDescending(p => p.IsAbandoner ? 0 : p.Score)
-            .ToList();
-
-        var places = new int[ranked.Count];
-        for (var i = 0; i < ranked.Count; i++)
+        return [.. v.Standings.Select(s =>
         {
-            var tied = i > 0 && ranked[i].IsAbandoner == ranked[i - 1].IsAbandoner
-                && (ranked[i].IsAbandoner || ranked[i].Score == ranked[i - 1].Score);
-            places[i] = tied ? places[i - 1] : i + 1;
-        }
-
-        var firstPlaceCount = places.Count(p => p == 1);
-
-        return [.. ranked.Select((p, i) =>
-        {
-            var (name, avatar, _) = lookup(p.PlayerId);
-            return new StandingRowDto(
-                p.PlayerId, name, avatar,
-                p.IsAbandoner ? 0 : p.Score,
-                places[i],
-                places[i] != 1 ? "loss" : firstPlaceCount == 1 ? "win" : "draw");
+            var (name, avatar, _) = lookup(s.PlayerId);
+            return new StandingRowDto(s.PlayerId, name, avatar, s.Score, s.Place, OutcomeWord((MatchOutcome)s.Outcome));
         })];
     }
+
+    /// <summary>The wire spelling of an outcome, shared by every standings projection so a live push
+    /// and a cold load can never disagree about what to call the same result.</summary>
+    private static string OutcomeWord(MatchOutcome outcome) => outcome switch
+    {
+        MatchOutcome.Win => "win",
+        MatchOutcome.Draw => "draw",
+        _ => "loss"
+    };
 
     /// <summary>The four pushes <see cref="ILiveNotifier"/> carries, as the wire shape <c>LiveHub</c> sends them in.</summary>
     public static LiveRoundCardDto ToDto(this LiveRoundCard c) => new(
