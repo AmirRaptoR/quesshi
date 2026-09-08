@@ -2,14 +2,28 @@ using Quesshi.Domain;
 
 namespace Quesshi.Domain.Tests;
 
+// This file exercises the temporary compatibility adapters (ChallengerId, OpponentId, AbandonedBy,
+// and the pre-lobby Create overload) deliberately and extensively — they are load-bearing for every
+// consumer above Quesshi.Domain until issue #47's later steps migrate them, and issue #56 deletes
+// them. One pragma for the whole file beats sprinkling it around every assertion that touches one.
+#pragma warning disable CS0618
+
 public class LiveMatchTests
 {
     private const string Challenger = "u-amir";
     private const string Opponent = "u-sara";
+    private const string Third = "u-vahid";
     private static readonly string[] Ten = [.. Enumerable.Range(1, MatchRules.QuestionsPerMatch).Select(i => $"q{i}")];
     private static readonly DateTimeOffset T0 = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
 
-    private static LiveMatch NewMatch() => LiveMatch.Create("lm1", "CODE01", Language.En, Challenger, Ten, T0);
+    private static DuelSettings NewSettings() => DuelSettings.Create(Language.En, MatchRules.QuestionsPerMatch, [], []);
+
+    private static LiveMatch NewMatch(int capacity = 2)
+    {
+        var m = LiveMatch.Create("lm1", "CODE01", Challenger, NewSettings(), capacity, T0);
+        m.DrawQuestions(Ten);
+        return m;
+    }
 
     private static LiveMatch Joined()
     {
@@ -22,6 +36,23 @@ public class LiveMatchTests
     private static LiveMatch InRound0()
     {
         var m = Joined();
+        m.Advance(T0 + LiveRules.StartCountdown);
+        return m;
+    }
+
+    /// <summary>A three-player lobby, filled to capacity so it has auto-started.</summary>
+    private static LiveMatch Joined3()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        m.DrawQuestions(Ten);
+        m.Join(Opponent, T0);
+        m.Join(Third, T0);
+        return m;
+    }
+
+    private static LiveMatch InRound0_3()
+    {
+        var m = Joined3();
         m.Advance(T0 + LiveRules.StartCountdown);
         return m;
     }
@@ -58,27 +89,127 @@ public class LiveMatchTests
     public void IsOver_names_resolved_forfeited_abandoned_and_no_contest()
     {
         var snapshot = new LiveMatchSnapshot(
-            "lm", "CODE01", Language.En, Challenger, Opponent, [.. Ten], MatchState.Forfeited, LivePhase.Over, null,
-            [], new Dictionary<string, int>(), T0, T0, null, false, null);
+            "lm", "CODE01", [Challenger, Opponent], 2, NewSettings(), [.. Ten], MatchState.Forfeited, LivePhase.Over, null,
+            [], new Dictionary<string, int>(), T0, T0, null, false, [], [], null);
         Assert.True(LiveMatch.FromSnapshot(snapshot).IsOver);
     }
 
-    // ---- Create ----
+    // ---- Participants, capacity and settings ----
+
+    [Fact]
+    public void A_fresh_lobby_holds_only_its_owner()
+    {
+        var m = NewMatch();
+        Assert.Equal([Challenger], m.Participants);
+        Assert.Equal(Challenger, m.OwnerId);
+        Assert.Equal(2, m.Capacity);
+        Assert.Empty(m.Standings);
+        Assert.Null(m.Reason);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void Create_rejects_a_capacity_outside_two_to_eight(int capacity)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => LiveMatch.Create("lm", "CODE01", Challenger, NewSettings(), capacity, T0));
+
+    [Fact]
+    public void A_lobby_with_room_for_more_does_not_start_until_capacity_is_reached()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
+        m.DrawQuestions(Ten);
+
+        m.Join(Opponent, T0);
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+        Assert.Equal([Challenger, Opponent], m.Participants);
+
+        m.Join(Third, T0);
+        Assert.Equal(MatchState.InProgress, m.State);
+        Assert.Equal(LivePhase.Countdown, m.Phase);
+        Assert.Equal([Challenger, Opponent, Third], m.Participants);
+    }
 
     [Theory]
     [InlineData(1)]
     [InlineData(9)]
     [InlineData(11)]
-    public void Create_rejects_a_length_nobody_can_choose(int count)
+    public void DuelSettings_Create_rejects_a_length_nobody_can_choose(int count)
+        => Assert.Throws<ArgumentException>(() => DuelSettings.Create(Language.En, count, [], []));
+
+    [Fact]
+    public void DuelSettings_Create_accepts_every_offered_length()
+    {
+        foreach (var count in MatchRules.QuestionCountChoices)
+            DuelSettings.Create(Language.En, count, [], []); // does not throw
+    }
+
+    [Fact]
+    public void DrawQuestions_rejects_a_set_that_does_not_match_the_settings_count()
+    {
+        var m = LiveMatch.Create("lm", "CODE01", Challenger, NewSettings(), 2, T0);
+        Assert.Throws<ArgumentException>(() => m.DrawQuestions([.. Ten.Take(5)]));
+    }
+
+    [Fact]
+    public void DrawQuestions_rejects_duplicate_question_ids()
+    {
+        var m = LiveMatch.Create("lm", "CODE01", Challenger, NewSettings(), 2, T0);
+        var ids = Ten.ToList();
+        ids[1] = ids[0];
+        Assert.Throws<ArgumentException>(() => m.DrawQuestions(ids));
+    }
+
+    [Fact]
+    public void DrawQuestions_cannot_be_called_twice()
+    {
+        var m = NewMatch(); // NewMatch already draws the set
+        Assert.Throws<InvalidOperationException>(() => m.DrawQuestions(Ten));
+    }
+
+    [Fact]
+    public void DrawQuestions_cannot_be_called_once_the_duel_has_started()
+    {
+        var m = Joined(); // capacity 2 -- the second join already started the countdown
+        Assert.Throws<InvalidOperationException>(() => m.DrawQuestions(Ten));
+    }
+
+    [Fact]
+    public void ChallengerId_and_OpponentId_proxy_the_owner_and_the_second_seat()
+    {
+        var m = NewMatch();
+        Assert.Equal(m.OwnerId, m.ChallengerId);
+        Assert.Null(m.OpponentId);
+
+        m.Join(Opponent, T0);
+        Assert.Equal(Opponent, m.OpponentId);
+    }
+
+    // ---- Create (pre-lobby compatibility overload) ----
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    [InlineData(11)]
+    public void Create_pre_lobby_overload_rejects_a_length_nobody_can_choose(int count)
         => Assert.Throws<ArgumentException>(() =>
             LiveMatch.Create("lm", "CODE01", Language.En, Challenger, [.. Enumerable.Range(0, count).Select(i => $"q{i}")], T0));
 
     [Fact]
-    public void Create_rejects_duplicate_question_ids()
+    public void Create_pre_lobby_overload_rejects_duplicate_question_ids()
     {
         var ids = Ten.ToList();
         ids[1] = ids[0];
         Assert.Throws<ArgumentException>(() => LiveMatch.Create("lm", "CODE01", Language.En, Challenger, ids, T0));
+    }
+
+    [Fact]
+    public void Create_pre_lobby_overload_builds_a_capacity_two_lobby_with_its_set_already_drawn()
+    {
+        var m = LiveMatch.Create("lm", "CODE01", Language.En, Challenger, Ten, T0);
+        Assert.Equal(2, m.Capacity);
+        Assert.Equal(Ten, m.QuestionIds);
+        Assert.Equal(Language.En, m.Lang);
     }
 
     [Fact]
@@ -119,6 +250,7 @@ public class LiveMatchTests
         var atExpiry = T0 + LiveRules.LobbyExpires;
         Assert.True(m.Advance(atExpiry));
         Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.LobbyExpired, m.Reason);
         Assert.Equal(LivePhase.Over, m.Phase);
         Assert.Null(m.WinnerId);
         Assert.False(m.IsDraw);
@@ -253,30 +385,7 @@ public class LiveMatchTests
         var m = PlayFullDuelToResolution();
         Assert.Equal(MatchState.Resolved, m.State);
         Assert.Equal(LivePhase.Over, m.Phase);
-    }
-
-    [Fact]
-    public void A_single_advance_call_crosses_several_phases_at_once()
-    {
-        var m = InRound0();
-        var r0 = m.CurrentRound!.StartedAt;
-        m.Answer(Challenger, 0, 0, true, r0);
-        m.Answer(Opponent, 0, 0, true, r0); // closes round 0 immediately -> reveal from r0
-
-        // Nobody answers from here on. A single huge jump should cross reveal -> question1 ->
-        // reveal1 -> question2 -> reveal2 -> question3, recording a miss for both players in each of
-        // rounds 1 and 2, and conclude when round 3 also closes silent (mutual miss threshold).
-        var revealEndsAt = m.PhaseEndsAt!.Value;
-        var farFuture = revealEndsAt + (MatchRules.QuestionTime + LiveRules.RevealTime) * 3 + TimeSpan.FromDays(1);
-
-        Assert.True(m.Advance(farFuture));
-        Assert.Equal(MatchState.NoContest, m.State);
-        Assert.Equal(4, m.Rounds.Count); // round 0 (answered) + rounds 1, 2, 3 (missed)
-        Assert.All(m.Rounds.Skip(1), r =>
-        {
-            Assert.Equal(2, r.Answers.Count);
-            Assert.All(r.Answers.Values, a => Assert.Equal(-1, a.ChoiceIndex));
-        });
+        Assert.Null(m.AbandonedBy);
     }
 
     [Fact]
@@ -420,7 +529,7 @@ public class LiveMatchTests
         Assert.Equal((int)Math.Round(MatchRules.BaseScore * Scoring.Weight(Difficulty.Medium)), answer.Score);
     }
 
-    // ---- Abandonment and no-contest ----
+    // ---- Abandonment and no-contest (two players) ----
 
     [Fact]
     public void Three_consecutive_misses_finishes_the_duel_abandoned_regardless_of_score()
@@ -446,6 +555,33 @@ public class LiveMatchTests
         Assert.Equal(MatchState.Abandoned, m.State);
         Assert.Equal(Challenger, m.WinnerId);
         Assert.Equal(Opponent, m.AbandonedBy);
+        Assert.Single(m.Abandoners);
+        Assert.Equal(Opponent, m.Abandoners[0].PlayerId);
+
+        var standings = m.Standings.ToDictionary(s => s.PlayerId);
+        Assert.Equal(1, standings[Challenger].Place);
+        Assert.Equal(MatchOutcome.Win, standings[Challenger].Outcome);
+        Assert.Equal(2, standings[Opponent].Place);
+        Assert.Equal(MatchOutcome.Loss, standings[Opponent].Outcome);
+        Assert.Equal(0, standings[Opponent].Score); // banked score wiped despite the early lead
+    }
+
+    [Fact]
+    public void An_abandoned_player_can_no_longer_answer()
+    {
+        var m = InRound0();
+        for (var i = 0; i < LiveRules.MissesBeforeAbandon; i++)
+        {
+            m.Advance(m.PhaseEndsAt!.Value);
+            if (m.IsOver) break;
+            var roundStart = m.CurrentRound!.StartedAt;
+            m.Answer(Challenger, m.CurrentRound.Slot, 0, true, roundStart);
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value));
+        }
+
+        Assert.Equal(MatchState.Abandoned, m.State);
+        var ex = Record.Exception(() => m.Answer(Opponent, 0, 0, true, m.EndedAt!.Value));
+        Assert.IsType<InvalidOperationException>(ex);
     }
 
     [Fact]
@@ -488,7 +624,7 @@ public class LiveMatchTests
     }
 
     [Fact]
-    public void Both_players_missing_the_threshold_finishes_no_contest()
+    public void Both_players_missing_the_threshold_finishes_no_contest_as_all_abandoned()
     {
         var m = InRound0();
 
@@ -506,20 +642,10 @@ public class LiveMatchTests
         }
 
         Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.AllAbandoned, m.Reason);
         Assert.Null(m.WinnerId);
         Assert.False(m.IsDraw);
-    }
-
-    [Fact]
-    public void A_stale_gap_with_nobody_answering_finishes_no_contest()
-    {
-        var m = InRound0();
-        var start = m.CurrentRound!.StartedAt;
-        var farFuture = start + LiveRules.StaleAfter + TimeSpan.FromSeconds(1);
-
-        Assert.True(m.Advance(farFuture));
-        Assert.Equal(MatchState.NoContest, m.State);
-        Assert.Null(m.WinnerId);
+        Assert.Empty(m.Standings); // NoContest credits nobody
     }
 
     [Fact]
@@ -538,8 +664,184 @@ public class LiveMatchTests
 
         var snapshot = m.ToSnapshot();
         Assert.Equal(MatchState.Abandoned, snapshot.State);
-        Assert.Equal(Opponent, snapshot.AbandonedBy);
+        Assert.Equal(Opponent, snapshot.Abandoners.Single().PlayerId);
         Assert.Equal(Challenger, snapshot.WinnerId);
+    }
+
+    // ---- N-way standings, abandonment ordering and NoContest reasons (three players) ----
+
+    [Fact]
+    public void Standings_share_first_place_when_two_finishers_tie_at_the_top()
+    {
+        var m = InRound0_3();
+
+        // Challenger and Opponent both answer instantly (equal, top score); Third answers correctly
+        // but slowly every round, for a real, strictly lower score.
+        for (var i = 0; i < Ten.Length; i++)
+        {
+            var round = m.CurrentRound!;
+            var start = round.StartedAt;
+            m.Answer(Challenger, round.Slot, 0, true, start);
+            m.Answer(Opponent, round.Slot, 0, true, start);
+            m.Answer(Third, round.Slot, 0, true, start + TimeSpan.FromSeconds(15));
+            m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round, or resolves on the last one
+        }
+
+        Assert.Equal(MatchState.Resolved, m.State);
+        Assert.Null(m.WinnerId); // nobody won outright
+        Assert.True(m.IsDraw); // means "no sole winner", not "everybody drew"
+
+        var byId = m.Standings.ToDictionary(s => s.PlayerId);
+        Assert.Equal(1, byId[Challenger].Place);
+        Assert.Equal(1, byId[Opponent].Place);
+        Assert.Equal(MatchOutcome.Draw, byId[Challenger].Outcome);
+        Assert.Equal(MatchOutcome.Draw, byId[Opponent].Outcome);
+        Assert.Equal(3, byId[Third].Place); // competition ranking: the tie for first skips place 2
+        Assert.Equal(MatchOutcome.Loss, byId[Third].Outcome);
+        Assert.True(byId[Challenger].Score > byId[Third].Score);
+        Assert.Equal(byId[Challenger].Score, byId[Opponent].Score);
+    }
+
+    [Fact]
+    public void Standings_give_a_sole_winner_when_nobody_ties_the_top_score()
+    {
+        var m = InRound0_3();
+        for (var i = 0; i < Ten.Length; i++)
+        {
+            var round = m.CurrentRound!;
+            var start = round.StartedAt;
+            m.Answer(Challenger, round.Slot, 0, true, start); // fastest -> highest score
+            m.Answer(Opponent, round.Slot, 0, true, start + TimeSpan.FromSeconds(8));
+            m.Answer(Third, round.Slot, 0, true, start + TimeSpan.FromSeconds(15));
+            m.Advance(m.PhaseEndsAt!.Value);
+        }
+
+        Assert.Equal(Challenger, m.WinnerId);
+        Assert.False(m.IsDraw);
+
+        var byId = m.Standings.ToDictionary(s => s.PlayerId);
+        Assert.Equal(1, byId[Challenger].Place);
+        Assert.Equal(MatchOutcome.Win, byId[Challenger].Outcome);
+        Assert.Equal(2, byId[Opponent].Place);
+        Assert.Equal(MatchOutcome.Loss, byId[Opponent].Outcome);
+        Assert.Equal(3, byId[Third].Place);
+        Assert.Equal(MatchOutcome.Loss, byId[Third].Outcome);
+    }
+
+    [Fact]
+    public void A_round_closes_on_the_active_participants_alone_once_someone_has_abandoned()
+    {
+        var m = InRound0_3();
+
+        // Round 0: everyone answers; Third takes an early lead they will not get to keep.
+        var r0 = m.CurrentRound!.StartedAt;
+        m.Answer(Third, 0, 0, true, r0);
+        m.Answer(Challenger, 0, 0, true, r0 + TimeSpan.FromSeconds(10));
+        m.Answer(Opponent, 0, 0, true, r0 + TimeSpan.FromSeconds(10));
+        Assert.True(m.Score(Third) > m.Score(Challenger));
+
+        // Third goes silent. For as long as they are still counted active, Challenger and Opponent
+        // answering does not close the round early — it still has to wait out the clock.
+        for (var i = 0; i < LiveRules.MissesBeforeAbandon; i++)
+        {
+            m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
+            var round = m.CurrentRound!;
+            m.Answer(Challenger, round.Slot, 0, true, round.StartedAt);
+            m.Answer(Opponent, round.Slot, 0, true, round.StartedAt);
+            Assert.Equal(LivePhase.Question, m.Phase); // still "waiting" on Third's silent turn
+
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // times out -- Third's miss is recorded here
+        }
+
+        Assert.Contains(m.Abandoners, a => a.PlayerId == Third);
+        Assert.False(m.IsOver); // two players remain, so the duel goes on
+        Assert.Throws<InvalidOperationException>(() => m.Answer(Third, m.CurrentRound!.Slot, 0, true, m.CurrentRound!.StartedAt));
+
+        // From here on, Third is no longer counted: the two survivors answering closes the round
+        // immediately, with no timeout needed at all — the whole point of the rule.
+        m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
+        var nextRound = m.CurrentRound!;
+        m.Answer(Challenger, nextRound.Slot, 0, true, nextRound.StartedAt);
+        m.Answer(Opponent, nextRound.Slot, 0, true, nextRound.StartedAt);
+        Assert.Equal(LivePhase.Reveal, m.Phase);
+
+        // Play the remainder out with just the two survivors.
+        while (!m.IsOver)
+        {
+            m.Advance(m.PhaseEndsAt!.Value);
+            if (m.IsOver) break;
+            var round = m.CurrentRound!;
+            m.Answer(Challenger, round.Slot, 0, true, round.StartedAt);
+            m.Answer(Opponent, round.Slot, 0, true, round.StartedAt);
+        }
+
+        Assert.Equal(MatchState.Resolved, m.State); // two survivors finished it out
+        var third = m.Standings.Single(s => s.PlayerId == Third);
+        Assert.Equal(0, third.Score); // banked score wiped, whatever they scored before quitting
+        Assert.Equal(MatchOutcome.Loss, third.Outcome);
+        Assert.All(m.Standings.Where(s => s.PlayerId != Third), s => Assert.True(s.Place < third.Place));
+    }
+
+    [Fact]
+    public void Two_players_abandoning_in_the_same_round_share_a_place_below_the_survivor()
+    {
+        var m = InRound0_3();
+
+        // Round 0: everyone answers, so the top-of-Advance staleness gate never fires below.
+        var r0 = m.CurrentRound!.StartedAt;
+        m.Answer(Challenger, 0, 0, true, r0);
+        m.Answer(Opponent, 0, 0, true, r0);
+        m.Answer(Third, 0, 0, true, r0);
+
+        // Opponent and Third go silent together; Challenger keeps answering.
+        for (var i = 0; i < LiveRules.MissesBeforeAbandon; i++)
+        {
+            m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
+            if (m.IsOver) break;
+            var round = m.CurrentRound!;
+            m.Answer(Challenger, round.Slot, 0, true, round.StartedAt);
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // Opponent and Third both miss again
+        }
+
+        Assert.Equal(MatchState.Abandoned, m.State);
+        Assert.Equal(Challenger, m.WinnerId);
+        Assert.Equal(2, m.Abandoners.Count);
+        Assert.Equal(m.Abandoners[0].RoundSlot, m.Abandoners[1].RoundSlot); // dropped in the same round
+
+        var byId = m.Standings.ToDictionary(s => s.PlayerId);
+        Assert.Equal(1, byId[Challenger].Place);
+        Assert.Equal(MatchOutcome.Win, byId[Challenger].Outcome);
+        Assert.True(byId[Opponent].Place > 1);
+        Assert.Equal(byId[Opponent].Place, byId[Third].Place); // shared place below the survivor
+        Assert.Equal(MatchOutcome.Loss, byId[Opponent].Outcome);
+        Assert.Equal(MatchOutcome.Loss, byId[Third].Outcome);
+        Assert.Equal(0, byId[Opponent].Score);
+        Assert.Equal(0, byId[Third].Score);
+    }
+
+    [Fact]
+    public void All_three_players_missing_the_threshold_together_finishes_no_contest_as_all_abandoned()
+    {
+        var m = InRound0_3();
+
+        // Everyone answers round 0 so the top-of-Advance staleness gate does not fire below — this
+        // test is about the mutual miss-threshold, not the stale-gap path.
+        var r0 = m.CurrentRound!.StartedAt;
+        m.Answer(Challenger, 0, 0, true, r0);
+        m.Answer(Opponent, 0, 0, true, r0);
+        m.Answer(Third, 0, 0, true, r0);
+
+        for (var i = 0; i < LiveRules.MissesBeforeAbandon; i++)
+        {
+            m.Advance(m.PhaseEndsAt!.Value); // reveal -> next round
+            if (m.IsOver) break;
+            m.Advance(PastGrace(m.PhaseEndsAt!.Value)); // closes it: everyone silent
+        }
+
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.AllAbandoned, m.Reason);
+        Assert.Null(m.WinnerId);
+        Assert.Empty(m.Standings);
     }
 
     // ---- NextDueAt ----
@@ -622,6 +924,88 @@ public class LiveMatchTests
         Assert.Equal(LivePhase.Reveal, m.Phase);
     }
 
+    // ---- The widened staleness test, in every phase but Lobby ----
+
+    [Fact]
+    public void A_gap_of_exactly_StaleAfter_past_next_due_at_does_not_trigger_the_widened_staleness_guard()
+    {
+        // The boundary is "more than StaleAfter", not "at least" — landing exactly on it still lets
+        // the ordinary phase machinery run (which, given how large this gap really is, simulates
+        // several rounds forward), rather than being read as an outage.
+        var m = InRound0();
+        var exactlyAtThreshold = m.NextDueAt!.Value + LiveRules.StaleAfter;
+
+        m.Advance(exactlyAtThreshold);
+
+        Assert.False(m.IsOver);
+        Assert.Null(m.Reason);
+    }
+
+    [Fact]
+    public void A_stale_gap_beginning_in_countdown_finishes_no_contest_as_stale()
+    {
+        var m = Joined();
+        var farFuture = m.NextDueAt!.Value + LiveRules.StaleAfter + TimeSpan.FromSeconds(1);
+
+        Assert.True(m.Advance(farFuture));
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.Stale, m.Reason);
+        Assert.Empty(m.Rounds); // round 0 never even opened
+    }
+
+    [Fact]
+    public void A_stale_gap_with_nobody_answering_finishes_no_contest_as_stale()
+    {
+        var m = InRound0();
+        var farFuture = m.NextDueAt!.Value + LiveRules.StaleAfter + TimeSpan.FromSeconds(1);
+
+        Assert.True(m.Advance(farFuture));
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.Stale, m.Reason);
+        Assert.Null(m.WinnerId);
+    }
+
+    [Fact]
+    public void A_stale_gap_in_a_question_after_one_player_has_answered_finishes_no_contest_as_stale()
+    {
+        // The gap the old guard missed entirely: it only fired for a Question with zero answers, so
+        // an outage after one player answered used to fall through to the round-by-round simulation
+        // below instead.
+        var m = InRound0();
+        var round = m.CurrentRound!;
+        m.Answer(Challenger, 0, 0, true, round.StartedAt); // one of two answers; the round stays open
+
+        var farFuture = m.NextDueAt!.Value + LiveRules.StaleAfter + TimeSpan.FromSeconds(1);
+        Assert.True(m.Advance(farFuture));
+
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.Stale, m.Reason);
+        Assert.Single(m.Rounds);
+        Assert.Single(m.Rounds[0].Answers); // only the real answer -- the round was never force-closed
+    }
+
+    [Fact]
+    public void A_stale_gap_beginning_in_reveal_finishes_no_contest_as_stale_without_simulating_further_rounds()
+    {
+        // This is the case the widened test exists for: the old guard only ever looked at Question
+        // with zero answers, so an outage that began in Reveal (or Countdown) was invisible to it and
+        // the while loop in Advance would simulate every remaining round with nobody answering —
+        // three of them mark every player abandoned. This deliberately changes that: the gap is
+        // recognised as an outage the moment Advance is called, before any round is simulated.
+        var m = InRound0();
+        var r0 = m.CurrentRound!.StartedAt;
+        m.Answer(Challenger, 0, 0, true, r0);
+        m.Answer(Opponent, 0, 0, true, r0); // closes round 0 -> reveal
+        Assert.Equal(LivePhase.Reveal, m.Phase);
+
+        var farFuture = m.NextDueAt!.Value + LiveRules.StaleAfter + TimeSpan.FromSeconds(1);
+        Assert.True(m.Advance(farFuture));
+
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.Stale, m.Reason);
+        Assert.Single(m.Rounds); // round 0 only -- nothing beyond reveal was ever simulated
+    }
+
     // ---- EndNoContest ----
 
     [Fact]
@@ -633,11 +1017,20 @@ public class LiveMatchTests
         m.EndNoContest(at);
 
         Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.LobbyExpired, m.Reason); // the caller-agnostic default: never penalty-eligible
         Assert.Equal(LivePhase.Over, m.Phase);
         Assert.Null(m.PhaseEndsAt);
         Assert.Equal(at, m.EndedAt);
         Assert.Null(m.WinnerId);
         Assert.False(m.IsDraw);
+    }
+
+    [Fact]
+    public void EndNoContest_accepts_an_explicit_reason()
+    {
+        var m = InRound0();
+        m.EndNoContest(m.CurrentRound!.StartedAt, NoContestReason.Stale);
+        Assert.Equal(NoContestReason.Stale, m.Reason);
     }
 
     // ---- Snapshot ----
@@ -655,6 +1048,10 @@ public class LiveMatchTests
         var snapshot = m.ToSnapshot();
         var restored = LiveMatch.FromSnapshot(snapshot);
 
+        Assert.Equal(m.Participants, restored.Participants);
+        Assert.Equal(m.Capacity, restored.Capacity);
+        Assert.Equal(m.Settings, restored.Settings);
+
         var advanceAt = m.PhaseEndsAt!.Value;
         var changedOriginal = m.Advance(advanceAt);
         var changedRestored = restored.Advance(advanceAt);
@@ -668,4 +1065,17 @@ public class LiveMatchTests
         Assert.Equal(m.Score(Challenger), restored.Score(Challenger));
         Assert.Equal(m.Score(Opponent), restored.Score(Opponent));
     }
+
+    [Fact]
+    public void Snapshot_round_trips_standings_and_abandoners()
+    {
+        var m = PlayFullDuelToResolution();
+        var restored = LiveMatch.FromSnapshot(m.ToSnapshot());
+
+        Assert.Equal(m.Standings, restored.Standings);
+        Assert.Equal(m.Abandoners, restored.Abandoners);
+        Assert.Equal(m.Reason, restored.Reason);
+    }
 }
+
+#pragma warning restore CS0618
