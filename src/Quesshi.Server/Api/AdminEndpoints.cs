@@ -241,16 +241,16 @@ public static class AdminEndpoints
                 [.. (await players.SearchAsync(q, skip ?? 0, Math.Clamp(take ?? 25, 1, 100))).Select(p => p.ToAdminDto())],
                 await players.CountAsync()));
 
-        admin.MapPost("/users/{id}/ban", async (string id, bool value, HttpContext ctx, IPlayerRepository players) =>
+        // Goes through IPlayerGrain, not IPlayerRepository — see IPlayerGrain.SetBannedAsync's own
+        // remarks for why a direct repository write here is worse than PUT /api/me's own version of
+        // the same bug: a later grain write (a settled match, a profile edit) could otherwise undo the
+        // ban entirely, silently, with no admin action visible in between.
+        admin.MapPost("/users/{id}/ban", async (string id, bool value, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
         {
             if (id == ctx.User.PlayerId()) return Results.BadRequest(new { error = "cannot_ban_self" });
+            if (await players.GetAsync(id) is null) return Results.NotFound();
 
-            var player = await players.GetAsync(id);
-            if (player is null) return Results.NotFound();
-
-            player.SetBanned(value);
-            await players.UpsertAsync(player);
-            return Results.Ok();
+            return await grains.GetGrain<IPlayerGrain>(id).SetBannedAsync(value) ? Results.Ok() : Results.NotFound();
         });
 
         // --- generation --------------------------------------------------------------

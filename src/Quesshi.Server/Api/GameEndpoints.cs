@@ -35,20 +35,35 @@ public static class GameEndpoints
             return me is null ? Results.Unauthorized() : Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPut("/me", async (UpdateProfileDto body, HttpContext ctx, IPlayerRepository players, ILeaderboard board, IPresence presence) =>
+        // Goes through IPlayerGrain, not IPlayerRepository, so this write can no longer be silently
+        // undone by a match settling moments later — see IPlayerGrain.UpdateProfileAsync's own remarks
+        // for the race this closes. AllowGuest: a guest arriving by invite link is exactly who needs to
+        // rename themselves and pick an avatar before their first duel — see the lobby page (issue #53)
+        // — and the group otherwise refuses every guest request by default.
+        api.MapPut("/me", async (UpdateProfileDto body, HttpContext ctx, IGrainFactory grains,
+            IPlayerRepository players, ILeaderboard board, IPresence presence) =>
         {
-            var me = await players.GetAsync(ctx.User.PlayerId()!);
-            if (me is null) return Results.Unauthorized();
-
             var name = body.DisplayName?.Trim() ?? "";
             if (name.Length is < 2 or > 24) return Results.BadRequest(new { error = "name_length" });
 
-            me.Rename(name);
-            me.SetLanguage(body.Lang.ToLanguage());
-            await players.UpsertAsync(me);
+            // Checked here, against Quesshi.Shared.AvatarPalette, rather than inside Player.SetAvatar
+            // or the grain — the same layering Rename's own length check already follows, and the one
+            // that keeps Quesshi.Domain and Quesshi.Grains.Abstractions free of a client/server wire
+            // concern. Null is "leave the avatar alone" and skips this check entirely.
+            if (body.AvatarSeed is not null && !AvatarPalette.IsValid(body.AvatarSeed))
+                return Results.BadRequest(new { error = "bad_avatar" });
 
+            var meId = ctx.User.PlayerId()!;
+            var updated = await grains.GetGrain<IPlayerGrain>(meId).UpdateProfileAsync(name, (int)body.Lang.ToLanguage(), body.AvatarSeed);
+            if (!updated) return Results.Unauthorized();
+
+            // Read back rather than trusting a client-built projection: FriendsOfAsync and ToMeDto both
+            // need the full record anyway, and this is a read, not the write the grain already
+            // serialised — no race is reopened by fetching what was just, atomically, persisted.
+            var me = await players.GetAsync(meId);
+            if (me is null) return Results.Unauthorized();
             return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
-        });
+        }).WithMetadata(new AllowGuest());
 
         api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx,
             IPlayerRepository players, IQuestionRepository questions) =>
