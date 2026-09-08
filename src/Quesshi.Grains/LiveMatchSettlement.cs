@@ -13,10 +13,11 @@ namespace Quesshi.Grains;
 /// class is what that call site calls.
 /// </summary>
 /// <remarks>
-/// Has no idempotency guard, exactly like <c>MatchGrain.SettleAsync</c> does not: it must be called
-/// exactly once per duel, on the transition into <see cref="LiveMatch.IsOver"/>, the same way
-/// <c>MatchGrain.AnswerAsync</c> checks <c>!wasOver &amp;&amp; _match.IsOver</c> before calling in. A
-/// caller that settles twice will apply every effect twice.
+/// Safe to call more than once for the same duel — the actual idempotency guard lives one level
+/// down, on <c>Player.TryRecordSettledMatch</c>'s settled-match marker, not here. That is what lets
+/// <c>LiveMatchGrain</c> retry a settlement a crash interrupted halfway through without tracking
+/// exactly which of its own effects committed: a repeated call for a participant already on record
+/// applies nothing, and <see cref="ToArchived"/>'s row is a whole-row upsert, safe to repeat outright.
 /// </remarks>
 public sealed class LiveMatchSettlement(
     IGrainFactory grainFactory,
@@ -27,7 +28,17 @@ public sealed class LiveMatchSettlement(
     /// on start and, via <see cref="SettleAsync"/>, again on end, exactly as <c>MatchGrain.IndexAsync</c> does.</summary>
     public Task IndexAsync(LiveMatch m, Language lang) => archive.SaveAsync(ToArchived(m, lang));
 
-    public async Task SettleAsync(LiveMatch m, Language lang)
+    /// <summary>
+    /// Settles every participant not already named in <paramref name="alreadySettled"/> — empty (or
+    /// omitted) the first time a duel ends, and the caller's own persisted progress on a resume after
+    /// a crash. Skipping a name here is purely an optimisation, not a correctness requirement: calling
+    /// through for a participant already settled is a harmless no-op, so a caller with no progress to
+    /// report (every existing call site but <c>LiveMatchGrain</c>'s own resume path) can simply pass
+    /// nothing. <paramref name="onSettled"/>, when given, runs right after each participant's effect
+    /// lands — <c>LiveMatchGrain</c> uses it to checkpoint <c>SettledPlayers</c> one player at a time
+    /// rather than only once at the end.
+    /// </summary>
+    public async Task SettleAsync(LiveMatch m, Language lang, IReadOnlySet<string>? alreadySettled = null, Func<string, Task>? onSettled = null)
     {
         await IndexAsync(m, lang);
 
@@ -40,6 +51,8 @@ public sealed class LiveMatchSettlement(
 
         foreach (var playerId in Participants(m))
         {
+            if (alreadySettled?.Contains(playerId) == true) continue;
+
             var correct = m.Rounds.Select(r => r.Answers.TryGetValue(playerId, out var a) && a.Correct).ToList();
             var isQuitter = m.State == MatchState.Abandoned && m.AbandonedBy == playerId;
             var outcome = OutcomeFor(m, playerId, isQuitter);
@@ -56,6 +69,8 @@ public sealed class LiveMatchSettlement(
             // this class no longer touches IPlayerRepository or ILeaderboard directly.
             await grainFactory.GetGrain<IPlayerGrain>(playerId)
                 .SettleMatchAsync(m.Id, (int)outcome, score, categories, correct, abandonedAt);
+
+            if (onSettled is not null) await onSettled(playerId);
         }
     }
 
@@ -65,10 +80,14 @@ public sealed class LiveMatchSettlement(
         return m.IsDraw ? MatchOutcome.Draw : (m.WinnerId == playerId ? MatchOutcome.Win : MatchOutcome.Loss);
     }
 
+    // Must agree with LiveMatchGrain.IndexAsync's own row for the same duel field for field — the two
+    // write the same archive document at different points in its life (grain on every phase change
+    // while it runs, this class again on settlement) and only the scores are meant to differ, since
+    // the grain writes 0/0 until settlement knows the real ones. m.Code is the duel's actual share
+    // code; passing m.Id here instead — as this once did — would overwrite that code with the id on
+    // every settlement and break code resolution for it from then on.
     private static ArchivedMatch ToArchived(LiveMatch m, Language lang) => new(
-        // A live duel has no invite code of its own; its id stands in, exactly as "found by code"
-        // means found by this class's own code, per MatchGrain.IndexAsync's comment, not a redeemable one.
-        m.Id, m.Id, lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
+        m.Id, m.Code, lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
         m.Score(m.ChallengerId), m.OpponentId is null ? 0 : m.Score(m.OpponentId),
         m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true);
 

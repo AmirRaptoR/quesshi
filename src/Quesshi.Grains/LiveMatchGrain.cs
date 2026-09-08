@@ -24,6 +24,7 @@ public sealed class LiveMatchGrain(
     IMatchArchive archive,
     ILiveDirectory directory,
     QuestionSetBuilder questionSetBuilder,
+    LiveMatchSettlement settlement,
     IIdFactory ids,
     IClock clock,
     ILogger<LiveMatchGrain> logger) : Grain, ILiveMatchGrain, IRemindable
@@ -45,9 +46,9 @@ public sealed class LiveMatchGrain(
     private int _startedThrough;
     private int _revealedThrough;
 
-    public override Task OnActivateAsync(CancellationToken ct)
+    public override async Task OnActivateAsync(CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(state.State.Json)) return Task.CompletedTask;
+        if (string.IsNullOrEmpty(state.State.Json)) return;
 
         _match = LiveMatch.FromSnapshot(JsonSerializer.Deserialize<LiveMatchSnapshot>(state.State.Json)!);
         // Whatever this snapshot already contains was already announced before we deactivated —
@@ -58,8 +59,32 @@ public sealed class LiveMatchGrain(
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
         _match.Advance(clock.Now); // fast-forward through anything missed while deactivated
-        return AfterChangeAsync(phaseBefore, wasOver);
+
+        // NotifyAsync's own "!wasOver && m.IsOver" transition below only fires the instant IsOver
+        // flips from false to true — which, for a match that was already over when this activation
+        // loaded it, happened in whatever earlier activation set SettlementComplete to false and then
+        // failed to finish (or in this same activation, earlier, if ReceiveReminder's own retry below
+        // is what got interrupted). That transition will never fire again for this duel, so resuming
+        // has to happen here instead, before anything else is served from this activation.
+        await ResumeSettlementIfNeededAsync(wasOver);
+
+        await AfterChangeAsync(phaseBefore, wasOver);
     }
+
+    /// <summary>
+    /// Retries a settlement a transient failure left unfinished — <paramref name="wasOver"/> false
+    /// means nothing to resume (a fresh transition, if this call turns out to be one, is
+    /// <see cref="NotifyAsync"/>'s own job a moment later), and <c>SettlementComplete</c> anything but
+    /// exactly <c>false</c> means either there is nothing left to do (<c>true</c>) or this is a
+    /// pre-upgrade record no code may ever touch again (<c>null</c> — see
+    /// <see cref="LiveMatchStateRecord"/>'s own remarks). Called from two places for two different
+    /// failure shapes: <see cref="OnActivateAsync"/> covers a crash that took the whole activation down,
+    /// and <see cref="ReceiveReminder"/> covers a failure that did not — the activation stayed alive
+    /// with nothing else left to call back in and retry, which is exactly why the safety-net reminder
+    /// stays armed until settlement finishes rather than dropping the moment the match is merely over.
+    /// </summary>
+    private Task ResumeSettlementIfNeededAsync(bool wasOver)
+        => wasOver && state.State.SettlementComplete == false ? SettleAsync() : Task.CompletedTask;
 
     public async Task<LiveView> CreateAsync(string code, int lang, string challengerId, List<string> questionIds)
     {
@@ -241,6 +266,15 @@ public sealed class LiveMatchGrain(
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
         _match.Advance(clock.Now);
+
+        // The reminder is not only the safety net for a lobby nobody joins or a stalled clock — once
+        // settlement starts, it is also the only thing left standing between a transient storage
+        // failure and a duel that never finishes settling without a deactivation in between. A crash
+        // that takes the whole activation down is resumed by OnActivateAsync when it comes back; a
+        // failure that does not is retried right here, every time this fires, until SettlementComplete
+        // is true and RearmAsync finally lets the reminder go.
+        await ResumeSettlementIfNeededAsync(wasOver);
+
         await AfterChangeAsync(phaseBefore, wasOver);
     }
 
@@ -263,6 +297,7 @@ public sealed class LiveMatchGrain(
     /// </summary>
     private async Task AfterChangeAsync(LivePhase phaseBefore, bool wasOver, string? endReason = null)
     {
+        MarkSettlementOwedOnFreshTransition(wasOver);
         await SaveAsync();
         // A duel that is already over is about to have its row removed in NotifyAsync's ending
         // branch below — writing it here first would only be undone a moment later.
@@ -292,7 +327,11 @@ public sealed class LiveMatchGrain(
                     logger.LogWarning(
                         "Question {QuestionId} for round {Slot} of live duel {MatchId} could not be resolved; ending as no-contest.",
                         round.QuestionId, round.Slot, m.Id);
-                    if (!m.IsOver) m.EndNoContest(clock.Now);
+                    if (!m.IsOver)
+                    {
+                        m.EndNoContest(clock.Now);
+                        MarkSettlementOwedOnFreshTransition(wasOver: false); // this ends it, so it was not over a moment ago
+                    }
                     await SaveAsync();
                     await RearmAsync();
                     break;
@@ -320,11 +359,38 @@ public sealed class LiveMatchGrain(
         }
     }
 
-    /// <summary>Everything that happens once, when a duel ends: history, stats, leaderboard.
-    /// TODO(live-duel settling sub-issue): archive the duel, update the leaderboard, and call
-    /// IPlayerGrain.ApplyResultAsync for both players. Out of scope here — this grain only ends
-    /// the duel and exposes the outcome.</summary>
-    private Task SettleAsync() => Task.CompletedTask;
+    /// <summary>
+    /// Everything that happens once, when a duel ends: history, stats, leaderboard, the abandonment
+    /// penalty. Called both from the fresh "!wasOver &amp;&amp; m.IsOver" transition in
+    /// <see cref="NotifyAsync"/> and, on resume, from <see cref="OnActivateAsync"/> — by the time
+    /// either calls in, <see cref="SaveAsync"/> has already made sure <c>SettlementComplete</c> is
+    /// <c>false</c> rather than its legacy-reading <c>null</c> default, so the only thing left to
+    /// guard here is a defensive re-entry once it is already <c>true</c>.
+    ///
+    /// <see cref="LiveMatchSettlement.SettleAsync"/> is itself safe to call more than once for the
+    /// same duel — its own remarks explain why — so a crash between two participants, or between a
+    /// participant and the <c>SettledPlayers</c> checkpoint that records it, loses nothing: resuming
+    /// just re-walks whoever is not yet in that set, and the ones already there cost one skipped
+    /// iteration rather than a repeated effect.
+    /// </summary>
+    private async Task SettleAsync()
+    {
+        var m = _match!;
+        if (state.State.SettlementComplete == true) return;
+
+        await settlement.SettleAsync(m, m.Lang, state.State.SettledPlayers, async playerId =>
+        {
+            state.State.SettledPlayers.Add(playerId);
+            await SaveAsync();
+        });
+
+        state.State.SettlementComplete = true;
+        await SaveAsync();
+
+        // Only safe to let the safety-net reminder go once settlement has actually finished — see
+        // RearmAsync's own remarks for why IsOver alone is not enough to decide that.
+        await RearmAsync();
+    }
 
     private async Task RearmAsync()
     {
@@ -333,6 +399,15 @@ public sealed class LiveMatchGrain(
 
         if (_match is null || _match.IsOver)
         {
+            // The reminder is the only thing that can ever bring this grain back once it deactivates,
+            // so it stays armed for as long as settlement has started but not finished
+            // (SettlementComplete == false) — dropping it the instant the match is merely over, as
+            // this once did, leaves a transient settlement failure with nothing left to retry it, and
+            // no player reopens a finished duel to trigger a reactivation by hand. Both "finished"
+            // (true) and "settled long ago by code that never wrote this field at all" (null, see
+            // LiveMatchStateRecord) have nothing left for the reminder to do.
+            if (_match is not null && state.State.SettlementComplete == false) return;
+
             if (await this.GetReminder(SafetyNetReminder) is { } reminder)
                 await this.UnregisterReminder(reminder);
             return;
@@ -395,9 +470,27 @@ public sealed class LiveMatchGrain(
         return state.WriteStateAsync();
     }
 
+    /// <summary>
+    /// The one place a "not over" to "over" transition is allowed to open the settlement checkpoint —
+    /// deliberately keyed on the transition itself (<paramref name="wasOver"/> false, <c>_match.IsOver</c>
+    /// now true) rather than on <c>_match.IsOver</c> alone. Checking <c>IsOver</c> alone would also fire
+    /// for a pre-upgrade record that was <em>already</em> over the moment it was loaded — reading its
+    /// legacy <c>null</c> as "never settled" and flipping it to <c>false</c> the instant this code
+    /// merely looks at it, which is exactly the mass double-settlement <see cref="LiveMatchStateRecord"/>
+    /// exists to prevent. A resumed activation always calls in with <paramref name="wasOver"/> already
+    /// <c>true</c>, so it is a guaranteed no-op here — resuming an interrupted settlement is
+    /// <see cref="OnActivateAsync"/>'s own, separate concern.
+    /// </summary>
+    private void MarkSettlementOwedOnFreshTransition(bool wasOver)
+    {
+        if (!wasOver && _match!.IsOver) state.State.SettlementComplete = false;
+    }
+
     /// <summary>Mirrors the duel into Mongo so its code can be resolved and its lifecycle read without
     /// activating the grain — exactly what <c>MatchGrain.IndexAsync</c> does for an async match.
-    /// Scores stay 0 here: settling — what a live row's score means — is the settling sub-issue's.</summary>
+    /// Scores stay 0 here even once the duel is over: <see cref="LiveMatchSettlement.IndexAsync"/>
+    /// overwrites the same row with the real ones moments later, from inside <see cref="SettleAsync"/>,
+    /// so this method never needs to know what a live row's score means.</summary>
     private Task IndexAsync()
     {
         var m = _match!;

@@ -14,6 +14,7 @@ using Quesshi.Infrastructure.Redis;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Hubs;
+using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Seed;
 using StackExchange.Redis;
@@ -139,6 +140,9 @@ switch (smtpOptions.Delivery(builder.Environment.IsDevelopment()))
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<AdminAuthService>();
 builder.Services.AddSingleton<QuestionSetBuilder>();
+// LiveMatchGrain's one settlement call site — see LiveMatchSettlement's own remarks for why it is a
+// plain injected class rather than a method on the grain, the way MatchGrain's own settlement is.
+builder.Services.AddSingleton<LiveMatchSettlement>();
 builder.Services.AddSingleton<TopUpQuestionBank>();
 builder.Services.AddSingleton<Seeder>();
 builder.Services.AddSingleton<TokenIssuer>();
