@@ -39,7 +39,7 @@ public class LiveEliminationTests
         var view = new LiveViewDto(
             "m1", [new("amir", "Amir", "a", false), new("sara", "Sara", "s", false), new("reza", "Reza", "r", false)],
             "inprogress", "question", null, DateTimeOffset.UtcNow, 1, 5,
-            players, [], [], null, false, null, DateTimeOffset.UtcNow, null);
+            players, [], [], null, false, [], DateTimeOffset.UtcNow, null);
 
         Assert.Equal(["reza"], LiveElimination.EliminatedIds(view));
     }

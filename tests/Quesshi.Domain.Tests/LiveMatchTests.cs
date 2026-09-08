@@ -2,12 +2,6 @@ using Quesshi.Domain;
 
 namespace Quesshi.Domain.Tests;
 
-// This file exercises the temporary compatibility adapters (ChallengerId, OpponentId, AbandonedBy,
-// and the pre-lobby Create overload) deliberately and extensively — they are load-bearing for every
-// consumer above Quesshi.Domain until issue #47's later steps migrate them, and issue #56 deletes
-// them. One pragma for the whole file beats sprinkling it around every assertion that touches one.
-#pragma warning disable CS0618
-
 public class LiveMatchTests
 {
     private const string Challenger = "u-amir";
@@ -174,17 +168,6 @@ public class LiveMatchTests
         Assert.Throws<InvalidOperationException>(() => m.DrawQuestions(Ten));
     }
 
-    [Fact]
-    public void ChallengerId_and_OpponentId_proxy_the_owner_and_the_second_seat()
-    {
-        var m = NewMatch();
-        Assert.Equal(m.OwnerId, m.ChallengerId);
-        Assert.Null(m.OpponentId);
-
-        m.Join(Opponent, T0);
-        Assert.Equal(Opponent, m.OpponentId);
-    }
-
     // ---- Start, Leave and UpdateSettings ----
 
     [Fact]
@@ -302,33 +285,6 @@ public class LiveMatchTests
 
         Assert.False(m.UpdateSettings(Challenger, DuelSettings.Create(Language.Fa, 20, [], [])));
         Assert.Equal(original, m.Settings);
-    }
-
-    // ---- Create (pre-lobby compatibility overload) ----
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(9)]
-    [InlineData(11)]
-    public void Create_pre_lobby_overload_rejects_a_length_nobody_can_choose(int count)
-        => Assert.Throws<ArgumentException>(() =>
-            LiveMatch.Create("lm", "CODE01", Language.En, Challenger, [.. Enumerable.Range(0, count).Select(i => $"q{i}")], T0));
-
-    [Fact]
-    public void Create_pre_lobby_overload_rejects_duplicate_question_ids()
-    {
-        var ids = Ten.ToList();
-        ids[1] = ids[0];
-        Assert.Throws<ArgumentException>(() => LiveMatch.Create("lm", "CODE01", Language.En, Challenger, ids, T0));
-    }
-
-    [Fact]
-    public void Create_pre_lobby_overload_builds_a_capacity_two_lobby_with_its_set_already_drawn()
-    {
-        var m = LiveMatch.Create("lm", "CODE01", Language.En, Challenger, Ten, T0);
-        Assert.Equal(2, m.Capacity);
-        Assert.Equal(Ten, m.QuestionIds);
-        Assert.Equal(Language.En, m.Lang);
     }
 
     [Fact]
@@ -520,7 +476,7 @@ public class LiveMatchTests
         var m = PlayFullDuelToResolution();
         Assert.Equal(MatchState.Resolved, m.State);
         Assert.Equal(LivePhase.Over, m.Phase);
-        Assert.Null(m.AbandonedBy);
+        Assert.Empty(m.Abandoners);
     }
 
     [Fact]
@@ -689,7 +645,6 @@ public class LiveMatchTests
 
         Assert.Equal(MatchState.Abandoned, m.State);
         Assert.Equal(Challenger, m.WinnerId);
-        Assert.Equal(Opponent, m.AbandonedBy);
         Assert.Single(m.Abandoners);
         Assert.Equal(Opponent, m.Abandoners[0].PlayerId);
 
@@ -1266,7 +1221,6 @@ public class LiveMatchTests
 
         Assert.True(m.IsOver);
         Assert.Equal([new Abandonment("u-legacy-opponent", 0)], m.Abandoners);
-        Assert.Equal("u-legacy-opponent", m.AbandonedBy);
     }
 
     [Fact]
@@ -1277,7 +1231,6 @@ public class LiveMatchTests
         var m = LiveMatch.FromSnapshot(snapshot);
 
         Assert.Equal(["u-legacy-challenger"], m.Participants);
-        Assert.Null(m.OpponentId);
 
         Assert.Equal(LiveJoinResult.Joined, m.TryJoin(Opponent, T0));
         Assert.Equal(["u-legacy-challenger", Opponent], m.Participants);

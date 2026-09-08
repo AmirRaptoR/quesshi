@@ -29,7 +29,14 @@ public sealed record LiveView(
     [property: Id(8)] List<LiveRoundResultView> Rounds,
     [property: Id(9)] string? WinnerId,
     [property: Id(10)] bool IsDraw,
-    [property: Id(11)] string? AbandonedBy,
+    /// <summary>Every abandoner, in the order <c>LiveMatch.Abandoners</c> recorded them — replaces a
+    /// single <c>string?</c> that named only the first one. That was never a display nicety: a live
+    /// duel can have any number of abandoners below capacity 2 (everyone but the sole survivor, once
+    /// the duel ends <c>Abandoned</c>), and code that compared a viewer's own id against a lone id read
+    /// every abandoner past the first as "abandoned by them" even when it was that viewer who quit — see
+    /// <c>LiveMatchSettlement.SettleAsync</c>'s own <c>isQuitter</c> check and <c>LiveOutcomeText.Resolve</c>,
+    /// both of which used to make exactly that mistake.</summary>
+    [property: Id(11)] List<string> AbandonedBy,
     [property: Id(12)] DateTimeOffset CreatedAt,
     [property: Id(13)] DateTimeOffset? EndedAt,
     [property: Id(14)] string Code,

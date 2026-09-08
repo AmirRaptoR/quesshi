@@ -59,7 +59,14 @@ public sealed class LiveMatchSettlement(
             if (alreadySettled?.Contains(playerId) == true) continue;
 
             var correct = m.Rounds.Select(r => r.Answers.TryGetValue(playerId, out var a) && a.Correct).ToList();
-            var isQuitter = m.State == MatchState.Abandoned && m.AbandonedBy == playerId;
+
+            // Every abandoner is a quitter here, not just the first: an Abandoned duel's non-survivors
+            // are all abandoners by definition (LiveMatch.CloseRound only ever reaches Abandoned once
+            // exactly one player is left active), so a capacity>2 duel can have several. This used to
+            // read the deleted LiveMatch.AbandonedBy accessor, which named only Abandoners[0] — every
+            // quitter past the first was settled as an ordinary loser instead: real score kept, no
+            // abandonment penalty, ever, for anyone but whoever happened to drop first.
+            var isQuitter = m.State == MatchState.Abandoned && m.Abandoners.Any(a => a.PlayerId == playerId);
             var outcome = m.Standings.First(s => s.PlayerId == playerId).Outcome;
 
             // The quitter forfeits everything banked in this duel; a bonus for the other side is
@@ -85,14 +92,19 @@ public sealed class LiveMatchSettlement(
     // the grain writes 0/0 until settlement knows the real ones. m.Code is the duel's actual share
     // code; passing m.Id here instead — as this once did — would overwrite that code with the id on
     // every settlement and break code resolution for it from then on.
-    // m.ChallengerId/m.OpponentId here are ArchivedMatch's own legacy two-scalar fields, kept for the
-    // rows and readers that still switch on them (MatchDoc's ChallengerScore/OpponentScore backfill
-    // path, Mappers.ToLiveSummary's compat projection); they are not where this row's participant set
-    // lives any more. BuildResults below is: it walks m.Participants, not these two, so every seat —
-    // third and later included — gets a real ParticipantResult regardless of what these two say.
-    private static ArchivedMatch ToArchived(LiveMatch m, Language lang) => new(
-        m.Id, m.Code, lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
-        BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true);
+    // The two arguments below are ArchivedMatch's own permanent two-scalar fields, kept for the rows
+    // and readers that still switch on them (MatchDoc's legacy shape, Mappers.ToLiveSummary's history
+    // of the same); they are not where this row's participant set lives any more, and — now that
+    // LiveMatch no longer offers ChallengerId/OpponentId as a shortcut for them — read straight off
+    // Participants instead. BuildResults below is the one that actually carries every seat: it walks
+    // m.Participants, not these two, so every seat — third and later included — gets a real
+    // ParticipantResult regardless of what these two say.
+    private static ArchivedMatch ToArchived(LiveMatch m, Language lang)
+    {
+        var opponentId = m.Participants.Count > 1 ? m.Participants[1] : null;
+        return new(m.Id, m.Code, lang, m.Participants[0], opponentId, m.WinnerId, m.IsDraw,
+            BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true);
+    }
 
     /// <summary>
     /// Score here is always the raw round total from <see cref="LiveMatch.Score"/>, never zeroed for a

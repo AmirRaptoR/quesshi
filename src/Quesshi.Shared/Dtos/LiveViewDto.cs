@@ -29,7 +29,11 @@ public sealed record LiveViewDto(
     /// primary source of truth for a connected client.
     /// </summary>
     List<StandingRowDto> Standings,
-    string? WinnerId, bool IsDraw, string? AbandonedBy, DateTimeOffset CreatedAt, DateTimeOffset? EndedAt,
+    string? WinnerId, bool IsDraw,
+    /// <summary>Every abandoner, in the order the domain recorded them — see <c>LiveView.AbandonedBy</c>'s
+    /// own remarks for why a single id used to be lossy for anything past a two-player duel's first
+    /// quitter.</summary>
+    List<string> AbandonedBy, DateTimeOffset CreatedAt, DateTimeOffset? EndedAt,
     string Code = "",
     DateTimeOffset? LobbyEndsAt = null,
     LiveRoundCardDto? CurrentCard = null,

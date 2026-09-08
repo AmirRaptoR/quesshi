@@ -51,22 +51,6 @@ public sealed class LiveMatch
 
     public string OwnerId => _participants[0];
 
-    /// <summary>
-    /// Compatibility accessor for the two-player shape <see cref="Participants"/> replaces.
-    /// Every consumer of it migrates to <see cref="Participants"/>/<see cref="OwnerId"/> across the
-    /// following steps of issue #47; issue #56 deletes this once none is left.
-    /// </summary>
-    [Obsolete("Use OwnerId (or Participants[0]). Deleted in issue #56.")]
-    public string ChallengerId => OwnerId;
-
-    /// <summary>
-    /// Compatibility accessor: the second seat, or null if it is not yet taken. Meaningless once a
-    /// lobby holds more than two, which is exactly why it is obsolete rather than generalised.
-    /// Deleted in issue #56.
-    /// </summary>
-    [Obsolete("Use Participants. Deleted in issue #56.")]
-    public string? OpponentId => _participants.Count > 1 ? _participants[1] : null;
-
     public IReadOnlyList<string> QuestionIds => _questionIds;
     public MatchState State { get; private set; } = MatchState.AwaitingOpponent;
     public LivePhase Phase { get; private set; } = LivePhase.Lobby;
@@ -99,15 +83,6 @@ public sealed class LiveMatch
     /// <summary>Why this ended a <see cref="MatchState.NoContest"/>, or null otherwise. Only
     /// <see cref="NoContestReason.AllAbandoned"/> is eligible for the abandonment penalty.</summary>
     public NoContestReason? Reason { get; private set; }
-
-    /// <summary>
-    /// Compatibility accessor over <see cref="Abandoners"/>, for the two-player shape where at most
-    /// one player could ever abandon: the sole abandoner's id, or null if there is not exactly one.
-    /// <c>LiveMatchGrain.cs</c>, <c>LiveEnded</c> and <c>LiveView</c> all still type this as a plain
-    /// id; they migrate across the following steps of issue #47, and issue #56 deletes this.
-    /// </summary>
-    [Obsolete("Use Abandoners, an ordered list of every abandoner and the round they dropped in. Deleted in issue #56.")]
-    public string? AbandonedBy => _abandoners.Count == 1 ? _abandoners[0].PlayerId : null;
 
     public bool IsOver => State is MatchState.Resolved or MatchState.Forfeited or MatchState.Abandoned or MatchState.NoContest;
 
@@ -150,28 +125,11 @@ public sealed class LiveMatch
     }
 
     /// <summary>
-    /// The pre-lobby shape every existing caller still builds a duel through: a capacity-2 lobby
-    /// whose question set is already drawn, exactly as every live duel was built before settings and
-    /// N players existed. <c>LiveMatchGrain.CreateAsync</c> is migrated to the settings-aware
-    /// <see cref="Create(string, string, string, DuelSettings, int, DateTimeOffset)"/> plus
-    /// <see cref="DrawQuestions"/> in a later step of issue #47; issue #56 deletes this overload.
-    /// </summary>
-    [Obsolete("Build a DuelSettings and call the capacity-aware Create, then DrawQuestions. Deleted in issue #56.")]
-    public static LiveMatch Create(string id, string code, Language lang, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
-    {
-        var settings = DuelSettings.Create(lang, questionIds.Count, [], []);
-        ValidateQuestionIds(questionIds);
-        return new LiveMatch(id, code, challengerId, settings, capacity: 2, questionIds, now);
-    }
-
-    /// <summary>
     /// Supplies the question set <see cref="Settings"/> describes. In the product this happens once,
     /// when the lobby's owner starts the duel — wiring that call is a later step of issue #47, since
     /// it needs the question set builder the grain owns, not this class. Until it is called,
     /// <see cref="QuestionIds"/> stays empty and a lobby cannot progress past
-    /// <see cref="LivePhase.Countdown"/>. The pre-lobby <see cref="Create(string, string, Language, string, IReadOnlyList{string}, DateTimeOffset)"/>
-    /// overload above never needs this: it draws its set at construction, the way every duel did
-    /// before lobbies existed.
+    /// <see cref="LivePhase.Countdown"/>.
     /// </summary>
     public void DrawQuestions(IReadOnlyList<string> questionIds)
     {

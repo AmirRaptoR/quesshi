@@ -175,7 +175,9 @@ public class MatchGrainRecoveryTests(MatchRecoveryClusterFixture fixture)
         var questionIds = SeedQuestions(id);
         var now = MatchRecoveryShared.Clock.Now;
 
-        var match = Match.Create(id, "LEGACY", Language.En, playerA, questionIds, now);
+        var settings = DuelSettings.Create(Language.En, questionIds.Count, [], []);
+        var match = Match.Create(id, "LEGACY", playerA, settings, capacity: 2, now);
+        match.DrawQuestions(questionIds);
         match.Join(playerB, now);
         foreach (var player in new[] { playerA, playerB })
         {

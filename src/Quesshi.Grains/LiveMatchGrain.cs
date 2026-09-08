@@ -97,7 +97,14 @@ public sealed class LiveMatchGrain(
     {
         if (_match is not null) return await ViewAsync(_match, challengerId);
 
-        _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, (Language)lang, challengerId, questionIds, clock.Now);
+        // What the deleted pre-lobby Create overload used to do internally, inlined here instead: a
+        // capacity-2 lobby whose set is already drawn, built through the settings-aware constructor so
+        // the domain itself never has to carry a second, N-unaware way to come into being. Matchmaking
+        // (LiveMatchmakingGrain) is this method's only caller, and it always hands over a set it has
+        // already drawn, so DrawQuestions here can never see a mismatched count.
+        var settings = DuelSettings.Create((Language)lang, questionIds.Count, [], []);
+        _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, challengerId, settings, capacity: 2, clock.Now);
+        _match.DrawQuestions(questionIds);
 
         // A lobby nobody joins must still expire even with the grain deactivated, so the reminder
         // is registered here rather than waiting for the first phase transition.
@@ -656,7 +663,13 @@ public sealed class LiveMatchGrain(
     private Task IndexAsync()
     {
         var m = _match!;
-        return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
+
+        // ArchivedMatch.ChallengerId/OpponentId are its own permanent two-scalar fields — kept for
+        // MatchDoc's legacy shape and the readers that still switch on it — not the domain's deleted
+        // compatibility accessors of the same names: this is Participants[0] and, when seated,
+        // Participants[1], read directly now that LiveMatch no longer offers them as a shortcut.
+        var opponentId = m.Participants.Count > 1 ? m.Participants[1] : null;
+        return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.Participants[0], opponentId, m.WinnerId, m.IsDraw,
             [.. Participants(m).Select(pid => new ParticipantResult(pid, 0, 0, MatchOutcome.Loss))],
             m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], IsLive: true));
     }
@@ -700,7 +713,7 @@ public sealed class LiveMatchGrain(
     }
 
     private static LiveEnded BuildEnded(LiveMatch m, string? reason) => new(
-        m.State, m.WinnerId, m.IsDraw, m.AbandonedBy,
+        m.State, m.WinnerId, m.IsDraw, [.. m.Abandoners.Select(a => a.PlayerId)],
         [.. Participants(m).Select(pid => new LivePlayerScore(pid, m.Score(pid), CorrectCount(m, pid)))],
         [.. m.Standings],
         reason);
@@ -746,7 +759,7 @@ public sealed class LiveMatchGrain(
         return new LiveView(
             m.Id, [.. Participants(m)], (int)m.State, (int)m.Phase, m.PhaseEndsAt,
             m.CurrentRound?.Slot ?? m.Rounds.Count, m.QuestionIds.Count, players, rounds,
-            m.WinnerId, m.IsDraw, m.AbandonedBy, m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang,
+            m.WinnerId, m.IsDraw, [.. m.Abandoners.Select(a => a.PlayerId)], m.CreatedAt, m.EndedAt, m.Code, (int)m.Lang,
             [.. m.Standings.Select(s => new LiveStandingView(s.PlayerId, s.Score, s.Place, (int)s.Outcome))],
             m.Capacity, m.Settings.QuestionCount, [.. m.Settings.CategoryIds],
             [.. m.Settings.Levels.Select(l => (int)l)]);

@@ -24,7 +24,7 @@ public class DuelBarScoresTests
 
         return new(
             "m1", participants, "inprogress", "question", null, DateTimeOffset.UtcNow, 0, 5,
-            players, [], [], null, false, null, DateTimeOffset.UtcNow, null);
+            players, [], [], null, false, [], DateTimeOffset.UtcNow, null);
     }
 
     [Fact]

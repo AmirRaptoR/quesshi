@@ -13,7 +13,7 @@ public class LiveClientTests
     private static LiveViewDto SampleView(string matchId, DateTimeOffset serverNow) => new(
         matchId, [new("challenger", "Challenger", "c-seed", false), new("opponent", "Opponent", "o-seed", false)],
         "active", "question", serverNow.AddSeconds(10), serverNow,
-        0, 5, [], [], [], null, false, null, serverNow, null);
+        0, 5, [], [], [], null, false, [], serverNow, null);
 
     private static LiveClient NewClient()
         => new(new HubConnectionBuilder().WithUrl("http://localhost/hub/live").WithAutomaticReconnect().Build());
