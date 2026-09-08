@@ -11,8 +11,9 @@ namespace Quesshi.Web.Tests;
 public class LiveClientTests
 {
     private static LiveViewDto SampleView(string matchId, DateTimeOffset serverNow) => new(
-        matchId, "challenger", "opponent", "active", "question", serverNow.AddSeconds(10), serverNow,
-        0, 5, [], [], null, false, null, serverNow, null);
+        matchId, [new("challenger", "Challenger", "c-seed", false), new("opponent", "Opponent", "o-seed", false)],
+        "active", "question", serverNow.AddSeconds(10), serverNow,
+        0, 5, [], [], [], null, false, null, serverNow, null);
 
     private static LiveClient NewClient()
         => new(new HubConnectionBuilder().WithUrl("http://localhost/hub/live").WithAutomaticReconnect().Build());

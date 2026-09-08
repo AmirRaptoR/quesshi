@@ -255,6 +255,7 @@ a  { color: var(--firouzeh); text-decoration: none; }
 }
 .chip--win  { color: var(--zaferan); border-color: rgb(232 168 58 / 0.4); background: rgb(232 168 58 / 0.12); }
 .chip--loss { color: var(--anaar);   border-color: rgb(212 66 92 / 0.4);  background: rgb(212 66 92 / 0.12); }
+.chip--draw { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); background: rgb(47 191 176 / 0.12); }
 .chip--live { color: var(--firouzeh); }
 .chip--live-tag { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); background: rgb(47 191 176 / 0.12); }
 
@@ -281,6 +282,31 @@ a  { color: var(--firouzeh); text-decoration: none; }
   background: var(--firouzeh);
 }
 .avatar--lg { width: 4rem; height: 4rem; font-size: var(--step-2); }
+.avatar--sm { width: 2rem; height: 2rem; font-size: var(--step--1); }
+
+/* --- standings: the results screen's per-participant ranking -------------- */
+.stand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--line);
+}
+.stand-row:last-child { border-bottom: none; }
+.stand-row--me { background: rgb(232 168 58 / 0.07); border-radius: var(--r-sm); padding-inline: 0.5rem; }
+.stand-row__place {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem; height: 1.6rem;
+  border-radius: 50%;
+  font-size: var(--step--1);
+  color: var(--sadaf-2);
+  background: rgb(237 227 208 / 0.08);
+}
+.stand-row--first .stand-row__place { color: var(--shab); background: var(--zaferan); }
+.stand-row__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stand-row__score { font-size: var(--step-1); }
 
 /* --- presence: who could actually play right now -------------------------- */
 .dot--online {
@@ -665,6 +691,19 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .duelbar__name { font-weight: 700; font-size: var(--step--1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 6rem; }
 .duelbar__score { font-size: var(--step-1); }
 .duelbar__score--mine { color: var(--zaferan); }
+
+/* Three or more seats: the single "theirs" column becomes a scrollable strip of the same side
+   markup instead, so up to seven other players stay legible without wrapping the whole bar. */
+.duelbar__others {
+  display: flex;
+  gap: 0.9rem;
+  overflow-x: auto;
+  min-width: 0;
+}
+.duelbar__others .duelbar__name { max-width: 4.5rem; }
+.duelbar__others::-webkit-scrollbar { display: none; }
+.duelbar__side--out { opacity: 0.4; }
+.duelbar__side--out .avatar { filter: grayscale(1); }
 
 /* --- live answers: locked (chosen, outcome still withheld) ---------------- */
 .answer--locked { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }

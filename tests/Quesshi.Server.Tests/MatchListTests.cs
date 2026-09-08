@@ -77,7 +77,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
             if (await Grains.GetGrain<IMatchGrain>(row.Id).GetAsync(meId) is not { } view) continue;
 
             var names = new Dictionary<string, (string, string)>();
-            foreach (var id in new[] { view.ChallengerId, view.OpponentId }.OfType<string>().Distinct())
+            foreach (var id in view.Participants.Distinct())
             {
                 var p = await Shared.Players.GetAsync(id);
                 names[id] = (p?.DisplayName ?? "—", p?.AvatarSeed ?? id);

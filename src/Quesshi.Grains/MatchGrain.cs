@@ -388,7 +388,7 @@ public sealed class MatchGrain(
         if (!reveal)
             runs = [.. runs.Select(r => r.PlayerId == forPlayerId ? r : r with { Score = 0, Correct = 0 })];
 
-        return new MatchView(m.Id, m.Code, (int)m.Lang, m.ChallengerId, m.OpponentId, (int)m.State, m.WinnerId, m.IsDraw,
+        return new MatchView(m.Id, m.Code, (int)m.Lang, [.. m.Participants], (int)m.State, m.WinnerId, m.IsDraw,
             m.CreatedAt, [.. m.QuestionIds], runs);
     }
 }

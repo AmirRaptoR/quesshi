@@ -28,6 +28,13 @@ public sealed class LiveClient : IAsyncDisposable
     public event Action<OpponentAnsweredDto>? OpponentAnswered;
 
     /// <summary>
+    /// Issue #53's addition: fires once for whoever <c>CloseRound</c> just dropped to the miss
+    /// streak. The eliminated player's own client is what switches to spectating on this; everyone
+    /// else's is what stops waiting on a seat that will never fill again.
+    /// </summary>
+    public event Action<LivePlayerEliminatedDto>? PlayerEliminated;
+
+    /// <summary>
     /// A rematch lobby now exists for this duel — pushed whether this connection's own press created
     /// it or somebody else's did; there is no separate "the other side wants a rematch" event any
     /// more (see <c>ILiveNotifier.RematchCreatedAsync</c>'s own remarks). Every other participant
@@ -71,6 +78,7 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<OpponentPresenceDto>("OpponentLeft", p => OpponentLeft?.Invoke(p));
         _connection.On<OpponentPresenceDto>("OpponentBack", p => OpponentBack?.Invoke(p));
         _connection.On<OpponentAnsweredDto>("OpponentAnswered", a => OpponentAnswered?.Invoke(a));
+        _connection.On<LivePlayerEliminatedDto>("PlayerEliminated", e => PlayerEliminated?.Invoke(e));
         _connection.On<RematchCreatedDto>("RematchCreated", r => RematchCreated?.Invoke(r));
         _connection.On("RematchFailed", () => RematchFailed?.Invoke());
     }

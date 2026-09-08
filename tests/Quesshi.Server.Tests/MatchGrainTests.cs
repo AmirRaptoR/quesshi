@@ -208,7 +208,7 @@ public class MatchGrainTests(ClusterFixture fixture)
 
         var rehydrated = await fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id).GetAsync(Amir);
         Assert.NotNull(rehydrated);
-        Assert.Equal(Sara, rehydrated!.OpponentId);
+        Assert.Equal(Sara, rehydrated!.Participants[1]);
         Assert.Equal(1, rehydrated.Runs.Single(r => r.PlayerId == Amir).Answered);
     }
 

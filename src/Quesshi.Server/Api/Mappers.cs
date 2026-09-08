@@ -76,14 +76,14 @@ public static class Mappers
     {
         var myRun = v.Runs.FirstOrDefault(r => r.PlayerId == me);
 
-        // "The other side" for this DTO's own two-player shape (theirs, singular) — reads Runs too,
-        // not just the ChallengerId/OpponentId pair, since a capacity>2 duel's third-or-later seat has
-        // a real run of their own the moment they have served a question, and picking only from the
-        // two legacy scalars would silently prefer showing the owner over them. For a capacity-2 duel
-        // this names exactly the one other participant it always did. Outcome below is unaffected —
-        // OutcomeFor already ranks every one of v.Runs, never just this single "theirs" pick.
-        var otherId = new[] { v.ChallengerId, v.OpponentId }.OfType<string>().Concat(v.Runs.Select(r => r.PlayerId))
-            .FirstOrDefault(id => id != me);
+        // "The other side" for this DTO's own two-player shape (theirs, singular) — reads
+        // v.Participants directly now that issue #53 reshaped MatchView away from the
+        // ChallengerId/OpponentId pair this used to fall back to. For a capacity-2 duel this names
+        // exactly the one other participant it always did; for a capacity>2 duel it is whichever
+        // other seat sorts first — a real seat, never a made-up id, same as before the reshape.
+        // Outcome below is unaffected — OutcomeFor already ranks every one of v.Runs, never just this
+        // single "theirs" pick.
+        var otherId = v.Participants.FirstOrDefault(id => id != me);
         var theirRun = otherId is null ? null : v.Runs.FirstOrDefault(r => r.PlayerId == otherId);
 
         var (myName, myAvatar) = lookup(me);
@@ -200,18 +200,15 @@ public static class Mappers
     /// The grain's <see cref="LiveView"/> as the wire shape: state and phase become words,
     /// <c>ServerNow</c> is added beside every deadline so a client can measure clock skew once at
     /// connect and never re-sync, and the #13 contract additions are filled in here rather than in
-    /// the grain: both players' name/avatar (<paramref name="lookup"/>, mirroring
-    /// <see cref="ToSummary"/>), the lobby's derived expiry, and — for whichever round is current —
-    /// the prompt/choices/media a client needs to render it and, once revealed, its explanation.
-    /// The correct index is never added here beyond what <see cref="LiveView.Rounds"/> already
-    /// redacts: <see cref="LiveRoundCardDto"/> has no such field.
+    /// the grain: every seat's name/avatar/guest flag (<paramref name="lookup"/>, mirroring
+    /// <see cref="ToSummary"/>) as <see cref="LiveViewDto.Participants"/>, the lobby's derived expiry,
+    /// and — for whichever round is current — the prompt/choices/media a client needs to render it
+    /// and, once revealed, its explanation. The correct index is never added here beyond what
+    /// <see cref="LiveView.Rounds"/> already redacts: <see cref="LiveRoundCardDto"/> has no such field.
     ///
-    /// <see cref="LiveViewDto"/> itself still only names a challenger and an opponent — carrying a
-    /// third-or-later seat over this wire shape is issue #53's job, not this one's — so this reads
-    /// only <see cref="LiveView.Participants"/>' first two entries, exactly the pair
-    /// <c>ChallengerId</c>/<c>OpponentId</c> used to be. For a capacity-2 duel that is every seat
-    /// there is, so nothing observable changes; a capacity-&gt;2 duel's third-plus player is simply
-    /// not named here yet, same as before this method's own view started carrying them at all.
+    /// <see cref="LiveViewDto.Participants"/> is issue #53's widening of what used to be only the
+    /// first two entries of <see cref="LiveView.Participants"/>, named as a challenger and an
+    /// opponent: every seat is carried over now, in the same join order the domain itself keeps.
     /// </summary>
     public static async Task<LiveViewDto> ToLiveDtoAsync(this LiveView v, DateTimeOffset serverNow,
         IQuestionRepository questions, ICategoryRepository categories, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
@@ -237,22 +234,69 @@ public static class Mappers
             }
         }
 
-        var challengerId = v.Participants[0];
-        var opponentId = v.Participants.Count > 1 ? v.Participants[1] : null;
+        var participants = v.Participants.Select(id =>
+        {
+            var (name, avatar, isGuest) = lookup(id);
+            return new LiveParticipantDto(id, name, avatar, isGuest);
+        }).ToList();
 
-        var (challengerName, challengerAvatar, challengerIsGuest) = lookup(challengerId);
-        var (opponentName, opponentAvatar, opponentIsGuest) = opponentId is null ? (null, null, false) : ((string?, string?, bool))lookup(opponentId);
+        var state = (MatchState)v.State;
 
         return new LiveViewDto(
-            v.Id, challengerId, opponentId, ((MatchState)v.State).ToString().ToLowerInvariant(),
+            v.Id, participants, state.ToString().ToLowerInvariant(),
             phase.ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
             [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
             [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
                 [.. r.Answers.Select(a => new LiveRoundAnswerViewDto(a.PlayerId, a.Answered, a.ChoiceIndex, a.Correct, a.Score))]))],
+            BuildColdStandings(v, state, lookup),
             v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code,
-            challengerName, challengerAvatar, opponentName, opponentAvatar,
             phase == LivePhase.Lobby ? v.CreatedAt + LiveRules.LobbyExpires : null,
-            card, explanation, challengerIsGuest, opponentIsGuest);
+            card, explanation);
+    }
+
+    /// <summary>
+    /// A best-effort standings list for whoever loads (or reloads) this duel after it is already
+    /// over, rather than watching it end live. A connected client never needs this: the "Ended" push
+    /// carries <c>LiveEndedDto.Standings</c>, computed straight off <c>LiveMatch.Standings</c> with
+    /// every abandoner correctly ranked below every finisher. This reconstruction cannot do the same,
+    /// because <see cref="LiveView.AbandonedBy"/> is still <c>LiveView</c>'s own single-id
+    /// compatibility adapter over the domain's ordered abandoners list (migrated in a later step of
+    /// issue #47, alongside <c>LiveMatchGrain</c>'s and <c>LiveEnded</c>'s identical fields) — so at
+    /// most one abandoner can be ranked last here. That is exactly the two-player case this app has
+    /// always had, and it is also the only case this method can ever be wrong about: a duel with two
+    /// or more abandoners that is reloaded cold, rather than watched live, would show the second
+    /// abandoner ranked by their (zeroed) score instead of below the first. Scores of 100/100/50 with
+    /// no abandoner still read as two draws and one loss, which is the case this exists to get right.
+    /// </summary>
+    private static List<StandingRowDto> BuildColdStandings(LiveView v, MatchState state, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
+    {
+        if (state is not (MatchState.Resolved or MatchState.Abandoned)) return [];
+
+        var ranked = v.Players
+            .Select(p => (p.PlayerId, p.Score, IsAbandoner: p.PlayerId == v.AbandonedBy))
+            .OrderBy(p => p.IsAbandoner)
+            .ThenByDescending(p => p.IsAbandoner ? 0 : p.Score)
+            .ToList();
+
+        var places = new int[ranked.Count];
+        for (var i = 0; i < ranked.Count; i++)
+        {
+            var tied = i > 0 && ranked[i].IsAbandoner == ranked[i - 1].IsAbandoner
+                && (ranked[i].IsAbandoner || ranked[i].Score == ranked[i - 1].Score);
+            places[i] = tied ? places[i - 1] : i + 1;
+        }
+
+        var firstPlaceCount = places.Count(p => p == 1);
+
+        return [.. ranked.Select((p, i) =>
+        {
+            var (name, avatar, _) = lookup(p.PlayerId);
+            return new StandingRowDto(
+                p.PlayerId, name, avatar,
+                p.IsAbandoner ? 0 : p.Score,
+                places[i],
+                places[i] != 1 ? "loss" : firstPlaceCount == 1 ? "win" : "draw");
+        })];
     }
 
     /// <summary>The four pushes <see cref="ILiveNotifier"/> carries, as the wire shape <c>LiveHub</c> sends them in.</summary>

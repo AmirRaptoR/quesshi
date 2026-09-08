@@ -659,7 +659,7 @@ public sealed class LiveMatchGrain(
     /// </summary>
     private static IReadOnlyList<string> Participants(LiveMatch m) => m.Participants;
 
-    private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, m.ChallengerId, m.OpponentId!, m.QuestionIds.Count);
+    private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, [.. Participants(m)], m.QuestionIds.Count);
 
     private static LiveRoundCard BuildRoundCard(LiveRound round, Question question, Category? category, int totalRounds) => new(
         round.Slot, totalRounds, question.Id, question.Prompt, [.. question.Choices],

@@ -32,18 +32,30 @@
                          Centre="@(summary.CanReveal ? L.Num(summary.Me.Score) : "…")" />
             </div>
 
-            <div class="row row--between" style="margin-top:1rem">
-                <div style="text-align:start">
-                    <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
-                    <div class="numeral" style="font-size:var(--step-2);color:var(--zaferan)">@L.Num(summary.Me.Score)</div>
+            @if (_detail.Standings.Count > 0)
+            {
+                @* The match is over: every participant's real placement replaces the plain
+                   you/them pair, whether this duel ever had exactly two seats or up to eight —
+                   see StandingsList's own remarks. *@
+                <div style="margin-top:1rem">
+                    <StandingsList Rows="_detail.Standings" MeId="@MeId" />
                 </div>
-                <div style="text-align:end">
-                    <div class="faint" style="font-size:var(--step--1)">@(summary.Opponent?.DisplayName ?? L["result.them"])</div>
-                    <div class="numeral" style="font-size:var(--step-2)">
-                        @(summary.CanReveal && summary.Opponent is not null ? L.Num(summary.Opponent.Score) : "—")
+            }
+            else
+            {
+                <div class="row row--between" style="margin-top:1rem">
+                    <div style="text-align:start">
+                        <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
+                        <div class="numeral" style="font-size:var(--step-2);color:var(--zaferan)">@L.Num(summary.Me.Score)</div>
+                    </div>
+                    <div style="text-align:end">
+                        <div class="faint" style="font-size:var(--step--1)">@(summary.Opponent?.DisplayName ?? L["result.them"])</div>
+                        <div class="numeral" style="font-size:var(--step-2)">
+                            @(summary.CanReveal && summary.Opponent is not null ? L.Num(summary.Opponent.Score) : "—")
+                        </div>
                     </div>
                 </div>
-            </div>
+            }
         </section>
 
         @if (summary.Opponent is null)
@@ -140,6 +152,8 @@
 
     private MatchDetailDto? _detail;
     private bool _copied;
+
+    private string MeId => State.Me!.Id;
 
     /// <summary>The invite as something you can send: a code is fine to read out, a link is not.</summary>
     private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_detail!.Summary.Code}";

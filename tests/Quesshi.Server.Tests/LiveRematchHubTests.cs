@@ -165,8 +165,8 @@ public class LiveRematchHubTests(LiveClusterFixture fixture) : IAsyncDisposable
 
         var view = await connection.InvokeAsync<LiveViewDto>("Join", matchId);
 
-        Assert.False(view.ChallengerIsGuest);
-        Assert.True(view.OpponentIsGuest);
+        Assert.False(view.Participants[0].IsGuest);
+        Assert.True(view.Participants[1].IsGuest);
     }
 
     [Fact]
@@ -188,8 +188,8 @@ public class LiveRematchHubTests(LiveClusterFixture fixture) : IAsyncDisposable
 
         var view = await client.GetFromJsonAsync<LiveViewDto>($"/api/live/{matchId}");
 
-        Assert.False(view!.ChallengerIsGuest);
-        Assert.True(view.OpponentIsGuest);
+        Assert.False(view!.Participants[0].IsGuest);
+        Assert.True(view.Participants[1].IsGuest);
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();

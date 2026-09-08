@@ -1,0 +1,35 @@
+@* The results screen's standings list — every participant with place, score and outcome, replacing
+   the old two-score view. Rows arrive already ranked (an abandoner sorts below every finisher
+   regardless of score, exactly as Standing's own remarks describe); this only draws them, with "me"
+   picked out and an expired async run labelled as what it is rather than left to look like an
+   ordinary finisher. Legible from two rows up to eight, which is the whole point: the two-player
+   case is simply a two-row list, not a special layout. *@
+@using Quesshi.Shared
+@using Quesshi.Web.Pages
+@inject Translator L
+
+<div class="stack" style="gap:0">
+    @foreach (var row in Rows)
+    {
+        <div class="stand-row @(row.Place == 1 ? "stand-row--first" : null) @(row.PlayerId == MeId ? "stand-row--me" : null)" @key="row.PlayerId">
+            <span class="stand-row__place numeral">@L.Num(row.Place)</span>
+            <span class="avatar avatar--sm" style="background:@Ranks.Tint(row.Avatar)">@Initial(row.Name)</span>
+            <span class="grow" style="min-width:0">
+                <div class="stand-row__name" dir="auto">@row.Name</div>
+                @if (row.Expired)
+                {
+                    <div class="faint" style="font-size:var(--step--1)">@L["result.expired"]</div>
+                }
+            </span>
+            <span class="numeral stand-row__score">@L.Num(row.Score)</span>
+            <span class="chip @StandingsPresentation.ChipClass(row.Outcome)">@L[StandingsPresentation.OutcomeKey(row.Outcome)]</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<StandingRowDto> Rows { get; set; } = [];
+    [Parameter] public string MeId { get; set; } = "";
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+}

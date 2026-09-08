@@ -55,15 +55,14 @@
         else if (body == LiveBody.Countdown)
         {
             <section class="card card--taq enter" style="text-align:center">
-                <div class="row row--between" style="margin-top:.5rem">
-                    <div class="stack" style="justify-items:center;gap:.35rem">
-                        <span class="avatar avatar--lg" style="background:@Ranks.Tint(_view.ChallengerAvatar)">@Initial(_view.ChallengerName)</span>
-                        <span dir="auto">@_view.ChallengerName</span>
-                    </div>
-                    <div class="stack" style="justify-items:center;gap:.35rem">
-                        <span class="avatar avatar--lg" style="background:@Ranks.Tint(_view.OpponentAvatar ?? "")">@Initial(_view.OpponentName ?? "?")</span>
-                        <span dir="auto">@(_view.OpponentName ?? "—")</span>
-                    </div>
+                <div class="row row--between" style="margin-top:.5rem;flex-wrap:wrap;justify-content:center;gap:1rem">
+                    @foreach (var p in _view.Participants)
+                    {
+                        <div class="stack" style="justify-items:center;gap:.35rem" @key="p.PlayerId">
+                            <span class="avatar avatar--lg" style="background:@Ranks.Tint(p.Avatar)">@Initial(p.Name)</span>
+                            <span dir="auto">@p.Name</span>
+                        </div>
+                    }
                 </div>
                 <p class="faint" style="margin-top:1rem">@L["live.countdown.starting"]</p>
                 <p class="numeral" style="font-size:var(--step-4);margin-top:.5rem">@L.Num(CountdownDigit)</p>
@@ -79,7 +78,7 @@
             }
             else
             {
-                <DuelBar View="_view" MeId="MeId" />
+                <DuelBar View="_view" MeId="MeId" Eliminated="_eliminated" />
 
                 <header class="topbar">
                     <span class="chip" style="border-color:@(card.CategoryColor + "66")">
@@ -103,7 +102,7 @@
                         {
                             var index = i;
                             <button class="answer @(_myChoice == index ? "answer--locked" : null)"
-                                    disabled="@(_locked || TimeUp)" @onclick="() => ChooseAsync(index)">
+                                    disabled="@(_locked || TimeUp || IsEliminatedMe)" @onclick="() => ChooseAsync(index)">
                                 <span class="answer__key" aria-hidden="true">@Keys[index]</span>
                                 <span class="grow" dir="auto">@card.Choices[index]</span>
                             </button>
@@ -112,15 +111,19 @@
                 </section>
 
                 <p class="empty enter" style="margin-top:.7rem">
-                    @if (_locked)
+                    @if (IsEliminatedMe)
                     {
-                        @(_opponentAnswered ? L["live.question.theyAnswered"] : L["live.question.waitingForThem"])
+                        @L["live.eliminated.notice"]
+                    }
+                    else if (_locked)
+                    {
+                        @(AllActiveAnswered ? L["live.question.theyAnswered"] : L["live.question.waitingForThem"])
                     }
                     else if (TimeUp)
                     {
                         @L["play.timeUp"]
                     }
-                    else if (_opponentAnswered)
+                    else if (AllActiveAnswered)
                     {
                         @L["live.question.theyAnswered"]
                     }
@@ -130,7 +133,7 @@
                     }
                 </p>
 
-                @if (!_opponentOnline)
+                @if (AnyActiveAway)
                 {
                     <p class="notice notice--bad enter">@L["live.opponentAway"]</p>
                 }
@@ -148,9 +151,9 @@
             else
             {
                 var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
-                var theirs = round.Answers.FirstOrDefault(a => a.PlayerId == TheirId);
+                var others = round.Answers.Where(a => a.PlayerId != MeId).ToList();
 
-                <DuelBar View="_view" MeId="MeId" />
+                <DuelBar View="_view" MeId="MeId" Eliminated="_eliminated" />
 
                 <header class="topbar">
                     <span class="chip" style="border-color:@(card.CategoryColor + "66")">
@@ -179,9 +182,19 @@
                                     <span class="grow" dir="auto">@card.Choices[index]</span>
                                     @if (index == round.CorrectIndex) { <span aria-hidden="true">✓</span> }
                                 </button>
-                                <div class="row" style="gap:.35rem">
+                                <div class="row" style="gap:.35rem;flex-wrap:wrap">
                                     @if (mine?.ChoiceIndex == index) { <span class="chip chip--live">@L["result.you"]</span> }
-                                    @if (theirs?.ChoiceIndex == index) { <span class="chip">@L["result.them"]</span> }
+                                    @if (others.Count == 1)
+                                    {
+                                        @if (others[0].ChoiceIndex == index) { <span class="chip">@L["result.them"]</span> }
+                                    }
+                                    else
+                                    {
+                                        @foreach (var other in others.Where(o => o.ChoiceIndex == index))
+                                        {
+                                            <span class="chip" dir="auto" @key="other.PlayerId">@NameOf(other.PlayerId)</span>
+                                        }
+                                    }
                                 </div>
                             </div>
                         }
@@ -189,10 +202,24 @@
                 </section>
 
                 <section class="card card--flat enter" style="margin-top:.85rem">
-                    <div class="row row--between">
-                        <span class="numeral" style="color:var(--zaferan)">@L["result.you"]: +@L.Num(mine?.Score ?? 0)</span>
-                        <span class="numeral">@L["result.them"]: +@L.Num(theirs?.Score ?? 0)</span>
-                    </div>
+                    @if (others.Count <= 1)
+                    {
+                        var theirs = others.FirstOrDefault();
+                        <div class="row row--between">
+                            <span class="numeral" style="color:var(--zaferan)">@L["result.you"]: +@L.Num(mine?.Score ?? 0)</span>
+                            <span class="numeral">@L["result.them"]: +@L.Num(theirs?.Score ?? 0)</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row" style="flex-wrap:wrap;gap:.4rem 1rem">
+                            <span class="numeral" style="color:var(--zaferan)">@L["result.you"]: +@L.Num(mine?.Score ?? 0)</span>
+                            @foreach (var other in others)
+                            {
+                                <span class="numeral" dir="auto" @key="other.PlayerId">@NameOf(other.PlayerId): +@L.Num(other.Score)</span>
+                            }
+                        </div>
+                    }
 
                     @if (!string.IsNullOrWhiteSpace(_view.CurrentExplanation))
                     {
@@ -207,21 +234,21 @@
                 <span class="eyebrow">@L[LiveOutcomeText.HeadlineKey(Outcome)]</span>
 
                 <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
-                    <Shamseh Mine="RaysFor(MeId)" Theirs="RaysFor(TheirId)" Slots="_view.TotalRounds" Ignite="true"
+                    <Shamseh Mine="RaysFor(MeId)" Theirs="TheirsRays" Slots="_view.TotalRounds" Ignite="true"
+                             HideTheirs="@(_view.Participants.Count != 2)"
                              Centre="@L.Num(_view.Players.FirstOrDefault(p => p.PlayerId == MeId)?.Score ?? 0)" />
                 </div>
-
-                <div class="row row--between" style="margin-top:1rem">
-                    <div style="text-align:start">
-                        <div class="faint" style="font-size:var(--step--1)">@L["result.you"]</div>
-                        <div class="numeral" style="font-size:var(--step-2);color:var(--zaferan)">@L.Num(_view.Players.FirstOrDefault(p => p.PlayerId == MeId)?.Score ?? 0)</div>
-                    </div>
-                    <div style="text-align:end">
-                        <div class="faint" style="font-size:var(--step--1)">@(_view.ChallengerId == MeId ? _view.OpponentName : _view.ChallengerName)</div>
-                        <div class="numeral" style="font-size:var(--step-2)">@L.Num(_view.Players.FirstOrDefault(p => p.PlayerId == TheirId)?.Score ?? 0)</div>
-                    </div>
-                </div>
             </section>
+
+            @if (_view.Standings.Count > 0)
+            {
+                <section class="card card--flat enter" style="margin-top:.85rem">
+                    <span class="eyebrow">@L["result.standings"]</span>
+                    <div style="margin-top:.5rem">
+                        <StandingsList Rows="_view.Standings" MeId="MeId" />
+                    </div>
+                </section>
+            }
 
             <div class="stack enter" style="margin-top:1.2rem">
                 @if (CanOfferRematch)
@@ -232,7 +259,7 @@
                     }
                     <button class="btn btn--block" disabled="@_rematchPressed" @onclick="RequestRematchAsync">@L["live.rematch.button"]</button>
                 }
-                else if (_view.OpponentId is not null)
+                else if (_view.Participants.Count > 1)
                 {
                     <p class="faint" style="text-align:center">@L["live.rematch.guestBlocked"]</p>
                 }
@@ -271,9 +298,26 @@
 
     private bool _locked;
     private int? _myChoice;
-    private bool _opponentAnswered;
-    private bool _opponentOnline = true;
     private bool _copied;
+
+    /// <summary>
+    /// Every id in here has hit <c>LiveRules.MissesBeforeAbandon</c> and is done playing for good — a
+    /// player never returns from this set. Seeded from a fresh view's per-player <c>MissStreak</c> on
+    /// every load and rejoin (see <see cref="SyncEliminatedFromView"/>) and grown live by the
+    /// <c>PlayerEliminated</c> push in between, since an ordinary round reveal never refreshes
+    /// <c>MissStreak</c> on its own — see <see cref="LiveElimination"/>'s own remarks for why both
+    /// sources are necessary.
+    /// </summary>
+    private readonly HashSet<string> _eliminated = [];
+
+    /// <summary>Who has locked in an answer for the round currently open, other than me. Reset every
+    /// new round; grown by the live <c>OpponentAnswered</c> push and rebuilt from the round's own
+    /// redacted answers on load or rejoin.</summary>
+    private readonly HashSet<string> _answeredOthers = [];
+
+    /// <summary>Who is currently away (disconnected), other than me. Presence is connection-level, not
+    /// round-level, so this is never cleared on a new round the way <see cref="_answeredOthers"/> is.</summary>
+    private readonly HashSet<string> _awayOthers = [];
 
     private bool _rematchPressed;
     private bool _rematchFailed;
@@ -293,7 +337,9 @@
     /// A rematch push navigates to <c>/live/{newId}</c> while this page is already open — the same
     /// component instance is reused (#35's own technical note), so this is the only hook that ever
     /// notices the route changed. Tears down the finished duel's <see cref="LiveClient"/> and
-    /// re-enters for the new id rather than staying bound to the old one.
+    /// re-enters for the new id rather than staying bound to the old one. Every set this page keeps
+    /// for the *previous* duel — who was eliminated, who had answered, who was away — is cleared here
+    /// too, or a player eliminated in a finished duel would still read as eliminated in its rematch.
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
@@ -307,6 +353,9 @@
 
         _view = null;
         _refused = false;
+        _eliminated.Clear();
+        _answeredOthers.Clear();
+        _awayOthers.Clear();
         await ConnectAsync();
         StateHasChanged();
     }
@@ -320,6 +369,7 @@
         _client.OpponentLeft += p => OnPresence(p, online: false);
         _client.OpponentBack += p => OnPresence(p, online: true);
         _client.OpponentAnswered += OnOpponentAnswered;
+        _client.PlayerEliminated += OnPlayerEliminated;
         _client.Rejoined += OnRejoined;
         _client.RematchCreated += OnRematchCreated;
         _client.RematchFailed += OnRematchFailed;
@@ -344,6 +394,7 @@
         _rematchPressed = false;
         _rematchFailed = false;
         SyncLocalAnswerState();
+        SyncEliminatedFromView();
         _boundMatchId = MatchId;
     }
 
@@ -363,7 +414,7 @@
         _view = _view with { Phase = "question", PhaseEndsAt = card.EndsAt, RoundIndex = card.Slot, CurrentCard = card, CurrentExplanation = null, Rounds = rounds };
         _locked = false;
         _myChoice = null;
-        _opponentAnswered = false;
+        _answeredOthers.Clear();
         InvokeAsync(StateHasChanged);
     }
 
@@ -393,21 +444,40 @@
             return final is null ? p : p with { Score = final.Score, Correct = final.Correct };
         })];
 
-        _view = _view with { Phase = "over", State = ended.State, WinnerId = ended.WinnerId, IsDraw = ended.IsDraw, AbandonedBy = ended.AbandonedBy, Players = players };
+        // The authoritative standings, straight off LiveMatch.Standings via LiveEndedDto — every
+        // abandoner correctly ranked below every finisher, unlike the best-effort reconstruction
+        // Mappers.ToLiveDtoAsync falls back to for a cold load. Name/avatar are filled in from the
+        // participants this view already carries, since the push itself only names ids.
+        List<StandingRowDto> standings = [.. ended.Standings.Select(s => new StandingRowDto(s.PlayerId, NameOf(s.PlayerId), AvatarOf(s.PlayerId), s.Score, s.Place, s.Outcome))];
+
+        _view = _view with { Phase = "over", State = ended.State, WinnerId = ended.WinnerId, IsDraw = ended.IsDraw, AbandonedBy = ended.AbandonedBy, Players = players, Standings = standings };
         InvokeAsync(StateHasChanged);
     }
 
     private void OnOpponentAnswered(OpponentAnsweredDto a)
     {
         if (a.PlayerId == MeId) return;
-        _opponentAnswered = true;
+        _answeredOthers.Add(a.PlayerId);
         InvokeAsync(StateHasChanged);
     }
 
     private void OnPresence(OpponentPresenceDto p, bool online)
     {
         if (p.PlayerId == MeId) return; // that push is about my own connection, not theirs
-        _opponentOnline = online;
+        if (online) _awayOthers.Remove(p.PlayerId); else _awayOthers.Add(p.PlayerId);
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// The eliminated client's own switch to spectating — nothing more to sync here, since the
+    /// question/answers markup above already reads <see cref="IsEliminatedMe"/> and
+    /// <see cref="_eliminated"/> on every render. The survivors' side of the contract —
+    /// <see cref="AllActiveAnswered"/> no longer waiting on a dropped seat — falls out of the same
+    /// set for free, since <see cref="ActiveOtherIds"/> already excludes it.
+    /// </summary>
+    private void OnPlayerEliminated(LivePlayerEliminatedDto e)
+    {
+        _eliminated.Add(e.PlayerId);
         InvokeAsync(StateHasChanged);
     }
 
@@ -430,13 +500,14 @@
     {
         _view = view;
         SyncLocalAnswerState();
+        SyncEliminatedFromView();
         InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
-    /// Rebuilds the locked/choice/opponent-answered fields from whatever the current view says about
+    /// Rebuilds the locked/choice/others-answered fields from whatever the current view says about
     /// the round in flight — needed after both a fresh load and a rejoin, since either can land mid-
-    /// round with an answer already recorded server-side that this page never locally submitted.
+    /// round with answers already recorded server-side that this page never locally submitted.
     /// </summary>
     private void SyncLocalAnswerState()
     {
@@ -445,14 +516,27 @@
 
         _locked = mine is { Answered: true };
         _myChoice = mine?.ChoiceIndex;
-        _opponentAnswered = round?.Answers.Any(a => a.PlayerId != MeId && a.Answered) ?? false;
+
+        _answeredOthers.Clear();
+        if (round is not null)
+            foreach (var a in round.Answers.Where(a => a.PlayerId != MeId && a.Answered))
+                _answeredOthers.Add(a.PlayerId);
+    }
+
+    /// <summary>See <see cref="_eliminated"/>'s own remarks: a fresh view's <c>MissStreak</c> is
+    /// accurate at the instant it was built, and stays frozen at the threshold forever after a player
+    /// is dropped, so union-ing it in is always safe to repeat.</summary>
+    private void SyncEliminatedFromView()
+    {
+        if (_view is null) return;
+        foreach (var id in LiveElimination.EliminatedIds(_view)) _eliminated.Add(id);
     }
 
     // --- actions ----------------------------------------------------------------------------------
 
     private async Task ChooseAsync(int index)
     {
-        if (_locked || TimeUp || _view?.CurrentCard is null || _client is null) return;
+        if (_locked || TimeUp || IsEliminatedMe || _view?.CurrentCard is null || _client is null) return;
 
         _locked = true;
         _myChoice = index;
@@ -513,11 +597,27 @@
         ? RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, Skew)
         : 0;
 
-    private string? TheirId => _view!.ChallengerId == MeId ? _view.OpponentId : _view.ChallengerId;
+    private bool IsEliminatedMe => _eliminated.Contains(MeId);
+
+    /// <summary>Every other seated player still worth waiting on: not me, and not anyone already
+    /// eliminated — an eliminated seat can never answer again, so a round would otherwise wait
+    /// forever on it. This is what makes <see cref="AllActiveAnswered"/> true again once a dropped
+    /// player stops being counted, rather than surviving them staying permanently "not yet answered".</summary>
+    private IEnumerable<string> ActiveOtherIds => _view is null
+        ? []
+        : _view.Participants.Select(p => p.PlayerId).Where(id => id != MeId && !_eliminated.Contains(id));
+
+    /// <summary>True once every active seat but mine has locked in an answer for the round in flight.
+    /// For a capacity-2 duel this is exactly the old single-opponent-answered flag, since there is
+    /// only ever one other active id to check.</summary>
+    private bool AllActiveAnswered => ActiveOtherIds.Any() && ActiveOtherIds.All(_answeredOthers.Contains);
+
+    private bool AnyActiveAway => ActiveOtherIds.Any(_awayOthers.Contains);
 
     /// <summary>Consistent with #12: a guest may join a live duel, but not create one — and a
-    /// rematch creates one. Offered only once the duel actually has an opponent to rematch with.</summary>
-    private bool CanOfferRematch => _view is { OpponentId: not null, ChallengerIsGuest: false, OpponentIsGuest: false };
+    /// rematch creates one. Offered only once the duel actually holds more than one seat and nobody
+    /// in it is a guest.</summary>
+    private bool CanOfferRematch => _view is not null && _view.Participants.Count >= 2 && _view.Participants.All(p => !p.IsGuest);
 
     private LiveRoundResultViewDto? CurrentRound =>
         _view is not null && _view.RoundIndex < _view.Rounds.Count ? _view.Rounds[_view.RoundIndex] : null;
@@ -536,6 +636,16 @@
     private IReadOnlyList<bool?> RaysFor(string? playerId) => playerId is null || _view is null
         ? []
         : [.. _view.Rounds.Select(r => r.Answers.FirstOrDefault(a => a.PlayerId == playerId) is { Answered: true } a ? a.Correct : (bool?)null)];
+
+    /// <summary>The rosette's second ring only ever made sense for exactly one other player — see
+    /// <c>Shamseh</c>'s own remarks. A capacity&gt;2 duel hides it (<c>HideTheirs</c> above) rather
+    /// than picking one other participant arbitrarily to represent the rest.</summary>
+    private IReadOnlyList<bool?> TheirsRays => _view is { Participants.Count: 2 } v
+        ? RaysFor(v.Participants.First(p => p.PlayerId != MeId).PlayerId)
+        : [];
+
+    private string NameOf(string playerId) => _view?.Participants.FirstOrDefault(p => p.PlayerId == playerId)?.Name ?? playerId;
+    private string AvatarOf(string playerId) => _view?.Participants.FirstOrDefault(p => p.PlayerId == playerId)?.Avatar ?? "";
 
     public async ValueTask DisposeAsync()
     {
