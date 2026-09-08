@@ -168,6 +168,55 @@
                     @if (_identityError is not null) { <div class="notice notice--bad">@_identityError</div> }
                 </div>
             </section>
+
+            @* --- keep this account: the upgrade (issue #55) --------------------------------------
+               Right below the name/avatar card rather than folded into it: that one is an instant,
+               reversible edit, this is a two-step flow with its own error states (a wrong code, an
+               address somebody else already owns) — different enough shapes to earn their own card,
+               placed where a guest has just finished deciding who they look like and is already
+               thinking about whether this seat is theirs to keep. Disappears on its own the moment it
+               succeeds: State.SignInAsync clears IsGuest, which is this whole section's guard. *@
+            <section class="card enter">
+                <span class="eyebrow">@L["lobby.upgrade.title"]</span>
+                <p class="faint" style="margin-top:.4rem">@L["lobby.upgrade.blurb"]</p>
+
+                <div class="stack" style="margin-top:.8rem">
+                    @if (_upgradeStage == UpgradeStage.Email)
+                    {
+                        <input class="input" type="email" inputmode="email" autocomplete="email" dir="ltr"
+                               @bind="_upgradeEmail" @bind:event="oninput" placeholder="you@example.com"
+                               aria-label="@L["auth.email"]" />
+
+                        <button class="btn btn--block" disabled="@(_upgradeBusy || !LooksLikeUpgradeEmail)" @onclick="SendUpgradeCodeAsync">
+                            @(_upgradeBusy ? L["common.loading"] : L["auth.send"])
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="faint" dir="ltr" style="margin:0">@_upgradeEmail</p>
+                        <input class="input code-input" inputmode="numeric" maxlength="6" dir="ltr" autocomplete="one-time-code"
+                               @bind="_upgradeCode" @bind:event="oninput" aria-label="@L["auth.code"]" />
+
+                        <button class="btn btn--block" disabled="@(_upgradeBusy || _upgradeCode.Length != 6)" @onclick="VerifyUpgradeAsync">
+                            @(_upgradeBusy ? L["common.loading"] : L["auth.verify"])
+                        </button>
+                        <button class="btn btn--ghost btn--block btn--sm" disabled="@_upgradeBusy" @onclick="() => _upgradeStage = UpgradeStage.Email">
+                            @L["auth.back"]
+                        </button>
+                    }
+
+                    @if (_upgradeError is not null)
+                    {
+                        <div class="notice notice--bad">
+                            @_upgradeError
+                            @if (_upgradeTaken)
+                            {
+                                <a href="/signin">@L["auth.title"]</a>
+                            }
+                        </div>
+                    }
+                </div>
+            </section>
         }
 
         @* --- settings: the owner's controls, or the same shape read-only for everyone else ------ *@
@@ -233,6 +282,27 @@
     private readonly HashSet<string> _invited = [];
 
     private string? _inviting, _inviteError;
+
+    /// <summary>The guest upgrade's own two-step flow (issue #55) — the same email-then-code shape
+    /// <c>SignIn.razor</c> already uses, reusing that page's OTP endpoints and translation keys, but
+    /// landing on <c>POST /api/me/upgrade</c> instead of <c>/otp/verify</c> at the finish.</summary>
+    private enum UpgradeStage { Email, Code }
+
+    private UpgradeStage _upgradeStage = UpgradeStage.Email;
+    private string _upgradeEmail = "", _upgradeCode = "";
+    private bool _upgradeBusy;
+    private string? _upgradeError;
+
+    /// <summary>Whether <see cref="_upgradeError"/> is the one reason worth a different call to
+    /// action — the address is already somebody's account, so retrying gets nowhere and the message
+    /// offers ordinary sign-in instead.</summary>
+    private bool _upgradeTaken;
+
+    /// <summary>The same loose heuristic <c>SignIn.razor</c>'s own <c>LooksLikeEmail</c> uses: enough to
+    /// keep the button disabled on an obviously-unfinished address, not a real validator — the server
+    /// (<c>EmailAddress.LooksValid</c>) is the actual check, same division every other form in this app
+    /// draws between a client-side nicety and the source of truth.</summary>
+    private bool LooksLikeUpgradeEmail => _upgradeEmail.Contains('@') && _upgradeEmail.Length > 4 && !_upgradeEmail.Contains(' ');
 
     private string MeId => State.Me!.Id;
     private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_snapshot!.Code}";
@@ -456,6 +526,44 @@
         State.SetMe(me);
         _identitySaved = true;
         await RefreshAsync(); // the roster reads this player's name/avatar off the roster fetch, not off State.Me
+    }
+
+    private async Task SendUpgradeCodeAsync()
+    {
+        _upgradeBusy = true; _upgradeError = null; _upgradeTaken = false;
+
+        var sent = await Api.RequestOtpAsync(_upgradeEmail.Trim(), State.Lang);
+        _upgradeBusy = false;
+
+        if (sent is null) { _upgradeError = L["auth.badEmail"]; return; }
+
+        _upgradeCode = "";
+        _upgradeStage = UpgradeStage.Code;
+    }
+
+    /// <summary>
+    /// On success this hands the fresh sign-in result to <c>State.SignInAsync</c> — exactly the call a
+    /// real sign-in makes — which clears <c>IsGuest</c> and the guest match keys and, through
+    /// <c>SetLangAsync</c>'s own <c>Changed</c> event, is the one state change
+    /// <c>MainLayout.SyncLobbyConnectionAsync</c> needs to reconnect the lobby hub with the new,
+    /// non-guest token. Nothing else in this method needs to react to success: the moment <c>State</c>
+    /// reflects it, this whole card's guard (<c>@if (State.IsGuest)</c> above) stops rendering it.
+    /// </summary>
+    private async Task VerifyUpgradeAsync()
+    {
+        _upgradeBusy = true; _upgradeError = null; _upgradeTaken = false;
+
+        var (result, error) = await Api.VerifyUpgradeAsync(_upgradeEmail.Trim(), _upgradeCode.Trim(), State.Lang);
+        _upgradeBusy = false;
+
+        if (result is null)
+        {
+            _upgradeTaken = error == "addresstaken";
+            _upgradeError = _upgradeTaken ? L["lobby.upgrade.taken"] : L["auth.badCode"];
+            return;
+        }
+
+        await State.SignInAsync(result);
     }
 
     private async Task CopyAsync()

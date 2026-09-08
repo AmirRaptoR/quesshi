@@ -104,4 +104,68 @@ public class PlayerGrainWriteOwnershipTests(ClusterFixture fixture)
     [Fact]
     public async Task SetBannedAsync_is_a_no_op_for_an_unknown_player()
         => Assert.False(await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(NewPlayerId()).SetBannedAsync(true));
+
+    // --- ClaimEmailAsync (issue #55): the guest upgrade's write ---------------------------------
+
+    private async Task<(IPlayerGrain Grain, string Id)> NewGuestAsync(long bankedScore = 0)
+    {
+        var id = NewPlayerId();
+        var guest = Player.Guest(id, "Guest", Language.En, Shared.Clock.Now);
+        if (bankedScore > 0) guest.RecordResult(MatchOutcome.Win, bankedScore);
+        await Shared.Players.UpsertAsync(guest);
+        return (fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(id), id);
+    }
+
+    [Fact]
+    public async Task ClaimEmailAsync_replaces_the_guest_address_and_clears_the_guest_flag()
+    {
+        var (grain, id) = await NewGuestAsync();
+
+        Assert.True(await grain.ClaimEmailAsync("Upgraded@Example.com"));
+
+        var player = (await Shared.Players.GetAsync(id))!;
+        Assert.False(player.IsGuest);
+        Assert.Equal("upgraded@example.com", player.Email);
+        Assert.Equal(id, player.Id); // the same row, never a new one
+    }
+
+    /// <summary>The leaderboard write this issue moves onto the grain: a guest banks score with nobody
+    /// watching (<c>SettleMatchAsync</c>'s own <c>!player.IsGuest</c> guard), so claiming an address is
+    /// the first time that score ever reaches the board — seeded from what is already on
+    /// <c>Stats.TotalScore</c>, not from zero and not incremented onto whatever was there before.</summary>
+    [Fact]
+    public async Task ClaimEmailAsync_seeds_the_leaderboard_from_the_banked_score()
+    {
+        var (grain, id) = await NewGuestAsync(bankedScore: 480);
+        Assert.False(Shared.Leaderboard.Scores.ContainsKey(id)); // excluded while still a guest
+
+        await grain.ClaimEmailAsync("scored@example.com");
+
+        Assert.Equal(480, Shared.Leaderboard.Scores[id]);
+    }
+
+    [Fact]
+    public async Task ClaimEmailAsync_is_a_no_op_for_an_unknown_player()
+        => Assert.False(await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(NewPlayerId()).ClaimEmailAsync("nobody@example.com"));
+
+    /// <summary>The same proof <see cref="A_settled_match_does_not_revert_a_rename"/> and
+    /// <see cref="A_grain_write_does_not_undo_a_ban"/> already give their own writes: a claim survives
+    /// a settlement that lands right after it, because both mutate the one cached <c>Player</c> this
+    /// activation owns rather than racing two independent repository writes.</summary>
+    [Fact]
+    public async Task A_settled_match_does_not_revert_a_claim()
+    {
+        var (grain, id) = await NewGuestAsync();
+
+        Assert.True(await grain.ClaimEmailAsync("claimed@example.com"));
+
+        // Stands in for a duel settling right after the upgrade — the exact ordering the rename and
+        // ban tests above already guard against for their own writes.
+        await grain.SettleMatchAsync("m-after-claim", (int)MatchOutcome.Win, 50, [], [], null);
+
+        var player = (await Shared.Players.GetAsync(id))!;
+        Assert.False(player.IsGuest);
+        Assert.Equal("claimed@example.com", player.Email);
+        Assert.Equal(50, player.Stats.TotalScore); // the settlement's own score, not reverted by the claim
+    }
 }

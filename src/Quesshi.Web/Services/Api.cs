@@ -27,6 +27,26 @@ public sealed class Api(HttpClient http)
     public Task<MeDto?> MeAsync() => GetAsync<MeDto>("api/me");
     public Task<MeDto?> SaveProfileAsync(string displayName, string lang, string? avatarSeed = null)
         => PutAsync<MeDto>("api/me", new UpdateProfileDto(displayName, lang, avatarSeed));
+
+    /// <summary>
+    /// The guest upgrade's verify step (issue #55): unlike every other call in this class, a failure
+    /// carries a reason worth telling apart — <c>"addresstaken"</c> means "sign in instead", anything
+    /// else means "try again" — so this returns the raw code rather than folding every failure into a
+    /// null the way <see cref="PostAsync{T}"/> does. Mirrors <c>AdminApi.TryLoginAsync</c>'s own
+    /// (Result, Error) shape for the same reason.
+    /// </summary>
+    public async Task<(AuthResultDto? Result, string? Error)> VerifyUpgradeAsync(string email, string code, string lang)
+    {
+        try
+        {
+            var response = await http.PostAsJsonAsync("api/me/upgrade", new OtpVerifyDto(email, code, lang));
+            if (response.IsSuccessStatusCode) return (await response.Content.ReadFromJsonAsync<AuthResultDto>(), null);
+
+            var error = await response.Content.ReadFromJsonAsync<UpgradeErrorDto>();
+            return (null, error?.Error);
+        }
+        catch { return (null, null); }
+    }
     public Task<List<CategoryDto>?> CategoriesAsync() => GetAsync<List<CategoryDto>>("api/categories");
     public Task<List<FriendDto>?> SearchPlayersAsync(string q) => GetAsync<List<FriendDto>>($"api/players/search?q={Uri.EscapeDataString(q)}");
     public Task<bool> AddFriendAsync(string id) => SendAsync(HttpMethod.Post, $"api/friends/{id}");

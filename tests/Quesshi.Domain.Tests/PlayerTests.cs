@@ -158,4 +158,36 @@ public class PlayerTests
 
         Assert.Empty(Player.FromSnapshot(snapshot).SettledMatchIds);
     }
+
+    /// <summary>The guest upgrade's whole domain change (issue #55): the synthetic address is replaced
+    /// and the guest flag clears, on the same <see cref="Player.Id"/> — never a new one.</summary>
+    [Fact]
+    public void Claiming_an_address_replaces_the_guest_email_and_clears_the_guest_flag()
+    {
+        var guest = Player.Guest("g1", "Sara", Language.Fa, T0);
+
+        guest.Claim("  Sara@Example.com ");
+
+        Assert.False(guest.IsGuest);
+        Assert.Equal("sara@example.com", guest.Email);
+        Assert.Equal("g1", guest.Id);
+    }
+
+    /// <summary>Everything banked before the upgrade survives it — the row never moved, so there is
+    /// nothing to reconcile. See <see cref="Being_a_guest_survives_a_snapshot_round_trip"/> for the
+    /// same guarantee across a snapshot round trip.</summary>
+    [Fact]
+    public void Claiming_an_address_leaves_stats_and_friends_untouched()
+    {
+        var guest = Player.Guest("g1", "Sara", Language.Fa, T0);
+        guest.RecordResult(MatchOutcome.Win, 480);
+        guest.AddFriend("p2");
+        guest.TryRecordSettledMatch("m1", () => { });
+
+        guest.Claim("sara@example.com");
+
+        Assert.Equal(480, guest.Stats.TotalScore);
+        Assert.Equal(["p2"], guest.Friends);
+        Assert.Equal(["m1"], guest.SettledMatchIds);
+    }
 }

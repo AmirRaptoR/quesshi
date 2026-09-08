@@ -3,6 +3,7 @@ using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Server.Auth;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Api;
@@ -64,6 +65,18 @@ public static class GameEndpoints
             if (me is null) return Results.Unauthorized();
             return Results.Ok(me.ToMeDto(await FriendsOfAsync(me, players, board, presence)));
         }).WithMetadata(new AllowGuest());
+
+        // --- guest upgrade (issue #55) -------------------------------------------------------------
+        // AllowGuest for the same reason PUT /api/me carries it: this route's entire purpose is a
+        // guest request, and the group otherwise refuses every guest request by default. Unlike PUT
+        // /api/me, this one refuses the opposite direction too (see UpgradeAsync's own guard) — a
+        // signed-in account has no synthetic address to replace, and letting one call this anyway would
+        // quietly turn it into an unrequested "change my email" endpoint, which is not what issue #55
+        // asks for and not something PUT /api/me offers either.
+        api.MapPost("/me/upgrade", async (OtpVerifyDto body, HttpContext ctx, AuthService auth,
+            IGrainFactory grains, TokenIssuer tokens, IPlayerRepository players) =>
+            await UpgradeAsync(body, ctx.User.PlayerId()!, ctx.User.IsGuest(), auth, grains, tokens, players)
+        ).WithMetadata(new AllowGuest());
 
         api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx,
             IPlayerRepository players, IQuestionRepository questions) =>
@@ -255,6 +268,55 @@ public static class GameEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         }).WithMetadata(new AllowGuest());
+    }
+
+    /// <summary>
+    /// The guest upgrade's entire server-side flow (issue #55, spec section 4). Extracted so the
+    /// not-a-guest guard and the address-taken refusal can be driven directly in a test, the same way
+    /// <see cref="JoinMatchAsync"/> and <see cref="ListMatchesAsync"/> are.
+    ///
+    /// Deliberately never calls <see cref="AuthService.VerifyOtpAsync"/>: that method ends in
+    /// <c>GetOrCreateAsync</c>, which would mint a second player id for <paramref name="body"/>'s
+    /// address rather than claiming it onto <paramref name="meId"/>. <see cref="AuthService.VerifyUpgradeAsync"/>
+    /// validates the same challenge the same way and stops short of touching a <see cref="Player"/> at
+    /// all; the claim itself goes through <see cref="IPlayerGrain.ClaimEmailAsync"/>, never the
+    /// repository, for the reason that method's own remarks give.
+    ///
+    /// Returns a full <see cref="AuthResultDto"/> — a fresh token plus the upgraded player — exactly as
+    /// <c>POST /api/auth/otp/verify</c> does. That is not a stylistic echo: <see cref="TokenIssuer.Issue"/>
+    /// stamps the guest claim from <c>player.IsGuest</c> at issue time, and authorization reads that
+    /// claim rather than the database, so a caller that kept its old token would stay guest-forbidden
+    /// from every account-only endpoint (and from <c>LobbyHub</c>) despite the flag having just cleared
+    /// server-side. The client applies this the same way it applies any other sign-in: see
+    /// <c>AppState.SignInAsync</c>, which already clears <c>IsGuest</c> and the guest match keys and
+    /// already fires the state change <c>MainLayout.SyncLobbyConnectionAsync</c> reconnects the lobby
+    /// hub on — no new plumbing needed on that side either.
+    /// </summary>
+    internal static async Task<IResult> UpgradeAsync(OtpVerifyDto body, string meId, bool isGuest,
+        AuthService auth, IGrainFactory grains, TokenIssuer tokens, IPlayerRepository players)
+    {
+        // Only a guest has a synthetic address worth replacing; see this route's own AllowGuest remarks
+        // in MapGame for why a real account is refused here rather than quietly allowed to change its
+        // email.
+        if (!isGuest) return Results.BadRequest(new UpgradeErrorDto("not_a_guest"));
+
+        var (result, email) = await auth.VerifyUpgradeAsync(body.Email, body.Code);
+        if (result != OtpResult.Ok || email is null)
+            return Results.BadRequest(new UpgradeErrorDto(result.ToString().ToLowerInvariant()));
+
+        // False only for a player id with no record at all — a token for a guest that has since been
+        // deleted, which nothing in this app currently does, but the grain's own contract still answers
+        // "unauthorized" rather than silently doing nothing.
+        if (!await grains.GetGrain<IPlayerGrain>(meId).ClaimEmailAsync(email))
+            return Results.Unauthorized();
+
+        var me = await players.GetAsync(meId);
+        if (me is null) return Results.Unauthorized();
+
+        // Empty friends, same as AuthEndpoints.SignIn: a guest can never have added one (POST
+        // /api/friends/{id} carries no AllowGuest), so there is nothing FriendsOfAsync could find here
+        // that a fresh sign-in's own [] does not already say.
+        return Results.Ok(new AuthResultDto(tokens.Issue(me), me.ToMeDto([])));
     }
 
     /// <summary>
