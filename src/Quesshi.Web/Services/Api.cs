@@ -56,13 +56,20 @@ public sealed class Api(HttpClient http)
 
     // --- lobby (issue #53): the same three calls for either duel kind, routed by IsLive -------------
     // Home.razor's own gap: "Invite a friend" only ever went through CreateMatchAsync above, a fixed
-    // capacity-2 duel, so a capacity above two has nowhere to go without this. It stays the async
-    // lobby specifically — CreateMatchLobbyAsync mirrors CreateMatchAsync's own duel kind rather than
-    // introducing a live one "Invite a friend" never offered either, so the button's meaning does not
-    // shift underneath a player who only ever asked for more seats.
+    // capacity-2 duel, so a capacity above two had nowhere to go without CreateMatchLobbyAsync. The
+    // matching live gap — a live lobby wider than two, or even a plain live invite — had nowhere to go
+    // at all until CreateLiveLobbyAsync below: the endpoint existed (POST /api/live/lobby, wired for
+    // issue #52) with no client call in front of it.
     public Task<MatchSummaryDto?> CreateMatchLobbyAsync(int capacity, string? lang, List<string>? categories = null,
         int? questions = null, List<int>? levels = null)
         => PostAsync<MatchSummaryDto>("api/matches/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
+
+    /// <summary>The live half of the pair above — same shape, same capacity range (2-8), landing its
+    /// caller on a lobby to share rather than an already-paired duel, because a live invite has no
+    /// "matched instantly" shortcut the way random matchmaking does.</summary>
+    public Task<LiveViewDto?> CreateLiveLobbyAsync(int capacity, string? lang, List<string>? categories = null,
+        int? questions = null, List<int>? levels = null)
+        => PostAsync<LiveViewDto>("api/live/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
 
     public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
     public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");

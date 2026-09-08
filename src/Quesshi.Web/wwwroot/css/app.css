@@ -572,6 +572,12 @@ a  { color: var(--firouzeh); text-decoration: none; }
 }
 .segmented__option:hover { color: var(--sadaf); }
 .segmented__option.is-on { color: var(--shab); background: var(--firouzeh); }
+.segmented__option:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* A smaller variant for a segmented control that qualifies another control rather than standing level
+   with it — see Home.razor's live/async pick, a property of "Invite a friend" and its stepper, not a
+   third thing beside them. */
+.segmented--sm .segmented__option { padding: 0.3rem 0.75rem; font-size: var(--step--1); }
 
 /* --- stepper: "how many seats", a control that matters only occasionally sitting quietly beside
    the button that matters every time, rather than a whole segmented row daring you to notice it --- */

@@ -70,9 +70,20 @@
                                         aria-label="@L["home.seatsMore"]" @onclick="() => SetCapacity(_capacity + 1)">+</button>
                             </div>
                         </div>
-                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">
-                            @(_capacity == 2 ? L["home.friendHint"] : L.Format("home.friendHintLobby", L.Num(_capacity)))
-                        </p>
+
+                        @* The live lobby's own entry point (issue #47/#53's last gap): not a fourth button, but a
+                           second dial on this one — a duel is a lobby, and live-vs-async is a property of that
+                           lobby exactly the way its capacity is. Left at its default it changes nothing: "Invite
+                           a friend" at two seats, async, is still the one-tap flow it has always been. *@
+                        <div class="segmented segmented--sm" role="group" aria-label="@L["home.timing"]">
+                            <button type="button" class="segmented__option @(!_liveKind ? "is-on" : null)"
+                                    aria-pressed="@((!_liveKind).ToString().ToLowerInvariant())"
+                                    disabled="@_busy" @onclick="() => _liveKind = false">@L["home.timingAsync"]</button>
+                            <button type="button" class="segmented__option @(_liveKind ? "is-on" : null)"
+                                    aria-pressed="@(_liveKind.ToString().ToLowerInvariant())"
+                                    disabled="@_busy" @onclick="() => _liveKind = true">@L["home.timingLive"]</button>
+                        </div>
+                        <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@FriendHint()</p>
 
                         <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="() => StartAsync(random: true)">
                             <span>@L["home.random"]</span>
@@ -133,6 +144,12 @@
     /// <summary>Two is the effortless default — the overwhelmingly common case — and the only value
     /// that keeps "Invite a friend" behaving exactly as it always has; see InviteFriendAsync.</summary>
     private int _capacity = 2;
+
+    /// <summary>The lobby's other dial, beside capacity: false (async) is the default that keeps
+    /// "Invite a friend" exactly what it has always been — see InviteFriendPlan.NeedsLobby, which
+    /// treats this the same way it treats capacity, as a property of the lobby rather than a reason
+    /// for a second button.</summary>
+    private bool _liveKind;
 
     private string _code = "";
     private string _lang = "";
@@ -237,6 +254,17 @@
 
     private void SetCapacity(int value) => _capacity = Math.Clamp(value, 2, 8);
 
+    /// <summary>The one line of copy under the stepper and the timing toggle, one sentence per
+    /// combination rather than fragments stitched together — a hint reads as something someone wrote,
+    /// not as two half-sentences glued at a dash.</summary>
+    private string FriendHint() => (_liveKind, _capacity) switch
+    {
+        (false, 2) => L["home.friendHint"],
+        (false, _) => L.Format("home.friendHintLobby", L.Num(_capacity)),
+        (true, 2) => L["home.friendHintLive"],
+        (true, _) => L.Format("home.friendHintLiveLobby", L.Num(_capacity)),
+    };
+
     /// <summary>What both "Invite a friend" and "Random opponent" send: nothing picked means
     /// "surprise me", the server draws it itself.</summary>
     private (List<string>? Categories, List<int>? Levels) Selection()
@@ -259,27 +287,32 @@
     }
 
     /// <summary>
-    /// "Invite a friend" itself: capacity 2 is indistinguishable from what this button always did,
-    /// down to the exact endpoint and the exact landing page — see <see cref="InviteFriendPlan"/>'s
-    /// own remarks for why that branch is the one worth a named seam. Anything wider opens the async
-    /// lobby instead (issue #53's addition the button never reached before this), and sends the owner
-    /// to share its code rather than into a duel that has no opponent yet.
+    /// "Invite a friend" itself: capacity 2, async is indistinguishable from what this button always
+    /// did, down to the exact endpoint and the exact landing page — see <see cref="InviteFriendPlan"/>'s
+    /// own remarks for why that branch is the one worth a named seam. Anything else opens a lobby
+    /// instead — wider async (issue #53's first addition), live at any capacity (its last one, closed
+    /// here) — and sends the owner to share its code rather than into a duel with no roster yet.
     /// </summary>
     private async Task InviteFriendAsync()
     {
-        if (!InviteFriendPlan.NeedsLobby(_capacity)) { await StartAsync(random: false); return; }
+        if (!InviteFriendPlan.NeedsLobby(_capacity, _liveKind)) { await StartAsync(random: false); return; }
 
         _busy = true; _error = null;
 
         var (categories, levels) = Selection();
         State.SetLastLiveSettings(_lang, _questions, categories, levels);
 
-        var lobby = await Api.CreateMatchLobbyAsync(_capacity, _lang, categories, _questions, levels);
+        // Two different endpoints, live or async, but both hand back a code and both send their owner
+        // to the same /lobby/{code} — Lobby.razor asks the invite endpoint once to tell the kinds
+        // apart, so this method never has to.
+        var code = _liveKind
+            ? (await Api.CreateLiveLobbyAsync(_capacity, _lang, categories, _questions, levels))?.Code
+            : (await Api.CreateMatchLobbyAsync(_capacity, _lang, categories, _questions, levels))?.Code;
         _busy = false;
 
-        if (lobby is null) { _error = L["common.error"]; return; }
+        if (code is null) { _error = L["common.error"]; return; }
 
-        Nav.NavigateTo(InviteFriendPlan.LobbyRoute(lobby.Code));
+        Nav.NavigateTo(InviteFriendPlan.LobbyRoute(code));
     }
 
     private async Task JoinAsync()
