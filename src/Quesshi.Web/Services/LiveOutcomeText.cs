@@ -26,10 +26,14 @@ public static class LiveOutcomeText
     /// The viewer-relative <see cref="LiveOutcome"/> for a finished duel's wire state. <c>state</c>
     /// is the lower-cased <c>MatchState</c> the DTO carries; <c>Forfeited</c> never reaches here — a
     /// live duel never sets it (<c>LiveMatch</c> only ever resolves, abandons or no-contests).
+    /// <paramref name="abandonedBy"/> is every quitter, not just the first: an <c>Abandoned</c> duel's
+    /// non-survivors are all abandoners by definition (see <c>LiveMatch.BuildStandings</c>'s own
+    /// remarks), so a capacity&gt;2 duel can hand this more than one id, and membership — not equality
+    /// against a single one — is the only check that reads every viewer's own outcome correctly.
     /// </summary>
-    public static LiveOutcome Resolve(string state, string? winnerId, bool isDraw, string? abandonedBy, string meId) => state switch
+    public static LiveOutcome Resolve(string state, string? winnerId, bool isDraw, IReadOnlyList<string> abandonedBy, string meId) => state switch
     {
-        "abandoned" => abandonedBy == meId ? LiveOutcome.AbandonedByYou : LiveOutcome.AbandonedByThem,
+        "abandoned" => abandonedBy.Contains(meId) ? LiveOutcome.AbandonedByYou : LiveOutcome.AbandonedByThem,
         "nocontest" => LiveOutcome.NoContest,
         _ => isDraw ? LiveOutcome.Draw : winnerId == meId ? LiveOutcome.Won : LiveOutcome.Lost
     };

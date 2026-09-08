@@ -56,7 +56,12 @@ public sealed class MatchGrain(
     {
         if (_match is not null) return View(_match, challengerId);
 
-        _match = Match.Create(this.GetPrimaryKeyString(), code, (Language)lang, challengerId, questionIds, clock.Now);
+        // What the deleted pre-lobby Create overload used to do internally, inlined here instead: a
+        // capacity-2 lobby whose set is already drawn, built through the settings-aware constructor so
+        // the domain itself never has to carry a second, N-unaware way to come into being.
+        var settings = DuelSettings.Create((Language)lang, questionIds.Count, [], []);
+        _match = Match.Create(this.GetPrimaryKeyString(), code, challengerId, settings, capacity: 2, clock.Now);
+        _match.DrawQuestions(questionIds);
         await SaveAsync();
         await IndexAsync();
 
@@ -330,7 +335,13 @@ public sealed class MatchGrain(
     private Task IndexAsync()
     {
         var m = _match!;
-        return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.ChallengerId, m.OpponentId, m.WinnerId, m.IsDraw,
+
+        // ArchivedMatch.ChallengerId/OpponentId are its own permanent two-scalar fields — kept for
+        // MatchDoc's legacy shape and the readers that still switch on it — not the domain's deleted
+        // compatibility accessors of the same names: this is Participants[0] and, when seated,
+        // Participants[1], read directly now that Match no longer offers them as a shortcut.
+        var opponentId = m.Participants.Count > 1 ? m.Participants[1] : null;
+        return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.Participants[0], opponentId, m.WinnerId, m.IsDraw,
             BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds]));
     }
 

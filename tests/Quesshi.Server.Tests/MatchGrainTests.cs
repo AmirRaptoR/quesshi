@@ -75,7 +75,7 @@ public class MatchGrainTests(ClusterFixture fixture)
 
         var archived = Shared.Archive.Items.Single(m => m.Id == id);
         Assert.Equal(MatchState.Resolved, archived.State);
-        Assert.True(archived.ChallengerScore > archived.OpponentScore);
+        Assert.True(archived.Results.Single(r => r.PlayerId == Amir).Score > archived.Results.Single(r => r.PlayerId == Sara).Score);
         Assert.True(Shared.Leaderboard.Scores[Amir] > 0);
     }
 

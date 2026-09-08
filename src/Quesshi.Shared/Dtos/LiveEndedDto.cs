@@ -7,5 +7,5 @@ namespace Quesshi.Shared;
 /// the port record's own remarks.
 /// </summary>
 public sealed record LiveEndedDto(
-    string State, string? WinnerId, bool IsDraw, string? AbandonedBy,
+    string State, string? WinnerId, bool IsDraw, List<string> AbandonedBy,
     List<LivePlayerScoreDto> Scores, List<StandingDto> Standings, string? Reason);

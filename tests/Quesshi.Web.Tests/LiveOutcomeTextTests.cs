@@ -28,13 +28,17 @@ public class LiveOutcomeTextTests
     }
 
     [Theory]
-    [InlineData("resolved", "me", false, null, LiveOutcome.Won)]
-    [InlineData("resolved", "them", false, null, LiveOutcome.Lost)]
-    [InlineData("resolved", null, true, null, LiveOutcome.Draw)]
-    [InlineData("abandoned", null, false, "them", LiveOutcome.AbandonedByThem)]
-    [InlineData("abandoned", null, false, "me", LiveOutcome.AbandonedByYou)]
-    [InlineData("nocontest", null, false, null, LiveOutcome.NoContest)]
+    [InlineData("resolved", "me", false, new string[0], LiveOutcome.Won)]
+    [InlineData("resolved", "them", false, new string[0], LiveOutcome.Lost)]
+    [InlineData("resolved", null, true, new string[0], LiveOutcome.Draw)]
+    [InlineData("abandoned", null, false, new[] { "them" }, LiveOutcome.AbandonedByThem)]
+    [InlineData("abandoned", null, false, new[] { "me" }, LiveOutcome.AbandonedByYou)]
+    // A capacity>2 duel can abandon more than one seat before the winner's the sole survivor; the
+    // viewer's own id has to be found among all of them, not just the first, to tell "you quit" from
+    // "someone else did" correctly for the second (or later) abandoner asking about their own result.
+    [InlineData("abandoned", null, false, new[] { "them", "me" }, LiveOutcome.AbandonedByYou)]
+    [InlineData("nocontest", null, false, new string[0], LiveOutcome.NoContest)]
     public void Resolve_reads_the_wire_state_from_the_viewers_own_side(
-        string state, string? winnerId, bool isDraw, string? abandonedBy, LiveOutcome expected)
+        string state, string? winnerId, bool isDraw, string[] abandonedBy, LiveOutcome expected)
         => Assert.Equal(expected, LiveOutcomeText.Resolve(state, winnerId, isDraw, abandonedBy, "me"));
 }

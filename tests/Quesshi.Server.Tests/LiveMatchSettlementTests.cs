@@ -30,17 +30,9 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         return ids;
     }
 
-    /// <summary>A duel to settle. Settlement never reads the share code or the language off the duel —
-    /// <see cref="LiveMatchSettlement.IndexAsync"/> is handed the language separately — so both are
-    /// fixed here rather than restated at every call site; the code is derived from the id so two
-    /// duels in one test are still distinct.</summary>
-    private static LiveMatch NewDuel(string id, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset start)
-        => LiveMatch.Create(id, id.ToUpperInvariant(), Language.En, challengerId, questionIds, start);
-
-    /// <summary>The capacity-aware counterpart of <see cref="NewDuel"/>, for a lobby of more than two:
-    /// the capacity-2 overload above always draws its own two-player question set at construction, but
-    /// a wider lobby has to go through <c>DuelSettings</c> and <see cref="LiveMatch.DrawQuestions"/>
-    /// separately — the shape every capacity&gt;2 duel is actually built through in the product.</summary>
+    /// <summary>A capacity-aware lobby with its set already drawn — what the deleted pre-lobby
+    /// <c>LiveMatch.Create</c> overload used to build directly for a two-player duel, now the
+    /// settings-aware constructor plus <see cref="LiveMatch.DrawQuestions"/>, for any capacity.</summary>
     private static LiveMatch NewLobby(string id, string ownerId, IReadOnlyList<string> questionIds, int capacity, DateTimeOffset start)
     {
         var settings = DuelSettings.Create(Language.En, questionIds.Count, [], []);
@@ -48,6 +40,13 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         m.DrawQuestions(questionIds);
         return m;
     }
+
+    /// <summary>A duel to settle. Settlement never reads the share code or the language off the duel —
+    /// <see cref="LiveMatchSettlement.IndexAsync"/> is handed the language separately — so both are
+    /// fixed here rather than restated at every call site; the code is derived from the id so two
+    /// duels in one test are still distinct.</summary>
+    private static LiveMatch NewDuel(string id, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset start)
+        => NewLobby(id, challengerId, questionIds, capacity: 2, start);
 
     /// <summary>Plays a capacity-3 duel to its natural end the same way <see cref="PlayToResolved"/>
     /// does for two — every round answered by all three, instantly.</summary>
@@ -215,7 +214,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         AbandonBySilence(m, winner, ref now);
 
         Assert.Equal(MatchState.Abandoned, m.State);
-        Assert.Equal(quitter, m.AbandonedBy);
+        Assert.Equal(quitter, m.Abandoners.Single().PlayerId);
         Assert.Equal(winner, m.WinnerId);
         var winnerEarned = m.Score(winner);
         Assert.True(winnerEarned > 0);
@@ -317,7 +316,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
 
         var onEnd = Shared.Archive.Items.Single(x => x.Id == "mirror-1");
         Assert.Equal(MatchState.Resolved, onEnd.State);
-        Assert.True(onEnd.ChallengerScore > 0);
+        Assert.True(onEnd.Results.Single(r => r.PlayerId == "p-mirror-a").Score > 0);
     }
 
     /// <summary>

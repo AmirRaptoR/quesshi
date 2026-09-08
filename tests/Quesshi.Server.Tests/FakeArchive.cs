@@ -61,10 +61,9 @@ public sealed class FakeArchive : IMatchArchive
     /// <summary>
     /// The two-entry <see cref="ParticipantResult"/> list every test written before N-player
     /// participants existed needs — the shape <c>ChallengerScore</c>/<c>OpponentScore</c> used to carry
-    /// positionally, now <c>Results[0]</c>/<c>Results[1]</c>. Place and outcome are the same "not yet
-    /// ranked" placeholder <c>MatchGrain</c>/<c>LiveMatchGrain</c> use for a match that has not
-    /// finished: no test in this project asserts on them, only on the scores the obsolete accessors
-    /// still project.
+    /// positionally before issue #56 deleted them, now <c>Results[0]</c>/<c>Results[1]</c>. Place and
+    /// outcome are the same "not yet ranked" placeholder <c>MatchGrain</c>/<c>LiveMatchGrain</c> use
+    /// for a match that has not finished: no test in this project asserts on them, only on the scores.
     /// </summary>
     public static List<ParticipantResult> TestResults(string challengerId, string? opponentId, int challengerScore, int opponentScore) =>
         opponentId is null

@@ -15,5 +15,5 @@ namespace Quesshi.Application.Ports;
 /// third player did not merely "not draw" — they lost.
 /// </summary>
 public sealed record LiveEnded(
-    MatchState State, string? WinnerId, bool IsDraw, string? AbandonedBy,
+    MatchState State, string? WinnerId, bool IsDraw, List<string> AbandonedBy,
     List<LivePlayerScore> Scores, List<Standing> Standings, string? Reason);

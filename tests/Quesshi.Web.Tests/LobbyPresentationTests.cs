@@ -18,7 +18,7 @@ public class LobbyPresentationTests
         string phase = "lobby", int questionCount = 6, List<string>? categories = null, List<int>? levels = null,
         bool settingsLocked = false)
         => new("m1", participants, "inprogress", phase, null, DateTimeOffset.UtcNow, 0, 0, [], [], [],
-            null, false, null, DateTimeOffset.UtcNow, null, "CODE01", null, null, null,
+            null, false, [], DateTimeOffset.UtcNow, null, "CODE01", null, null, null,
             capacity, new DuelSettingsDto("en", questionCount, categories ?? [], levels ?? []), settingsLocked);
 
     private static MatchSummaryDto AsyncSample(List<LiveParticipantDto> participants, int capacity = 4,

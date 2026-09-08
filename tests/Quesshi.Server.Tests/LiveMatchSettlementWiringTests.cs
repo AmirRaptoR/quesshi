@@ -153,7 +153,7 @@ public class LiveMatchSettlementWiringTests(LiveClusterFixture fixture)
             Advance(LiveRules.RevealTime + TimeSpan.FromMilliseconds(50)); // opens the next round
         }
 
-        Assert.Equal(sara, view.AbandonedBy);
+        Assert.Equal([sara], view.AbandonedBy);
         Assert.Equal(amir, view.WinnerId);
 
         var amirStats = (await LiveShared.Players.GetAsync(amir))!.Stats;
@@ -263,7 +263,9 @@ public class LiveMatchSettlementWiringTests(LiveClusterFixture fixture)
         // entirely rather than merely false.
         var start = LiveShared.TimeProvider.GetUtcNow();
         var ids = SeedQuestions("legacy-" + Guid.NewGuid().ToString("N"));
-        var m = LiveMatch.Create(Guid.NewGuid().ToString("N"), "LEGACY1", Language.En, challenger, ids, start);
+        var settings = DuelSettings.Create(Language.En, ids.Count, [], []);
+        var m = LiveMatch.Create(Guid.NewGuid().ToString("N"), "LEGACY1", challenger, settings, capacity: 2, start);
+        m.DrawQuestions(ids);
         m.Join(opponent, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0

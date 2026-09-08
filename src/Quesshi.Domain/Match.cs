@@ -45,22 +45,6 @@ public sealed class Match
 
     public string OwnerId => _participants[0];
 
-    /// <summary>
-    /// Compatibility accessor for the two-player shape <see cref="Participants"/> replaces. Every
-    /// consumer of it migrates to <see cref="Participants"/>/<see cref="OwnerId"/> across the
-    /// following steps of issue #47; issue #56 deletes this once none is left.
-    /// </summary>
-    [Obsolete("Use OwnerId (or Participants[0]). Deleted in issue #56.")]
-    public string ChallengerId => OwnerId;
-
-    /// <summary>
-    /// Compatibility accessor: the second seat, or null if it is not yet taken. Meaningless once a
-    /// lobby holds more than two, which is exactly why it is obsolete rather than generalised.
-    /// Deleted in issue #56.
-    /// </summary>
-    [Obsolete("Use Participants. Deleted in issue #56.")]
-    public string? OpponentId => _participants.Count > 1 ? _participants[1] : null;
-
     public IReadOnlyList<string> QuestionIds => _questionIds;
     public MatchState State { get; private set; } = MatchState.AwaitingOpponent;
     public DateTimeOffset CreatedAt { get; }
@@ -107,29 +91,11 @@ public sealed class Match
     }
 
     /// <summary>
-    /// The pre-lobby shape every existing caller still builds a duel through: a capacity-2 lobby
-    /// whose question set is already drawn, exactly as every async duel was built before settings and
-    /// N players existed. <c>MatchGrain.CreateAsync</c> is migrated to the settings-aware
-    /// <see cref="Create(string, string, string, DuelSettings, int, DateTimeOffset)"/> plus
-    /// <see cref="DrawQuestions"/> in a later step of issue #47; issue #56 deletes this overload.
-    /// </summary>
-    [Obsolete("Build a DuelSettings and call the capacity-aware Create, then DrawQuestions. Deleted in issue #56.")]
-    public static Match Create(string id, string code, Language lang, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
-    {
-        var settings = DuelSettings.Create(lang, questionIds.Count, [], []);
-        ValidateQuestionIds(questionIds);
-        return new Match(id, code, challengerId, settings, capacity: 2, questionIds, now);
-    }
-
-    /// <summary>
     /// Supplies the question set <see cref="Settings"/> describes. In the product this happens once,
     /// when the lobby's owner starts the duel — wiring that call is a later step of issue #47, since
     /// it needs the question set builder the grain owns, not this class. Until it is called,
     /// <see cref="QuestionIds"/> stays empty and <see cref="ServeNext"/> refuses to serve anything
-    /// (see its own remarks for why that matters). The pre-lobby
-    /// <see cref="Create(string, string, Language, string, IReadOnlyList{string}, DateTimeOffset)"/>
-    /// overload above never needs this: it draws its set at construction, the way every duel did
-    /// before lobbies existed.
+    /// (see its own remarks for why that matters).
     /// </summary>
     public void DrawQuestions(IReadOnlyList<string> questionIds)
     {

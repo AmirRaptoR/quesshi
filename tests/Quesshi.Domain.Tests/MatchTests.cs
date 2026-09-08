@@ -2,12 +2,6 @@ using Quesshi.Domain;
 
 namespace Quesshi.Domain.Tests;
 
-// This file exercises the temporary compatibility adapters (ChallengerId, OpponentId, and the
-// pre-lobby Create overload) deliberately and extensively — they are load-bearing for MatchGrain
-// until issue #47's later steps migrate it, and issue #56 deletes them. One pragma for the whole
-// file beats sprinkling it around every assertion that touches one.
-#pragma warning disable CS0618
-
 public class MatchTests
 {
     private const string Challenger = "u-amir";
@@ -18,7 +12,15 @@ public class MatchTests
 
     private static DuelSettings NewSettings() => DuelSettings.Create(Language.En, MatchRules.QuestionsPerMatch, [], []);
 
-    private static Match NewMatch() => Match.Create("m1", "ABC123", Language.En, Challenger, Ten, T0);
+    /// <summary>A capacity-2 lobby with its ten-question set already drawn — what the deleted pre-lobby
+    /// <c>Match.Create</c> overload used to build directly, now the settings-aware constructor plus
+    /// <see cref="Match.DrawQuestions"/>.</summary>
+    private static Match NewMatch()
+    {
+        var m = Match.Create("m1", "ABC123", Challenger, NewSettings(), capacity: 2, T0);
+        m.DrawQuestions(Ten);
+        return m;
+    }
 
     private static Match Joined()
     {
@@ -60,7 +62,7 @@ public class MatchTests
     {
         var m = NewMatch();
         Assert.Equal(MatchState.AwaitingOpponent, m.State);
-        Assert.Null(m.OpponentId);
+        Assert.Equal([Challenger], m.Participants);
     }
 
     [Theory]
@@ -70,8 +72,10 @@ public class MatchTests
     [InlineData(99)]
     [InlineData(101)]
     public void A_match_refuses_a_length_nobody_can_choose(int count)
-        => Assert.Throws<ArgumentException>(() =>
-            Match.Create("m", "C", Language.En, Challenger, [.. Enumerable.Range(0, count).Select(i => $"q{i}")], T0));
+        // DuelSettings.Create is where this validation lives now that a duel's length is settled
+        // before any question set is drawn — the deleted pre-lobby Create overload used to run the
+        // identical check internally, by calling straight into this same method.
+        => Assert.Throws<ArgumentException>(() => DuelSettings.Create(Language.En, count, [], []));
 
     [Theory]
     [InlineData(10)]
@@ -80,7 +84,8 @@ public class MatchTests
     public void A_run_finishes_after_however_many_questions_the_match_holds(int count)
     {
         var ids = Enumerable.Range(0, count).Select(i => $"q{i}").ToList();
-        var m = Match.Create("m", "C", Language.En, Challenger, ids, T0);
+        var m = Match.Create("m", "C", Challenger, DuelSettings.Create(Language.En, count, [], []), capacity: 2, T0);
+        m.DrawQuestions(ids);
         m.Join(Opponent, T0);
 
         for (var i = 0; i < count; i++)
@@ -282,17 +287,6 @@ public class MatchTests
     {
         var m = Joined3(); // capacity 3, fully joined -- already InProgress
         Assert.Throws<InvalidOperationException>(() => m.DrawQuestions(Ten));
-    }
-
-    [Fact]
-    public void ChallengerId_and_OpponentId_proxy_the_owner_and_the_second_seat()
-    {
-        var m = NewMatchN(2);
-        Assert.Equal(m.OwnerId, m.ChallengerId);
-        Assert.Null(m.OpponentId);
-
-        m.Join(Opponent, T0);
-        Assert.Equal(Opponent, m.OpponentId);
     }
 
     // ---- Start, Leave, Cancel and UpdateSettings ----
@@ -609,7 +603,6 @@ public class MatchTests
         var m = Match.FromSnapshot(snapshot);
 
         Assert.Equal(["u-legacy-challenger"], m.Participants);
-        Assert.Null(m.OpponentId);
 
         // The free seat still takes a joiner.
         m.Join(Opponent, T0);
