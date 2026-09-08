@@ -132,4 +132,24 @@ public sealed class PlayerGrain(IPlayerRepository players, ILeaderboard leaderbo
         await UpsertOrInvalidateAsync(player);
         return true;
     }
+
+    /// <summary>See <see cref="IPlayerGrain.ClaimEmailAsync"/> for why the claim, the guest flag and
+    /// the leaderboard seed all have to happen here, under one activation, rather than split across the
+    /// endpoint and the repository.</summary>
+    public async Task<bool> ClaimEmailAsync(string email)
+    {
+        var player = await EnsurePlayerAsync();
+        if (player is null) return false;
+
+        player.Claim(email);
+        await UpsertOrInvalidateAsync(player);
+
+        // Unconditional, the same way SettleMatchAsync's own leaderboard write is: a guest was excluded
+        // from the leaderboard entirely (see SettleMatchAsync's own IsGuest check), so this is the
+        // first time this player's score ever reaches it, seeded from whatever is already banked on
+        // Stats.TotalScore rather than from zero. Absolute, not an increment, so it can never double
+        // count against a settlement that happens to land on either side of this call.
+        await leaderboard.SetAsync(player.Id, player.Stats.TotalScore);
+        return true;
+    }
 }

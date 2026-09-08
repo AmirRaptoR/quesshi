@@ -26,7 +26,7 @@ public sealed class Player
     }
 
     public string Id { get; }
-    public string Email { get; }
+    public string Email { get; private set; }
     public string DisplayName { get; private set; }
     public string AvatarSeed { get; private set; }
     public Language Lang { get; private set; }
@@ -77,6 +77,27 @@ public sealed class Player
     /// that is a client/server wire concern rather than a player-record concern.
     /// </summary>
     public void SetAvatar(string seed) => AvatarSeed = seed;
+
+    /// <summary>
+    /// The guest upgrade (issue #55): replaces the synthetic <c>{id}@guest.invalid</c> with a real,
+    /// verified address and clears <see cref="IsGuest"/> — on this same <see cref="Id"/>, not a new
+    /// one. Nothing else about the player changes: <see cref="Stats"/>, <see cref="Friends"/>,
+    /// <see cref="SettledMatchIds"/> and every match already on record stay exactly as they are,
+    /// because the row that held them never moved. That is the entire point of upgrading rather than
+    /// routing through <c>AuthService.GetOrCreateAsync</c>, which would have minted a second id for
+    /// this address and stranded this one beside it.
+    ///
+    /// Whether <paramref name="email"/> is already claimed by someone else is deliberately not this
+    /// method's job to check — the same division every other caller-side validation in this class
+    /// draws (see <see cref="SetAvatar"/>'s own remarks). <c>AuthService.VerifyUpgradeAsync</c> checks
+    /// it explicitly so a taken address is refused with a clear reason, and Mongo's unique index on
+    /// <c>Email</c> is what actually closes the race between that check and this write landing.
+    /// </summary>
+    public void Claim(string email)
+    {
+        Email = email.Trim().ToLowerInvariant();
+        IsGuest = false;
+    }
 
     public void RecordResult(MatchOutcome outcome, long score = 0)
     {

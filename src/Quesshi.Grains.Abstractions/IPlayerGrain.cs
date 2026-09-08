@@ -68,4 +68,29 @@ public interface IPlayerGrain : IGrainWithStringKey
     /// </summary>
     [Alias("SetBannedAsync")]
     Task<bool> SetBannedAsync(bool banned);
+
+    /// <summary>
+    /// The guest upgrade's write (issue #55, spec section 4): claims <paramref name="email"/> onto
+    /// this grain's player, clears <c>IsGuest</c>, and seeds the leaderboard from the score already
+    /// banked — all three under this activation's own serialisation, for the same reason
+    /// <see cref="UpdateProfileAsync"/> and <see cref="SetBannedAsync"/> had to move here rather than
+    /// stay on the repository: <c>PlayerGrain</c> caches the whole player and every write is a
+    /// full-document upsert, so a claim written straight to <c>IPlayerRepository</c> would be reverted
+    /// the moment this grain next wrote its own stale, still-guest copy back over it.
+    ///
+    /// The leaderboard write belongs here rather than beside the endpoint for the same reason
+    /// settlement's own leaderboard write lives inside <see cref="SettleMatchAsync"/>: a settlement
+    /// racing this claim and a claim racing a settlement must serialise against each other, and only
+    /// this activation's single-threaded execution can guarantee that. <c>SetAsync</c>'s absolute value
+    /// (never an increment) is what makes calling it here, from the score already on <c>Stats</c>
+    /// rather than from a delta, correct regardless of ordering.
+    ///
+    /// Whether <paramref name="email"/> is already claimed elsewhere is not checked here — the caller
+    /// (<c>AuthService.VerifyUpgradeAsync</c>) already checked it, and Mongo's unique index on
+    /// <c>Email</c> is the actual backstop against the race between that check and this write. Returns
+    /// false, changing nothing, for a player id with no record — the same convention every other
+    /// grain write in this file follows.
+    /// </summary>
+    [Alias("ClaimEmailAsync")]
+    Task<bool> ClaimEmailAsync(string email);
 }

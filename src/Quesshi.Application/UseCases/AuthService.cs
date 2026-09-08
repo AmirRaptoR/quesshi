@@ -37,6 +37,45 @@ public sealed class AuthService(IPlayerRepository players, IOtpStore otps, IOtpS
         return player.IsBanned ? new SignInResult(OtpResult.Wrong, null) : new SignInResult(OtpResult.Ok, player);
     }
 
+    /// <summary>
+    /// The guest upgrade's own verify path (issue #55, spec section 4). Deliberately not
+    /// <see cref="VerifyOtpAsync"/>, which ends in <see cref="GetOrCreateAsync"/> and would register a
+    /// brand-new player id for <paramref name="email"/> — creating exactly the second account the
+    /// upgrade exists to avoid, and stranding the caller's existing guest id beside it. This method
+    /// validates the challenge exactly the same way <see cref="VerifyOtpAsync"/> does — the same
+    /// attempt-count save that must survive the round trip whether the attempt is right or wrong, and
+    /// the same delete on success — but stops there: it never fetches or creates a <see cref="Player"/>.
+    /// Claiming <paramref name="email"/> onto the caller's own id is <c>IPlayerGrain.ClaimEmailAsync</c>'s
+    /// job, because every mutation of a <see cref="Player"/> goes through that grain now, this one
+    /// included.
+    ///
+    /// The address-taken check runs only after the challenge itself verifies, so a wrong or expired
+    /// code never leaks whether some other address already has an account — the same "an unknown or
+    /// banned address reads as a bad code" discipline <see cref="VerifyOtpAsync"/> already follows.
+    /// Checked explicitly here rather than left entirely to Mongo's unique index on <c>Email</c>, so a
+    /// taken address is refused with a clear, translatable reason instead of a raw write conflict; the
+    /// index remains the actual backstop for the race between this check and the grain's later write.
+    /// </summary>
+    public async Task<UpgradeVerifyResult> VerifyUpgradeAsync(string email, string code, CancellationToken ct = default)
+    {
+        var normalized = Normalize(email);
+        var challenge = await otps.GetAsync(normalized, ct);
+
+        // An unknown address is indistinguishable from an expired one, same as VerifyOtpAsync.
+        if (challenge is null) return new UpgradeVerifyResult(OtpResult.Expired, null);
+
+        var result = challenge.Verify(code, clock.Now);
+        await otps.SaveAsync(challenge, ct); // attempts have to survive the round trip or the limit is fiction
+
+        if (result != OtpResult.Ok) return new UpgradeVerifyResult(result, null);
+
+        await otps.DeleteAsync(normalized, ct);
+
+        return await players.GetByEmailAsync(normalized, ct) is not null
+            ? new UpgradeVerifyResult(OtpResult.AddressTaken, null)
+            : new UpgradeVerifyResult(OtpResult.Ok, normalized);
+    }
+
     public async Task<Player?> SignInWithGoogleAsync(string email, string? displayName, Language lang = Language.Fa, CancellationToken ct = default)
     {
         var normalized = Normalize(email);
