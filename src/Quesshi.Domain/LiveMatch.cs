@@ -1,23 +1,29 @@
 namespace Quesshi.Domain;
 
 /// <summary>
-/// A live duel: two players on the same question at the same time, on a shared clock. Pure state
-/// machine, like <see cref="Match"/> — no storage, no Orleans, no clock of its own. Every method
-/// that needs "now" is handed it, and <see cref="Advance"/> is the only one that reads it to decide
-/// what changed, so the timer and every answer can drive the same state through the same door.
+/// A live duel: two to <see cref="Capacity"/> players on the same question at the same time, on a
+/// shared clock. Pure state machine, like <see cref="Match"/> — no storage, no Orleans, no clock of
+/// its own. Every method that needs "now" is handed it, and <see cref="Advance"/> is the only one
+/// that reads it to decide what changed, so the timer and every answer can drive the same state
+/// through the same door.
 /// </summary>
 public sealed class LiveMatch
 {
+    private readonly List<string> _participants;
     private readonly List<string> _questionIds;
     private readonly List<LiveRound> _rounds = [];
     private readonly Dictionary<string, int> _missStreak = [];
+    private readonly List<Abandonment> _abandoners = [];
+    private readonly List<Standing> _standings = [];
 
-    private LiveMatch(string id, string code, Language lang, string challengerId, IEnumerable<string> questionIds, DateTimeOffset createdAt)
+    private LiveMatch(string id, string code, string ownerId, DuelSettings settings, int capacity,
+        IEnumerable<string> questionIds, DateTimeOffset createdAt)
     {
         Id = id;
         Code = code;
-        Lang = lang;
-        ChallengerId = challengerId;
+        Settings = settings;
+        Capacity = capacity;
+        _participants = [ownerId];
         _questionIds = [.. questionIds];
         CreatedAt = createdAt;
     }
@@ -27,9 +33,38 @@ public sealed class LiveMatch
     /// <summary>The share code a friend types or follows — the same namespace an async match's code
     /// lives in, mirrored into <c>IMatchArchive</c> so it can be resolved by code at all.</summary>
     public string Code { get; }
-    public Language Lang { get; }
-    public string ChallengerId { get; }
-    public string? OpponentId { get; private set; }
+
+    /// <summary>What the lobby's owner picked, and what the question set is drawn from at start.</summary>
+    public DuelSettings Settings { get; }
+
+    public Language Lang => Settings.Language;
+
+    /// <summary>How many seats this lobby has, fixed at creation: 2 to 8.</summary>
+    public int Capacity { get; }
+
+    /// <summary>Every seated player, in join order. <c>Participants[0]</c> is always
+    /// <see cref="OwnerId"/> — the one who created this lobby and the only one who may change its
+    /// settings or start it.</summary>
+    public IReadOnlyList<string> Participants => _participants;
+
+    public string OwnerId => _participants[0];
+
+    /// <summary>
+    /// Compatibility accessor for the two-player shape <see cref="Participants"/> replaces.
+    /// Every consumer of it migrates to <see cref="Participants"/>/<see cref="OwnerId"/> across the
+    /// following steps of issue #47; issue #56 deletes this once none is left.
+    /// </summary>
+    [Obsolete("Use OwnerId (or Participants[0]). Deleted in issue #56.")]
+    public string ChallengerId => OwnerId;
+
+    /// <summary>
+    /// Compatibility accessor: the second seat, or null if it is not yet taken. Meaningless once a
+    /// lobby holds more than two, which is exactly why it is obsolete rather than generalised.
+    /// Deleted in issue #56.
+    /// </summary>
+    [Obsolete("Use Participants. Deleted in issue #56.")]
+    public string? OpponentId => _participants.Count > 1 ? _participants[1] : null;
+
     public IReadOnlyList<string> QuestionIds => _questionIds;
     public MatchState State { get; private set; } = MatchState.AwaitingOpponent;
     public LivePhase Phase { get; private set; } = LivePhase.Lobby;
@@ -37,11 +72,40 @@ public sealed class LiveMatch
     public IReadOnlyList<LiveRound> Rounds => _rounds;
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset? EndedAt { get; private set; }
+
+    /// <summary>The sole occupant of first place, or null when first place is shared. Reflects only
+    /// the top of <see cref="Standings"/> — per-player outcomes must read <see cref="Standings"/>
+    /// itself, never this scalar.</summary>
     public string? WinnerId { get; private set; }
+
+    /// <summary>True when nobody won outright — first place is shared — not "everybody drew". A
+    /// three-player duel with scores 100, 100, 50 is <c>IsDraw = true</c> for two draws and one
+    /// loss, read from <see cref="Standings"/>, not three draws.</summary>
     public bool IsDraw { get; private set; }
 
-    /// <summary>The player who was recorded as having abandoned the duel, if it ended that way.</summary>
-    public string? AbandonedBy { get; private set; }
+    /// <summary>Every player who hit the miss-streak, in the order <c>CloseRound</c> found them, with
+    /// the round slot they dropped in. Empty unless somebody abandoned.</summary>
+    public IReadOnlyList<Abandonment> Abandoners => _abandoners;
+
+    /// <summary>
+    /// One <see cref="Standing"/> per participant once the duel is over — empty before then, and
+    /// empty for a <see cref="MatchState.NoContest"/>, which credits nobody. Finishers rank by score
+    /// above every abandoner regardless of score; see <see cref="Standing"/>'s own remarks for why.
+    /// </summary>
+    public IReadOnlyList<Standing> Standings => _standings;
+
+    /// <summary>Why this ended a <see cref="MatchState.NoContest"/>, or null otherwise. Only
+    /// <see cref="NoContestReason.AllAbandoned"/> is eligible for the abandonment penalty.</summary>
+    public NoContestReason? Reason { get; private set; }
+
+    /// <summary>
+    /// Compatibility accessor over <see cref="Abandoners"/>, for the two-player shape where at most
+    /// one player could ever abandon: the sole abandoner's id, or null if there is not exactly one.
+    /// <c>LiveMatchGrain.cs</c>, <c>LiveEnded</c> and <c>LiveView</c> all still type this as a plain
+    /// id; they migrate across the following steps of issue #47, and issue #56 deletes this.
+    /// </summary>
+    [Obsolete("Use Abandoners, an ordered list of every abandoner and the round they dropped in. Deleted in issue #56.")]
+    public string? AbandonedBy => _abandoners.Count == 1 ? _abandoners[0].PlayerId : null;
 
     public bool IsOver => State is MatchState.Resolved or MatchState.Forfeited or MatchState.Abandoned or MatchState.NoContest;
 
@@ -51,7 +115,9 @@ public sealed class LiveMatch
     /// <summary>
     /// The instant at which <see cref="Advance"/> would next change something, or null once
     /// <see cref="IsOver"/>. Mirrors the boundary <see cref="StepOnce"/> actually checks, so the
-    /// clock driving this duel and the rules governing it never drift apart.
+    /// clock driving this duel and the rules governing it never drift apart — and it is exactly the
+    /// boundary the widened staleness test in <see cref="Advance"/> measures against, for the same
+    /// reason.
     /// </summary>
     public DateTimeOffset? NextDueAt
     {
@@ -67,51 +133,111 @@ public sealed class LiveMatch
         }
     }
 
-    public static LiveMatch Create(string id, string code, Language lang, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
+    /// <summary>
+    /// Opens a lobby for <paramref name="ownerId"/> with no question drawn yet — the set is drawn
+    /// later, from whatever <paramref name="settings"/> says at that instant (see
+    /// <see cref="DrawQuestions"/>), which is what lets a lobby's owner change settings for as long
+    /// as nobody has started it.
+    /// </summary>
+    public static LiveMatch Create(string id, string code, string ownerId, DuelSettings settings, int capacity, DateTimeOffset now)
     {
-        if (!MatchRules.IsValidCount(questionIds.Count))
-            throw new ArgumentException(
-                $"A live duel needs one of {string.Join(", ", MatchRules.QuestionCountChoices)} questions, got {questionIds.Count}.", nameof(questionIds));
-        if (questionIds.Distinct().Count() != questionIds.Count)
-            throw new ArgumentException("A live duel cannot repeat a question.", nameof(questionIds));
+        if (capacity is < 2 or > 8)
+            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "A duel lobby holds between 2 and 8 players.");
 
-        return new LiveMatch(id, code, lang, challengerId, questionIds, now);
+        return new LiveMatch(id, code, ownerId, settings, capacity, [], now);
     }
 
-    public bool IsParticipant(string playerId) => playerId == ChallengerId || playerId == OpponentId;
+    /// <summary>
+    /// The pre-lobby shape every existing caller still builds a duel through: a capacity-2 lobby
+    /// whose question set is already drawn, exactly as every live duel was built before settings and
+    /// N players existed. <c>LiveMatchGrain.CreateAsync</c> is migrated to the settings-aware
+    /// <see cref="Create(string, string, string, DuelSettings, int, DateTimeOffset)"/> plus
+    /// <see cref="DrawQuestions"/> in a later step of issue #47; issue #56 deletes this overload.
+    /// </summary>
+    [Obsolete("Build a DuelSettings and call the capacity-aware Create, then DrawQuestions. Deleted in issue #56.")]
+    public static LiveMatch Create(string id, string code, Language lang, string challengerId, IReadOnlyList<string> questionIds, DateTimeOffset now)
+    {
+        var settings = DuelSettings.Create(lang, questionIds.Count, [], []);
+        ValidateQuestionIds(questionIds);
+        return new LiveMatch(id, code, challengerId, settings, capacity: 2, questionIds, now);
+    }
+
+    /// <summary>
+    /// Supplies the question set <see cref="Settings"/> describes. In the product this happens once,
+    /// when the lobby's owner starts the duel — wiring that call is a later step of issue #47, since
+    /// it needs the question set builder the grain owns, not this class. Until it is called,
+    /// <see cref="QuestionIds"/> stays empty and a lobby cannot progress past
+    /// <see cref="LivePhase.Countdown"/>. The pre-lobby <see cref="Create(string, string, Language, string, IReadOnlyList{string}, DateTimeOffset)"/>
+    /// overload above never needs this: it draws its set at construction, the way every duel did
+    /// before lobbies existed.
+    /// </summary>
+    public void DrawQuestions(IReadOnlyList<string> questionIds)
+    {
+        if (Phase != LivePhase.Lobby) throw new InvalidOperationException("Questions can only be drawn before the duel starts.");
+        if (_questionIds.Count > 0) throw new InvalidOperationException("This duel's questions are already drawn.");
+        if (questionIds.Count != Settings.QuestionCount)
+            throw new ArgumentException(
+                $"This duel's settings call for {Settings.QuestionCount} questions, got {questionIds.Count}.", nameof(questionIds));
+        ValidateQuestionIds(questionIds);
+
+        _questionIds.AddRange(questionIds);
+    }
+
+    private static void ValidateQuestionIds(IReadOnlyList<string> questionIds)
+    {
+        if (questionIds.Distinct().Count() != questionIds.Count)
+            throw new ArgumentException("A live duel cannot repeat a question.", nameof(questionIds));
+    }
+
+    public bool IsParticipant(string playerId) => _participants.Contains(playerId);
 
     public int Score(string playerId) => _rounds.Sum(r => r.Answers.TryGetValue(playerId, out var a) ? a.Score : 0);
 
     public int MissStreak(string playerId) => _missStreak.GetValueOrDefault(playerId);
 
+    /// <summary>Everyone still playing — every participant minus whoever has abandoned. A round
+    /// closes once every player in this set has answered it, and only these players are asked to
+    /// answer at all; an abandoned player's turn is never waited on again.</summary>
+    private IEnumerable<string> ActiveParticipants() => _participants.Where(p => !IsAbandoned(p));
+
+    private bool IsAbandoned(string playerId) => _abandoners.Any(a => a.PlayerId == playerId);
+
     public void Join(string playerId, DateTimeOffset now)
     {
-        if (playerId == ChallengerId) throw new InvalidOperationException("You cannot join your own challenge.");
+        if (_participants.Contains(playerId)) throw new InvalidOperationException("You are already in this duel.");
 
-        // Settle the clock first: a lobby nobody joined in time is already NoContest, and must not
-        // be resurrected into a duel just because nobody had ticked it yet.
+        // Settle the clock first: a lobby whose deadline has already passed is already NoContest,
+        // and must not be resurrected into a duel just because nobody had ticked it yet.
         Advance(now);
-        if (State != MatchState.AwaitingOpponent) throw new InvalidOperationException("This challenge has already been taken.");
+        if (Phase != LivePhase.Lobby) throw new InvalidOperationException("This lobby is no longer open to join.");
 
-        OpponentId = playerId;
-        State = MatchState.InProgress;
-        Phase = LivePhase.Countdown;
-        PhaseEndsAt = now + LiveRules.StartCountdown;
+        _participants.Add(playerId);
+
+        // A capacity-2 lobby starting the instant its second seat fills is not a special case of
+        // this rule — it is this rule, with Capacity == 2. That is exactly what keeps 1v1 behaviour
+        // unchanged: the owner-presses-Start affordance a bigger lobby needs is a later step's
+        // concern, and a two-seat lobby can never be in a state where it applies.
+        if (_participants.Count == Capacity)
+        {
+            State = MatchState.InProgress;
+            Phase = LivePhase.Countdown;
+            PhaseEndsAt = now + LiveRules.StartCountdown;
+        }
     }
 
     /// <summary>
     /// The grain-facing counterpart to <see cref="Join"/>: never throws, and distinguishes why a
     /// join did not seat anyone, which <see cref="Join"/>'s single exception message does not. The
-    /// same opponent joining twice is idempotent here rather than an error.
+    /// same player joining twice is idempotent here rather than an error.
     /// </summary>
     public LiveJoinResult TryJoin(string playerId, DateTimeOffset now)
     {
-        if (playerId == OpponentId)
+        if (playerId == OwnerId) return LiveJoinResult.SelfJoin;
+        if (_participants.Contains(playerId))
         {
             Advance(now);
             return LiveJoinResult.AlreadyIn;
         }
-        if (playerId == ChallengerId) return LiveJoinResult.SelfJoin;
 
         try
         {
@@ -121,8 +247,8 @@ public sealed class LiveMatch
         catch (InvalidOperationException)
         {
             // Join settles the clock before it throws, so State already reflects why this failed:
-            // NoContest means the lobby's own clock ran out; anything else means someone beat this
-            // caller to the seat.
+            // NoContest means the lobby's own clock ran out; anything else means the lobby closed
+            // some other way — full, or already under way — before this caller got a seat.
             return State == MatchState.NoContest ? LiveJoinResult.Expired : LiveJoinResult.Taken;
         }
     }
@@ -135,15 +261,27 @@ public sealed class LiveMatch
     {
         if (IsOver) return false;
 
-        // Checked once, against the real gap since the round we are actually sitting in was opened
-        // — not the synthetic per-round gap the loop below uses, which is always exactly
-        // MatchRules.QuestionTime and so could never look stale. A jump this size before anyone in
-        // the live round has answered means the process was away, not that both players sat through
-        // it in silence; that is settled here before any round is simulated.
-        if (Phase == LivePhase.Question && CurrentRound is { Answers.Count: 0 } round
-            && now - round.StartedAt > LiveRules.StaleAfter)
+        // Widened staleness test: whatever phase this duel is sitting in, if now is past that
+        // phase's own due boundary by more than StaleAfter, the process was away for the whole gap
+        // — not that everyone sat through it in silence. NextDueAt already names that boundary for
+        // every phase but Lobby and is the same value StepOnce steps against below, so this guard
+        // and the ordinary phase machinery can never disagree about where the line is.
+        //
+        // This deliberately covers more than the old guard did: an outage starting in Countdown or
+        // Reveal, or in Question after somebody has already answered, used to slip past it entirely,
+        // and the loop below would then simulate every remaining round with nobody answering — at
+        // LiveRules.MissesBeforeAbandon rounds, that marks everyone abandoned. Today that lands on
+        // NoContest either way, so the bug was invisible; with a reason code attached, simulating it
+        // would turn a server outage into a real abandonment penalty. Ending it here instead,
+        // before any round is simulated, is the conservative reading of a duel nobody was present
+        // for: no stats, no penalty, no result — same as it already is for an expired lobby.
+        //
+        // Lobby keeps its own reason (LobbyExpired) rather than this one: a lobby passing its
+        // deadline unattended is expiry, not absence, and StepOnce's own Lobby branch already
+        // handles it below.
+        if (Phase != LivePhase.Lobby && NextDueAt is { } dueAt && now - dueAt > LiveRules.StaleAfter)
         {
-            FinishNoContest(now);
+            FinishNoContest(now, NoContestReason.Stale);
             return true;
         }
 
@@ -163,6 +301,7 @@ public sealed class LiveMatch
         // arrives after it.
         Advance(now);
         RequireParticipant(playerId);
+        if (IsAbandoned(playerId)) throw new InvalidOperationException("You have abandoned this duel and can no longer answer.");
 
         if (Phase != LivePhase.Question || CurrentRound is not { } round)
             throw new InvalidOperationException("There is no question open to answer.");
@@ -178,7 +317,11 @@ public sealed class LiveMatch
         round.Record(playerId, answer);
         _missStreak[playerId] = 0;
 
-        if (round.Answers.Count >= 2)
+        // A round closes once every player still playing has answered it — not every participant
+        // ever seated. Counting an abandoned player's silence forever would mean the survivors of a
+        // dropped third sat through the full timeout on every remaining round, since that answer can
+        // now never arrive.
+        if (round.Answers.Count >= ActiveParticipants().Count())
         {
             Phase = LivePhase.Reveal;
             PhaseEndsAt = now + LiveRules.RevealTime;
@@ -187,36 +330,44 @@ public sealed class LiveMatch
         return answer;
     }
 
-    /// <summary>The admin kill path: ends an in-flight duel early with no winner. The reason a caller
-    /// wanted this stays out of the domain — it is the grain's to log and to notify with.</summary>
-    public void EndNoContest(DateTimeOffset now)
+    /// <summary>
+    /// The admin/operational kill path: ends an in-flight duel early with no winner. Every call site
+    /// today is either the owner walking away from a lobby that never started, or an operational
+    /// failure mid-duel (a question nothing can resolve); neither is the players' doing, so this
+    /// defaults to a reason that is never penalty-eligible.
+    /// <see cref="NoContestReason.AllAbandoned"/> is earned only by three real misses each, in
+    /// <see cref="CloseRound"/> — never handed out by a caller.
+    /// </summary>
+    public void EndNoContest(DateTimeOffset now, NoContestReason reason = NoContestReason.LobbyExpired)
     {
         if (IsOver) return;
-        FinishNoContest(now);
+        FinishNoContest(now, reason);
     }
 
     public LiveMatchSnapshot ToSnapshot() => new(
-        Id, Code, Lang, ChallengerId, OpponentId, [.. _questionIds], State, Phase, PhaseEndsAt,
+        Id, Code, [.. _participants], Capacity, Settings, [.. _questionIds], State, Phase, PhaseEndsAt,
         [.. _rounds.Select(r => new LiveRoundSnapshot(r.Slot, r.QuestionId, r.StartedAt, new Dictionary<string, LiveAnswer>(r.Answers)))],
-        new Dictionary<string, int>(_missStreak), CreatedAt, EndedAt, WinnerId, IsDraw, AbandonedBy);
+        new Dictionary<string, int>(_missStreak), CreatedAt, EndedAt, WinnerId, IsDraw, [.. _abandoners], [.. _standings], Reason);
 
     public static LiveMatch FromSnapshot(LiveMatchSnapshot s)
     {
-        var m = new LiveMatch(s.Id, s.Code, s.Lang, s.ChallengerId, s.QuestionIds, s.CreatedAt)
+        var m = new LiveMatch(s.Id, s.Code, s.Participants[0], s.Settings, s.Capacity, s.QuestionIds, s.CreatedAt)
         {
-            OpponentId = s.OpponentId,
             State = s.State,
             Phase = s.Phase,
             PhaseEndsAt = s.PhaseEndsAt,
             EndedAt = s.EndedAt,
             WinnerId = s.WinnerId,
             IsDraw = s.IsDraw,
-            AbandonedBy = s.AbandonedBy
+            Reason = s.Reason
         };
+        m._participants.AddRange(s.Participants.Skip(1));
         foreach (var round in s.Rounds)
             m._rounds.Add(LiveRound.Restore(round.Slot, round.QuestionId, round.StartedAt, round.Answers));
         foreach (var (playerId, streak) in s.MissStreaks)
             m._missStreak[playerId] = streak;
+        m._abandoners.AddRange(s.Abandoners);
+        m._standings.AddRange(s.Standings);
         return m;
     }
 
@@ -230,7 +381,7 @@ public sealed class LiveMatch
         if (Phase == LivePhase.Lobby)
         {
             if (now < CreatedAt + LiveRules.LobbyExpires) return false;
-            FinishNoContest(now);
+            FinishNoContest(now, NoContestReason.LobbyExpired);
             return true;
         }
 
@@ -274,7 +425,7 @@ public sealed class LiveMatch
         var nextSlot = _rounds.Count;
         if (nextSlot >= _questionIds.Count)
         {
-            FinishResolved(at);
+            FinishWithStandings(MatchState.Resolved, at);
             return;
         }
 
@@ -284,9 +435,10 @@ public sealed class LiveMatch
     private void CloseRound(DateTimeOffset at)
     {
         var round = CurrentRound!;
+        var activeBefore = ActiveParticipants().ToList();
+        var justAbandoned = new List<string>();
 
-        var abandoning = new List<string>();
-        foreach (var playerId in Participants())
+        foreach (var playerId in activeBefore)
         {
             if (round.HasAnswered(playerId))
             {
@@ -296,20 +448,31 @@ public sealed class LiveMatch
 
             round.Record(playerId, new LiveAnswer(-1, false, 0, (at - round.StartedAt).TotalSeconds));
             var streak = _missStreak[playerId] = _missStreak.GetValueOrDefault(playerId) + 1;
-            if (streak >= LiveRules.MissesBeforeAbandon) abandoning.Add(playerId);
+            if (streak >= LiveRules.MissesBeforeAbandon) justAbandoned.Add(playerId);
         }
 
-        if (abandoning.Count == 2)
+        // Recorded here, not before the loop above: the round slot a player abandons in is exactly
+        // the CloseRound call that just gave them their third consecutive miss, so appending inline
+        // gets that for free instead of threading it through separately.
+        foreach (var playerId in justAbandoned) _abandoners.Add(new Abandonment(playerId, round.Slot));
+
+        var remaining = activeBefore.Count - justAbandoned.Count;
+
+        // Whoever was still active before this round can only ever have been >= 2: the moment it
+        // ever dropped to 1 or 0, one of the two branches below already ended the duel, so this
+        // round is never reached with fewer than two players still in it.
+        if (remaining == 0)
         {
-            FinishNoContest(at);
+            FinishNoContest(at, NoContestReason.AllAbandoned);
             return;
         }
 
-        if (abandoning.Count == 1)
+        if (remaining == 1)
         {
-            var quitter = abandoning[0];
-            var winner = Participants().First(p => p != quitter);
-            FinishAbandoned(quitter, winner, at);
+            // Exactly one player is still standing: they win by abandonment, whatever the scoreboard
+            // says — an abandoner ranks below every finisher regardless of score (see Standing's own
+            // remarks), which BuildStandings applies here identically to FinishResolved.
+            FinishWithStandings(MatchState.Abandoned, at);
             return;
         }
 
@@ -317,37 +480,61 @@ public sealed class LiveMatch
         PhaseEndsAt = at + LiveRules.RevealTime;
     }
 
-    private IEnumerable<string> Participants()
+    private void FinishWithStandings(MatchState state, DateTimeOffset at)
     {
-        yield return ChallengerId;
-        if (OpponentId is not null) yield return OpponentId;
-    }
-
-    private void FinishResolved(DateTimeOffset at)
-    {
-        State = MatchState.Resolved;
+        State = state;
         Phase = LivePhase.Over;
         PhaseEndsAt = null;
         EndedAt = at;
 
-        var mine = Score(ChallengerId);
-        var theirs = OpponentId is null ? 0 : Score(OpponentId);
-        IsDraw = mine == theirs;
-        WinnerId = IsDraw ? null : (mine > theirs ? ChallengerId : OpponentId);
+        _standings.Clear();
+        _standings.AddRange(BuildStandings());
+
+        var first = _standings.Where(s => s.Place == 1).ToList();
+        WinnerId = first.Count == 1 ? first[0].PlayerId : null;
+        IsDraw = first.Count > 1;
     }
 
-    private void FinishAbandoned(string quitter, string winner, DateTimeOffset at)
+    /// <summary>
+    /// Ranks every participant for a duel ending with real results: every non-abandoner above every
+    /// abandoner regardless of score, and within each group by whatever actually decided it — score
+    /// for a finisher, how long they lasted (round slot, descending) for an abandoner. Ties inside a
+    /// group share a place; competition ranking means the group after a tie skips ahead by however
+    /// many shared it, so "two tied for first, one below" reads as places 1, 1, 3, not 1, 1, 2.
+    /// </summary>
+    private List<Standing> BuildStandings()
     {
-        State = MatchState.Abandoned;
-        Phase = LivePhase.Over;
-        PhaseEndsAt = null;
-        EndedAt = at;
-        AbandonedBy = quitter;
-        WinnerId = winner;
-        IsDraw = false;
+        var abandonedSlot = _abandoners.ToDictionary(a => a.PlayerId, a => a.RoundSlot);
+
+        var ranked = _participants
+            .Select(id => (PlayerId: id, IsAbandoner: abandonedSlot.ContainsKey(id), Score: Score(id), Slot: abandonedSlot.GetValueOrDefault(id)))
+            .OrderBy(p => p.IsAbandoner)
+            .ThenByDescending(p => p.IsAbandoner ? 0 : p.Score)
+            .ThenByDescending(p => p.IsAbandoner ? p.Slot : 0)
+            .ToList();
+
+        var places = new int[ranked.Count];
+        for (var i = 0; i < ranked.Count; i++)
+        {
+            var tiedWithPrevious = i > 0
+                && ranked[i].IsAbandoner == ranked[i - 1].IsAbandoner
+                && (ranked[i].IsAbandoner ? ranked[i].Slot == ranked[i - 1].Slot : ranked[i].Score == ranked[i - 1].Score);
+            places[i] = tiedWithPrevious ? places[i - 1] : i + 1;
+        }
+
+        // Outcome depends on the final shape of first place, which is only known once every place is
+        // assigned: its sole occupant wins, several sharing it each draw, and everyone else — whether
+        // they finished lower or abandoned — loses.
+        var firstPlaceCount = places.Count(p => p == 1);
+
+        return [.. ranked.Select((p, i) => new Standing(
+            p.PlayerId,
+            p.IsAbandoner ? 0 : p.Score,
+            places[i],
+            places[i] != 1 ? MatchOutcome.Loss : firstPlaceCount == 1 ? MatchOutcome.Win : MatchOutcome.Draw))];
     }
 
-    private void FinishNoContest(DateTimeOffset at)
+    private void FinishNoContest(DateTimeOffset at, NoContestReason reason)
     {
         State = MatchState.NoContest;
         Phase = LivePhase.Over;
@@ -355,6 +542,7 @@ public sealed class LiveMatch
         EndedAt = at;
         WinnerId = null;
         IsDraw = false;
+        Reason = reason;
     }
 
     private void RequireParticipant(string playerId)

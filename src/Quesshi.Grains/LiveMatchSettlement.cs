@@ -55,7 +55,7 @@ public sealed class LiveMatchSettlement(
 
             var correct = m.Rounds.Select(r => r.Answers.TryGetValue(playerId, out var a) && a.Correct).ToList();
             var isQuitter = m.State == MatchState.Abandoned && m.AbandonedBy == playerId;
-            var outcome = OutcomeFor(m, playerId, isQuitter);
+            var outcome = m.Standings.First(s => s.PlayerId == playerId).Outcome;
 
             // The quitter forfeits everything banked in this duel; a bonus for the other side is
             // exactly what would make abandonment farmable, so they get their real score and nothing more.
@@ -72,12 +72,6 @@ public sealed class LiveMatchSettlement(
 
             if (onSettled is not null) await onSettled(playerId);
         }
-    }
-
-    private static MatchOutcome OutcomeFor(LiveMatch m, string playerId, bool isQuitter)
-    {
-        if (m.State == MatchState.Abandoned) return isQuitter ? MatchOutcome.Loss : MatchOutcome.Win;
-        return m.IsDraw ? MatchOutcome.Draw : (m.WinnerId == playerId ? MatchOutcome.Win : MatchOutcome.Loss);
     }
 
     // Must agree with LiveMatchGrain.IndexAsync's own row for the same duel field for field — the two

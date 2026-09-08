@@ -270,21 +270,24 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task A_silent_duel_plays_itself_to_no_contest_after_three_rounds_with_no_external_input()
+    public async Task A_huge_silent_jump_from_the_countdown_finishes_no_contest_as_stale_without_simulating_any_round()
     {
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
-        // One big jump: LiveMatch.Advance fast-forwards through the countdown and three silent
-        // rounds (LiveRules.MissesBeforeAbandon) in a single domain call, entirely off the clock.
+        // One big jump, entirely off the clock, from the countdown. LiveMatch's widened staleness
+        // test (issue #49) now recognises a gap this size as an outage the instant Advance is
+        // called and ends the duel right there — it no longer walks LiveMatch.Advance's
+        // while (StepOnce(now)) loop through the countdown and three silent rounds
+        // (LiveRules.MissesBeforeAbandon) to reach the same NoContest by simulation.
         var jump = LiveRules.StartCountdown
             + (MatchRules.QuestionTime + MatchRules.NetworkGrace + LiveRules.RevealTime) * (LiveRules.MissesBeforeAbandon + 1)
             + TimeSpan.FromSeconds(5);
         Advance(jump);
 
         var view = await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest, timeoutMs: 10_000);
-        Assert.Equal(LiveRules.MissesBeforeAbandon, view.Rounds.Count);
+        Assert.Empty(view.Rounds); // nothing was ever simulated -- the gap was caught before round 0 opened
         Assert.Null(view.WinnerId);
     }
 
@@ -357,7 +360,10 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
             .AsReference<Orleans.Core.Internal.IGrainManagementExtension>().DeactivateOnIdle();
         await Task.Delay(300);
 
-        Advance(LiveRules.StaleAfter + TimeSpan.FromSeconds(5));
+        // Past LiveMatch.NextDueAt for a Question phase (the round's deadline plus NetworkGrace) by
+        // more than StaleAfter — the widened staleness boundary (issue #49), not the round's raw
+        // start time a smaller gap here used to be measured against.
+        Advance(MatchRules.QuestionTime + MatchRules.NetworkGrace + LiveRules.StaleAfter + TimeSpan.FromSeconds(5));
 
         var recovered = await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id).GetAsync(Amir);
         Assert.NotNull(recovered);
@@ -627,6 +633,31 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
     // ---- Notifications ----
 
+    /// <summary>
+    /// Drives a duel to a full, answered resolution — both players answering every round closes it
+    /// immediately, exactly as <see cref="A_full_length_duel_resolves_driven_only_by_the_clock_between_answers"/>
+    /// does — rather than by mutual silence: a jump big enough to reach
+    /// <see cref="MatchState.NoContest"/> by silence alone is now caught by the widened staleness
+    /// guard (issue #49) before a single round plays, which is exactly the point of that guard and
+    /// not something this test is about.
+    /// </summary>
+    private async Task PlayFullDuelAsync(ILiveMatchGrain grain)
+    {
+        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
+
+        for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)
+        {
+            Assert.True(await grain.AnswerAsync(Amir, slot, 0));
+            Assert.True(await grain.AnswerAsync(Sara, slot, 1)); // closes the round immediately
+
+            await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Reveal || v.State != (int)MatchState.InProgress);
+            Advance(LiveRules.RevealTime + TimeSpan.FromMilliseconds(50));
+            if (slot < MatchRules.QuestionsPerMatch - 1)
+                await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == slot + 1);
+        }
+    }
+
     [Fact]
     public async Task A_full_duel_notifies_in_exact_order_with_no_duplicates()
     {
@@ -634,26 +665,26 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
 
-        var jump = LiveRules.StartCountdown
-            + (MatchRules.QuestionTime + MatchRules.NetworkGrace + LiveRules.RevealTime) * (LiveRules.MissesBeforeAbandon + 1)
-            + TimeSpan.FromSeconds(5);
-        Advance(jump);
-        await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest, timeoutMs: 10_000);
+        await PlayFullDuelAsync(grain);
+        await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.Resolved, timeoutMs: 10_000);
         await WaitForEventAsync(id, "Ended", 1);
 
         var events = LiveShared.Notifier.EventsFor(id);
         var kinds = events.Select(e => e.Kind).ToList();
+        var rounds = MatchRules.QuestionsPerMatch;
 
+        // Every round: RoundStarted, then OpponentAnswered for the first of the two answers (both
+        // players answer here, unlike the silence this test used to drive), then RoundRevealed.
         Assert.Equal("CountdownStarted", kinds[0]);
-        Assert.Equal(["RoundStarted", "RoundRevealed"], kinds.Skip(1).Take(2));
-        Assert.Equal(["RoundStarted", "RoundRevealed"], kinds.Skip(3).Take(2));
-        Assert.Equal(["RoundStarted", "RoundRevealed"], kinds.Skip(5).Take(2));
-        Assert.Equal("Ended", kinds[7]);
-        Assert.Equal(8, kinds.Count);
+        for (var slot = 0; slot < rounds; slot++)
+            Assert.Equal(["RoundStarted", "OpponentAnswered", "RoundRevealed"], kinds.Skip(1 + slot * 3).Take(3));
+        Assert.Equal("Ended", kinds[^1]);
+        Assert.Equal(1 + rounds * 3 + 1, kinds.Count);
 
         Assert.Equal(1, kinds.Count(k => k == "CountdownStarted"));
-        Assert.Equal(3, kinds.Count(k => k == "RoundStarted"));
-        Assert.Equal(3, kinds.Count(k => k == "RoundRevealed"));
+        Assert.Equal(rounds, kinds.Count(k => k == "RoundStarted"));
+        Assert.Equal(rounds, kinds.Count(k => k == "OpponentAnswered"));
+        Assert.Equal(rounds, kinds.Count(k => k == "RoundRevealed"));
         Assert.Equal(1, kinds.Count(k => k == "Ended"));
         Assert.DoesNotContain("OpponentPresenceChanged", kinds);
     }
@@ -668,13 +699,10 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
             await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
             await grain.JoinAsync(Sara);
 
-            var jump = LiveRules.StartCountdown
-                + (MatchRules.QuestionTime + MatchRules.NetworkGrace + LiveRules.RevealTime) * (LiveRules.MissesBeforeAbandon + 1)
-                + TimeSpan.FromSeconds(5);
-            Advance(jump);
+            await PlayFullDuelAsync(grain);
 
-            var view = await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest, timeoutMs: 10_000);
-            Assert.Equal(LiveRules.MissesBeforeAbandon, view.Rounds.Count);
+            var view = await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.Resolved, timeoutMs: 10_000);
+            Assert.Equal(MatchRules.QuestionsPerMatch, view.Rounds.Count);
 
             // The events were still recorded (the fake records before throwing) — the notifier
             // failing did not stop the duel from being driven to its normal end.
