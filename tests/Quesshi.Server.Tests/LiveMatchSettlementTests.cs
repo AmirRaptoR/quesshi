@@ -13,7 +13,7 @@ namespace Quesshi.Server.Tests;
 [Collection(nameof(ClusterCollection))]
 public class LiveMatchSettlementTests(ClusterFixture fixture)
 {
-    private LiveMatchSettlement Sut => new(fixture.Cluster.GrainFactory, Shared.Questions, Shared.Archive, Shared.Players, Shared.Leaderboard);
+    private LiveMatchSettlement Sut => new(fixture.Cluster.GrainFactory, Shared.Questions, Shared.Archive);
 
     /// <summary>Ten questions where the correct answer is always index 0, matching MatchGrainTests' own bank.</summary>
     private static List<string> SeedQuestions(string prefix)
@@ -208,10 +208,10 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         player.RecordResult(MatchOutcome.Win, 1000); // banked from an earlier duel
         await Shared.Players.UpsertAsync(player);
         await Shared.Players.UpsertAsync(Player.Register(winner, $"{winner}@example.com", "Sara", Language.En, Shared.Clock.Now));
-        await Shared.Leaderboard.AddAsync(quitter, 1000); // the same banked score, mirrored onto the board
+        await Shared.Leaderboard.SetAsync(quitter, 1000); // the same banked score, mirrored onto the board
 
         // A first abandonment on record already, so this settlement is the costly second one.
-        await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(quitter).RecordAbandonmentAsync(Shared.Clock.Now);
+        await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(quitter).SettleMatchAsync("repeat-0", null, 0, [], [], Shared.Clock.Now);
         var beforeSecond = (await Shared.Players.GetAsync(quitter))!.Stats.TotalScore;
 
         var start = Shared.Clock.Now.AddHours(1);
@@ -245,7 +245,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         await Shared.Players.UpsertAsync(Player.Register(winner, $"{winner}@example.com", "Sara", Language.En, Shared.Clock.Now));
 
         // A first abandonment on record already, so this settlement is the costly second one.
-        await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(quitter.Id).RecordAbandonmentAsync(Shared.Clock.Now);
+        await fixture.Cluster.GrainFactory.GetGrain<IPlayerGrain>(quitter.Id).SettleMatchAsync("guestabandon-0", null, 0, [], [], Shared.Clock.Now);
         var beforeSecond = (await Shared.Players.GetAsync(quitter.Id))!.Stats.TotalScore;
 
         var start = Shared.Clock.Now.AddHours(1);

@@ -3,6 +3,7 @@ using Orleans.Runtime;
 using Orleans.TestingHost;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
+using Quesshi.Grains;
 
 namespace Quesshi.Server.Tests;
 
@@ -35,6 +36,12 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<IIdFactory>(LiveShared.Ids);
             services.AddSingleton<QuestionSetBuilder>();
             services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
+
+            // Settlement's own dependencies — LiveMatchGrain now calls into IPlayerGrain, which needs
+            // both, exactly as the plain (non-live) TestSilo already wires them for MatchGrain.
+            services.AddSingleton<IPlayerRepository>(LiveShared.Players);
+            services.AddSingleton<ILeaderboard>(LiveShared.Leaderboard);
+            services.AddSingleton<LiveMatchSettlement>();
         });
     }
 }
