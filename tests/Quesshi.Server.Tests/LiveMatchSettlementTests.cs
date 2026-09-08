@@ -197,6 +197,52 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Everybody_walking_out_still_pays_the_abandonment_penalty_even_though_nobody_is_credited()
+    {
+        const string a = "p-allabandon-a";
+        const string b = "p-allabandon-b";
+        const string c = "p-allabandon-c";
+        foreach (var id in new[] { a, b, c })
+            await Shared.Players.UpsertAsync(Player.Register(id, $"{id}@example.com", id, Language.En, Shared.Clock.Now));
+
+        var start = Shared.Clock.Now;
+        var m = NewLobby("allabandon-1", a, SeedQuestions("allabandon"), capacity: 3, start);
+        m.Join(b, start);
+        m.Join(c, start);
+
+        // Nobody answers, but the clock is walked forward in steps far shorter than StaleAfter, so
+        // each round closes on its own schedule and every player earns three real misses. A single
+        // long jump would instead read as a process that was away and settle as Stale — a different
+        // reason, deliberately carrying no penalty, which is exactly the distinction under test.
+        var now = start;
+        while (!m.IsOver && now - start < TimeSpan.FromMinutes(5))
+        {
+            now += TimeSpan.FromSeconds(10);
+            m.Advance(now);
+        }
+
+        Assert.Equal(MatchState.NoContest, m.State);
+        Assert.Equal(NoContestReason.AllAbandoned, m.Reason);
+
+        await Sut.SettleAsync(m, Language.En);
+
+        foreach (var id in new[] { a, b, c })
+        {
+            var player = (await Shared.Players.GetAsync(id))!;
+
+            // The penalty landed: nobody gets to dodge it by agreeing to quit together, which is the
+            // whole reason this case is settled at all.
+            Assert.Single(player.Abandonments);
+
+            // But nothing was credited. A no-contest ranks nobody, so there is no win, loss or draw
+            // to record and no score to bank -- only the penalty crosses.
+            Assert.Equal(0, player.Stats.Wins);
+            Assert.Equal(0, player.Stats.Losses);
+            Assert.Equal(0, player.Stats.Draws);
+        }
+    }
+
+    [Fact]
     public async Task An_abandoned_duel_charges_the_quitter_a_loss_of_zero_and_gives_the_winner_their_real_score_and_no_bonus()
     {
         const string quitter = "p-abandon-quitter";

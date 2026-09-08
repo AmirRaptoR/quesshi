@@ -42,9 +42,19 @@ public sealed class LiveMatchSettlement(
     {
         await IndexAsync(m, lang);
 
-        // No stats, no leaderboard, no result: an expired lobby and a duel lost to a server restart
-        // must both leave PlayerStats exactly as they found it.
-        if (m.State == MatchState.NoContest) return;
+        // A no-contest credits nobody: no stats, no leaderboard, no result. An expired lobby and a
+        // duel lost to a server restart must both leave PlayerStats exactly as they found it — which
+        // is why the reason matters and the state alone is not enough to decide. Everybody walking
+        // away is also a no-contest, and letting that one off would make mass abandonment the
+        // cheapest way to dodge a penalty that a single abandoner pays in full: the winning move in a
+        // three-player duel would be to agree to all quit. So AllAbandoned still settles, for the
+        // penalty alone.
+        if (m.State == MatchState.NoContest)
+        {
+            if (m.Reason == NoContestReason.AllAbandoned)
+                await SettlePenaltiesOnlyAsync(m, alreadySettled, onSettled);
+            return;
+        }
 
         var byId = (await questions.GetManyAsync(m.QuestionIds)).ToDictionary(q => q.Id);
         var categories = m.Rounds.Select(r => byId.GetValueOrDefault(r.QuestionId)?.CategoryId ?? "unknown").ToList();
@@ -117,6 +127,29 @@ public sealed class LiveMatchSettlement(
     /// what <c>ChallengerScore</c>/<c>OpponentScore</c> always showed for a no-contest before this type
     /// existed, since nothing reads placement once <c>State</c> alone says nobody won.
     /// </summary>
+    /// <summary>
+    /// The penalty, and nothing else, for a duel everybody walked out of. There is no result to
+    /// record — <see cref="MatchOutcome"/> has no value meaning "nothing happened" and a no-contest
+    /// credits nobody — so this passes a null outcome and an empty answer history, the shape
+    /// <c>SettleMatchAsync</c> takes precisely for this case. The abandonment timestamp is the duel's
+    /// own <c>EndedAt</c> rather than the wall clock, so a retry an hour later computes the same
+    /// penalty tier and counts from the same moment.
+    /// </summary>
+    private async Task SettlePenaltiesOnlyAsync(LiveMatch m, IReadOnlySet<string>? alreadySettled, Func<string, Task>? onSettled)
+    {
+        var at = m.EndedAt ?? DateTimeOffset.UtcNow;
+
+        foreach (var abandonment in m.Abandoners)
+        {
+            if (alreadySettled?.Contains(abandonment.PlayerId) == true) continue;
+
+            await grainFactory.GetGrain<IPlayerGrain>(abandonment.PlayerId)
+                .SettleMatchAsync(m.Id, null, 0, [], [], at);
+
+            if (onSettled is not null) await onSettled(abandonment.PlayerId);
+        }
+    }
+
     private static List<ParticipantResult> BuildResults(LiveMatch m)
     {
         var byId = m.Standings.ToDictionary(s => s.PlayerId);
