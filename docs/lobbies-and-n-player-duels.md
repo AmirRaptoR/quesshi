@@ -60,6 +60,31 @@ all. It is therefore **step 0**, landed and verified before any N-player work:
 - An integration check that a finished live duel moves `PlayerStats`, the leaderboard and the
   abandonment penalty — the thing whose absence went unnoticed until now.
 
+### Settlement has to survive a crash halfway through
+
+`AfterChangeAsync` persists the match (`SaveAsync`, `LiveMatchGrain.cs:266`) and unregisters the
+reminder (`RearmAsync`) *before* `NotifyAsync`, which is where the settlement call sits. So the
+terminal state is already durable when settlement begins. If the process dies or storage fails after
+two of five participants have been applied, reactivation loads a match that is already over,
+`wasOver` is true, and settlement never runs again — those three players are silently never settled.
+Retrying naively is no better: `LiveMatchSettlement`'s own remarks say it has no idempotency guard
+and "a caller that settles twice will apply every effect twice", and `ILeaderboard.AddAsync` is an
+increment, not a set.
+
+So settlement needs durable progress, in the grain's own state next to the match:
+
+- `SettledPlayers`, a set of player ids, and a `SettlementComplete` flag.
+- Settlement walks the participants; for each one not already in `SettledPlayers` it applies that
+  player's effects — `ApplyResultAsync`, the leaderboard increment, `RecordAbandonmentAsync` — then
+  adds the id and persists. Effects are therefore keyed by (match, player) and applied at most once.
+- `OnActivateAsync` resumes: a match that `IsOver` with `SettlementComplete` false settles the
+  remainder before serving anything.
+- `archive.SaveAsync` is a whole-row upsert and is safe to repeat; only the per-player effects need
+  the guard.
+
+The recovery test is the point of this: fail storage after the first participant, reactivate, and
+assert every participant is settled exactly once.
+
 ## Decisions
 
 - Both duel kinds become N-player, not just live.
@@ -67,7 +92,9 @@ all. It is therefore **step 0**, landed and verified before any N-player work:
   sharers. Per-player outcomes come from the standings list, not from the scalar `WinnerId`/`IsDraw`.
   Teams are a possible future feature and are deliberately not designed for here.
 - An abandoner ranks below every player who finished, regardless of score, and is penalised on the
-  strength of being in the abandoners set rather than on the match's final state.
+  strength of having abandoned rather than on the match's final state.
+- Every mutation of a `Player` goes through `IPlayerGrain`. The repository has one writer.
+- An invitation's lifetime is its lobby's lifetime.
 - Settings are editable exactly while the question set is empty. Questions are drawn at Start, which
   is also what makes a legacy record with recorded answers safe to convert.
 - Lobby capacity is 2–8.
@@ -137,11 +164,20 @@ never a thing that *creates* a duel — it is a pointer at a lobby that already 
 
 - **In-app, for friends with accounts.** `LiveLobbyGrain`'s challenge machinery is retargeted:
   instead of carrying language, count, categories and levels and building a duel on accept, a
-  challenge carries a lobby code, and accepting joins that lobby. Decline and expiry are unchanged.
-  This is a net deletion — the challenge stops duplicating the settings the lobby now owns.
+  challenge carries a lobby code, and accepting joins that lobby. Decline is unchanged. This is a net
+  deletion — the challenge stops duplicating the settings the lobby now owns.
 - **Everyone else** gets the link.
 - **Offline friends.** An invitation outlives the recipient's connection: it is stored against the
-  lobby, delivered on their next connect, and dies when the lobby starts or expires.
+  lobby and delivered on their next connect.
+
+**An invitation lives exactly as long as its lobby.** `LiveLobbyGrain.ChallengeLifetime` is 45
+seconds today, which is right for "your friend is online this second, answer now" and wrong for an
+invitation that is meant to wait for someone offline — a friend connecting a minute later would find
+it already dead. Since the invitation is now only a pointer, it has no business expiring before the
+thing it points at: `ChallengeLifetime` is deleted, and an invitation's expiry *is* its lobby's —
+`LiveRules.LobbyExpires` for a live lobby, `MatchRules.ForfeitAfter` for an async one, and
+immediately on Start. One lifetime, applied identically to storage, reconnect delivery and
+acceptance.
 
 ### The exclusivity invariant changes
 
@@ -169,6 +205,15 @@ it, and it is the same code path as any other invitation.
 It also gives "duel these people again" from the duels list for free — that is a rematch of a
 finished match.
 
+**One rematch lobby per finished duel.** "A rematch creates a lobby" cannot mean *every* request
+creates one: two participants pressing Rematch at the same moment would each own a lobby and invite
+the other, and the one-lobby membership rule would then stop either from accepting. So the finished
+match holds the rematch lobby's code: the first request creates the lobby and records it, and every
+later request — from anyone, however many times — returns that same lobby until it starts or expires,
+at which point a fresh request may create a new one. Requests are idempotent per finished match,
+which is the same guarantee `RequestRematchAsync` gives today, reached without the readiness
+protocol.
+
 ## 3. The N-player match
 
 **Live rounds.** `Answer` currently reveals when `round.Answers.Count >= 2`; that becomes **the count
@@ -189,12 +234,17 @@ other player wins). With N:
 - when one remains, they win by abandonment;
 - when none remain, it is `NoContest`.
 
-`AbandonedBy` becomes a set rather than a `string?`, which is a snapshot and `MatchDoc` change.
+`AbandonedBy` becomes an **ordered list of (player id, round slot)** rather than a `string?` — not a
+plain set, because standings need to know who lasted longer and a set does not encode that. It is
+appended in `CloseRound`, so the round slot is recorded for free. Snapshot and `MatchDoc` change
+accordingly.
 
 **An abandoner is ranked last, not by score.** Otherwise the winning move in a three-player duel is
 to build a lead and walk away: the duel would carry on without you and still rank you first. So
 standings place all non-abandoners by score above all abandoners, and abandoners take the places
-below in the order they dropped. Their outcome is `Loss` and their banked score is 0 — which is the
+below, ordered by round slot descending — lasting longer places better. Several players can hit the
+streak in the same `CloseRound`; they share a round slot and therefore **share a place**, exactly as
+tied scores do. Their outcome is `Loss` and their banked score is 0 — which is the
 rule `LiveMatchSettlement` already applies to a quitter, now applied to every abandoner rather than
 to the single `AbandonedBy`.
 
@@ -248,11 +298,15 @@ playing. Standings land when the last run does.
 
 ## 4. Guest identity and upgrade
 
-**Editing.** `PUT /api/me` already renames and sets language for any token holder, guests included.
-What is missing is the avatar: `AvatarSeed` is set to the player id at construction and has no
-setter. Add `Player.SetAvatar(seed)`, carry it on `UpdateProfileDto`, and validate it against the
-palette `Ranks.Tint` already derives colours from. Name and avatar seed are the whole of the editable
-identity; there is nothing else on `Player` a person would want to change, and none is invented here.
+**Editing.** `PUT /api/me` renames and sets language — but **not for guests**. The endpoint group
+refuses any guest request unless the endpoint carries `AllowGuest` metadata
+(`GameEndpoints.cs:25-26`), and the `PUT` at `GameEndpoints.cs:38` does not carry it; `GET /me` at
+line 36 does. Adding avatar fields and a lobby control would still return 403. So the change is
+threefold: `.WithMetadata(new AllowGuest())` on the `PUT`, `Player.SetAvatar(seed)` plus the avatar
+field on `UpdateProfileDto` validated against the palette `Ranks.Tint` already derives colours from,
+and an HTTP-level test that a guest token can actually change its name and avatar. Name and avatar
+seed are the whole of the editable identity; nothing else on `Player` is worth changing, and none is
+invented here.
 
 **Where.** On the lobby page. A guest arriving by link lands in the lobby, so their name and avatar
 are editable next to the roster they are about to appear in — no profile detour, at the one moment
@@ -262,8 +316,23 @@ they care.
 verifies it while holding their guest token. If the address has no account, the existing `Player`
 **keeps its id** and gains the email, `IsGuest` clears, and the banked `TotalScore` enters the
 leaderboard the guest was excluded from. Every match, friendship and stat survives because the row
-never moved. This needs a `Player.Claim(email)` method; Mongo's unique email index handles the rest,
-as `{id}@guest.invalid` is simply replaced.
+never moved. This needs a `Player.Claim(email)` method, and Mongo's unique email index handles the
+collision case, as `{id}@guest.invalid` is simply replaced.
+
+**The upgrade must go through `IPlayerGrain`, not the repository.** `PlayerGrain` loads the whole
+`Player` into `_player` on activation, never reloads it, and every write is a full-document
+`players.UpsertAsync(_player)`. An upgrade written straight to the repository would be reverted the
+moment that grain next writes — the cached copy still carries `{id}@guest.invalid` and
+`IsGuest = true`, and the next settled match would put them back. So `IPlayerGrain` gains
+`ClaimEmailAsync`, which claims the address, clears the guest flag and seeds the leaderboard under
+the grain's own serialisation, and the endpoint calls that.
+
+**This is a pre-existing bug wider than the upgrade.** `PUT /api/me` writes with
+`players.UpsertAsync(me)` (`GameEndpoints.cs:47`) while an activated `PlayerGrain` holds a stale
+copy, so a rename or language change today can be silently undone by the next match that settles.
+Since this design has to touch that endpoint anyway (for `AllowGuest` and the avatar), the profile
+write moves onto the grain at the same time. After this, every mutation of a `Player` goes through
+`IPlayerGrain` and the repository is written by exactly one owner.
 
 **When the address already has an account**, the upgrade is refused with a clear message and ordinary
 sign-in is offered instead; the guest history stays behind. Merging two player rows means reconciling
@@ -326,9 +395,10 @@ Redis migration — waiting will not make it safe, and the spec should not prete
 Each step green before the next.
 
 0. **Connect live settlement** — the prerequisite above. Call `LiveMatchSettlement` from
-   `LiveMatchGrain`, fix its archive mapper's code field, and prove with an integration test that a
-   finished live duel actually moves stats, the leaderboard and the abandonment penalty. Everything
-   after this assumes settlement runs.
+   `LiveMatchGrain`, fix its archive mapper's code field, add durable per-player settlement progress
+   with resume-on-activation, and prove with tests that a finished live duel moves stats, the
+   leaderboard and the abandonment penalty — and that a crash halfway through settles the remainder
+   exactly once. Everything after this assumes settlement runs.
 1. **Domain** — `Participants`, `DuelSettings`, standings, N-way abandonment, on both match types.
    Nothing above the domain changes; the existing tests keep passing as the N=2 case, and that is the
    safety net for every step after.
@@ -341,7 +411,10 @@ Each step green before the next.
 4. **Server** — lobby endpoints, invitation changes on `LobbyHub`.
 5. **Web** — the lobby page, roster and settings controls, standings on the results screen, guest
    name and avatar editing.
-6. **Guest upgrade** — last, because it depends on none of the above and should not hold the rest up.
+6. **Player writes onto the grain** — `PUT /api/me` through `IPlayerGrain`, `AllowGuest` on it, the
+   avatar field. Independent of the lobby work and fixes a live bug, so it can move earlier if the
+   stale-cache clobbering is biting.
+7. **Guest upgrade** — last, because it depends only on step 6 and should not hold the rest up.
 
 Step 0 is visible — live duels start affecting stats and the leaderboard, which they should have been
 doing all along. Steps 1 and 2 are invisible; the app otherwise behaves exactly as it does now until
