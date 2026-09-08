@@ -153,7 +153,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out _, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
 
-        Assert.Equal((int)LiveJoinResult.SelfJoin, await grain.JoinAsync(Amir)); // cannot join your own challenge
+        Assert.Equal((int)LiveJoinResult.AlreadyIn, await grain.JoinAsync(Amir)); // the owner holds seat 0, so joining is a no-op rather than a refusal
         Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Sara));
         // A capacity-2 lobby can only ever close by filling, so a latecomer sees Full, not Taken —
         // see LiveJoinResult's own remarks for the (capacity > 2) case Taken is still for.

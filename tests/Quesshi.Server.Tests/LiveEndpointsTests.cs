@@ -162,14 +162,18 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task Join_your_own_lobby_is_refused_as_self_join()
+    public async Task Joining_your_own_lobby_hands_it_back_rather_than_refusing_it()
     {
+        // This is how the lobby page loads for its owner -- it joins the code it was given -- so a
+        // refusal here meant an owner could create a lobby, share the code, and then be told their
+        // own invite did not exist.
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
 
         var result = await LiveEndpoints.JoinAsync(created.Code, Amir, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
-        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
-        Assert.Equal("self_join", CrossTypeCodeTests.ErrorOf(result));
+
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal(created.Id, ((LiveViewDto)CrossTypeCodeTests.ValueOf(result)).Id);
     }
 
     [Fact]
