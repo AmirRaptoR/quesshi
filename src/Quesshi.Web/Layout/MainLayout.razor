@@ -45,12 +45,12 @@ else
     @* A guest has exactly one page; a row of tabs to places they cannot open is worse than no tabs. *@
     @if (State.SignedIn && !State.IsGuest && !IsAdminArea)
     {
+        @* Three tabs, not four, since issue #88: the Duels tab used to lead to a list of turn-based
+           duels, and the Play screen's Offline tab *is* that list now. A bar with two doors into the
+           same room is a bar that makes the player choose between identical things. *@
         <nav class="tabbar" aria-label="@L["app.name"]">
             <NavLink class="tabbar__link" href="/play">
                 <span class="tabbar__icon" aria-hidden="true">◈</span>@L["nav.play"]
-            </NavLink>
-            <NavLink class="tabbar__link" href="/duels">
-                <span class="tabbar__icon" aria-hidden="true">⚔</span>@L["nav.matches"]
             </NavLink>
             <NavLink class="tabbar__link" href="/ranks">
                 <span class="tabbar__icon" aria-hidden="true">▲</span>@L["nav.ranks"]

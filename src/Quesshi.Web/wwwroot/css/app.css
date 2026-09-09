@@ -997,6 +997,267 @@ a  { color: var(--firouzeh); text-decoration: none; }
    colour. */
 input[type='range'] { accent-color: var(--firouzeh); }
 
+/* =====================================================   ---- home (#88) ----
+   The home is two tabs now — Live and Offline — and everything
+   below belongs to them. It is written as its own block rather
+   than woven into the sections above for a plain reason: the
+   redesign of #87 lands as six issues at once, and a block that
+   only ever grows at the end of the file is a block that cannot
+   collide with the lobby's, the profile's or the sheet's.
+
+   Nothing here invents a colour, a radius or a face. The one new
+   value is the online green, which the palette genuinely lacked:
+   turquoise already means "primary" and saffron means "your
+   score", so a presence dot in either would say something it
+   does not mean.
+
+   Every inline offset is logical (inset-inline, padding-inline,
+   text-align:start) — Persian is the default language of this
+   app, not an afterthought, and the only thing that flips by
+   hand is the chevron, which is a picture of a direction.
+   ============================================================ */
+
+:root { --sabz: #8FD64A; }
+
+/* --- the header: wordmark, and who you are ------------------------------- */
+.home-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.4rem; }
+.home-mark { font-size: var(--step-1); font-weight: 800; letter-spacing: -0.01em; }
+
+/* Uneven inline padding: the avatar is already a shape with its own edge, the number needs air.
+   Logical, so the pair swaps ends in Persian without a second rule. */
+.home-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem;
+  padding-inline-end: 0.75rem;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+}
+.home-score__face { width: 1.5rem; height: 1.5rem; font-size: 0.7rem; }
+.home-score__value { font-size: var(--step-0); color: var(--zaferan); }
+
+/* --- the two tabs -------------------------------------------------------- */
+/* A pill, not a row of links: these are two states of one screen, and the control has to look like
+   something that switches rather than something that navigates. */
+.home-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgb(22 34 92 / 0.5);
+  border: 1px solid var(--line);
+}
+.home-tabs__tab {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+.home-tabs__tab:hover:not(.is-on) { color: var(--sadaf); }
+.home-tabs__tab.is-on { font-weight: 800; color: var(--shab); background: var(--firouzeh); }
+
+/* --- the one action per tab ---------------------------------------------- */
+/* Solid turquoise, the largest radius in the system, and the only filled surface on the screen:
+   whatever else is on this tab, this is the thing to press. */
+.home-primary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  margin-top: 1.6rem;
+  padding: 1.35rem 1.15rem;
+  text-align: start;
+  border: 0;
+  border-radius: var(--r-lg);
+  font: inherit;
+  color: var(--shab);
+  background: var(--firouzeh);
+  cursor: pointer;
+  transition: filter 0.2s var(--ease), transform 0.15s var(--ease);
+}
+.home-primary:hover:not(:disabled) { filter: brightness(1.07); }
+.home-primary:active:not(:disabled) { transform: translateY(1px); }
+.home-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.home-primary__icon, .home-primary__go { flex: none; }
+.home-primary__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.home-primary__title { font-size: var(--step-1); font-weight: 800; line-height: 1.2; }
+.home-primary__hint { font-size: var(--step--1); line-height: 1.35; opacity: 0.75; }
+
+/* A chevron is a picture of "onward", and onward is leftward in Persian. The only mirrored thing
+   in this block, and the same rule .pager__arrow above already follows. */
+:root[dir="rtl"] .home-go { transform: scaleX(-1); }
+
+/* --- the pair beneath it ------------------------------------------------- */
+/* Half width each, so both read as smaller than the card above without being smaller in type. */
+.home-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin-top: 0.6rem; }
+.home-tile {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+  align-content: start;
+  min-height: 44px;
+  padding: 1.1rem;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  font: inherit;
+  font-weight: 800;
+  color: var(--sadaf);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+.home-tile:hover:not(:disabled) { border-color: var(--line-2); }
+.home-tile:disabled { opacity: 0.45; cursor: not-allowed; }
+.home-tile.is-on { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
+.home-tile__icon { color: var(--firouzeh); }
+
+/* --- the code field, revealed under whichever control asked for it -------- */
+.home-code { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+.home-code .input { min-height: 44px; letter-spacing: 0.12em; font-weight: 700; }
+.home-code__go { flex: none; min-width: 44px; min-height: 44px; padding: 0.6rem; }
+
+/* --- the opponent picker on the Offline tab ------------------------------ */
+.home-choice { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.home-choice__option {
+  flex: 1 1 6rem;
+  min-height: 44px;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--step--1);
+  color: var(--sadaf);
+  background: rgb(9 14 34 / 0.4);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.home-choice__option:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); }
+.home-choice__option:disabled { opacity: 0.45; cursor: not-allowed; }
+.home-choice__option.is-on { color: var(--shab); background: var(--firouzeh); border-color: var(--firouzeh); }
+
+/* --- the settings line --------------------------------------------------- */
+/* Dashed, quiet, and the width of the screen: the whole point of #87's decision is that this is
+   nearly always right already, so it states itself and stays out of the way. The dash is what says
+   "adjustable" — every solid-edged surface on this page is something that happens when pressed. */
+.home-settings {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 1.5rem;
+  padding: 0.7rem 0.85rem;
+  text-align: start;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--step--1);
+  color: var(--sadaf-2);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+.home-settings:hover { border-color: var(--line-2); color: var(--sadaf); }
+.home-settings__text { flex: 1; min-width: 0; }
+.home-settings__change { flex: none; font-weight: 700; color: var(--firouzeh); }
+
+/* --- sections ------------------------------------------------------------ */
+/* Plain sentence-case headings at reading size. The audit counted ten tracked-out ALL-CAPS eyebrows
+   across four screens, all shouting equally; a section title is a label, and a label that has to be
+   decoded before it can be read is not doing its job. */
+.home-sect { margin-top: 1.8rem; }
+.home-sect__title { margin: 0; font-size: var(--step-1); font-weight: 700; }
+.home-sect__title--quiet { color: var(--sadaf-2); }
+.home-sect__hint { margin: 0.7rem 0 0; font-size: var(--step--1); color: var(--sadaf-3); }
+.home-sect__none { margin: 0.65rem 0 0; color: var(--sadaf-2); }
+
+/* --- friends online now -------------------------------------------------- */
+/* Faces, not rows: a friend is a person, and at this size the avatar is the name. */
+.home-faces { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.85rem; }
+.home-face {
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  width: 4.25rem;
+  padding: 0.15rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
+  color: var(--sadaf);
+  cursor: pointer;
+  transition: transform 0.15s var(--ease);
+}
+.home-face:hover:not(:disabled) { transform: translateY(-2px); }
+.home-face:disabled { opacity: 0.5; cursor: progress; }
+.home-face__tile { position: relative; width: 3.5rem; height: 3.5rem; font-size: var(--step-1); }
+.home-face__dot {
+  position: absolute;
+  inset-block-end: -2px;
+  inset-inline-end: -2px;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: var(--sabz);
+  border: 2px solid var(--shab);
+}
+.home-face__name { max-width: 100%; font-size: var(--step--1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- the two duel lists -------------------------------------------------- */
+/* The whole row is the target. A seventy-pixel row with one forty-four-pixel pill in its corner is
+   a row that does nothing when tapped where a thumb actually lands. */
+.home-duels { display: grid; gap: 0.5rem; margin-top: 0.8rem; }
+.home-duel {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.85rem 0.9rem;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(22 34 92 / 0.5);
+  font: inherit;
+  color: var(--sadaf);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+.home-duel:hover { border-color: var(--line-2); }
+
+/* Saffron edge and the lifted lapis: the duels waiting on this player are the ones with something
+   to do, and they are meant to be the first thing the eye lands on in the list. */
+.home-duel--turn {
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border-color: rgb(232 168 58 / 0.4);
+}
+.home-duel__face { width: 2.75rem; height: 2.75rem; font-size: var(--step-0); }
+.home-duel__who { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.home-duel__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-duel__sub { font-size: var(--step--1); color: var(--sadaf-2); }
+.home-duel__play {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 1.1rem;
+  border-radius: 999px;
+  background: var(--zaferan);
+  color: var(--shab);
+  font-size: var(--step--1);
+  font-weight: 700;
+}
+=======
 /* ---- profile (#91) ---- */
 /* Profile stops being a settings form with a stats card bolted on: identity, a three-tile record and
    friends, with a gear as the only door into everything that used to sit here as fields. Settings
