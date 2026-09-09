@@ -1,0 +1,17 @@
+@page "/duels"
+@inject NavigationManager Nav
+
+@*
+    All that is left of the old Duels page (issue #88). The Offline tab on the home is that list now,
+    so the page itself is gone — but its URL is not: it was a tab in the bar for the app's whole life,
+    so it is in bookmarks, in history, and in the back stack of anyone mid-session when this shipped.
+    A route that answers with the right screen costs one component; one that 404s costs a player.
+*@
+
+@code {
+    /// <summary>
+    /// Replaces rather than pushes, so the back button goes wherever the player actually came from
+    /// instead of returning here and bouncing forward again.
+    /// </summary>
+    protected override void OnInitialized() => Nav.NavigateTo("/play", replace: true);
+}

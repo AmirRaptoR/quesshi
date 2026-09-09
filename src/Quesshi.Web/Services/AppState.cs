@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.JSInterop;
 using Quesshi.Shared;
 
@@ -12,6 +13,8 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     private const string LangKey = "quesshi.lang";
     private const string GuestMatchKey = "quesshi.guestMatch";
     private const string GuestMatchLiveKey = "quesshi.guestMatchLive";
+    private const string HomeTabKey = "quesshi.homeTab";
+    private const string DuelSettingsKey = "quesshi.duelSettings";
 
     private int _generation;
     private bool _retrying;
@@ -39,6 +42,22 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// an async one to <c>/duel/{id}</c>. Meaningless while <see cref="GuestMatchId"/> is null.</summary>
     public bool GuestMatchIsLive { get; private set; }
 
+    /// <summary>
+    /// Which of the home's two tabs was last open. Persisted (issue #88) because Live and Offline are
+    /// two different games rather than two views of one: a player who only ever plays turn-based duels
+    /// should reopen the app on that list, not be handed the live lobby every time.
+    /// </summary>
+    public string HomeTab { get; private set; } = HomeTabs.Live;
+
+    public async Task SetHomeTabAsync(string tab)
+    {
+        var next = HomeTabs.Normalise(tab);
+        if (next == HomeTab) return;
+
+        HomeTab = next;
+        await js.InvokeVoidAsync("quesshi.set", HomeTabKey, next);
+    }
+
     /// <summary>The language / question count / categories / levels last used to start a duel on
     /// <c>Home.razor</c> — what a friend challenge reuses. Null fields mean "no preference yet";
     /// the caller falls back to defaults.</summary>
@@ -47,12 +66,64 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     public List<string>? LastLiveCategories { get; private set; }
     public List<int>? LastLiveLevels { get; private set; }
 
+    /// <summary>What the home creates a duel with when nobody has chosen anything yet — the first of
+    /// <c>MatchRules.QuestionCountChoices</c>, the same value the old form opened on.</summary>
+    public const int DefaultQuestionCount = 10;
+
+    /// <summary>
+    /// The four fields above as the one record the rest of the app already passes around, with the
+    /// defaults filled in. Issue #88 asked for last-used settings to persist rather than for a second
+    /// store beside this one, so this is a view over what was already here — <c>SetLastLiveSettings</c>
+    /// keeps working untouched for the callers that only ever set it in memory.
+    /// </summary>
+    public DuelSettingsDto LastDuelSettings => new(
+        LastLiveLang ?? Lang,
+        LastLiveQuestionCount ?? DefaultQuestionCount,
+        LastLiveCategories ?? [],
+        LastLiveLevels ?? []);
+
     public void SetLastLiveSettings(string lang, int questionCount, List<string>? categories, List<int>? levels)
     {
         LastLiveLang = lang;
         LastLiveQuestionCount = questionCount;
         LastLiveCategories = categories;
         LastLiveLevels = levels;
+    }
+
+    /// <summary>
+    /// The same setter, plus localStorage, so the choice outlives the tab it was made in. Empty lists
+    /// are stored as the nulls the fields above use for "no preference": the distinction matters at
+    /// the API, where an empty categories list means "draw them yourself" rather than "none".
+    /// </summary>
+    public async Task SetLastDuelSettingsAsync(DuelSettingsDto settings)
+    {
+        SetLastLiveSettings(settings.Lang, settings.QuestionCount,
+            settings.CategoryIds.Count == 0 ? null : settings.CategoryIds,
+            settings.Levels.Count == 0 ? null : settings.Levels);
+
+        await js.InvokeVoidAsync("quesshi.set", DuelSettingsKey, JsonSerializer.Serialize(settings));
+    }
+
+    /// <summary>
+    /// Reads back what <see cref="SetLastDuelSettingsAsync"/> wrote. Anything unreadable — a
+    /// half-written value, or a shape from an older build — is ignored rather than allowed to take
+    /// the app down on startup: a forgotten preference is a much smaller loss than a blank page.
+    /// </summary>
+    private async Task RestoreDuelSettingsAsync()
+    {
+        var stored = await js.InvokeAsync<string?>("quesshi.get", DuelSettingsKey);
+        if (stored is not { Length: > 0 }) return;
+
+        try
+        {
+            if (JsonSerializer.Deserialize<DuelSettingsDto>(stored) is { } settings)
+                SetLastLiveSettings(settings.Lang, settings.QuestionCount,
+                    settings.CategoryIds is { Count: > 0 } categories ? categories : null,
+                    settings.Levels is { Count: > 0 } levels ? levels : null);
+        }
+        catch (JsonException)
+        {
+        }
     }
 
     public event Action? Changed;
@@ -67,6 +138,9 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
 
         GuestMatchId = await js.InvokeAsync<string?>("quesshi.get", GuestMatchKey);
         GuestMatchIsLive = await js.InvokeAsync<string?>("quesshi.get", GuestMatchLiveKey) == "1";
+
+        HomeTab = HomeTabs.Normalise(await js.InvokeAsync<string?>("quesshi.get", HomeTabKey));
+        await RestoreDuelSettingsAsync();
 
         var token = await js.InvokeAsync<string?>("quesshi.get", TokenKey);
         if (!string.IsNullOrWhiteSpace(token))

@@ -1,18 +1,39 @@
 @page "/play"
 @inherits PageBase
+@using System.Globalization
 @using Microsoft.AspNetCore.SignalR.Client
 @inject LobbyClient Lobby
+
+@*
+    The home, rebuilt for issue #88. What it replaces is worth naming, because the shape of this file
+    is a direct answer to it: the old Play card rendered thirty-seven controls and six helper
+    sentences before the first action — language, difficulty chips, category chips, a seat stepper, an
+    Anytime/Live toggle — and asked every one of them again on every duel. Issue #87's decision is
+    that Live and Offline are two different games rather than two settings of one, so they are two
+    tabs; that the settings collapse to a single remembered line with a way to change it; and that
+    seats belong to the lobby, where the roster filling them is actually visible.
+
+    Nothing underneath changed. Every endpoint the old card could reach is still reachable from one of
+    the seven entry points below — see HomeEntryPlan, which holds that mapping as a table rather than
+    leaving it spread across seven click handlers.
+*@
 
 <PageTitle>@L["app.name"]</PageTitle>
 
 <div class="shell">
-    <header class="topbar">
-        <div style="width:2.5rem"><Shamseh Mine="@Emblem" Theirs="@Emblem" Size="40" Label="@L["app.name"]" /></div>
-        <div class="topbar__title">@L["app.name"]</div>
-        <div class="topbar__spacer"></div>
+    <header class="home-head">
+        <div class="home-mark">@L["app.name"]</div>
+
+        @* Identity and standing, in the corner rather than as a card of its own: the score is the one
+           number a player checks on arrival, and the avatar is what makes it theirs. Not a link — the
+           tab bar already leads to the profile, and a second door to the same room would be one more
+           thing to aim at on a screen whose whole point is having fewer. *@
         @if (State.Me is { } me)
         {
-            <span class="chip"><span class="numeral">@L.Num(me.Stats.TotalScore)</span></span>
+            <div class="home-score">
+                <span class="avatar home-score__face" style="background:@Ranks.Tint(me.AvatarSeed)">@Initial(me.DisplayName)</span>
+                <span class="numeral home-score__value" aria-label="@L["home.score"]">@Score(me.Stats.TotalScore)</span>
+            </div>
         }
     </header>
 
@@ -26,173 +47,391 @@
     }
     else
     {
-        <div class="stack">
-            <section class="card card--taq enter">
-                <span class="eyebrow">@L["home.newDuel"]</span>
+        <div class="home-tabs" role="tablist" aria-label="@L["home.tabs"]">
+            <button type="button" role="tab" id="home-tab-live" aria-controls="home-panel-live"
+                    aria-selected="@Selected(HomeTabs.Live)" class="home-tabs__tab @(IsLive ? "is-on" : null)"
+                    @onclick="() => SwitchAsync(HomeTabs.Live)">@L["home.tabLive"]</button>
+            <button type="button" role="tab" id="home-tab-offline" aria-controls="home-panel-offline"
+                    aria-selected="@Selected(HomeTabs.Offline)" class="home-tabs__tab @(!IsLive ? "is-on" : null)"
+                    @onclick="() => SwitchAsync(HomeTabs.Offline)">@L["home.tabOffline"]</button>
+        </div>
 
-                <DuelSettingsPicker Categories="_categories" PickedCategories="_picked" PickedLevels="_levels"
-                                    Questions="_questions" QuestionsChanged="(int v) => _questions = v"
-                                    Lang="@_lang" LangChanged="ChooseLang"
-                                    CategoryToggled="Toggle" LevelToggled="ToggleLevel" />
-
+        @if (IsLive)
+        {
+            <div class="enter" role="tabpanel" id="home-panel-live" aria-labelledby="home-tab-live">
+                @* The live queue takes over the whole action area while it is running: a player waiting
+                   for a stranger has exactly one useful thing to do, which is stop waiting. *@
                 @if (_liveWaiting)
                 {
-                    <div class="stack" style="margin-top:1rem">
-                        <div class="notice" style="text-align:center">
-                            <div class="spinner" role="status" aria-label="@L["home.liveWaiting"]"></div>
-                            <p style="margin:.5rem 0 0">@L["home.liveWaiting"]</p>
-                            <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">
-                                @L.Format("home.liveOthersWaiting", L.Num(_liveOthers))
-                            </p>
-                        </div>
-                        <button class="btn btn--ghost btn--block" @onclick="CancelLiveQueueAsync">
-                            <span>@L["home.liveCancel"]</span>
-                        </button>
+                    <div class="notice" style="margin-top:1.6rem;text-align:center">
+                        <div class="spinner" role="status" aria-label="@L["home.liveWaiting"]"></div>
+                        <p style="margin:.5rem 0 0">@L["home.liveWaiting"]</p>
+                        <p class="faint" style="margin:.35rem 0 0">@L.Format("home.liveOthersWaiting", L.Num(_liveOthers))</p>
                     </div>
+                    <button class="btn btn--ghost btn--block" style="margin-top:.6rem" @onclick="CancelLiveQueueAsync">
+                        @L["home.liveCancel"]
+                    </button>
                 }
                 else
                 {
-                    <div class="stack" style="margin-top:1rem">
-                        <div class="row">
-                            <button class="btn grow" disabled="@_busy" @onclick="InviteFriendAsync">
-                                <span>@L["home.friend"]</span>
-                            </button>
+                    <button type="button" class="home-primary" disabled="@_busy" @onclick="() => RunAsync(HomeEntry.CreateLobby)">
+                        @* A room with seats along its sides: the one drawing that says "more than two
+                           people, all here at once" without a word of explanation. *@
+                        <svg class="home-primary__icon" width="30" height="30" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="14" rx="3" />
+                            <path d="M3 10h18M8 5v5M16 5v5" />
+                        </svg>
+                        <span class="home-primary__text">
+                            <span class="home-primary__title">@L["home.createLobby"]</span>
+                            <span class="home-primary__hint">@L["home.createLobbyHint"]</span>
+                        </span>
+                        <svg class="home-primary__go home-go" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M9 6l6 6-6 6" />
+                        </svg>
+                    </button>
 
-                            @* A two-player duel needs no choice at all — the stepper simply starts on the
-                               default it has always created, so pressing the button beside it is still
-                               the entire flow. Reaching for it is the only extra step, and only for the
-                               player who wants more than two. *@
-                            <div class="stepper" role="group" aria-label="@L["home.seats"]">
-                                <button type="button" class="stepper__btn" disabled="@(_busy || _capacity <= 2)"
-                                        aria-label="@L["home.seatsFewer"]" @onclick="() => SetCapacity(_capacity - 1)">−</button>
-                                <span class="stepper__value numeral">@L.Num(_capacity)</span>
-                                <button type="button" class="stepper__btn" disabled="@(_busy || _capacity >= 8)"
-                                        aria-label="@L["home.seatsMore"]" @onclick="() => SetCapacity(_capacity + 1)">+</button>
-                            </div>
-                        </div>
-
-                        @* The live lobby's own entry point (issue #47/#53's last gap): not a fourth button, but a
-                           second dial on this one — a duel is a lobby, and live-vs-async is a property of that
-                           lobby exactly the way its capacity is. Left at its default it changes nothing: "Invite
-                           a friend" at two seats, async, is still the one-tap flow it has always been. *@
-                        <div class="segmented segmented--sm" role="group" aria-label="@L["home.timing"]">
-                            <button type="button" class="segmented__option @(!_liveKind ? "is-on" : null)"
-                                    aria-pressed="@((!_liveKind).ToString().ToLowerInvariant())"
-                                    disabled="@_busy" @onclick="() => _liveKind = false">@L["home.timingAsync"]</button>
-                            <button type="button" class="segmented__option @(_liveKind ? "is-on" : null)"
-                                    aria-pressed="@(_liveKind.ToString().ToLowerInvariant())"
-                                    disabled="@_busy" @onclick="() => _liveKind = true">@L["home.timingLive"]</button>
-                        </div>
-                        <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@FriendHint()</p>
-
-                        <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="() => StartAsync(random: true)">
-                            <span>@L["home.random"]</span>
+                    <div class="home-pair">
+                        <button type="button" class="home-tile @(_codeOpen ? "is-on" : null)" aria-expanded="@_codeOpen.ToString().ToLowerInvariant()"
+                                disabled="@_busy" @onclick="ToggleCodeField">
+                            <svg class="home-tile__icon" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 7h16M4 12h10M4 17h7" />
+                            </svg>
+                            <span>@L["home.join"]</span>
                         </button>
-                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.randomHint"]</p>
 
-                        <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="StartLiveRandomAsync">
-                            <span>@L["home.liveRandom"]</span>
+                        <button type="button" class="home-tile" disabled="@_busy" @onclick="() => RunAsync(HomeEntry.PlayAStranger)">
+                            <svg class="home-tile__icon" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M3.5 12h17M12 3.5c2.8 3 2.8 14 0 17M12 3.5c-2.8 3-2.8 14 0 17" />
+                            </svg>
+                            <span>@L["home.stranger"]</span>
                         </button>
-                        <p class="faint" style="margin:-.4rem 0 0;font-size:var(--step--1)">@L["home.liveRandomHint"]</p>
                     </div>
+
+                    @if (_codeOpen)
+                    {
+                        @CodeField(HomeEntry.JoinWithCode)
+                    }
                 }
 
-                @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.85rem">@_error</div> }
-            </section>
+                @SettingsLine()
 
-            <section class="card card--flat enter">
-                <span class="eyebrow">@L["home.join"]</span>
-                <div class="row" style="margin-top:.7rem">
-                    <input class="input grow" dir="ltr" maxlength="6" placeholder="@L["home.joinPlaceholder"]"
-                           @bind="_code" @bind:event="oninput" style="text-transform:uppercase" />
-                    <button class="btn btn--gold" disabled="@(_busy || _code.Length < 4)" @onclick="JoinAsync">→</button>
-                </div>
-            </section>
+                <section class="home-sect">
+                    <h2 class="home-sect__title">@L["home.friendsOnline"]</h2>
 
-            @if (_active.Count > 0)
-            {
-                <section class="enter">
-                    <span class="eyebrow">@L["home.yourTurn"]</span>
-                    <div class="stack" style="margin-top:.6rem">
-                        @foreach (var match in _active)
-                        {
-                            <MatchRow Match="match" />
-                        }
-                    </div>
+                    @if (Online.Count == 0)
+                    {
+                        @* Deliberately one sentence and nothing else. The audit's complaint about
+                           "No friends yet" was that a dead end dressed up as a card reads as a
+                           failure; stated plainly, this is just a fact about right now. *@
+                        <p class="home-sect__none">@L["home.noFriendsOnline"]</p>
+                    }
+                    else
+                    {
+                        <div class="home-faces">
+                            @foreach (var friend in Online)
+                            {
+                                var id = friend.Id;
+                                <button type="button" class="home-face" disabled="@(_challenging is not null)"
+                                        @onclick="() => RunAsync(HomeEntry.ChallengeFriend, friendId: id)">
+                                    <span class="avatar home-face__tile" style="background:@Ranks.Tint(friend.AvatarSeed)">
+                                        @Initial(friend.DisplayName)
+                                        <span class="home-face__dot" aria-hidden="true"></span>
+                                    </span>
+                                    <span class="home-face__name">@friend.DisplayName</span>
+                                </button>
+                            }
+                        </div>
+                        <p class="home-sect__hint">@L["home.friendsOnlineHint"]</p>
+                    }
                 </section>
-            }
-            else
-            {
-                <p class="empty enter">@L["home.noMatches"]</p>
-            }
-        </div>
+            </div>
+        }
+        else
+        {
+            <div class="enter" role="tabpanel" id="home-panel-offline" aria-labelledby="home-tab-offline">
+                <button type="button" class="home-primary" aria-expanded="@_opponent.ToString().ToLowerInvariant()"
+                        disabled="@_busy" @onclick="ToggleOpponentPicker">
+                    @* A pencil: a turn-based duel is something you put down and come back to. *@
+                    <svg class="home-primary__icon" width="30" height="30" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14.5 4.5l5 5-9.5 9.5H5v-5z" />
+                        <path d="M12.5 6.5l5 5" />
+                    </svg>
+                    <span class="home-primary__text">
+                        <span class="home-primary__title">@L["home.newDuel"]</span>
+                        <span class="home-primary__hint">@L["home.newDuelHint"]</span>
+                    </span>
+                    <svg class="home-primary__go home-go" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9 6l6 6-6 6" />
+                    </svg>
+                </button>
+
+                @* The one question a new duel actually has to ask, asked only once the player has said
+                   they want one — and inline, under the button they just pressed, rather than on a
+                   screen of its own. *@
+                @if (_opponent)
+                {
+                    <div class="home-choice" role="group" aria-label="@L["home.opponentPick"]">
+                        <button type="button" class="home-choice__option" disabled="@_busy"
+                                @onclick="() => RunAsync(HomeEntry.NewDuelFriend)">@L["home.opponentFriend"]</button>
+                        <button type="button" class="home-choice__option" disabled="@_busy"
+                                @onclick="() => RunAsync(HomeEntry.NewDuelAnyone)">@L["home.opponentAnyone"]</button>
+                        <button type="button" class="home-choice__option @(_codeOpen ? "is-on" : null)"
+                                aria-expanded="@_codeOpen.ToString().ToLowerInvariant()" disabled="@_busy"
+                                @onclick="ToggleCodeField">@L["home.opponentByCode"]</button>
+                    </div>
+
+                    @if (_codeOpen)
+                    {
+                        @CodeField(HomeEntry.NewDuelByCode)
+                    }
+                }
+
+                @SettingsLine()
+
+                @if (_split.YourTurn.Count > 0)
+                {
+                    <section class="home-sect">
+                        <h2 class="home-sect__title">@L["home.yourTurn"]</h2>
+                        <div class="home-duels">
+                            @foreach (var match in _split.YourTurn)
+                            {
+                                @DuelRow(match, mine: true)
+                            }
+                        </div>
+                    </section>
+                }
+
+                @if (_split.WaitingOnThem.Count > 0)
+                {
+                    <section class="home-sect">
+                        <h2 class="home-sect__title home-sect__title--quiet">@L["home.waitingOnThem"]</h2>
+                        <div class="home-duels">
+                            @foreach (var match in _split.WaitingOnThem)
+                            {
+                                @DuelRow(match, mine: false)
+                            }
+                        </div>
+                    </section>
+                }
+
+                @if (_split.YourTurn.Count == 0 && _split.WaitingOnThem.Count == 0)
+                {
+                    <p class="empty">@L["home.noMatches"]</p>
+                }
+            </div>
+        }
+
+        @if (_error is not null)
+        {
+            <div class="notice notice--bad" style="margin-top:.9rem">@_error</div>
+        }
     }
 </div>
 
+@* --- the pieces both tabs share ------------------------------------------------------------- *@
+
 @code {
-    private static readonly IReadOnlyList<bool?> Emblem = [true, true, true, false, true, null];
 
-    /// <summary>Mirrors MatchRules.QuestionCountChoices; the server rejects anything else anyway.</summary>
-    private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
+    /// <summary>
+    /// The settings that used to be a whole form, as one line: what the next duel will be, and the
+    /// way to change it. It sits on both tabs because it describes the questions, and the questions
+    /// are the same game either way — only the clock differs. Change opens issue #89's sheet; until
+    /// that lands the route holds a placeholder page rather than a dead button.
+    /// </summary>
+    private RenderFragment SettingsLine() =>
+        @<button type="button" class="home-settings" @onclick="OpenSettings">
+            <span class="home-settings__text">@DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L)</span>
+            <span class="home-settings__change">@L["home.settingsChange"]</span>
+        </button>;
 
-    private List<MatchSummaryDto> _active = [];
-    private List<CategoryDto> _categories = [];
-    private readonly HashSet<string> _picked = [];
-    private readonly HashSet<int> _levels = [];
-    private int _questions = QuestionCounts[0];
+    /// <summary>The join field, revealed under whichever tile or option asked for it. One markup, two
+    /// entry points, because a code is a code — see HomeEntryPlan.Call for why both resolve to the
+    /// same lookup rather than to the tab's own endpoint.</summary>
+    private RenderFragment CodeField(HomeEntry entry) =>
+        @<div class="home-code">
+            <input class="input grow" dir="ltr" maxlength="6" style="text-transform:uppercase"
+                   placeholder="@L["home.joinPlaceholder"]" aria-label="@L["home.joinPlaceholder"]"
+                   @bind="_code" @bind:event="oninput" />
+            <button type="button" class="btn btn--gold home-code__go" aria-label="@L["home.join"]"
+                    disabled="@(_busy || _code.Length < 4)" @onclick="() => RunAsync(entry)">
+                <svg class="home-go" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 6l6 6-6 6" />
+                </svg>
+            </button>
+        </div>;
 
-    /// <summary>Two is the effortless default — the overwhelmingly common case — and the only value
-    /// that keeps "Invite a friend" behaving exactly as it always has; see InviteFriendAsync.</summary>
-    private int _capacity = 2;
+    /// <summary>
+    /// One duel in either list. The whole row is the target rather than the pill inside it: a
+    /// seventy-pixel row with one forty-four-pixel button in the corner is a row that mostly does
+    /// nothing when tapped. The saffron pill is what tells the two lists apart at a glance, so it is
+    /// drawn only on the half the player can act on.
+    /// </summary>
+    private RenderFragment DuelRow(MatchSummaryDto match, bool mine) =>
+        @<button type="button" class="home-duel @(mine ? "home-duel--turn" : null)"
+                 @onclick="() => Nav.NavigateTo(HomeDuels.Route(match))">
+            <span class="avatar home-duel__face" style="background:@Ranks.Tint(match.Opponent?.AvatarSeed ?? match.Code)">
+                @Initial(match.Opponent?.DisplayName ?? "?")
+            </span>
+            <span class="home-duel__who">
+                @* A duel nobody has joined is named by its code, because the code is the only handle
+                   anyone has on it — and it stays ltr in Persian, being six Latin characters rather
+                   than a word. Naming it "Waiting for them" instead, as the old row did, put a
+                   contradiction under the "Your turn" heading it can legitimately sit beneath: you
+                   can answer your own half of an unjoined duel long before anybody arrives. *@
+                @if (match.Opponent is { } opponent)
+                {
+                    <span class="home-duel__name">@opponent.DisplayName</span>
+                }
+                else
+                {
+                    <span class="home-duel__name" dir="ltr">@match.Code</span>
+                }
+                <span class="home-duel__sub">@Standing(match)</span>
+            </span>
+            @if (mine)
+            {
+                <span class="home-duel__play">@L["home.play"]</span>
+            }
+        </button>;
 
-    /// <summary>The lobby's other dial, beside capacity: false (async) is the default that keeps
-    /// "Invite a friend" exactly what it has always been — see InviteFriendPlan.NeedsLobby, which
-    /// treats this the same way it treats capacity, as a property of the lobby rather than a reason
-    /// for a second button.</summary>
-    private bool _liveKind;
+    private string _tab = HomeTabs.Live;
+    private bool IsLive => _tab == HomeTabs.Live;
+
+    private HomeDuelSplit _split = new([], []);
+
+    /// <summary>Whether the inline code field is showing. Named for what it is rather than for which
+    /// tab revealed it: the field is the same field on both, so the state is too.</summary>
+    private bool _codeOpen;
+    private bool _opponent;
 
     private string _code = "";
-    private string _lang = "";
     private string? _error;
     private bool _busy;
+    private string? _challenging;
 
     private bool _liveWaiting;
     private int _liveOthers;
     private readonly List<IDisposable> _liveSubs = [];
 
+    /// <summary>Friends who could actually answer right now. A guest can never receive an in-app
+    /// invitation (see LobbyHub.OnConnectedAsync), so one is never offered as a face to tap.</summary>
+    private List<FriendDto> Online =>
+        State.Me is { } me ? [.. me.Friends.Where(f => f.Online && !f.IsGuest)] : [];
+
     protected override async Task LoadAsync()
     {
-        // The duel's language starts as the one you read the app in, and is then yours to change:
-        // studying for a Dutch exam should not mean switching your whole profile to Dutch.
-        _lang = State.Lang;
-        _categories = await Api.CategoriesAsync() ?? [];
+        _tab = State.HomeTab;
 
-        // Only the duels still in play: this used to fetch the last forty and throw thirty-two away,
-        // which cost a grain activation each. The eight shown are still chosen here, so a duel you
-        // can play still outranks one you are waiting on.
-        var active = await Api.MatchesAsync(activeOnly: true, take: 8) ?? [];
-        _active = [.. active.OrderByDescending(m => m.CanPlay)];
+        // The friends row is only as true as the presence flags on it, and State.Me is whatever the
+        // startup identity call returned — possibly minutes ago, on a session left open. One refetch
+        // on arrival is what makes "online now" mean now.
+        if (await Api.MeAsync() is { } me) State.SetMe(me);
+
+        // No take: the Offline tab is the duels list now, so cutting it to eight would hide duels
+        // that the page it replaces used to show. Only the ones still in play — a finished duel
+        // belongs to neither "your turn" nor "waiting on them".
+        _split = HomeDuels.Split(await Api.MatchesAsync(activeOnly: true) ?? []);
 
         SubscribeLive();
     }
 
-    /// <summary>The three pushes ILiveMatchmakingGrain sends over this same connection while this card is
-    /// in the waiting state — unsubscribed on Dispose so leaving the page never double-registers.</summary>
-    private void SubscribeLive()
+    private async Task SwitchAsync(string tab)
     {
-        _liveSubs.Add(Lobby.Connection.On<string>("Matched", async matchId =>
-            await InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"))));
+        if (_tab == tab) return;
 
-        _liveSubs.Add(Lobby.Connection.On<int>("QueueCount", async count =>
-            await InvokeAsync(() => { _liveOthers = count; StateHasChanged(); })));
+        _tab = tab;
+        _error = null;
 
-        _liveSubs.Add(Lobby.Connection.On("QueueFailed", async () =>
-            await InvokeAsync(() => { _liveWaiting = false; _error = L["common.error"]; StateHasChanged(); })));
+        // Reaching for the other tab is as much an exit from a half-started action as pressing
+        // anything else would be: the code field and the opponent picker close with it.
+        _codeOpen = false;
+        _opponent = false;
+
+        await State.SetHomeTabAsync(tab);
     }
 
-    private async Task StartLiveRandomAsync()
+    private void ToggleCodeField()
     {
-        _liveWaiting = true; _liveOthers = 0; _error = null;
+        _codeOpen = !_codeOpen;
+        _error = null;
+    }
+
+    private void ToggleOpponentPicker()
+    {
+        _opponent = !_opponent;
+        if (!_opponent) _codeOpen = false;
+        _error = null;
+    }
+
+    /// <summary>
+    /// Every entry point on both tabs, dispatched through the one table that says which call each of
+    /// them makes. Written as a single switch on purpose: "is every path the old form could take
+    /// still reachable?" is a question about this method and <see cref="HomeEntryPlan"/> together,
+    /// and both are small enough to read in one sitting.
+    /// </summary>
+    private async Task RunAsync(HomeEntry entry, string? friendId = null)
+    {
+        _error = null;
+
+        var settings = State.LastDuelSettings;
+        var categories = settings.CategoryIds.Count == 0 ? null : settings.CategoryIds;
+        var levels = settings.Levels.Count == 0 ? null : settings.Levels;
+
+        switch (HomeEntryPlan.Call(entry))
+        {
+            case HomeCall.CreateLiveLobby:
+                _busy = true;
+                await State.SetLastDuelSettingsAsync(settings);
+                var live = await Api.CreateLiveLobbyAsync(HomeEntryPlan.DefaultCapacity, settings.Lang,
+                    categories, settings.QuestionCount, levels);
+                _busy = false;
+
+                // Both lobby kinds land on /lobby/{code} and that page asks the invite endpoint once
+                // to tell them apart — see InviteFriendPlan.LobbyRoute's own remarks.
+                if (live?.Code is { Length: > 0 } code) Nav.NavigateTo(InviteFriendPlan.LobbyRoute(code));
+                else _error = L["common.error"];
+                break;
+
+            case HomeCall.CreateAsyncDuel:
+            case HomeCall.CreateAsyncRandomDuel:
+                _busy = true;
+                await State.SetLastDuelSettingsAsync(settings);
+                var random = HomeEntryPlan.Call(entry) == HomeCall.CreateAsyncRandomDuel;
+                var match = await Api.CreateMatchAsync(random, settings.Lang, categories, settings.QuestionCount, levels);
+                _busy = false;
+
+                // CanPlay is true only where the random match already paired them with somebody
+                // waiting; otherwise there is a code to send and no card to answer yet.
+                if (match is not null) Nav.NavigateTo(InviteFriendPlan.Route(match));
+                else _error = L["common.error"];
+                break;
+
+            case HomeCall.QueueLiveRandom:
+                await QueueLiveRandomAsync(settings, categories, levels);
+                break;
+
+            case HomeCall.ChallengeOverHub:
+                await ChallengeAsync(friendId!, settings, categories, levels);
+                break;
+
+            case HomeCall.JoinByCode:
+                await JoinByCodeAsync();
+                break;
+        }
+    }
+
+    private async Task QueueLiveRandomAsync(DuelSettingsDto settings, List<string>? categories, List<int>? levels)
+    {
+        _liveWaiting = true;
+        _liveOthers = 0;
 
         // A button press can outlive the layout's own connection attempt — this is what lets a socket
         // that died between deployments come back up on the first click rather than just erroring.
@@ -203,121 +442,46 @@
             return;
         }
 
+        await State.SetLastDuelSettingsAsync(settings);
+
         // Translator.All is ["fa","en","nl"] in exactly Quesshi.Domain.Language's declared order
         // (Fa=0, En=1, Nl=2) — Quesshi.Web has no reference to Quesshi.Domain to cast against directly.
-        var lang = Array.IndexOf(Translator.All, _lang);
-        var result = await Lobby.QueueRandomAsync(lang, _questions, _picked.Count == 0 ? [] : [.. _picked],
-            _levels.Count == 0 ? [] : [.. _levels.Order()]);
+        var lang = Array.IndexOf(Translator.All, settings.Lang);
+        var result = await Lobby.QueueRandomAsync(lang, settings.QuestionCount, categories ?? [], levels ?? []);
 
         if (!result.Sent) { _liveWaiting = false; _error = L["common.error"]; return; }
-        if (result.MatchId is { Length: > 0 }) Nav.NavigateTo($"/live/{result.MatchId}");
-    }
-
-    private async Task CancelLiveQueueAsync()
-    {
-        _liveWaiting = false;
-        await Lobby.LeaveQueueAsync();
-    }
-
-    public override void Dispose()
-    {
-        foreach (var sub in _liveSubs) sub.Dispose();
-
-        // Not a new route, so navigating away is the only "cancel" a player who leaves without
-        // pressing the button gets — the queue entry must not outlive this card.
-        if (_liveWaiting) _ = Lobby.LeaveQueueAsync();
-
-        base.Dispose();
-    }
-
-    /// <summary>Whether this category holds anything in the language the duel will be played in.</summary>
-    private bool Playable(CategoryDto category) => category.Langs is null || category.Langs.Contains(_lang);
-
-    private void ChooseLang(string lang)
-    {
-        _lang = lang;
-
-        // A category that cannot be played in the new language stops being a choice, so drop it
-        // rather than silently sending it and having the server refuse the whole duel.
-        _picked.RemoveWhere(id => _categories.FirstOrDefault(c => c.Id == id) is { } c && !Playable(c));
-    }
-
-    private void Toggle(string id)
-    {
-        if (!_picked.Remove(id)) _picked.Add(id);
-    }
-
-    private void ToggleLevel(int level)
-    {
-        if (!_levels.Remove(level)) _levels.Add(level);
-    }
-
-    private void SetCapacity(int value) => _capacity = Math.Clamp(value, 2, 8);
-
-    /// <summary>The one line of copy under the stepper and the timing toggle, one sentence per
-    /// combination rather than fragments stitched together — a hint reads as something someone wrote,
-    /// not as two half-sentences glued at a dash.</summary>
-    private string FriendHint() => (_liveKind, _capacity) switch
-    {
-        (false, 2) => L["home.friendHint"],
-        (false, _) => L.Format("home.friendHintLobby", L.Num(_capacity)),
-        (true, 2) => L["home.friendHintLive"],
-        (true, _) => L.Format("home.friendHintLiveLobby", L.Num(_capacity)),
-    };
-
-    /// <summary>What both "Invite a friend" and "Random opponent" send: nothing picked means
-    /// "surprise me", the server draws it itself.</summary>
-    private (List<string>? Categories, List<int>? Levels) Selection()
-        => (_picked.Count == 0 ? null : (List<string>?)[.. _picked],
-            _levels.Count == 0 ? null : (List<int>?)[.. _levels.Order()]);
-
-    private async Task StartAsync(bool random)
-    {
-        _busy = true; _error = null;
-
-        var (categories, levels) = Selection();
-        State.SetLastLiveSettings(_lang, _questions, categories, levels);
-
-        var match = await Api.CreateMatchAsync(random, _lang, categories, _questions, levels);
-        _busy = false;
-
-        if (match is null) { _error = L["common.error"]; return; }
-
-        Nav.NavigateTo(InviteFriendPlan.Route(match));
+        if (result.MatchId is { Length: > 0 } id) Nav.NavigateTo($"/live/{id}");
     }
 
     /// <summary>
-    /// "Invite a friend" itself: capacity 2, async is indistinguishable from what this button always
-    /// did, down to the exact endpoint and the exact landing page — see <see cref="InviteFriendPlan"/>'s
-    /// own remarks for why that branch is the one worth a named seam. Anything else opens a lobby
-    /// instead — wider async (issue #53's first addition), live at any capacity (its last one, closed
-    /// here) — and sends the owner to share its code rather than into a duel with no roster yet.
+    /// Tapping a face sends the invitation and then does nothing visible on this page: the challenge
+    /// arrives on the other player's screen, and the answer comes back over the layout's own
+    /// connection as a DuelReady push that navigates both sides at once. The only thing worth showing
+    /// here is that a second tap will not send a second one.
     /// </summary>
-    private async Task InviteFriendAsync()
+    private async Task ChallengeAsync(string friendId, DuelSettingsDto settings, List<string>? categories, List<int>? levels)
     {
-        if (!InviteFriendPlan.NeedsLobby(_capacity, _liveKind)) { await StartAsync(random: false); return; }
+        _challenging = friendId;
+        try
+        {
+            if (!await Lobby.EnsureConnectedAsync()) { _error = L["common.error"]; return; }
 
-        _busy = true; _error = null;
+            await State.SetLastDuelSettingsAsync(settings);
 
-        var (categories, levels) = Selection();
-        State.SetLastLiveSettings(_lang, _questions, categories, levels);
+            var result = await Lobby.ChallengeAsync(friendId, settings.Lang, settings.QuestionCount,
+                categories ?? [], levels ?? []);
 
-        // Two different endpoints, live or async, but both hand back a code and both send their owner
-        // to the same /lobby/{code} — Lobby.razor asks the invite endpoint once to tell the kinds
-        // apart, so this method never has to.
-        var code = _liveKind
-            ? (await Api.CreateLiveLobbyAsync(_capacity, _lang, categories, _questions, levels))?.Code
-            : (await Api.CreateMatchLobbyAsync(_capacity, _lang, categories, _questions, levels))?.Code;
-        _busy = false;
-
-        if (code is null) { _error = L["common.error"]; return; }
-
-        Nav.NavigateTo(InviteFriendPlan.LobbyRoute(code));
+            if (result is null) _error = L["common.error"];
+        }
+        finally
+        {
+            _challenging = null;
+        }
     }
 
-    private async Task JoinAsync()
+    private async Task JoinByCodeAsync()
     {
-        _busy = true; _error = null;
+        _busy = true;
 
         // One invite lookup decides the kind, so the right join endpoint is called on the first
         // try rather than guessing by trial — the same branch Join.razor makes off /join/{code}.
@@ -337,7 +501,67 @@
         _busy = false;
 
         if (match is null) { _error = L["common.error"]; return; }
-
         Nav.NavigateTo($"/play/{match.Id}");
     }
+
+    /// <summary>The three pushes ILiveMatchmakingGrain sends over this same connection while the
+    /// queue is running — unsubscribed on Dispose so leaving the page never double-registers.</summary>
+    private void SubscribeLive()
+    {
+        _liveSubs.Add(Lobby.Connection.On<string>("Matched", async matchId =>
+            await InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"))));
+
+        _liveSubs.Add(Lobby.Connection.On<int>("QueueCount", async count =>
+            await InvokeAsync(() => { _liveOthers = count; StateHasChanged(); })));
+
+        _liveSubs.Add(Lobby.Connection.On("QueueFailed", async () =>
+            await InvokeAsync(() => { _liveWaiting = false; _error = L["common.error"]; StateHasChanged(); })));
+    }
+
+    private async Task CancelLiveQueueAsync()
+    {
+        _liveWaiting = false;
+        await Lobby.LeaveQueueAsync();
+    }
+
+    public override void Dispose()
+    {
+        foreach (var sub in _liveSubs) sub.Dispose();
+
+        // Not a new route, so navigating away is the only "cancel" a player who leaves without
+        // pressing the button gets — the queue entry must not outlive this page.
+        if (_liveWaiting) _ = Lobby.LeaveQueueAsync();
+
+        base.Dispose();
+    }
+
+    /// <summary>What a duel row says under the name. Three different facts, because at three different
+    /// moments a different one is the useful one: a duel with nobody in it is still waiting for
+    /// somebody, a duel this player has finished is described by the score they left on it, and
+    /// everything else by how much is left to answer.</summary>
+    private string Standing(MatchSummaryDto match)
+    {
+        if (match.Opponent is null) return L["home.waiting"];
+        if (match.Me.Finished) return L.Format("home.youScored", L.Num(match.Me.Score));
+        if (match.Me.Answered == 0) return L["home.notStarted"];
+        return L.Format("home.questionsLeft", L.Num(HomeDuels.QuestionsLeft(match)));
+    }
+
+    /// <summary>
+    /// The header score, grouped in thousands and then localised. Persian has its own thousands mark
+    /// (U+066C) — a Latin comma sitting between Persian digits reads as a foreign object dropped into
+    /// the number, which is exactly the sort of thing the whole app's one-font, both-scripts choice
+    /// exists to avoid.
+    /// </summary>
+    private string Score(long value)
+    {
+        var grouped = value.ToString("N0", CultureInfo.InvariantCulture);
+        return L.Num(L.Lang == "fa" ? grouped.Replace(',', '٬') : grouped);
+    }
+
+    private void OpenSettings() => Nav.NavigateTo("/play/questions");
+
+    private string Selected(string tab) => (_tab == tab).ToString().ToLowerInvariant();
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
 }

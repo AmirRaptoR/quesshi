@@ -1,0 +1,43 @@
+@page "/play/questions"
+@inherits PageBase
+
+@*
+    The route behind the home's settings line, standing empty until issue #89 fills it with the sheet
+    itself — script tiles for language, a bare numeric segment for count, a two-handle difficulty
+    slider and a row that opens the topics page. It exists now, with nothing in it but a way back and
+    the settings as they stand, because the alternative was shipping a "Change" affordance that goes
+    nowhere: a control that does not respond is a worse answer than one that responds honestly.
+*@
+
+<PageTitle>@L["home.settingsLabel"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        <button type="button" class="btn btn--ghost btn--sm" @onclick="Back">@L["common.back"]</button>
+        <h1 class="topbar__title">@L["home.settingsLabel"]</h1>
+    </header>
+
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <section class="card enter">
+            @* The same line the home renders, through the same formatter, so the page you land on
+               says exactly what the line you tapped said. *@
+            <p style="margin:0;font-size:var(--step-1);font-weight:700">
+                @DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L)
+            </p>
+            <p class="faint" style="margin:.6rem 0 0">@L["home.questionsPending"]</p>
+        </section>
+    }
+</div>
+
+@code {
+    private void Back() => Nav.NavigateTo("/play");
+}
