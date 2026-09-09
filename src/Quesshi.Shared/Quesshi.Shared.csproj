@@ -6,4 +6,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- WorldMapCountries parses its ISO code set out of this exact file at runtime, so the two
+       cannot drift apart; see wwwroot/maps/README.md. Pointing at the file under Quesshi.Web
+       rather than a copy means there is exactly one world.svg in the repository. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Quesshi.Web\wwwroot\maps\world.svg" LogicalName="Quesshi.Shared.maps.world.svg" />
+  </ItemGroup>
+
 </Project>
