@@ -24,12 +24,31 @@ async function onInstall(event) {
     // people reload, see the old app, and reasonably conclude the change did not ship.
     self.skipWaiting();
 
-    // Fetch and cache all matching items from the assets manifest
+    // Cache the bundle asset by asset rather than with cache.addAll.
+    //
+    // addAll is atomic: one asset that 404s or whose integrity hash does not match rejects the whole
+    // batch, install fails, and the new worker never activates — leaving the previous one serving the
+    // previous app forever, with no way for a reload to break the loop. Caching each asset on its own
+    // means a bad one costs exactly itself; onFetch falls through to the network for anything missing,
+    // so the app still runs and only its offline completeness suffers.
     const assetsRequests = self.assetsManifest.assets
         .filter(asset => offlineAssetsInclude.some(pattern => pattern.test(asset.url)))
         .filter(asset => !offlineAssetsExclude.some(pattern => pattern.test(asset.url)))
         .map(asset => new Request(asset.url, { integrity: asset.hash, cache: 'no-cache' }));
-    await caches.open(cacheName).then(cache => cache.addAll(assetsRequests));
+
+    const cache = await caches.open(cacheName);
+    const failed = [];
+    await Promise.all(assetsRequests.map(async request => {
+        try {
+            await cache.put(request, await fetch(request));
+        } catch {
+            failed.push(request.url);
+        }
+    }));
+
+    if (failed.length) {
+        console.warn(`Service worker: ${failed.length} asset(s) not cached; they will be fetched from the network.`, failed);
+    }
 }
 
 async function onActivate(event) {
@@ -46,18 +65,33 @@ async function onActivate(event) {
 }
 
 async function onFetch(event) {
-    let cachedResponse = null;
-    if (event.request.method === 'GET') {
-        // For all navigation requests, try to serve index.html from cache,
-        // unless that request is for an offline resource.
-        // If you need some URLs to be server-rendered, edit the following check to exclude those URLs
-        const shouldServeIndexHtml = event.request.mode === 'navigate'
-            && !manifestUrlList.some(url => url === event.request.url);
+    if (event.request.method !== 'GET') return fetch(event.request);
 
-        const request = shouldServeIndexHtml ? 'index.html' : event.request;
-        const cache = await caches.open(cacheName);
-        cachedResponse = await cache.match(request);
+    const isNavigation = event.request.mode === 'navigate'
+        && !manifestUrlList.some(url => url === event.request.url);
+
+    // Navigations go to the network first, and only fall back to the cached shell when that fails.
+    //
+    // Cache-first here is how a deploy can strand somebody indefinitely. onInstall caches the whole
+    // bundle with cache.addAll and per-asset integrity hashes, so a single asset that 404s, or whose
+    // hash does not match, rejects the whole batch: the new worker never activates and the old one
+    // keeps serving the old index.html — and its asset hashes with it — on every future visit. There
+    // is no reload out of that, because the reload is answered from the same cache. The app then
+    // looks merely "out of date" while quietly talking to a server whose contracts have moved on,
+    // which reads to a player as buttons that do nothing.
+    //
+    // index.html is small and names every hashed asset, so fetching it fresh is what lets a browser
+    // recover on its own. Offline still works: the cached shell is right there when the network is not.
+    if (isNavigation) {
+        try {
+            return await fetch(event.request);
+        } catch {
+            const cache = await caches.open(cacheName);
+            return (await cache.match('index.html')) || Response.error();
+        }
     }
 
-    return cachedResponse || fetch(event.request);
+    // Everything else stays cache-first: those URLs are content-hashed, so a hit is never stale.
+    const cache = await caches.open(cacheName);
+    return (await cache.match(event.request)) || fetch(event.request);
 }
