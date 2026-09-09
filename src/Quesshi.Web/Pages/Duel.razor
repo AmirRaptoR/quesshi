@@ -24,7 +24,7 @@
         var summary = _detail.Summary;
 
         <section class="card card--taq enter" style="text-align:center">
-            <span class="eyebrow">@Headline</span>
+            <h2>@Headline</h2>
 
             <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
                 <Shamseh Mine="@Mine" Theirs="@Theirs" Slots="@summary.Questions" HideTheirs="@(!summary.CanReveal)" Ignite="true"
@@ -65,7 +65,7 @@
         @if (_detail.Reveal.Count > 0)
         {
             <section class="enter" style="margin-top:1rem">
-                <span class="eyebrow">@L["result.review"]</span>
+                <h3>@L["result.review"]</h3>
                 <div class="stack" style="margin-top:.6rem">
                     @foreach (var row in _detail.Reveal)
                     {

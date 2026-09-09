@@ -136,6 +136,24 @@
                                 disabled="@(_duelingId == friend.Id)" @onclick="() => DuelAsync(friend)">
                             @L["profile.duel"]
                         </button>
+
+                        @* Issue #92: #91's redesign dropped the remove control the old Profile had — see
+                           git history on this file. A quiet affordance rather than the old bare "×": one
+                           tap turns the icon into a plain "Remove?" text so a mis-tap costs nothing, a
+                           second tap within three seconds actually removes, and it reverts on its own
+                           otherwise — no modal, no menu, for a row that already has one primary action. *@
+                        <button type="button" class="icon-hit friend-row__remove @(_removeConfirmId == friend.Id ? "is-confirm" : null)"
+                                aria-label="@(_removeConfirmId == friend.Id ? L["profile.removeConfirm"] : L["profile.remove"])"
+                                @onclick="() => ToggleRemoveAsync(friend.Id)">
+                            @if (_removeConfirmId == friend.Id)
+                            {
+                                <span class="friend-row__removeText">@L["profile.removeConfirm"]</span>
+                            }
+                            else
+                            {
+                                <Icon Name="close" Size="1.05rem" />
+                            }
+                        </button>
                     </div>
                 }
             </div>
@@ -154,6 +172,12 @@
     private string? _duelingId;
     private string? _toast;
     private string? _error;
+
+    /// <summary>The one friend row currently showing "Remove?" instead of the × — never more than one
+    /// at a time, since tapping a second row's × is as much a change of mind as pressing anything
+    /// else on the page would be.</summary>
+    private string? _removeConfirmId;
+    private CancellationTokenSource? _removeConfirmCts;
 
     protected override async Task LoadAsync()
     {
@@ -183,6 +207,43 @@
     private async Task AddAsync(string id)
     {
         if (await Api.AddFriendAsync(id)) await RefreshMeAsync();
+    }
+
+    /// <summary>
+    /// First tap arms the row (swaps the × for "Remove?" and starts a three-second window); a second
+    /// tap on the same row within that window is the confirmation and actually removes the friend.
+    /// Arming a different row, or letting the window lapse, disarms this one — there is only ever one
+    /// live timer, cancelled and replaced rather than left to fire on a row that already moved on.
+    /// </summary>
+    private async Task ToggleRemoveAsync(string friendId)
+    {
+        if (_removeConfirmId == friendId)
+        {
+            _removeConfirmCts?.Cancel();
+            _removeConfirmId = null;
+            if (await Api.RemoveFriendAsync(friendId)) await RefreshMeAsync();
+            return;
+        }
+
+        _removeConfirmCts?.Cancel();
+        _removeConfirmCts = new CancellationTokenSource();
+        _removeConfirmId = friendId;
+        _ = DisarmAfterDelayAsync(_removeConfirmCts.Token);
+    }
+
+    private async Task DisarmAfterDelayAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3), token);
+        }
+        catch (TaskCanceledException)
+        {
+            return; // superseded by a second tap (confirmed) or a different row's first tap
+        }
+
+        _removeConfirmId = null;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RefreshMeAsync()
@@ -239,5 +300,13 @@
         {
             _duelingId = null;
         }
+    }
+
+    /// <summary>Leaving mid-window must not let the delayed disarm fire against a page that has already
+    /// torn down — nothing else on this page owns a timer, so this is the only reason to override it.</summary>
+    public override void Dispose()
+    {
+        _removeConfirmCts?.Cancel();
+        base.Dispose();
     }
 }

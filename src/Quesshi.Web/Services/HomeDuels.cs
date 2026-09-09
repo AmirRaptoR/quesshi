@@ -29,10 +29,11 @@ public static class HomeDuels
     public static int QuestionsLeft(MatchSummaryDto match) => Math.Max(0, match.Questions - match.Me.Answered);
 
     /// <summary>
-    /// Where a row opens. The same two routes <c>MatchRow</c> has always used for an async duel:
-    /// <c>/play/{id}</c> while there are cards left for this player, <c>/duel/{id}</c> once there are
-    /// not — a duel being waited on is still worth opening to see where it stands, which is what
-    /// stops "Waiting on them" being the dead end the audit called out.
+    /// Where a row opens. The same two routes an async duel has always used (<c>MatchRow</c>, before
+    /// issue #88 replaced it with <c>Home.razor</c>'s own <c>DuelRow</c>): <c>/play/{id}</c> while there
+    /// are cards left for this player, <c>/duel/{id}</c> once there are not — a duel being waited on is
+    /// still worth opening to see where it stands, which is what stops "Waiting on them" being the dead
+    /// end the audit called out.
     /// </summary>
     public static string Route(MatchSummaryDto match) => match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}";
 }

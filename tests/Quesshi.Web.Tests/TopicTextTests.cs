@@ -73,10 +73,13 @@ public class TopicTextTests
     }
 
     /// <summary>Persian counts in Persian digits: a Latin 3 sitting in a Persian sentence is exactly
-    /// the sort of foreign object <see cref="Translator.Num"/> exists to keep out.</summary>
+    /// the sort of foreign object <see cref="Translator.Num"/> exists to keep out. The fa string wraps
+    /// the count in parentheses rather than en/nl's middle dot (issue #92): a dot followed only by a
+    /// plain space then a Persian digit reads, at this font's size, as that digit glued to a Persian
+    /// zero — "تمام · ۳" was misread as "تمام ۳۰".</summary>
     [Fact]
     public async Task The_persian_button_counts_in_persian_digits()
-        => Assert.Equal("تمام · ۳ موضوع", TopicText.Done(3, await ReadingAsync("fa")));
+        => Assert.Equal("تمام (۳ موضوع)", TopicText.Done(3, await ReadingAsync("fa")));
 
     // --- the row that opens the page ----------------------------------------------------------------
 
