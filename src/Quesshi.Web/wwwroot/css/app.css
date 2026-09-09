@@ -697,7 +697,7 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .hero__cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-top: 1.5rem; }
 
 .section { margin-top: 3rem; }
-/* The taq card wears a star straddling its top edge; without extra room it crowds the eyebrow above. */
+/* The taq card wears a star straddling its top edge; without extra room it crowds the heading above. */
 .section .card--taq { margin-top: 2.4rem; }
 
 .steps { display: grid; gap: 1.1rem; counter-reset: step; }
@@ -1369,6 +1369,23 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .duel-pill--live:hover:not(:disabled) { filter: brightness(1.1); }
 .duel-pill--async { border: 1px solid var(--line-2); background: transparent; color: var(--sadaf); }
 .duel-pill--async:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+
+/* --- friends: remove, restored (issue #92) -----------------------------------------------------
+   #91's redesign dropped the old bare "×" along with the settings-form Profile it came from. Back as
+   a quiet affordance rather than a menu: a small × sitting in the row's own .icon-hit circle, which on
+   a first tap swaps for plain "Remove?" text — .is-confirm widens the circle into a pill rather than
+   trying to cram a word into a 44px circle — and reverts on its own if the second tap never comes. */
+.friend-row__remove { flex: none; color: var(--sadaf-3); }
+.friend-row__remove:hover { color: var(--anaar); background: rgb(212 66 92 / 0.12); }
+.friend-row__remove.is-confirm {
+  width: auto;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  color: var(--anaar);
+  background: rgb(212 66 92 / 0.12);
+}
+.friend-row__remove.is-confirm:hover { background: rgb(212 66 92 / 0.2); }
+.friend-row__removeText { font-size: var(--step--1); font-weight: 700; white-space: nowrap; }
 
 /* --- settings: script tiles for language, in the same three-per-row shape the #89 questions sheet
    mockup already settled on — reused rather than a second design for the same three options. --------- */

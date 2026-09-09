@@ -257,7 +257,7 @@
         else
         {
             <section class="card card--taq enter" style="text-align:center">
-                <span class="eyebrow">@L[LiveOutcomeText.HeadlineKey(Outcome)]</span>
+                <h2>@L[LiveOutcomeText.HeadlineKey(Outcome)]</h2>
 
                 <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
                     <Shamseh Mine="RaysFor(MeId)" Theirs="TheirsRays" Slots="_view.TotalRounds" Ignite="true"
@@ -269,7 +269,7 @@
             @if (_view.Standings.Count > 0)
             {
                 <section class="card card--flat enter" style="margin-top:.85rem">
-                    <span class="eyebrow">@L["result.standings"]</span>
+                    <h3>@L["result.standings"]</h3>
                     <div style="margin-top:.5rem">
                         <StandingsList Rows="_view.Standings" MeId="@MeId" />
                     </div>
@@ -285,8 +285,11 @@
                     }
                     <button class="btn btn--block" disabled="@_rematchPressed" @onclick="RequestRematchAsync">@L["live.rematch.button"]</button>
                 }
-                else if (_view.Participants.Count > 1)
+                else if (_view.Participants.Count > 1 && !State.IsGuest)
                 {
+                    @* A signed-in player reads this as "them, not you" — for a guest it would just
+                       repeat result.guestHint below in different words, and issue #92 caps a screen
+                       at one helper sentence. *@
                     <p class="faint" style="text-align:center">@L["live.rematch.guestBlocked"]</p>
                 }
 

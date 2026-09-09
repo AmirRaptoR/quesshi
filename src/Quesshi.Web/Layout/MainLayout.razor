@@ -43,7 +43,7 @@ else
     @Body
 
     @* A guest has exactly one page; a row of tabs to places they cannot open is worse than no tabs. *@
-    @if (State.SignedIn && !State.IsGuest && !IsAdminArea)
+    @if (State.SignedIn && !State.IsGuest && !IsAdminArea && !HidesTabBar)
     {
         @* Three tabs, not four, since issue #88: the Duels tab used to lead to a list of turn-based
            duels, and the Play screen's Offline tab *is* that list now. A bar with two doors into the
@@ -65,6 +65,25 @@ else
 @code {
     /// <summary>The admin panel has its own navigation; it should not wear the game's chrome.</summary>
     private bool IsAdminArea => new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Issue #92: the questions sheet, the topics page, settings and the lobby each already render
+    /// their own Done/back control at the top — the mockups show none of them wearing the tab bar too,
+    /// and a bar under a page that already has its own way out is one navigation offered twice. Listed
+    /// as routes rather than a per-page opt-out flag: there are exactly four today, and a fifth page
+    /// that wants the same treatment adds one more prefix here rather than a cascading parameter no
+    /// other page would ever set.
+    /// </summary>
+    private static readonly string[] TabBarHiddenPrefixes = ["/play/questions", "/play/topics", "/settings", "/lobby/"];
+
+    private bool HidesTabBar
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath;
+            return TabBarHiddenPrefixes.Any(prefix => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        }
+    }
 
     /// <summary>Every invitation currently pending for this player, oldest first — plural because
     /// issue #51 removed the single-commitment exclusivity that used to make one enough. Keyed

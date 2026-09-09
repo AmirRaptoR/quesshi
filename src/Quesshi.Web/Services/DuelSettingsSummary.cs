@@ -55,10 +55,14 @@ public sealed record DuelSettingsSummary(int QuestionCount, int? LevelFrom, int?
 /// </summary>
 public static class DuelSettingsLine
 {
-    /// <summary>Middle dots because the three parts are peers, not a sentence — "10 questions · Mixed
-    /// · 3 topics" is read as three facts, in whichever order the reading direction puts them.</summary>
+    /// <summary>Middle dots in en/nl because the three parts are peers, not a sentence — "10 questions
+    /// · Mixed · 3 topics" is read as three facts, in whichever order the reading direction puts them.
+    /// The separator itself comes from <c>home.settingsSeparator</c> rather than a shared literal: fa's
+    /// last boundary sits right before a digit (the topics count), where a middle dot with only a plain
+    /// space either side reads as a Persian zero glued to that digit — the exact bug that also hit
+    /// <c>topics.donePicked</c> (issue #92) — so fa uses "، " instead while en/nl keep the dot.</summary>
     public static string Text(DuelSettingsSummary summary, Translator l)
-        => string.Join(" · ", Questions(summary, l), Difficulty(summary, l), Topics(summary, l));
+        => string.Join(l["home.settingsSeparator"], Questions(summary, l), Difficulty(summary, l), Topics(summary, l));
 
     private static string Questions(DuelSettingsSummary s, Translator l)
         => l.Format("home.settingsQuestions", l.Num(s.QuestionCount));

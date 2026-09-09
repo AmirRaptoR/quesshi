@@ -39,7 +39,7 @@
         {
             <div class="card card--taq enter">
                 <div style="text-align:center">
-                    <span class="eyebrow">@L["join.invited"]</span>
+                    <h3 style="font-size:var(--step--1)">@L["join.invited"]</h3>
                     <p style="margin:.7rem 0 0;font-size:var(--step-1);font-weight:800">@_invite.ChallengerName</p>
                     <p class="muted" style="margin:.2rem 0 0">
                         @L.Format("join.questions", L.Num(_invite.Questions))
@@ -77,10 +77,10 @@
                             <hr class="grow" style="border:0;border-top:1px solid var(--line)" />
                         </div>
 
+                        @* Issue #92: one helper sentence per screen — join.guestHint above already
+                           covers what a guest gives up; a second line spelling out what signing in
+                           keeps was the same fact said twice, so it goes. *@
                         <a class="btn btn--ghost btn--block" href="@SignInHref">@L["join.signInInstead"]</a>
-                        <p class="faint" style="margin:-.35rem 0 0;text-align:center;font-size:var(--step--1)">
-                            @L["join.signInHint"]
-                        </p>
                     </div>
                 }
             </div>
