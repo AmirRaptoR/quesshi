@@ -6,11 +6,21 @@
 @inject LobbyClient LobbyConnection
 
 @*
-    Issue #53: the lobby page, for both duel kinds. It replaces the "waiting for an opponent" card
-    Duel.razor and Live.razor used to render inline — see their own OnInitializedAsync/LoadAsync, which
-    now redirect here instead the moment they see a duel still sitting in its lobby phase. A lobby is a
-    room people are standing in: the roster is the primary content, sized the same from two seats to
-    eight, with the settings and the share code beneath it rather than the other way around.
+    Issue #53's original note still holds: this is the lobby page for both duel kinds, and Duel.razor
+    /Live.razor redirect here the moment they see a duel still sitting in its lobby phase rather than
+    rendering a "waiting for an opponent" card of their own.
+
+    Issue #90 rewrites what this page actually shows, though — "code first, faces not rows" (see its
+    mockup). The old page asked a visitor to read a roster of name rows, a full duel-settings picker
+    and a share-code card in that order; the code is the one thing that actually gets someone here
+    (nobody opens a lobby without either creating it or being handed its code), so it leads, drawn
+    large enough to read at arm's length. The roster becomes a grid of face tiles — a host, a few
+    "Ready" seats, an open "+" — because a room of people is a thing you look at, not a list you read.
+    Editing a duel's settings moves out of this page entirely: the picker that used to render inline
+    here is gone, replaced by one collapsed line ("10 questions · English") that opens issue #89's own
+    settings sheet at /play/questions for the owner. Guest identity editing and the "keep this
+    account" upgrade stay exactly where they were, just without the ALL-CAPS eyebrow label every
+    section used to carry.
 *@
 
 <PageTitle>@L["lobby.title"] · @L["app.name"]</PageTitle>
@@ -36,84 +46,122 @@
         var snapshot = _snapshot;
         var seats = LobbyPresentation.Seats(snapshot);
         var isOwner = LobbyPresentation.IsOwner(snapshot, MeId);
+        var columns = LobbyPresentation.RosterColumns(snapshot);
 
-        @* --- roster: the primary content, legible from two seats to eight ---------------------- *@
-        <section class="card card--taq enter">
-            <span class="eyebrow">@L["lobby.roster"]</span>
-            <div class="lobby-seats" style="margin-top:1rem">
+        @* --- header: back, title, and (for a live lobby only) its own countdown ----------------- *@
+        <header class="topbar enter">
+            <a class="lobby-back" href="/play" aria-label="@L["common.back"]">
+                <Icon Name="back" Size="1.4rem" />
+            </a>
+            <h1 class="topbar__title">@L["lobby.title"]</h1>
+            <div class="topbar__spacer"></div>
+            @if (LobbyExpiry is { Length: > 0 } expiry)
+            {
+                <span class="muted" style="font-size:var(--step--1)">@expiry</span>
+            }
+        </header>
+
+        @* --- the code leads: the only reason most visitors are on this page at all -------------- *@
+        <div class="enter" style="text-align:center;margin-top:.5rem">
+            <p class="muted" style="margin:0;font-size:var(--step--1)">@L["lobby.shareCode"]</p>
+            <p class="lobby-code" dir="ltr">@snapshot.Code</p>
+            <div class="row" style="justify-content:center;gap:.5rem;margin-top:.2rem">
+                <button type="button" class="btn btn--ghost btn--pill" @onclick="CopyAsync">
+                    @(_copied ? L["lobby.copied"] : L["lobby.copyLink"])
+                </button>
+                <button type="button" class="btn btn--ghost btn--pill" @onclick="ShareAsync">@L["lobby.share"]</button>
+            </div>
+        </div>
+
+        @* --- roster: face tiles, host/ready/open — not rows to read ----------------------------- *@
+        <section class="enter" style="margin-top:1.9rem">
+            <div class="row row--between" style="align-items:baseline;margin-bottom:.75rem">
+                <span style="font-size:var(--step-0);font-weight:700">
+                    @L.Format("lobby.rosterCount", L.Num(snapshot.Participants.Count), L.Num(snapshot.Capacity))
+                </span>
+                @if (isOwner)
+                {
+                    <a class="lobby-settings-line" href="/play/questions">@SettingsLine</a>
+                }
+                else
+                {
+                    <span class="muted" style="font-size:var(--step--1)">@SettingsLine</span>
+                }
+            </div>
+            <div class="lobby-grid" style="--lobby-cols:@columns">
                 @foreach (var seat in seats)
                 {
+                    var state = LobbyPresentation.SeatStateFor(snapshot, seat);
                     @if (seat is null)
                     {
-                        <div class="lobby-seat lobby-seat--empty">
-                            <span class="avatar lobby-seat__ghost">?</span>
+                        <div class="lobby-tile lobby-tile--open">
+                            <span class="lobby-tile__plus" aria-hidden="true">+</span>
                             <span class="faint" style="font-size:var(--step--1)">@L["lobby.openSeat"]</span>
                         </div>
                     }
                     else
                     {
-                        var isSeatOwner = seat.PlayerId == snapshot.Participants[0].PlayerId;
-                        <div class="lobby-seat @(seat.PlayerId == MeId ? "lobby-seat--me" : null)" @key="seat.PlayerId">
-                            <span class="avatar" style="background:@Ranks.Tint(seat.Avatar)">@Initial(seat.Name)</span>
-                            <span dir="auto">@seat.Name</span>
-                            @if (isSeatOwner) { <span class="chip chip--live-tag">@L["lobby.owner"]</span> }
-                            @if (seat.IsGuest) { <span class="chip">@L["lobby.guestTag"]</span> }
+                        <div class="lobby-tile" @key="seat.PlayerId">
+                            <span class="avatar avatar--tile" style="background:@Ranks.Tint(seat.Avatar)">@Initial(seat.Name)</span>
+                            <span dir="auto" style="font-weight:700;font-size:var(--step--1)">@seat.Name</span>
+                            <span style="font-size:var(--step--1);color:@(state == LobbyPresentation.SeatState.Host ? "var(--zaferan)" : "var(--sadaf-3)")">
+                                @(state == LobbyPresentation.SeatState.Host ? L["lobby.seatHost"] : L["lobby.seatReady"])
+                            </span>
                         </div>
                     }
                 }
             </div>
         </section>
 
-        @* --- invite a friend: the owner's own way to pull someone in without handing out the link -
-           issue #53's own gap — Profile.razor's Challenge button only ever opens a fresh 1v1, so this
-           is the one place a friend can be added to a lobby that already has other people in it. A
-           guest friend gets no button at all: OnConnectedAsync aborts every guest connection to
-           /hub/lobby outright, so an invitation minted for one would never be delivered — "link only"
-           says so plainly instead of offering a control that can never do anything. ------------------- *@
+        @* --- invite a friend: an avatar row, tapped rather than read out of a list -------------- *@
         @if (isOwner)
         {
-            <section class="card enter">
-                <span class="eyebrow">@L["lobby.invite.title"]</span>
+            <section class="enter" style="margin-top:1.7rem">
+                <div style="font-size:var(--step-0);font-weight:700;margin-bottom:.6rem">@L["lobby.invite.title"]</div>
                 @if (!seats.Any(s => s is null))
                 {
-                    <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["lobby.invite.full"]</p>
+                    <p class="faint" style="margin:0;font-size:var(--step--1)">@L["lobby.invite.full"]</p>
                 }
                 else if (_friends.Count == 0)
                 {
-                    <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["lobby.invite.empty"]</p>
+                    <p class="faint" style="margin:0;font-size:var(--step--1)">@L["lobby.invite.empty"]</p>
                 }
                 else
                 {
-                    <div class="stack" style="margin-top:.7rem;gap:.4rem">
+                    <div class="lobby-friends">
                         @foreach (var friend in _friends)
                         {
-                            var joined = snapshot.Participants.Any(p => p.PlayerId == friend.Id);
-                            <div class="row" @key="friend.Id">
-                                <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
-                                <span class="grow">@friend.DisplayName</span>
-                                @if (friend.Online)
-                                {
-                                    <span class="dot--online" title="@L["profile.online"]" aria-label="@L["profile.online"]"></span>
-                                }
-                                @if (joined)
-                                {
-                                    <span class="chip chip--live-tag">@L["lobby.invite.joined"]</span>
-                                }
-                                else if (friend.IsGuest)
-                                {
-                                    <span class="chip">@L["lobby.invite.linkOnly"]</span>
-                                }
-                                else if (_invited.Contains(friend.Id))
-                                {
-                                    <span class="chip">@L["lobby.invite.invited"]</span>
-                                }
-                                else
-                                {
-                                    <button class="btn btn--sm" disabled="@(_inviting == friend.Id)" @onclick="() => InviteAsync(friend.Id)">
-                                        @L["lobby.invite.button"]
-                                    </button>
-                                }
-                            </div>
+                            var state = LobbyPresentation.InviteState(snapshot, friend, _invited.Contains(friend.Id));
+                            @if (state == LobbyPresentation.InviteTileState.Available)
+                            {
+                                <button type="button" class="lobby-friend" disabled="@(_inviting == friend.Id)"
+                                        aria-label="@($"{L["lobby.invite.button"]} {friend.DisplayName}")"
+                                        @onclick="() => InviteAsync(friend.Id)" @key="friend.Id">
+                                    <span class="lobby-friend__avatar-wrap">
+                                        <span class="avatar avatar--tile" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
+                                        @if (friend.Online) { <span class="lobby-friend__dot" title="@L["profile.online"]"></span> }
+                                    </span>
+                                    <span style="font-size:var(--step--1)">@friend.DisplayName</span>
+                                </button>
+                            }
+                            else
+                            {
+                                <div class="lobby-friend lobby-friend--dim" @key="friend.Id">
+                                    @* No online dot once a tile has stopped being an invitation: joined,
+                                       invited or link-only all say something more useful than presence. *@
+                                    <span class="lobby-friend__avatar-wrap">
+                                        <span class="avatar avatar--tile" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
+                                    </span>
+                                    <span class="faint" style="font-size:var(--step--1)">
+                                        @(state switch
+                                        {
+                                            LobbyPresentation.InviteTileState.Joined => L["lobby.invite.joined"],
+                                            LobbyPresentation.InviteTileState.LinkOnly => L["lobby.invite.linkOnly"],
+                                            _ => L["lobby.invite.invited"],
+                                        })
+                                    </span>
+                                </div>
+                            }
                         }
                     </div>
                 }
@@ -121,28 +169,11 @@
             </section>
         }
 
-        @* --- share code: the only way a guest is ever invited ----------------------------------- *@
-        <section class="card card--flat enter">
-            <span class="eyebrow">@L["result.share"]</span>
-            <div class="row" style="margin-top:.7rem">
-                <code class="grow live-code" dir="ltr">@snapshot.Code</code>
-                <button class="btn btn--ghost btn--sm" @onclick="CopyAsync">
-                    @(_copied ? L["result.copied"] : L["result.copyLink"])
-                </button>
-            </div>
-            <p class="faint" dir="ltr" style="margin:.5rem 0 0;font-size:var(--step--1);word-break:break-all">@ShareLink</p>
-            <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["result.shareHint"]</p>
-            @if (snapshot.IsLive)
-            {
-                <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@LobbyExpiry</p>
-            }
-        </section>
-
         @* --- guest identity: the one moment a guest cares about their name and avatar ----------- *@
         @if (State.IsGuest)
         {
-            <section class="card enter">
-                <span class="eyebrow">@L["lobby.identity"]</span>
+            <section class="card enter" style="margin-top:1.7rem">
+                <div style="font-size:var(--step-0);font-weight:700">@L["lobby.identity"]</div>
                 <div class="stack" style="margin-top:.8rem">
                     <input class="input" maxlength="24" @bind="_identity.DisplayName" @bind:event="oninput"
                            placeholder="@L["join.yourName"]" aria-label="@L["join.yourName"]" />
@@ -177,7 +208,7 @@
                thinking about whether this seat is theirs to keep. Disappears on its own the moment it
                succeeds: State.SignInAsync clears IsGuest, which is this whole section's guard. *@
             <section class="card enter">
-                <span class="eyebrow">@L["lobby.upgrade.title"]</span>
+                <div style="font-size:var(--step-0);font-weight:700">@L["lobby.upgrade.title"]</div>
                 <p class="faint" style="margin-top:.4rem">@L["lobby.upgrade.blurb"]</p>
 
                 <div class="stack" style="margin-top:.8rem">
@@ -219,39 +250,24 @@
             </section>
         }
 
-        @* --- settings: the owner's controls, or the same shape read-only for everyone else ------ *@
-        <section class="card enter">
-            <span class="eyebrow">@L["lobby.settings"]</span>
-            <DuelSettingsPicker Categories="_categories" PickedCategories="PickedCategories" PickedLevels="PickedLevels"
-                                Questions="snapshot.Settings.QuestionCount" QuestionsChanged="(int v) => ChangeSettingsAsync(questions: v)"
-                                Lang="@snapshot.Settings.Lang" LangChanged="(string v) => ChangeSettingsAsync(lang: v)"
-                                CategoryToggled="ToggleCategoryAsync" LevelToggled="ToggleLevelAsync"
-                                ReadOnly="@(!isOwner || snapshot.SettingsLocked)" />
-
-            @if (snapshot.SettingsLocked)
-            {
-                <p class="faint" style="margin-top:.5rem;font-size:var(--step--1)">@L["lobby.settingsLocked"]</p>
-            }
-        </section>
-
         @if (_error is not null) { <div class="notice notice--bad enter">@_error</div> }
 
-        <div class="stack enter" style="margin-top:.2rem">
+        @* --- one primary button: what happens next, said once ---------------------------------- *@
+        <div class="enter" style="margin-top:1.7rem">
             @if (isOwner)
             {
                 <button class="btn btn--block" disabled="@(!LobbyPresentation.CanStart(snapshot, MeId) || _busy)" @onclick="StartAsync">
                     @L["lobby.start"]
                 </button>
-                @if (snapshot.Participants.Count < 2)
-                {
-                    <p class="faint" style="margin:-.4rem 0 0;text-align:center;font-size:var(--step--1)">@L["lobby.needTwo"]</p>
-                }
-                <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leaveOwner"]</button>
+                <p class="faint" style="margin:.6rem 0 0;text-align:center;font-size:var(--step--1)">@L["lobby.startHint"]</p>
+                <button type="button" class="lobby-quiet" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leaveOwner"]</button>
             }
             else
             {
-                <p class="empty">@L["lobby.waitingForOwner"]</p>
-                <button class="btn btn--ghost btn--block" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leave"]</button>
+                @* Disabled rather than hidden: this is the same "here is what happens next" slot the
+                   owner's own button fills, just one this visitor cannot press themselves. *@
+                <button class="btn btn--block" disabled>@L["lobby.waitingForOwner"]</button>
+                <button type="button" class="lobby-quiet" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leave"]</button>
             }
         </div>
     }
@@ -263,7 +279,6 @@
     /// <summary>A guest arriving by link lands here — see the guest identity card above.</summary>
     protected override bool AllowsGuest => true;
 
-    private List<CategoryDto> _categories = [];
     private LobbySnapshot? _snapshot;
     private LiveClient? _client;
     private GuestIdentityForm _identity = new();
@@ -307,13 +322,19 @@
     private string MeId => State.Me!.Id;
     private string ShareLink => $"{Nav.BaseUri.TrimEnd('/')}/join/{_snapshot!.Code}";
 
-    private ISet<string> PickedCategories => new HashSet<string>(_snapshot?.Settings.CategoryIds ?? []);
-    private ISet<int> PickedLevels => new HashSet<int>(_snapshot?.Settings.Levels ?? []);
+    /// <summary>
+    /// The settings summary collapsed to one glance — "10 questions · English" — which is all this
+    /// page still says about a duel's shape now that changing it moves to issue #89's own sheet at
+    /// <c>/play/questions</c>. The same text renders for everyone; only the owner's copy is also the
+    /// link that opens that sheet (see the markup above).
+    /// </summary>
+    private string SettingsLine => _snapshot is null ? ""
+        : L.Format("lobby.settingsLine", L.Num(_snapshot.Settings.QuestionCount), L["lang." + _snapshot.Settings.Lang]);
 
     /// <summary>
     /// How long this lobby has left, in whichever unit reads as a duration rather than a number. The
     /// seconds form is inherited from the old live waiting screen, where a wait really was measured in
-    /// them; a lobby lasts ten minutes, and "Expires in 588s" is arithmetic the reader has to do
+    /// them; a lobby lasts ten minutes, and "Closes in 588s" is arithmetic the reader has to do
     /// themselves. Minutes round up, so the label never says "0 min" while there is still time on the
     /// clock, and the last minute counts down in seconds where that precision starts to matter.
     /// </summary>
@@ -325,14 +346,13 @@
 
             var seconds = RingClock.RemainingSeconds(endsAt, DateTimeOffset.UtcNow, TimeSpan.Zero);
             return seconds >= 60
-                ? L.Format("live.lobby.expiresInMinutes", L.Num((seconds + 59) / 60))
-                : L.Format("live.lobby.expiresIn", L.Num(seconds));
+                ? L.Format("lobby.closesInMinutes", L.Num((seconds + 59) / 60))
+                : L.Format("lobby.closesIn", L.Num(seconds));
         }
     }
 
     protected override async Task LoadAsync()
     {
-        _categories = await Api.CategoriesAsync() ?? [];
         _identity = State.Me is { } me ? GuestIdentityForm.From(me) : new GuestIdentityForm();
         if (!AvatarPalette.IsValid(_identity.AvatarSeed)) _identity.AvatarSeed = AvatarPalette.Seeds[0];
 
@@ -473,38 +493,6 @@
     // --- owner actions: every one re-fetches afterwards, since none of these endpoints echoes the
     // resulting state back — the push every other viewer gets is this same re-fetch, run locally. ---
 
-    private Task ToggleCategoryAsync(string id)
-    {
-        var current = PickedCategories;
-        if (!current.Remove(id)) current.Add(id);
-        return ChangeSettingsAsync(categories: [.. current]);
-    }
-
-    private Task ToggleLevelAsync(int level)
-    {
-        var current = PickedLevels;
-        if (!current.Remove(level)) current.Add(level);
-        return ChangeSettingsAsync(levels: [.. current]);
-    }
-
-    private async Task ChangeSettingsAsync(int? questions = null, string? lang = null,
-        List<string>? categories = null, List<int>? levels = null)
-    {
-        if (_snapshot is null || _busy) return;
-
-        _busy = true; _error = null;
-        var settings = _snapshot.Settings;
-        var dto = new UpdateDuelSettingsDto(
-            lang ?? settings.Lang,
-            categories ?? settings.CategoryIds,
-            questions ?? settings.QuestionCount,
-            levels ?? settings.Levels);
-
-        var ok = await Api.UpdateLobbySettingsAsync(_snapshot.MatchId, _snapshot.IsLive, dto);
-        if (ok) await RefreshAsync(); else _error = L["common.error"];
-        _busy = false;
-    }
-
     private async Task StartAsync()
     {
         if (_snapshot is null || _busy) return;
@@ -586,6 +574,19 @@
     {
         _copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// The Share pill: the OS share sheet where the browser offers one (most mobile browsers), a
+    /// plain copy everywhere else — reusing <see cref="CopyAsync"/> rather than duplicating its
+    /// clipboard call and its "Copied" feedback. <c>quesshi.share</c> (index.html) reports only
+    /// whether <c>navigator.share</c> exists at all; whether the person then finishes or cancels that
+    /// native sheet is theirs to decide, not something this page reacts to.
+    /// </summary>
+    private async Task ShareAsync()
+    {
+        var shared = await Js.InvokeAsync<bool>("quesshi.share", new { title = L["app.name"], text = L["lobby.shareCode"], url = ShareLink });
+        if (!shared) await CopyAsync();
     }
 
     private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
