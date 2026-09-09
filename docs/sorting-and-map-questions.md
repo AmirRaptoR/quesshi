@@ -252,9 +252,15 @@ Each step green before the next.
    without a kind, so it gains explicit mapping for the kind and the map target. A legacy document
    has no kind field at all and must read back as `Choice`; that is a deliberate default, not
    something to leave to enum-zero coincidence.
-3. **Selection, cards and reveals** — `QuestionSetBuilder` spanning kinds; the two card DTOs carrying
-   the kind plus the shuffled items or the base layer while still never carrying the answer; the two
-   reveal DTOs carrying a kind-appropriate answer instead of a bare `CorrectIndex`.
+3. **Selection, cards and reveals** — `QuestionSetBuilder` spanning kinds; the two card DTOs
+   (`QuestionCardDto`, `LiveRoundCardDto`) carrying the kind plus the shuffled items or the base
+   layer while still never carrying the answer; and **five** answer-bearing contracts carrying a
+   kind-appropriate answer instead of a bare `CorrectIndex` — the three reveals
+   (`AnswerResultDto`, `LiveRoundRevealDto`, `RevealedQuestionDto`) and the two live-history views
+   (`LiveRoundResultViewDto`, whose `int? CorrectIndex` is the round's answer, and
+   `LiveRoundAnswerViewDto`, whose `int? ChoiceIndex` is each player's). Miss the history pair and a
+   finished sort or map renders as blanks on reconnect and in the duel history — the questions play
+   correctly and then have nothing to show for themselves.
 4. **Submission** — `AnswerDto`, `LiveHub.Answer`, `LiveMatch.Answer` and `Match.SubmitAnswer` taking
    the optional response, with the choice-range check scoped to `Choice`.
 5. **The map asset** — the equirectangular SVG with ISO-coded paths, plus the projection helpers and
