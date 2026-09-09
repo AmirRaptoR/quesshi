@@ -63,7 +63,7 @@
             }
             else
             {
-                <DuelBar View="_view" MeId="MeId" Eliminated="_eliminated" />
+                <DuelBar View="_view" MeId="@MeId" Eliminated="_eliminated" />
 
                 <header class="topbar">
                     <span class="chip" style="border-color:@(card.CategoryColor + "66")">
@@ -160,7 +160,7 @@
                 var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
                 var others = round.Answers.Where(a => a.PlayerId != MeId).ToList();
 
-                <DuelBar View="_view" MeId="MeId" Eliminated="_eliminated" />
+                <DuelBar View="_view" MeId="@MeId" Eliminated="_eliminated" />
 
                 <header class="topbar">
                     <span class="chip" style="border-color:@(card.CategoryColor + "66")">
@@ -270,7 +270,7 @@
                 <section class="card card--flat enter" style="margin-top:.85rem">
                     <span class="eyebrow">@L["result.standings"]</span>
                     <div style="margin-top:.5rem">
-                        <StandingsList Rows="_view.Standings" MeId="MeId" />
+                        <StandingsList Rows="_view.Standings" MeId="@MeId" />
                     </div>
                 </section>
             }
