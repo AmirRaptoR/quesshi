@@ -40,7 +40,10 @@ may answer and when — and it is recorded under [Out of scope](#out-of-scope) w
   not. `bool Correct` survives untouched, and with it `PlayerStats`, the per-category accuracy
   records, `TimesServed`/`TimesCorrect`, the leaderboard and the meaning of the speed bonus.
 - **Mixed into ordinary duels.** A ten-question duel might hold seven multiple-choice, two sorts and
-  one map. No new lobby setting.
+  one map. No new lobby setting, and **no quota**: the proportion of each kind in a duel falls out of
+  the bank's proportions, so a bank with fifty sorts among three thousand questions produces the
+  occasional sort, not a guaranteed one. A quota is easy to add later and hard to justify before
+  anyone has asked for it.
 - **Authored by the generator and the admin panel**, through the same pipeline and the same review.
 - The map is an inline **SVG in an equirectangular projection**. No mapping library, no tiles, no
   network, so it still works offline in the PWA and needs nothing from the CSP.
@@ -67,7 +70,7 @@ time.
 
 **One helper owns the permutation, and every caller goes through it.** Cards are built in more than
 one place — `GameEndpoints.cs:246` for async, `Mappers.cs:239` and `LiveMatchGrain`'s own builder for
-live — and the correctness check is a fourth caller. If any of them derives the order differently, a
+live — and each duel kind's submission path is a caller too, since that is where the shuffle is inverted. If any of them derives the order differently, a
 reconnect or a silo restart can show a player one arrangement and grade them against another, which
 would read as the game marking a right answer wrong. So the domain owns a single
 `SortOrder.For(matchId, slot, count)` returning the served permutation, and its inverse, with the
@@ -78,11 +81,25 @@ that the same inputs give the same order on repeated calls and in a fresh proces
 **That seed decides where correctness is computed, so it needs stating exactly.** The card cannot
 reveal which stored index each served item came from — the stored order *is* the answer. So the
 player submits **served positions**, and the server has to invert the shuffle before comparing. The
-seed is reconstructible only where the match is known, which is the grain: `LiveMatchGrain` already
-computes correctness there (`var correct = question.IsCorrect(choiceIndex)`), and it holds the match
-id and the slot. So the grain derives the served order and passes it to the domain, and `Question`
-gains a checker of the form "given this served order, is this submission correct" rather than one
-that silently assumes an identity mapping.
+seed is reconstructible only where the match is known, which is the grain: both grains already
+compute correctness there (`LiveMatchGrain`: `question.IsCorrect(choiceIndex)`; `MatchGrain.cs:225`:
+`choiceIndex >= 0 && question.IsCorrect(choiceIndex)`), and both hold the match id and the slot.
+
+**Two things about that submission must be pinned, because both have a plausible wrong reading:**
+
+- **What the string means.** `"2,0,3,1"` lists *served positions in the order the player placed
+  them*, first to last — "the item you showed me third goes first". The other reading — "served item
+  0 goes to position 2" — is the inverse permutation, and an implementer who picks it gets every
+  answer graded backwards while a test written with the same reading passes.
+- **The grain normalises before storing.** It inverts the served order once, at submission, and what
+  goes into `AnswerRecord`/`LiveAnswer` is the answer in **stored-index** terms. Correctness is then
+  simply "is it `0,1,2,3`", `Question`'s checker needs no seed, and — the real payoff — no reveal or
+  history mapper ever needs one either: they map stored indices to `Choices` and are done. The seed's
+  callers shrink to exactly the three card builders and the two submission paths, and nothing that
+  merely *reads* an answer can disagree with what was graded.
+
+Note the `MatchGrain` guard above: `choiceIndex >= 0 &&` is the timeout check, and it would mark
+every sort and map answer wrong unless the per-kind branch comes *before* it.
 
 **Map adds a nullable target and a base layer**, and leaves `Choices` empty. The target is one of two
 shapes, so it is a small owned record rather than loose columns: a country carries an ISO 3166-1
@@ -113,7 +130,21 @@ is smaller than a fingertip on a world map, and above 2000 a continent's worth o
 "correct", which is not a question.
 
 **The submitted answer gains one nullable string** beside `ChoiceIndex`, on both `AnswerRecord` and
-`LiveAnswer`: `"2,0,3,1"` for a sort, `"DE"` or `"52.37,4.90"` for a map. `Correct` stays a `bool`.
+`LiveAnswer`: a stored-index order for a sort, `"DE"` or `"52.37,4.90"` for a map. `Correct` stays a
+`bool`.
+
+Two details of that string:
+
+- **Coordinates are written and parsed with `CultureInfo.InvariantCulture`, always.** This app runs
+  in Persian, and the Blazor client takes the browser's culture: a bare `double.ToString()` on a
+  Persian thread can emit Persian digits or a different decimal separator, the server then fails to
+  parse it, and the failure reads as "the map never accepts my answer" in one language only.
+  `Shamseh.razor:70` already does this for SVG output; the coordinate format follows the same rule,
+  and the test for it runs under `fa-IR`.
+- **`ChoiceIndex` is `-1` for a sort or map answer**, reusing the sentinel `LiveAnswer` already
+  documents for a timeout. That collides only on paper: a timed-out `Choice` answer is `-1` with a
+  null response, a sort or map answer is `-1` with a response, and a timed-out sort or map is `-1`
+  with null — `Kind` plus the response tells them apart, and nothing has to become nullable.
 
 Be precise about what that does and does not cost, because "additive" is only true of *storage*:
 
@@ -131,9 +162,12 @@ Be precise about what that does and does not cost, because "additive" is only tr
 
 **Cards stay redacted, and gain a kind.** `QuestionCardDto` and `LiveRoundCardDto` both grow a
 `Kind`, because without it a client has no way to choose a renderer — today the shape is implied and
-that stops being true here. A sort card carries the shuffled items; a map card carries the prompt and
-the base layer. The correct order and the target are revealed only at reveal, which is the rule the
-two card DTOs already follow, extended rather than loosened.
+that stops being true here. A sort card carries the shuffled items. A map card carries the prompt, the
+base layer, **and whether the target is a country or a city** — not the target itself, but its shape,
+because the two are different interactions: a country question wants a tap on a region confirmed by
+its name, a city question wants a point dropped, and the client cannot know which to offer from
+`Kind = Map` alone. The correct order and the target are revealed only at reveal, which is the rule
+the two card DTOs already follow, extended rather than loosened.
 
 **The reveal contracts change too — all three of them.** `AnswerResultDto`, `LiveRoundRevealDto` and
 `RevealedQuestionDto` each carry a bare `int CorrectIndex`, which cannot express a sort order or a map
@@ -144,8 +178,12 @@ along with the live-history mapping that builds them, and `CorrectIndex` keeps i
 
 ## 2. Play and scoring
 
-**Sorting is a drag list with an explicit handle.** The row itself stays inert so a scroll gesture
-on a phone cannot reorder by accident. The handle is focusable and reorders by arrow key as well as
+**Sorting is a drag list with an explicit handle**, built on **Pointer Events, not HTML5
+drag-and-drop**. The HTML5 API does not fire on touch in Safari without a polyfill, which on a
+phone-first trilingual app would mean the type simply does not work for a large share of players;
+`pointerdown` on the handle, `pointermove`, `pointerup` works everywhere and is a few dozen lines.
+Nothing in the web project uses HTML5 drag today, so there is no convention to break. The row itself
+stays inert so a scroll gesture on a phone cannot reorder by accident. The handle is focusable and reorders by arrow key as well as
 by pointer, so the drag is not the only path to an answer. In Persian the handle sits on the row's
 start edge, which is the right-hand side — it must be laid out logically rather than hard-coded to
 the left.
@@ -263,8 +301,13 @@ Each step green before the next.
    correctly and then have nothing to show for themselves.
 4. **Submission** — `AnswerDto`, `LiveHub.Answer`, `LiveMatch.Answer` and `Match.SubmitAnswer` taking
    the optional response, with the choice-range check scoped to `Choice`.
-5. **The map asset** — the equirectangular SVG with ISO-coded paths, plus the projection helpers and
-   their tests. Self-contained and independently verifiable.
+5. **The map asset** — the SVG with ISO-coded paths, plus the projection helpers and their tests.
+   Self-contained and independently verifiable. **The asset has to actually be equirectangular**,
+   and that must be asserted, not assumed: most freely available world SVGs are Robinson, Miller or
+   Mercator, and one of those makes every city question silently wrong by hundreds of kilometres
+   while looking perfectly reasonable. The test pins known landmarks — `(0, 0)` at the viewBox's
+   centre, Greenwich on the vertical midline, the poles on the top and bottom edges — and the
+   source and licence of the file are recorded beside it.
 6. **Play** — the sort list with its handle and keyboard path, the map component, and both reveals,
    in the live and async screens.
 7. **Authoring** — the bucket key gaining `Kind`, the generator prompts with their constraints and
