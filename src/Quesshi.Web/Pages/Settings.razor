@@ -1,0 +1,148 @@
+@page "/settings"
+@inherits PageBase
+@inject IJSRuntime Js
+
+@*
+    Issue #91: everything Profile.razor used to ask on every visit — display name, avatar, language,
+    sign-out — moved here behind the gear, plus the one new control #93 needs a home for: the sounds
+    switch. A single Save commits name/avatar/language together through the existing PUT /api/me;
+    sounds is local-only (see SoundsPreference's own remarks) and takes effect the instant it is
+    toggled, with no Save of its own to press.
+*@
+
+<PageTitle>@L["settings.title"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading || State.Me is null)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <header class="topbar">
+            <a class="icon-hit icon-hit--back" href="/profile" aria-label="@L["common.back"]">
+                <Icon Name="chevron-back" Size="1.4rem" />
+            </a>
+            <h1 class="topbar__title">@L["settings.title"]</h1>
+        </header>
+
+        <section class="card card--taq enter">
+            <div class="field">
+                <label for="name">@L["profile.name"]</label>
+                <input id="name" class="input" maxlength="24" dir="auto" @bind="_name" @bind:event="oninput" />
+            </div>
+
+            <div class="field" style="margin-top:1rem">
+                <label>@L["lobby.avatarLabel"]</label>
+                <div class="picker">
+                    @foreach (var seed in AvatarPalette.Seeds)
+                    {
+                        var pick = seed;
+                        <button type="button" class="picker__chip @(_avatarSeed == pick ? "is-on" : null)"
+                                style="--pick:@Ranks.Tint(pick)" aria-pressed="@((_avatarSeed == pick).ToString().ToLowerInvariant())"
+                                @onclick="() => _avatarSeed = pick">
+                            <span class="avatar avatar--sm" style="background:@Ranks.Tint(pick)"></span>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="field" style="margin-top:1rem">
+                <label>@L["profile.language"]</label>
+                <div class="script-tiles" role="group" aria-label="@L["profile.language"]">
+                    @foreach (var code in Translator.All)
+                    {
+                        var pick = code;
+                        <button type="button" class="script-tile @(_lang == pick ? "is-on" : null)"
+                                style="font-size:@TileFontSize(pick)"
+                                aria-pressed="@((_lang == pick).ToString().ToLowerInvariant())"
+                                @onclick="() => _lang = pick">
+                            @L["lang." + pick]
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <button class="btn btn--block" style="margin-top:1.3rem" disabled="@_busy" @onclick="SaveAsync">
+                @(_saved ? L["profile.saved"] : L["profile.save"])
+            </button>
+            @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.7rem">@_error</div> }
+        </section>
+
+        <section class="card enter">
+            <div class="row row--between">
+                <span class="settings-row__label">@L["settings.sounds"]</span>
+                <button type="button" class="switch @(_soundsOn ? "is-on" : null)" role="switch"
+                        aria-checked="@(_soundsOn.ToString().ToLowerInvariant())" aria-label="@L["settings.sounds"]"
+                        @onclick="ToggleSoundsAsync">
+                    <span class="switch__track"><span class="switch__thumb"></span></span>
+                </button>
+            </div>
+        </section>
+
+        <button class="btn btn--ghost btn--block" style="margin-top:1.4rem" @onclick="SignOutAsync">@L["profile.signOut"]</button>
+    }
+</div>
+
+@code {
+    private string _name = "";
+    private string _lang = "fa";
+    private string _avatarSeed = AvatarPalette.Seeds[0];
+    private bool _soundsOn = true;
+    private bool _busy, _saved;
+    private string? _error;
+
+    protected override async Task LoadAsync()
+    {
+        _name = State.Me?.DisplayName ?? "";
+        _lang = State.Me?.Lang ?? "fa";
+        _avatarSeed = State.Me?.AvatarSeed ?? AvatarPalette.Seeds[0];
+        _soundsOn = SoundsPreference.Parse(await Js.InvokeAsync<string?>("quesshi.get", SoundsPreference.Key));
+    }
+
+    /// <summary>Persian reads at a comfortable size a couple of points larger than the Latin scripts,
+    /// and "Nederlands" is the longest of the three words — matching the mockup's own per-tile sizing
+    /// (فارسی 20px, English 18px, Nederlands 16px) keeps all three filling their tile evenly rather
+    /// than one looking cramped and another swimming in space.</summary>
+    private static string TileFontSize(string lang) => lang switch
+    {
+        "fa" => "1.25rem",
+        "en" => "1.1rem",
+        _ => "1rem"
+    };
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _saved = false;
+
+        if (await Api.SaveProfileAsync(_name.Trim(), _lang, _avatarSeed) is { } me)
+        {
+            State.SetMe(me);
+            await State.SetLangAsync(me.Lang);
+            _saved = true;
+        }
+        else
+        {
+            _error = L["common.error"];
+        }
+
+        _busy = false;
+    }
+
+    private async Task ToggleSoundsAsync()
+    {
+        _soundsOn = !_soundsOn;
+        await Js.InvokeVoidAsync("quesshi.set", SoundsPreference.Key, SoundsPreference.Serialize(_soundsOn));
+    }
+
+    private async Task SignOutAsync()
+    {
+        await State.SignOutAsync();
+        Nav.NavigateTo("/signin");
+    }
+}

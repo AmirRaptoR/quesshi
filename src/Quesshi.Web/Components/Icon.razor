@@ -32,6 +32,15 @@
             <path d="M6 6l12 12M18 6 6 18" />
             break;
 
+        case "gear":
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            break;
+
+        // Points to "the start of reading order" (fa/en/nl are all read start-to-end the same way a
+        // <label> or a bare chevron would be) and is mirrored for rtl by the .icon-hit--back rule in
+        // app.css, the same trick .pager__arrow already uses for its own direction-sensitive chevron.
+        case "chevron-back":
         case "back":
             <path d="M15 6l-6 6 6 6" />
             break;
@@ -39,6 +48,7 @@
 </svg>
 
 @code {
+    /// <summary>One of: trash, eye, eye-off, close, gear, chevron-back.</summary>
     /// <summary>One of: trash, eye, eye-off, close, back.</summary>
     [Parameter, EditorRequired] public string Name { get; set; } = "";
 
