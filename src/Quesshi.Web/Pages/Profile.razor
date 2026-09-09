@@ -1,6 +1,16 @@
 @page "/profile"
 @inherits PageBase
 @inject LobbyClient Lobby
+@inject IJSRuntime Js
+@using System.Globalization
+
+@*
+    Issue #91: Profile stops being a settings form with a stats card bolted on and becomes identity,
+    record and friends — one Duel action per friend, nothing else competing for the first tap. Every
+    field that used to live here (display name, language, sign-out) moved behind the gear at
+    Settings.razor, alongside the new sounds switch (#93). The old per-topic accuracy breakdown has no
+    home in the redesign's mockup at all; it is not carried over anywhere.
+*@
 
 <PageTitle>@L["nav.profile"] · @L["app.name"]</PageTitle>
 
@@ -16,144 +26,148 @@
     else
     {
         var me = State.Me;
+        var points = me.Stats.TotalScore.ToString("N0", CultureInfo.InvariantCulture);
 
-        <header class="topbar">
-            <span class="avatar avatar--lg" style="background:@Ranks.Tint(me.AvatarSeed)">@Initial(me.DisplayName)</span>
-            <div class="grow">
-                <h1 style="font-size:var(--step-2)">@me.DisplayName</h1>
-                <div class="faint" dir="ltr" style="font-size:var(--step--1)">@me.Email</div>
+        @* --- the gear: the only door into everything this page used to ask for as a form ----------- *@
+        <div class="row" style="justify-content:flex-end">
+            <a class="icon-hit" href="/settings" aria-label="@L["settings.title"]">
+                <Icon Name="gear" Size="1.4rem" />
+            </a>
+        </div>
+
+        @* --- identity: a big avatar, the name, and points with a rank alongside it when there is one -
+           RankOrdinal.Rank returns null for anyone outside the leaderboard's own top 20, and that null
+           is exactly "unranked" — this renders the points alone rather than inventing a position. ---- *@
+        <div class="profile-id enter">
+            <span class="avatar profile-id__avatar" style="background:@Ranks.Tint(me.AvatarSeed)">@Initial(me.DisplayName)</span>
+            <h1 class="profile-id__name" dir="auto">@me.DisplayName</h1>
+            <div class="profile-id__meta">
+                <span class="numeral profile-id__points">@L.Num(points)</span>
+                <span class="faint">
+                    @if (_rank is { } rank)
+                    {
+                        @L.Format("profile.rankSuffix", RankOrdinal.Format(L.Num(rank), rank, L.Lang))
+                    }
+                    else
+                    {
+                        @L["profile.pointsSuffix"]
+                    }
+                </span>
             </div>
-        </header>
+        </div>
 
-        <section class="card card--taq enter">
-            <span class="eyebrow">@L["profile.stats"]</span>
-            <div class="grid-2" style="margin-top:1rem">
-                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Wins)</div><div class="stat__label">@L["profile.wins"]</div></div>
-                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Losses)</div><div class="stat__label">@L["profile.losses"]</div></div>
-                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Draws)</div><div class="stat__label">@L["profile.draws"]</div></div>
-                <div class="stat"><div class="stat__value">@L.Num(me.Stats.Streak)</div><div class="stat__label">@L["profile.streak"]</div></div>
-                <div class="stat"><div class="stat__value">@L.Num(me.Stats.BestStreak)</div><div class="stat__label">@L["profile.best"]</div></div>
-                <div class="stat"><div class="stat__value">@L.Num(me.Stats.TotalScore)</div><div class="stat__label">@L["profile.score"]</div></div>
+        @* --- record: Won / Lost / Streak, unlabelled by design (no ALL-CAPS eyebrow above it) — the
+           wrapper's aria-label is what keeps a screen reader from reading three bare numbers. --------- *@
+        <section class="record-grid enter" aria-label="@L["profile.stats"]">
+            <div class="record-tile">
+                <div class="record-tile__value" style="color:var(--firouzeh)">@L.Num(me.Stats.Wins)</div>
+                <div class="record-tile__label">@L["profile.wins"]</div>
+            </div>
+            <div class="record-tile">
+                <div class="record-tile__value">@L.Num(me.Stats.Losses)</div>
+                <div class="record-tile__label">@L["profile.losses"]</div>
+            </div>
+            <div class="record-tile">
+                <div class="record-tile__value" style="color:var(--zaferan)">@L.Num(me.Stats.Streak)</div>
+                <div class="record-tile__label">@L["profile.streak"]</div>
             </div>
         </section>
 
-        @if (me.Accuracy.Count > 0)
-        {
-            <section class="card enter">
-                <span class="eyebrow">@L["profile.accuracy"]</span>
-                <div class="stack" style="margin-top:.9rem;gap:.7rem">
-                    @foreach (var (categoryId, accuracy) in me.Accuracy.OrderByDescending(a => a.Value))
-                    {
-                        <div>
-                            <div class="row row--between" style="font-size:var(--step--1)">
-                                <span>@CategoryName(categoryId)</span>
-                                <span class="numeral muted">@L.Num((int)Math.Round(accuracy * 100))%</span>
-                            </div>
-                            <div class="meter" style="margin-top:.3rem"><i style="width:@((int)Math.Round(accuracy * 100))%"></i></div>
-                        </div>
-                    }
-                </div>
-            </section>
-        }
-
-        <section class="card enter">
-            <span class="eyebrow">@L["profile.friends"]</span>
-
-            <div class="row" style="margin-top:.8rem">
-                <input class="input grow" placeholder="@L["profile.findFriends"]"
-                       @bind="_query" @bind:event="oninput" @onkeydown="OnSearchKey" />
-                <button class="btn btn--ghost btn--sm" @onclick="SearchAsync">@L["admin.search"]</button>
+        @* --- friends: Add reveals the search inline instead of it sitting open by default; every row
+           after that is a friend with one Duel pill, whose style and action both come from whether
+           they are online right now (see FriendDuelPlan) rather than from a menu on the pill itself. -- *@
+        <section class="enter" style="margin-top:1.75rem">
+            <div class="row row--between">
+                <h2 class="friends-title">@L["profile.friends"]</h2>
+                <button type="button" class="link-action" @onclick="ToggleAdd">@L["profile.add"]</button>
             </div>
 
-            @if (_found.Count > 0)
+            @if (_adding)
             {
-                <div class="stack" style="margin-top:.7rem;gap:.4rem">
-                    @foreach (var found in _found.Where(f => f.Id != me.Id && me.Friends.All(x => x.Id != f.Id)))
-                    {
-                        <div class="row">
-                            <span class="avatar" style="background:@Ranks.Tint(found.AvatarSeed)">@Initial(found.DisplayName)</span>
-                            <span class="grow">@found.DisplayName</span>
-                            <button class="btn btn--sm" @onclick="() => AddAsync(found.Id)">@L["profile.add"]</button>
-                        </div>
-                    }
+                <div class="row" style="margin-top:.8rem">
+                    <input class="input grow" placeholder="@L["profile.findFriends"]"
+                           @bind="_query" @bind:event="oninput" @onkeydown="OnSearchKey" />
+                    <button class="btn btn--ghost btn--sm" @onclick="SearchAsync">@L["admin.search"]</button>
                 </div>
+
+                @if (_found.Count > 0)
+                {
+                    <div class="stack" style="margin-top:.6rem;gap:.4rem">
+                        @foreach (var found in _found.Where(f => f.Id != me.Id && me.Friends.All(x => x.Id != f.Id)))
+                        {
+                            <div class="row" @key="found.Id">
+                                <span class="avatar avatar--sm" style="background:@Ranks.Tint(found.AvatarSeed)">@Initial(found.DisplayName)</span>
+                                <span class="grow" dir="auto">@found.DisplayName</span>
+                                <button class="btn btn--sm" @onclick="() => AddAsync(found.Id)">@L["profile.add"]</button>
+                            </div>
+                        }
+                    </div>
+                }
             }
 
-            <div class="stack" style="margin-top:.9rem;gap:.4rem">
+            <div class="stack friend-list" style="margin-top:.9rem;gap:.5rem">
                 @if (me.Friends.Count == 0)
                 {
-                    <p class="faint" style="margin:0;font-size:var(--step--1)">@L["profile.noFriends"]</p>
+                    @* An invitation to act, not a statement — issue #91's own wording for this state. *@
+                    <p class="friends-empty">
+                        @L["profile.friendsEmpty"]
+                        <button type="button" class="btn btn--sm" @onclick="ToggleAdd">@L["profile.add"]</button>
+                    </p>
                 }
                 @foreach (var friend in me.Friends)
                 {
-                    <div class="row">
-                        <span class="avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">@Initial(friend.DisplayName)</span>
-                        <span class="grow">@friend.DisplayName</span>
-                        @if (friend.Online)
-                        {
-                            <span class="dot--online" title="@L["profile.online"]" aria-label="@L["profile.online"]"></span>
-                        }
-                        <span class="numeral faint">@L.Num(friend.Score)</span>
-                        @if (friend.Online)
-                        {
-                            <button class="btn btn--sm" disabled="@(_challenging == friend.Id)" @onclick="() => ChallengeAsync(friend.Id)">
-                                @L["profile.challenge"]
-                            </button>
-                        }
-                        <button class="btn btn--ghost btn--sm btn--icon" title="@L["profile.remove"]"
-                                aria-label="@L["profile.remove"]" @onclick="() => RemoveAsync(friend.Id)">
-                            <Icon Name="close" />
+                    <div class="friend-row" @key="friend.Id">
+                        <span class="avatar friend-row__avatar" style="background:@Ranks.Tint(friend.AvatarSeed)">
+                            @Initial(friend.DisplayName)
+                            @if (friend.Online)
+                            {
+                                <span class="dot--online friend-row__dot" aria-label="@L["profile.online"]" title="@L["profile.online"]"></span>
+                            }
+                        </span>
+                        <div class="grow">
+                            <div class="friend-row__name" dir="auto">@friend.DisplayName</div>
+                            <div class="faint friend-row__status">
+                                @(friend.Online
+                                    ? L.Format("profile.friendScoreOnline", L.Num(friend.Score))
+                                    : L.Format("profile.friendScore", L.Num(friend.Score)))
+                            </div>
+                        </div>
+                        <button type="button" class="duel-pill @(friend.Online ? "duel-pill--live" : "duel-pill--async")"
+                                disabled="@(_duelingId == friend.Id)" @onclick="() => DuelAsync(friend)">
+                            @L["profile.duel"]
                         </button>
                     </div>
                 }
             </div>
 
-            @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.85rem">@_error</div> }
-        </section>
-
-        <section class="card enter">
-            <span class="eyebrow">@L["profile.name"]</span>
-            <div class="stack" style="margin-top:.8rem">
-                <input class="input" maxlength="24" @bind="_name" />
-
-                <div class="field">
-                    <label for="lang">@L["profile.language"]</label>
-                    <select id="lang" class="select" @bind="_lang">
-                        <option value="fa">@L["lang.fa"]</option>
-                        <option value="en">@L["lang.en"]</option>
-                        <option value="nl">@L["lang.nl"]</option>
-                    </select>
-                </div>
-
-                <button class="btn btn--block" disabled="@_busy" @onclick="SaveAsync">
-                    @(_saved ? L["profile.saved"] : L["profile.save"])
-                </button>
-                <button class="btn btn--ghost btn--block btn--sm" @onclick="SignOutAsync">@L["profile.signOut"]</button>
-            </div>
+            @if (_toast is not null) { <div class="notice notice--good enter" style="margin-top:.8rem">@_toast</div> }
+            @if (_error is not null) { <div class="notice notice--bad enter" style="margin-top:.8rem">@_error</div> }
         </section>
     }
 </div>
 
 @code {
-    private string _name = "";
-    private string _lang = "fa";
     private string _query = "";
     private List<FriendDto> _found = [];
-    private List<CategoryDto> _categories = [];
-    private bool _busy, _saved;
-    private string? _challenging;
+    private int? _rank;
+    private bool _adding;
+    private string? _duelingId;
+    private string? _toast;
     private string? _error;
 
     protected override async Task LoadAsync()
     {
-        _name = State.Me?.DisplayName ?? "";
-        _lang = State.Me?.Lang ?? "fa";
-        _categories = await Api.CategoriesAsync() ?? [];
+        var board = await Api.LeaderboardAsync() ?? [];
+        _rank = State.Me is null ? null : RankOrdinal.Rank(board, State.Me.Id);
     }
 
-    private string CategoryName(string id) => _categories.FirstOrDefault(c => c.Id == id)?.Name ?? id;
-
     private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    private void ToggleAdd()
+    {
+        _adding = !_adding;
+        if (!_adding) { _query = ""; _found = []; }
+    }
 
     private async Task OnSearchKey(KeyboardEventArgs e)
     {
@@ -171,55 +185,59 @@
         if (await Api.AddFriendAsync(id)) await RefreshMeAsync();
     }
 
-    private async Task RemoveAsync(string id)
-    {
-        if (await Api.RemoveFriendAsync(id)) await RefreshMeAsync();
-    }
-
-    /// <summary>The same language / question count / categories / levels last chosen on Home.razor, or the defaults.</summary>
-    private async Task ChallengeAsync(string targetId)
-    {
-        _challenging = targetId;
-        _error = null;
-        try
-        {
-            var result = await Lobby.ChallengeAsync(targetId,
-                State.LastLiveLang ?? State.Lang,
-                State.LastLiveQuestionCount ?? 10,
-                State.LastLiveCategories ?? [],
-                State.LastLiveLevels ?? []);
-
-            if (result is null) _error = L["common.error"];
-        }
-        finally
-        {
-            _challenging = null;
-        }
-    }
-
     private async Task RefreshMeAsync()
     {
         if (await Api.MeAsync() is { } me) State.SetMe(me);
         _found = [];
     }
 
-    private async Task SaveAsync()
+    /// <summary>
+    /// The pill's whole decision is <see cref="FriendDuelPlan.Choose"/>: a live challenge — the same
+    /// call this page always made — for a friend online right now, or a fresh async duel for anyone
+    /// else, its code copied to the clipboard and announced with a toast rather than delivered in-app
+    /// (see FriendDuelPlan's own remarks for why no in-app path reaches an offline friend). The same
+    /// "last live settings, or the defaults" fallback the old Challenge button used carries over to
+    /// both branches, so a friend duel keeps whatever length/language/topics Home.razor last chose.
+    /// </summary>
+    private async Task DuelAsync(FriendDto friend)
     {
-        _busy = true; _saved = false;
-
-        if (await Api.SaveProfileAsync(_name.Trim(), _lang) is { } me)
+        _error = null;
+        _toast = null;
+        _duelingId = friend.Id;
+        try
         {
-            State.SetMe(me);
-            await State.SetLangAsync(me.Lang);
-            _saved = true;
+            if (FriendDuelPlan.Choose(friend.Online) == FriendDuelKind.Live)
+            {
+                var result = await Lobby.ChallengeAsync(friend.Id,
+                    State.LastLiveLang ?? State.Lang,
+                    State.LastLiveQuestionCount ?? 10,
+                    State.LastLiveCategories ?? [],
+                    State.LastLiveLevels ?? []);
+
+                if (result is null) _error = L["common.error"];
+            }
+            else
+            {
+                var match = await Api.CreateMatchAsync(random: false,
+                    State.LastLiveLang ?? State.Lang,
+                    State.LastLiveCategories ?? [],
+                    State.LastLiveQuestionCount ?? 10,
+                    State.LastLiveLevels ?? []);
+
+                if (match is null)
+                {
+                    _error = L["common.error"];
+                }
+                else
+                {
+                    await Js.InvokeVoidAsync("quesshi.copy", match.Code);
+                    _toast = L.Format("profile.codeCopied", friend.DisplayName);
+                }
+            }
         }
-
-        _busy = false;
-    }
-
-    private async Task SignOutAsync()
-    {
-        await State.SignOutAsync();
-        Nav.NavigateTo("/signin");
+        finally
+        {
+            _duelingId = null;
+        }
     }
 }
