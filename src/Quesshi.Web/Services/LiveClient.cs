@@ -159,8 +159,15 @@ public sealed class LiveClient : IAsyncDisposable
         return _connection.InvokeAsync(wasAsyncLobby ? "LeaveAsyncLobby" : "Leave", matchId, ct);
     }
 
-    public Task AnswerAsync(string matchId, int round, int choiceIndex, CancellationToken ct = default)
-        => _connection.InvokeAsync("Answer", matchId, round, choiceIndex, ct);
+    /// <summary>
+    /// <paramref name="response"/> is the answer a choice index cannot hold — served positions for a
+    /// sorting question, a country code or <c>"lat,lon"</c> for a map one — and travels beside a
+    /// <paramref name="choiceIndex"/> of -1. It is always sent, null included: a SignalR invocation
+    /// has to match the hub method's arity, so omitting the argument for an ordinary choice answer
+    /// would fail the call rather than default it.
+    /// </summary>
+    public Task AnswerAsync(string matchId, int round, int choiceIndex, string? response = null, CancellationToken ct = default)
+        => _connection.InvokeAsync("Answer", matchId, round, choiceIndex, response, ct);
 
     public Task<RematchOutcomeDto> RematchAsync(string matchId, CancellationToken ct = default)
         => _connection.InvokeAsync<RematchOutcomeDto>("Rematch", matchId, ct);

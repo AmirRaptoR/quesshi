@@ -48,8 +48,21 @@ public interface IMatchGrain : IGrainWithStringKey
 
     [Alias("ServeNextAsync")]
     Task<ServedSlot?> ServeNextAsync(string playerId);
+    /// <summary>
+    /// Records one answer of a run and says how it went. <paramref name="response"/> is the answer
+    /// <paramref name="choiceIndex"/> cannot hold — served positions for a sorting question
+    /// (<c>"2,0,3,1"</c>, meaning "the item you showed me third goes first"), a country code or
+    /// <c>"lat,lon"</c> for a map one — and the index is -1 for both, exactly as it is for a timeout.
+    /// The two are told apart by the response, never by the index: a timed-out sorting or map answer
+    /// is -1 with <paramref name="response"/> null, a played one is -1 with a response.
+    /// <para>
+    /// Throws <see cref="InvalidOperationException"/> with <c>bad_response</c> for a submission no
+    /// interface could have produced — a sorting order that is not a permutation of the items, a map
+    /// answer that does not parse — and records nothing, the same refusal a bad choice index gets.
+    /// </para>
+    /// </summary>
     [Alias("AnswerAsync")]
-    Task<AnswerOutcome> AnswerAsync(string playerId, int slot, int choiceIndex);
+    Task<AnswerOutcome> AnswerAsync(string playerId, int slot, int choiceIndex, string? response = null);
 
     /// <summary>Redacted for the asking player: the opponent's choices appear only once you have finished your own run.</summary>
     [Alias("GetAsync")]

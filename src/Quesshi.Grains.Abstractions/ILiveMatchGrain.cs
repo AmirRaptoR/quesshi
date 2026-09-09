@@ -64,12 +64,22 @@ public interface ILiveMatchGrain : IGrainWithStringKey
 
     /// <summary>
     /// True if the answer was recorded, false if it was refused (late, wrong slot, already
-    /// answered, not a participant, duel over). No outcome comes back: the opponent is still on the
-    /// same question, so returning the correct index here would leak the reveal to whoever answers
-    /// first. Both players learn it together, through <c>ILiveNotifier.RoundRevealedAsync</c>.
+    /// answered, not a participant, duel over, or a malformed sorting or map response). No outcome
+    /// comes back: the opponent is still on the same question, so returning the correct index here
+    /// would leak the reveal to whoever answers first. Both players learn it together, through
+    /// <c>ILiveNotifier.RoundRevealedAsync</c>.
+    /// <para>
+    /// <paramref name="response"/> is the answer <paramref name="choiceIndex"/> cannot hold, and the
+    /// two are alternatives rather than companions: a choice question travels as an index with a null
+    /// response, a sorting question as served positions in the order the player placed them
+    /// (<c>"2,0,3,1"</c> — "the item you showed me third goes first") with the index at -1, and a map
+    /// question as a country code or <c>"lat,lon"</c>, likewise at -1. The grain, which is the only
+    /// place that can reconstruct the round's shuffle, normalises a sorting answer into stored-index
+    /// terms before storing it.
+    /// </para>
     /// </summary>
     [Alias("AnswerAsync")]
-    Task<bool> AnswerAsync(string playerId, int slot, int choiceIndex);
+    Task<bool> AnswerAsync(string playerId, int slot, int choiceIndex, string? response = null);
 
     /// <summary>Redacted for the asking player: the round in flight never reveals the correct index or the opponent's choice.</summary>
     [Alias("GetAsync")]

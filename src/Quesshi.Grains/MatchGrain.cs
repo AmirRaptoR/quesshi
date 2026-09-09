@@ -215,16 +215,38 @@ public sealed class MatchGrain(
         }
     }
 
-    public async Task<AnswerOutcome> AnswerAsync(string playerId, int slot, int choiceIndex)
+    /// <summary>
+    /// Grades and records one answer.
+    /// <para>
+    /// The grading is <see cref="SubmittedAnswer.TryGrade"/>'s, and the whole reason it is a call
+    /// rather than an expression here is the guard this line used to be:
+    /// <c>choiceIndex >= 0 &amp;&amp; question.IsCorrect(choiceIndex)</c>. That <c>&gt;= 0</c> is the
+    /// timeout check, and a sorting or map answer arrives at exactly -1 — so left in front of the
+    /// per-kind branch it would have marked every one of them wrong, silently and for every player.
+    /// The per-kind branch therefore comes first, and the timeout check survives inside the choice
+    /// branch where it always belonged.
+    /// </para>
+    /// <para>
+    /// A refused submission — a sorting order that is not a permutation, a map answer that does not
+    /// parse — throws before anything is recorded, so the run is left exactly as it was and the
+    /// endpoint turns it into the same 400 a bad choice index gets. <c>bad_response</c> rather than
+    /// prose because that is what the endpoint's own <c>bad_choice</c> reads like, and a client has
+    /// to be able to tell the two apart from the outside.
+    /// </para>
+    /// </summary>
+    public async Task<AnswerOutcome> AnswerAsync(string playerId, int slot, int choiceIndex, string? response = null)
     {
         if (_match is null) throw new InvalidOperationException("No such match.");
 
         var question = await questions.GetAsync(_match.QuestionIds[slot])
             ?? throw new InvalidOperationException("That question has disappeared.");
 
-        var correct = choiceIndex >= 0 && question.IsCorrect(choiceIndex);
+        if (!SubmittedAnswer.TryGrade(question, _match.Id, slot, choiceIndex, response, out var graded))
+            throw new InvalidOperationException("bad_response");
+
+        var correct = graded.Correct;
         var wasOver = _match.IsOver;
-        var answer = _match.SubmitAnswer(playerId, slot, choiceIndex, correct, clock.Now, question.Level);
+        var answer = _match.SubmitAnswer(playerId, slot, graded.ChoiceIndex, correct, clock.Now, question.Level, graded.Response);
         await SaveAsync();
 
         question.RecordServed(correct);
