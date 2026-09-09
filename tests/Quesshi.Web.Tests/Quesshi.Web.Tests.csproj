@@ -24,6 +24,9 @@
 
   <ItemGroup>
     <Content Include="..\..\src\Quesshi.Web\wwwroot\i18n\**\*.json" LinkBase="i18n" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The landmark tests read the real, shipped asset, not a fixture, so a change to the
+         SVG that breaks the projection assumptions gets caught here. -->
+    <Content Include="..\..\src\Quesshi.Web\wwwroot\maps\**\*.svg" LinkBase="maps" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
