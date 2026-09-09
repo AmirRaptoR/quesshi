@@ -214,4 +214,83 @@ public class QuestionSetBuilderTests
         Assert.Equal(20, set.Count);
         Assert.All(set, q => Assert.Contains(q.CategoryId, new[] { "geography", "movies" }));
     }
+
+    // ---- Kinds (issue #73) ----
+    //
+    // The spec's decision is "mixed into ordinary duels, and no quota": the proportion of each kind
+    // in a duel falls out of the bank's own proportions rather than a rule. That makes these tests
+    // the whole of the selection story — there is nothing to configure, so what has to be proved is
+    // that nothing in the builder quietly excludes the two new kinds, and that it never assumes the
+    // four choices a map question does not have.
+
+    /// <summary>Fills every level of one category with questions of one kind.</summary>
+    private void StockKind(int perBucket, string category, QuestionKind kind, Language lang = Language.En)
+    {
+        _categories.UpsertAsync(new Category(category, category, category, "*", "#fff"));
+        foreach (var level in MatchRules.AllLevels)
+            for (var i = 0; i < perBucket; i++)
+                _questions.UpsertAsync(OfKind($"{category}-{kind}-{level}-{i}", lang, category, level, kind));
+    }
+
+    private static Question OfKind(string id, Language lang, string cat, Difficulty level, QuestionKind kind)
+        => kind switch
+        {
+            QuestionKind.Sort => Question.Create(id, lang, cat, level, $"order {id}", ["a", "b", "c", "d"], 0, T0,
+                status: QuestionStatus.Approved, kind: QuestionKind.Sort),
+            QuestionKind.Map => Question.Create(id, lang, cat, level, $"find {id}", [], 0, T0,
+                status: QuestionStatus.Approved, kind: QuestionKind.Map,
+                target: MapTarget.Country("DE"), baseLayer: MapBaseLayer.Borders),
+            _ => Q(id, lang, cat, level)
+        };
+
+    [Fact]
+    public async Task A_bank_of_nothing_but_sorting_questions_still_builds_a_full_duel()
+    {
+        StockKind(3, "rivers", QuestionKind.Sort);
+
+        var set = await Sut().BuildAsync(Language.En, ["rivers"]);
+
+        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
+        Assert.All(set, q => Assert.Equal(QuestionKind.Sort, q.Kind));
+    }
+
+    /// <summary>
+    /// The one kind that could have caught a hidden four-choices assumption: a map question stores
+    /// no choices at all, so anything in the selection path that reached for <c>Choices[n]</c> or
+    /// counted them would fail here and nowhere else.
+    /// </summary>
+    [Fact]
+    public async Task A_bank_of_nothing_but_map_questions_still_builds_a_full_duel()
+    {
+        StockKind(3, "atlas", QuestionKind.Map);
+
+        var set = await Sut().BuildAsync(Language.En, ["atlas"]);
+
+        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
+        Assert.All(set, q => Assert.Equal(QuestionKind.Map, q.Kind));
+        Assert.All(set, q => Assert.Empty(q.Choices));
+    }
+
+    /// <summary>
+    /// No quota, and none needed: a bank holding all three kinds in one category hands them all to
+    /// the same duel, because a sort or a map is eligible in exactly the place a choice question is.
+    /// A duel drawn from a bank of one kind proves eligibility; this proves they are not merely
+    /// eligible one at a time.
+    /// </summary>
+    [Fact]
+    public async Task A_mixed_bank_puts_all_three_kinds_in_one_duel()
+    {
+        // Every level of one category holds one of each kind, so whichever level a slot asks for,
+        // all three are on the table and only the sampler decides.
+        _categories.UpsertAsync(new Category("mixed", "mixed", "mixed", "*", "#fff"));
+        foreach (var level in MatchRules.AllLevels)
+            foreach (var kind in new[] { QuestionKind.Choice, QuestionKind.Sort, QuestionKind.Map })
+                for (var i = 0; i < 8; i++)
+                    await _questions.UpsertAsync(OfKind($"mixed-{kind}-{level}-{i}", Language.En, "mixed", level, kind));
+
+        var set = await Sut().BuildAsync(Language.En, ["mixed"], questionCount: 100);
+
+        Assert.Equal(100, set.Count);
+        Assert.Equal(3, set.Select(q => q.Kind).Distinct().Count());
+    }
 }

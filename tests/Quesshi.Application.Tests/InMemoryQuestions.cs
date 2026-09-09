@@ -73,5 +73,9 @@ public sealed class InMemoryQuestions : IQuestionRepository
 
     public Task<IReadOnlyCollection<(string Prompt, string Answer)>> ExistingQuestionsAsync(string categoryId, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyCollection<(string, string)>>(
-            [.. Items.Where(q => q.CategoryId == categoryId).Select(q => (q.Prompt, q.Choices[q.CorrectIndex]))]);
+            // Bounds-checked exactly as MongoQuestionRepository is, because a map question stores no
+            // choices at all: indexing blind would make this fake throw where the real repository
+            // quietly returns "", which is the worst kind of difference between the two.
+            [.. Items.Where(q => q.CategoryId == categoryId).Select(q => (q.Prompt,
+                q.CorrectIndex >= 0 && q.CorrectIndex < q.Choices.Count ? q.Choices[q.CorrectIndex] : ""))]);
 }

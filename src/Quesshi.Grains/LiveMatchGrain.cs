@@ -493,7 +493,7 @@ public sealed class LiveMatchGrain(
                 }
 
                 var category = await categories.GetAsync(question.CategoryId);
-                await SafeNotifyAsync(() => notifier.RoundStartedAsync(m.Id, BuildRoundCard(round, question, category, m.QuestionIds.Count)));
+                await SafeNotifyAsync(() => notifier.RoundStartedAsync(m.Id, BuildRoundCard(m.Id, round, question, category, m.QuestionIds.Count)));
                 _startedThrough = i + 1;
             }
 
@@ -690,11 +690,30 @@ public sealed class LiveMatchGrain(
 
     private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, [.. Participants(m)], m.QuestionIds.Count);
 
-    private static LiveRoundCard BuildRoundCard(LiveRound round, Question question, Category? category, int totalRounds) => new(
-        round.Slot, totalRounds, question.Id, question.Prompt, [.. question.Choices],
+    /// <summary>
+    /// The card pushed at round start — the third of the three builders, beside
+    /// <c>GameEndpoints.BuildCard</c> and <c>Mappers.BuildLiveCard</c>. All three take their items
+    /// from <see cref="Question.ServedChoices"/>, which is what makes the arrangement pushed here,
+    /// the one a reconnecting player is handed, and the one the async endpoint serves the same
+    /// arrangement. Nothing here shuffles: the seed lives in one place and every caller borrows it.
+    /// <para>
+    /// <paramref name="matchId"/> is half that seed, which is why it is a parameter of a method that
+    /// would otherwise need only the round: the permutation is a function of the match and the slot,
+    /// so that everyone in a live duel sees the same order and a returning player is not handed the
+    /// order they saw last time.
+    /// </para>
+    /// <para>
+    /// Internal rather than private so the test that all three builders agree can call this one
+    /// directly. Driving it through a whole live duel would prove the same thing about one
+    /// (matchId, slot) pair the silo happened to pick, which is not the property that matters.
+    /// </para>
+    /// </summary>
+    internal static LiveRoundCard BuildRoundCard(string matchId, LiveRound round, Question question, Category? category, int totalRounds) => new(
+        round.Slot, totalRounds, question.Id, question.Prompt, [.. question.ServedChoices(matchId, round.Slot)],
         question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
         category?.Icon ?? "", category?.Color ?? "", question.Level, question.Media,
-        round.StartedAt, round.StartedAt + MatchRules.QuestionTime);
+        round.StartedAt, round.StartedAt + MatchRules.QuestionTime,
+        question.Kind, question.BaseLayer, question.Target?.Shape);
 
     private async Task<LiveRoundReveal> BuildRoundRevealAsync(LiveMatch m, int index)
     {
@@ -705,12 +724,29 @@ public sealed class LiveMatchGrain(
         {
             var answer = round.Answers.TryGetValue(pid, out var a) ? a : new LiveAnswer(-1, false, 0, 0);
             var total = m.Rounds.Take(index + 1).Sum(r => r.Answers.TryGetValue(pid, out var ra) ? ra.Score : 0);
-            return new LivePlayerRound(pid, answer.ChoiceIndex, answer.Correct, answer.Score, total);
+            return new LivePlayerRound(pid, answer.ChoiceIndex, answer.Correct, answer.Score, total, answer.Response);
         }).ToList();
 
+        // No seed anywhere in here, and none needed. A sorting question's correct order is simply
+        // its stored Choices, and each player's Response was normalised into stored-index terms at
+        // submission — so the reveal and the grading can never disagree, which is exactly what
+        // reconstructing the permutation on this path would put at risk.
         return new LiveRoundReveal(round.Slot, question?.CorrectIndex ?? -1, question?.Explanation, players,
-            round.StartedAt + MatchRules.QuestionTime + LiveRules.RevealTime);
+            round.StartedAt + MatchRules.QuestionTime + LiveRules.RevealTime,
+            question?.Kind ?? QuestionKind.Choice, CorrectOrderOf(question), question?.Target?.ToResponse());
     }
+
+    /// <summary>
+    /// A sorting question's answer, for a reveal: its items in the order they are stored in, which
+    /// for a sort <i>is</i> the correct order. Null for every other kind, so the field says "this is
+    /// not the answer you want" rather than carrying four strings that mean nothing.
+    /// <para>
+    /// Text rather than indices, because the card served those items shuffled and never said which
+    /// stored index each came from — a list of indices would point at nothing the player saw.
+    /// </para>
+    /// </summary>
+    private static List<string>? CorrectOrderOf(Question? question)
+        => question?.Kind == QuestionKind.Sort ? [.. question.Choices] : null;
 
     private static LiveEnded BuildEnded(LiveMatch m, string? reason) => new(
         m.State, m.WinnerId, m.IsDraw, [.. m.Abandoners.Select(a => a.PlayerId)],
@@ -737,17 +773,25 @@ public sealed class LiveMatchGrain(
         {
             var round = m.Rounds[i];
             var closed = i < closedCount;
-            var correctIndex = closed && byId.TryGetValue(round.QuestionId, out var q) ? q.CorrectIndex : (int?)null;
+
+            // One lookup, one gate, three answers. The kind-specific answers are bound to the very
+            // same `closed` test as the correct index — and to the same dictionary, which only ever
+            // holds the closed rounds' questions — so a sort or a map round in flight is exactly as
+            // blank as a choice round in flight. Anything else would leak the whole answer to
+            // whoever reconnected mid-round, which is the one thing this method exists to prevent.
+            var question = closed && byId.TryGetValue(round.QuestionId, out var q) ? q : null;
 
             var answers = Participants(m).Select(pid =>
             {
                 var answered = round.HasAnswered(pid);
                 var visible = closed || pid == forPlayerId;
                 var answer = answered && visible ? round.Answers[pid] : null;
-                return new LiveRoundAnswerView(pid, answered, answer?.ChoiceIndex, visible ? answer?.Correct : null, answer?.Score ?? 0);
+                return new LiveRoundAnswerView(pid, answered, answer?.ChoiceIndex, visible ? answer?.Correct : null,
+                    answer?.Score ?? 0, answer?.Response);
             }).ToList();
 
-            rounds.Add(new LiveRoundResultView(round.Slot, round.QuestionId, round.StartedAt, correctIndex, answers));
+            rounds.Add(new LiveRoundResultView(round.Slot, round.QuestionId, round.StartedAt, question?.CorrectIndex, answers,
+                (int)(question?.Kind ?? QuestionKind.Choice), CorrectOrderOf(question), question?.Target?.ToResponse()));
         }
 
         var players = Participants(m).Select(pid => new LivePlayerView(

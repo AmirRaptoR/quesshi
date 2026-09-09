@@ -13,6 +13,13 @@
     <PackageReference Include="Microsoft.Orleans.Sdk" Version="10.2.2" />
   </ItemGroup>
 
+  <!-- So the test that all three card builders agree can call LiveMatchGrain's own builder directly.
+       Driving it through a whole live duel would only prove the property for whichever (match, slot)
+       the silo happened to produce, which is not the property that matters. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quesshi.Server.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Quesshi.Grains.Abstractions\Quesshi.Grains.Abstractions.csproj" />
     <ProjectReference Include="..\Quesshi.Application\Quesshi.Application.csproj" />

@@ -236,11 +236,8 @@ public static class Mappers
             if (question is not null)
             {
                 var category = await categories.GetAsync(question.CategoryId);
-                card = new LiveRoundCardDto(round.Slot, v.TotalRounds, question.Id, question.Prompt, [.. question.Choices],
-                    question.CategoryId, category?.NameFor((Language)v.Lang) ?? question.CategoryId,
-                    category?.Icon ?? "", category?.Color ?? "", (int)question.Level,
-                    question.Media.Kind == MediaKind.None ? null : new MediaDto(question.Media.Kind.ToString().ToLowerInvariant(), question.Media.Url, question.Media.Attribution),
-                    round.StartedAt, round.StartedAt + MatchRules.QuestionTime);
+                card = BuildLiveCard(v.Id, round.Slot, v.TotalRounds, question, category, (Language)v.Lang,
+                    round.StartedAt);
 
                 if (phase == LivePhase.Reveal) explanation = question.Explanation;
             }
@@ -259,7 +256,8 @@ public static class Mappers
             phase.ToString().ToLowerInvariant(), v.PhaseEndsAt, serverNow, v.RoundIndex, v.TotalRounds,
             [.. v.Players.Select(p => new LivePlayerViewDto(p.PlayerId, p.Score, p.Correct, p.MissStreak))],
             [.. v.Rounds.Select(r => new LiveRoundResultViewDto(r.Slot, r.QuestionId, r.StartedAt, r.CorrectIndex,
-                [.. r.Answers.Select(a => new LiveRoundAnswerViewDto(a.PlayerId, a.Answered, a.ChoiceIndex, a.Correct, a.Score))]))],
+                [.. r.Answers.Select(a => new LiveRoundAnswerViewDto(a.PlayerId, a.Answered, a.ChoiceIndex, a.Correct, a.Score, a.Response))],
+                r.Kind, r.CorrectOrder, r.CorrectTarget))],
             BuildColdStandings(v, state, lookup),
             v.WinnerId, v.IsDraw, v.AbandonedBy, v.CreatedAt, v.EndedAt, v.Code,
             phase == LivePhase.Lobby ? v.CreatedAt + LiveRules.LobbyExpires : null,
@@ -277,6 +275,29 @@ public static class Mappers
     /// correctly, because <see cref="LiveView.AbandonedBy"/> names at most one; <c>LiveMatch</c> has
     /// always known the exact order, so it is simply passed through.
     /// </summary>
+    /// <summary>
+    /// The live card as a cold load (or a reconnect) gets it — the second of the three card
+    /// builders, beside <c>GameEndpoints.BuildCard</c> for async and
+    /// <c>LiveMatchGrain.BuildRoundCard</c> for the round-start push. It exists as its own method for
+    /// the same reason those two do: the items come from <see cref="Question.ServedChoices"/> and
+    /// nowhere else, so the arrangement a reconnecting player is shown is the one the round was
+    /// opened with and the one their answer will be graded against. A reconnect that reshuffled would
+    /// be indistinguishable, from the player's seat, from the game marking a right answer wrong.
+    /// <para>
+    /// The redaction is the grain's rule restated, not a second, weaker copy of it: shuffled items
+    /// for a sort and never the stored order, a base layer and a target shape for a map and never
+    /// the target.
+    /// </para>
+    /// </summary>
+    public static LiveRoundCardDto BuildLiveCard(string matchId, int slot, int totalRounds, Question question,
+        Category? category, Language lang, DateTimeOffset startedAt)
+        => new(slot, totalRounds, question.Id, question.Prompt, [.. question.ServedChoices(matchId, slot)],
+            question.CategoryId, category?.NameFor(lang) ?? question.CategoryId,
+            category?.Icon ?? "", category?.Color ?? "", (int)question.Level,
+            question.Media.Kind == MediaKind.None ? null : new MediaDto(question.Media.Kind.ToString().ToLowerInvariant(), question.Media.Url, question.Media.Attribution),
+            startedAt, startedAt + MatchRules.QuestionTime,
+            (int)question.Kind, (int?)question.BaseLayer, (int?)question.Target?.Shape);
+
     private static List<StandingRowDto> BuildColdStandings(LiveView v, MatchState state, Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
     {
         if (state is not (MatchState.Resolved or MatchState.Abandoned)) return [];
@@ -302,12 +323,12 @@ public static class Mappers
         c.Slot, c.TotalRounds, c.QuestionId, c.Prompt, [.. c.Choices],
         c.CategoryId, c.CategoryName, c.CategoryIcon, c.CategoryColor, (int)c.Level,
         c.Media.Kind == MediaKind.None ? null : new MediaDto(c.Media.Kind.ToString().ToLowerInvariant(), c.Media.Url, c.Media.Attribution),
-        c.StartedAt, c.EndsAt);
+        c.StartedAt, c.EndsAt, (int)c.Kind, (int?)c.BaseLayer, (int?)c.TargetShape);
 
     public static LiveRoundRevealDto ToDto(this LiveRoundReveal r) => new(
         r.Slot, r.CorrectIndex, r.Explanation,
-        [.. r.Players.Select(p => new LivePlayerRoundDto(p.PlayerId, p.ChoiceIndex, p.Correct, p.RoundScore, p.TotalScore))],
-        r.EndsAt);
+        [.. r.Players.Select(p => new LivePlayerRoundDto(p.PlayerId, p.ChoiceIndex, p.Correct, p.RoundScore, p.TotalScore, p.Response))],
+        r.EndsAt, (int)r.Kind, r.CorrectOrder, r.CorrectTarget);
 
     public static LiveEndedDto ToDto(this LiveEnded e) => new(
         e.State.ToString().ToLowerInvariant(), e.WinnerId, e.IsDraw, e.AbandonedBy,

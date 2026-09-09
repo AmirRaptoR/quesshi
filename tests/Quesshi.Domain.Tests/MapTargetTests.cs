@@ -112,4 +112,27 @@ public class MapTargetTests
         Assert.Equal(190, target.Longitude);
         Assert.Equal(5, target.RadiusKm);
     }
+
+    /// <summary>
+    /// A reveal has to name the target, and it names it in the one spelling an answer would have
+    /// used — which is what makes "the answer was DE" and "you said DE" comparable at a glance
+    /// rather than two formats a client has to reconcile.
+    /// </summary>
+    [Fact]
+    public void ToResponse_writes_a_country_target_as_the_answer_that_would_have_hit_it()
+    {
+        var target = MapTarget.Country("de");
+
+        Assert.Equal("DE", target.ToResponse());
+        Assert.True(target.Matches(target.ToResponse()));
+    }
+
+    [Fact]
+    public void ToResponse_writes_a_city_target_as_its_own_coordinates_and_they_hit_it()
+    {
+        var target = MapTarget.City(52.37, 4.9, 50);
+
+        Assert.Equal(Geo.Format(52.37, 4.9), target.ToResponse());
+        Assert.True(target.Matches(target.ToResponse()));
+    }
 }

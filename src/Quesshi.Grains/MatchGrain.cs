@@ -233,7 +233,15 @@ public sealed class MatchGrain(
         if (!wasOver && _match.IsOver) await SettleAsync();
 
         var run = _match.RunOf(playerId)!;
-        return new AnswerOutcome(correct, question.CorrectIndex, answer.Score, question.Explanation, run.Finished, run.Score);
+
+        // CorrectIndex keeps its old meaning and keeps it for Choice alone; the other two kinds each
+        // get the field that can hold their answer, and Kind says which one the caller should read.
+        // A sorting question's correct order is its stored Choices — no seed is consulted here, and
+        // none is needed: the shuffle only ever decided how the items were laid out on the card.
+        return new AnswerOutcome(correct, question.CorrectIndex, answer.Score, question.Explanation, run.Finished, run.Score,
+            (int)question.Kind,
+            question.Kind == QuestionKind.Sort ? [.. question.Choices] : null,
+            question.Target?.ToResponse());
     }
 
     public Task<MatchView?> GetAsync(string forPlayerId)
@@ -416,6 +424,13 @@ public sealed class MatchGrain(
             .Select(s => new RunView(s.PlayerId, s.Run!.Score, s.Run.Correct, s.Run.Answers.Count, s.Run.Finished,
                 s.PlayerId == forPlayerId || reveal
                     ? [.. s.Run.Answers.Select(a => a.ChoiceIndex)]
+                    : [],
+                // Sorting and map answers are hidden by the same test in the same expression as the
+                // choice indices beside them, rather than by a rule of their own: a sort answer left
+                // visible early leaks precisely what an early choice index does, and two rules that
+                // have to be kept in step are one rule waiting to fall out of step.
+                s.PlayerId == forPlayerId || reveal
+                    ? [.. s.Run.Answers.Select(a => a.Response)]
                     : []))
             .ToList();
 
