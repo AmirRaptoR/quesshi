@@ -79,4 +79,37 @@ public class MapTargetTests
     [Fact]
     public void Two_targets_with_the_same_values_are_the_same_target()
         => Assert.Equal(MapTarget.City(52.37, 4.9, 50), MapTarget.City(52.37, 4.9, 50));
+
+    // Restore mirrors Question.Restore: storage is trusted and re-validating on every load would
+    // mean a bound tightened later (or a hand-edited row) throws on read and takes the whole
+    // question down with it, rather than just being a stale value an admin can fix.
+    [Fact]
+    public void Restore_rehydrates_a_country_target_without_validating_it()
+    {
+        // "ZZ" is not a code City() or Country() would ever accept as a real country, but Restore
+        // does not check that -- it is exactly the "bound tightened later" case this exists for.
+        var target = MapTarget.Restore(MapTargetKind.Country, "ZZ", null, null, null);
+
+        Assert.Equal(MapTargetKind.Country, target.Shape);
+        Assert.True(target.IsCountry);
+        Assert.Equal("ZZ", target.CountryCode);
+        Assert.Null(target.Latitude);
+        Assert.Null(target.Longitude);
+        Assert.Null(target.RadiusKm);
+    }
+
+    [Fact]
+    public void Restore_rehydrates_a_city_target_even_when_out_of_range()
+    {
+        // A radius of 5km is below MinRadiusKm -- City() would throw. Restore must not, because a
+        // row written when the minimum was lower must still come back as the row it always was.
+        var target = MapTarget.Restore(MapTargetKind.City, null, 95, 190, 5);
+
+        Assert.Equal(MapTargetKind.City, target.Shape);
+        Assert.True(target.IsCity);
+        Assert.Null(target.CountryCode);
+        Assert.Equal(95, target.Latitude);
+        Assert.Equal(190, target.Longitude);
+        Assert.Equal(5, target.RadiusKm);
+    }
 }

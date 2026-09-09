@@ -53,14 +53,20 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
 
     public async Task<IReadOnlyList<BucketCount>> BucketCountsAsync(CancellationToken ct = default)
     {
+        // This does not go through QuestionDoc.ToDomain, so its own coalesce there never runs for
+        // this path. A legacy document's Kind is null here for exactly the same reason it is null in
+        // ToDomain -- the field was never written -- and it has to be resolved to Choice in the
+        // projection itself, or every pre-existing question groups under a null key that no caller
+        // asked for and 3067 real Choice questions silently vanish from that bucket's count.
         var docs = await db.Questions.Find(F.Empty)
-            .Project(q => new { q.Lang, q.CategoryId, q.Level, q.Status })
+            .Project(q => new { q.Lang, q.CategoryId, q.Level, q.Status, Kind = q.Kind ?? (int)QuestionKind.Choice })
             .ToListAsync(ct);
 
-        return [.. docs.GroupBy(d => (d.Lang, d.CategoryId, d.Level))
+        return [.. docs.GroupBy(d => (d.Lang, d.CategoryId, d.Level, d.Kind))
             .Select(g => new BucketCount((Language)g.Key.Lang, g.Key.CategoryId, (Difficulty)g.Key.Level,
                 g.Count(x => x.Status == (int)QuestionStatus.Approved),
-                g.Count(x => x.Status == (int)QuestionStatus.Pending)))];
+                g.Count(x => x.Status == (int)QuestionStatus.Pending),
+                (QuestionKind)g.Key.Kind))];
     }
 
     public Task UpsertAsync(Question question, CancellationToken ct = default)

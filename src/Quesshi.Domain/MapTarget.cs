@@ -94,6 +94,17 @@ public sealed record MapTarget
     }
 
     /// <summary>
+    /// Rehydrates a stored target without re-validating it, mirroring how <see cref="Question.Restore"/>
+    /// differs from <see cref="Question.Create"/>. This matters because <see cref="Country"/> and
+    /// <see cref="City"/> re-validate on every call: a country code dropped from the bundled map, or a
+    /// radius bound tightened after the fact, would otherwise throw on load and take the whole question
+    /// read down with it, rather than just being a stale value someone can edit. Storage is trusted;
+    /// use <see cref="Country"/> or <see cref="City"/> for anything a person or a generator is authoring.
+    /// </summary>
+    public static MapTarget Restore(MapTargetKind shape, string? countryCode, double? latitude, double? longitude, double? radiusKm)
+        => new(shape, countryCode, latitude, longitude, radiusKm);
+
+    /// <summary>
     /// Whether a submitted answer hits this target. A country answer is its code, a city answer is
     /// <c>"lat,lon"</c> as <see cref="Geo.Format(double, double)"/> writes it; anything that does
     /// not parse is simply wrong, because the alternative — throwing on the grading path — turns a
