@@ -2,19 +2,35 @@
 @inherits PageBase
 
 @*
-    The route behind the home's settings line, standing empty until issue #89 fills it with the sheet
-    itself — script tiles for language, a bare numeric segment for count, a two-handle difficulty
-    slider and a row that opens the topics page. It exists now, with nothing in it but a way back and
-    the settings as they stand, because the alternative was shipping a "Change" affordance that goes
-    nowhere: a control that does not respond is a worse answer than one that responds honestly.
+    The questions sheet (issue #89). This is what the home's one settings line opens, and it is the
+    whole of what issue #87's audit left standing of a form that used to ask thirty-seven controls
+    before the first duel: four questions, icon-first, each answered with a tap.
+
+    Every control here is deliberately unlabelled bar one. Three words in three scripts do not need a
+    heading saying "Language"; five numbers in a row do not need one saying "Questions" — the numbers
+    are the only thing on this page that could be counted. What the labels are doing instead is
+    carried by aria-label, so a screen reader still hears the question the sighted reader can see the
+    answer to. The one exception is the difficulty track, whose ends are named because "Easy" and
+    "Very easy" and "Very hard" are the scale itself rather than a label above it — and they are the
+    level names, not the mockup's shorter "Easy"/"Hard", because the middle of that same line names
+    the picked range in level names too: one line reading "Easy · Easy–Very hard · Hard" would be
+    using the word Easy for two different levels at once.
+
+    The sheet commits nothing until Done. Topics live a page away (Topics.razor), and the state
+    crosses between the two in the address bar rather than in AppState — see QuestionsDraft for why.
 *@
 
-<PageTitle>@L["home.settingsLabel"] · @L["app.name"]</PageTitle>
+<PageTitle>@L["questions.title"] · @L["app.name"]</PageTitle>
 
 <div class="shell">
     <header class="topbar">
-        <button type="button" class="btn btn--ghost btn--sm" @onclick="Back">@L["common.back"]</button>
-        <h1 class="topbar__title">@L["home.settingsLabel"]</h1>
+        @* Back leaves without saving, which is the one thing a back chevron may always be trusted to
+           mean. It goes wherever the sheet was opened from rather than to a fixed route: arriving
+           from a lobby and being returned to the home would lose the room the player is standing in. *@
+        <a class="icon-hit icon-hit--back" href="@_draft.Return" aria-label="@L["common.back"]">
+            <Icon Name="chevron-back" Size="1.4rem" />
+        </a>
+        <h1 class="topbar__title">@L["questions.title"]</h1>
     </header>
 
     @if (Unconfirmed)
@@ -27,17 +43,191 @@
     }
     else
     {
-        <section class="card enter">
-            @* The same line the home renders, through the same formatter, so the page you land on
-               says exactly what the line you tapped said. *@
-            <p style="margin:0;font-size:var(--step-1);font-weight:700">
-                @DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L)
-            </p>
-            <p class="faint" style="margin:.6rem 0 0">@L["home.questionsPending"]</p>
-        </section>
+        <div class="sheet enter">
+            @* --- language: the same three script tiles Settings uses (issue #91), each word set in
+                   its own script at its own size ------------------------------------------------- *@
+            <div class="script-tiles" role="group" aria-label="@L["lang.pick"]">
+                @foreach (var code in Translator.All)
+                {
+                    var pick = code;
+                    <button type="button" class="script-tile @(_draft.Lang == pick ? "is-on" : null)"
+                            style="font-size:@ScriptTile.FontSize(pick)"
+                            aria-pressed="@Pressed(_draft.Lang == pick)" @onclick="() => PickLang(pick)">
+                        @L["lang." + pick]
+                    </button>
+                }
+            </div>
+
+            @* --- how many: bare numerals, because a row reading 10 20 30 40 50 100 on a page called
+                   Questions can only be one thing --------------------------------------------------- *@
+            <div class="count-row" role="group" aria-label="@L["home.length"]">
+                @foreach (var count in QuestionCounts)
+                {
+                    var value = count;
+                    <button type="button" class="count-row__option @(_draft.QuestionCount == value ? "is-on" : null)"
+                            aria-pressed="@Pressed(_draft.QuestionCount == value)"
+                            @onclick="() => _draft = _draft with { QuestionCount = value }">
+                        @L.Num(value)
+                    </button>
+                }
+            </div>
+
+            @* --- how hard: two handles on one ramp -------------------------------------------------
+                   The track is the palette's own ramp, turquoise through saffron to pomegranate — the
+                   same three colours the app already uses for "fine", "watch out" and "wrong", read
+                   here as a gradient of effort rather than as three states. Narrowing dims the ends
+                   that are out of play instead of shortening the bar, so what you gave up stays
+                   visible beside what you kept. *@
+            <div class="ramp">
+                <div class="ramp__ends">
+                    <span>@L["level." + DifficultyRange.Easiest]</span>
+                    @if (_draft.Levels.IsWhole)
+                    {
+                        @* Saffron, and a phrase rather than two level names: the default is not "very
+                           easy to very hard", it is the ramp itself — the duel climbs as it goes. *@
+                        <span class="ramp__ramps">@L["questions.rampsUp"]</span>
+                    }
+                    else
+                    {
+                        <span class="ramp__span">@DuelSettingsLine.Difficulty(Picked, L)</span>
+                    }
+                    <span>@L["level." + DifficultyRange.Hardest]</span>
+                </div>
+
+                @* Two native range inputs, overlaid. They are keyboard-operable, announce themselves,
+                   follow the reading direction and handle touch without a line of JavaScript — every
+                   one of which a pair of divs and a pointermove handler would have had to reinvent.
+                   Only their thumbs take pointer events, so each handle is grabbable wherever the
+                   other one is sitting; the rail underneath is drawn by us, from the model. *@
+                <div class="ramp__track">
+                    <div class="ramp__rail"></div>
+                    <div class="ramp__off ramp__off--low" style="inline-size:@Pct(DifficultyRange.Position(_draft.Levels.Low))"></div>
+                    <div class="ramp__off ramp__off--high" style="inline-size:@Pct(100 - DifficultyRange.Position(_draft.Levels.High))"></div>
+
+                    @* When both handles sit on the hardest level there is nowhere for the top one to
+                       go, so the easy handle comes to the front — otherwise the pair is stuck
+                       together at the end of the track with only one of them reachable. *@
+                    <input type="range" min="@DifficultyRange.Easiest" max="@DifficultyRange.Hardest" step="1"
+                           class="ramp__handle @(Stacked ? "ramp__handle--front" : null)"
+                           value="@_draft.Levels.Low" @oninput="MoveLow"
+                           aria-label="@L["questions.rangeLow"]" aria-valuetext="@L["level." + _draft.Levels.Low]" />
+                    <input type="range" min="@DifficultyRange.Easiest" max="@DifficultyRange.Hardest" step="1"
+                           class="ramp__handle"
+                           value="@_draft.Levels.High" @oninput="MoveHigh"
+                           aria-label="@L["questions.rangeHigh"]" aria-valuetext="@L["level." + _draft.Levels.High]" />
+                </div>
+            </div>
+
+            @* --- on what: one row, opening a page of its own ---------------------------------------- *@
+            <a class="topic-row" href="@_draft.LinkTo("/play/topics")">
+                @if (Chosen.Count > 0)
+                {
+                    <span class="topic-row__icons" aria-hidden="true">
+                        @foreach (var category in Chosen.Take(3))
+                        {
+                            <span>@category.Icon</span>
+                        }
+                    </span>
+                }
+                <span class="topic-row__text">
+                    <span class="topic-row__names">
+                        @(Chosen.Count == 0 ? L["topics.any"] : TopicText.Names(Chosen, L))
+                    </span>
+                    @if (Chosen.Count > 0)
+                    {
+                        <span class="topic-row__count">@TopicText.Count(Chosen.Count, Offered.Count, L)</span>
+                    }
+                </span>
+                <svg class="home-go topic-row__go" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 6l6 6-6 6" />
+                </svg>
+            </a>
+
+            <div class="sheet__rest"></div>
+
+            <button class="btn btn--done" disabled="@_saving" @onclick="DoneAsync">@L["questions.done"]</button>
+        </div>
     }
 </div>
 
 @code {
-    private void Back() => Nav.NavigateTo("/play");
+    /// <summary>Mirrors <c>MatchRules.QuestionCountChoices</c>, exactly as DuelSettingsPicker's own
+    /// list did — Quesshi.Web has no reference to Quesshi.Domain, and the server rejects anything
+    /// else anyway.</summary>
+    private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
+
+    private QuestionsDraft _draft = QuestionsDraft.From(new DuelSettingsDto("fa", 10, [], []));
+    private List<CategoryDto> _categories = [];
+    private bool _saving;
+
+    /// <summary>The topics this draft's language can be played in, which is also the total the row
+    /// counts against — "3 of 13" has to mean thirteen offerable topics, not thirteen in the bank.</summary>
+    private List<CategoryDto> Offered => TopicPicks.Offered(_categories, _draft.Lang);
+
+    private List<CategoryDto> Chosen => TopicPicks.Chosen(Offered, _draft.Topics);
+
+    /// <summary>The narrowed range as the summary the rest of the app already words — so the text
+    /// above the track and the text on the home's settings line are the same sentence.</summary>
+    private DuelSettingsSummary Picked => new(_draft.QuestionCount, _draft.Levels.Low, _draft.Levels.High, _draft.Topics.Count);
+
+    private bool Stacked => _draft.Levels.Low == _draft.Levels.High && _draft.Levels.High == DifficultyRange.Hardest;
+
+    protected override async Task LoadAsync()
+    {
+        _draft = QuestionsDraft.Read(Nav.Uri, State.LastDuelSettings);
+
+        // The row needs names and icons, not ids, and the count needs to know how many topics this
+        // language has at all. A failed fetch leaves the row reading "Any topic" rather than an
+        // error: the rest of the sheet is still perfectly usable without it.
+        _categories = await Api.CategoriesAsync() ?? [];
+
+        // Settings restored from an older build (or a hand-edited URL) can name topics this language
+        // cannot play; they would show as a count with no tiles behind it on the page next door.
+        _draft = _draft with { Topics = TopicPicks.Prune(_draft.Topics, Offered) };
+    }
+
+    private void PickLang(string lang)
+    {
+        _draft = _draft with { Lang = lang };
+        _draft = _draft with { Topics = TopicPicks.Prune(_draft.Topics, Offered) };
+    }
+
+    private void MoveLow(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value)) _draft = _draft with { Levels = _draft.Levels.WithLow(value) };
+    }
+
+    private void MoveHigh(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value)) _draft = _draft with { Levels = _draft.Levels.WithHigh(value) };
+    }
+
+    /// <summary>
+    /// The one commit. It always remembers the choice for next time; when the sheet was opened from
+    /// a lobby the owner is standing in, it also puts it to that lobby — see
+    /// <see cref="QuestionsDraft.LobbyId"/>. A refused PUT (the question set is already drawn, or
+    /// somebody else now owns the room) is not reported here: the lobby page draws its line from its
+    /// own snapshot, so it will simply still say what it said, which is the truth.
+    /// </summary>
+    private async Task DoneAsync()
+    {
+        _saving = true;
+        var settings = _draft.ToSettings();
+
+        await State.SetLastDuelSettingsAsync(settings);
+
+        if (_draft.LobbyId is { Length: > 0 } lobby)
+            await Api.UpdateLobbySettingsAsync(lobby, _draft.LobbyIsLive,
+                new UpdateDuelSettingsDto(settings.Lang, settings.CategoryIds, settings.QuestionCount, settings.Levels));
+
+        _saving = false;
+        Nav.NavigateTo(_draft.Return);
+    }
+
+    private static string Pressed(bool on) => on.ToString().ToLowerInvariant();
+
+    /// <summary>Invariant culture: this is a CSS length, not text — a Persian or Dutch decimal comma
+    /// in a percentage is a rule the browser silently drops.</summary>
+    private static string Pct(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
 }

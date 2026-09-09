@@ -1,0 +1,108 @@
+@page "/play/topics"
+@inherits PageBase
+
+@*
+    The topics page (issue #89). The chips this replaces were a wrap of twenty small pills, each one
+    an icon and a name squeezed onto a single line — legible only if you already knew which topic you
+    were looking for. Topics are the most visual choice in the app and the one players actually
+    browse, so here they are tiles big enough to recognise by their icon alone, two across, scrolled
+    rather than crammed.
+
+    Only the topics the chosen language can be played in are shown at all (TopicPicks.Offered), which
+    is the same rule the chips followed by greying themselves out. A greyed chip still told you a
+    topic existed; a 132-pixel tile that cannot be tapped is just a hole in the grid.
+*@
+
+<PageTitle>@L["topics.title"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        @* Back returns to the sheet with the picks as they were when this page opened — Done is the
+           only thing here that changes anything. *@
+        <a class="icon-hit icon-hit--back" href="@_opened.LinkTo("/play/questions")" aria-label="@L["common.back"]">
+            <Icon Name="chevron-back" Size="1.4rem" />
+        </a>
+        <h1 class="topbar__title">@L["topics.title"]</h1>
+
+        @* "Any topic" is one tap rather than the absence of taps: with nothing picked the server
+           draws the topics itself, and there is no way to say that by unticking your way back to it
+           on a grid this size. Only offered while there is something to clear. *@
+        @if (_draft.Topics.Count > 0)
+        {
+            <button type="button" class="any-pill" @onclick="Clear">@L["topics.any"]</button>
+        }
+    </header>
+
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (Offered.Count == 0)
+    {
+        @* Every topic in the bank is empty in this language. Stated plainly, with the way out
+           attached, rather than as an empty grid the player is left to interpret. *@
+        <p class="empty">@L["home.noneInLanguage"]</p>
+    }
+    else
+    {
+        <div class="topic-grid enter">
+            @foreach (var category in Offered)
+            {
+                var id = category.Id;
+                var on = _draft.Topics.Contains(id);
+                <button type="button" class="topic-tile @(on ? "is-on" : null)" aria-pressed="@Pressed(on)"
+                        @key="id" @onclick="() => Toggle(id)">
+                    <span class="topic-tile__icon" aria-hidden="true">@category.Icon</span>
+                    @* dir="auto" and no truncation: a category keeps the name it was stored under,
+                       in whichever script that is, and wraps to a second line rather than being cut. *@
+                    <span class="topic-tile__name" dir="auto">@L.Name(category)</span>
+                    @if (on)
+                    {
+                        <span class="topic-tile__check" aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M5 12l5 5 9-10" />
+                            </svg>
+                        </span>
+                    }
+                </button>
+            }
+        </div>
+
+        @* Sticky rather than at the end of the grid: with twenty tiles the button would otherwise be
+           a scroll away from the tile you just tapped, and the count on it is the receipt for what
+           you did up there. *@
+        <div class="topic-done">
+            <button class="btn btn--done" @onclick="Done">@TopicText.Done(_draft.Topics.Count, L)</button>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The draft as this page was opened with it — what Back hands straight back.</summary>
+    private QuestionsDraft _opened = QuestionsDraft.From(new DuelSettingsDto("fa", 10, [], []));
+
+    private QuestionsDraft _draft = QuestionsDraft.From(new DuelSettingsDto("fa", 10, [], []));
+    private List<CategoryDto> _categories = [];
+
+    private List<CategoryDto> Offered => TopicPicks.Offered(_categories, _draft.Lang);
+
+    protected override async Task LoadAsync()
+    {
+        _opened = QuestionsDraft.Read(Nav.Uri, State.LastDuelSettings);
+        _draft = _opened;
+        _categories = await Api.CategoriesAsync() ?? [];
+    }
+
+    private void Toggle(string id) => _draft = _draft with { Topics = TopicPicks.Toggle(_draft.Topics, id) };
+
+    private void Clear() => _draft = _draft with { Topics = TopicPicks.Any() };
+
+    private void Done() => Nav.NavigateTo(_draft.LinkTo("/play/questions"));
+
+    private static string Pressed(bool on) => on.ToString().ToLowerInvariant();
+}

@@ -58,7 +58,7 @@
                     {
                         var pick = code;
                         <button type="button" class="script-tile @(_lang == pick ? "is-on" : null)"
-                                style="font-size:@TileFontSize(pick)"
+                                style="font-size:@ScriptTile.FontSize(pick)"
                                 aria-pressed="@((_lang == pick).ToString().ToLowerInvariant())"
                                 @onclick="() => _lang = pick">
                             @L["lang." + pick]
@@ -103,17 +103,6 @@
         _avatarSeed = State.Me?.AvatarSeed ?? AvatarPalette.Seeds[0];
         _soundsOn = SoundsPreference.Parse(await Js.InvokeAsync<string?>("quesshi.get", SoundsPreference.Key));
     }
-
-    /// <summary>Persian reads at a comfortable size a couple of points larger than the Latin scripts,
-    /// and "Nederlands" is the longest of the three words — matching the mockup's own per-tile sizing
-    /// (فارسی 20px, English 18px, Nederlands 16px) keeps all three filling their tile evenly rather
-    /// than one looking cramped and another swimming in space.</summary>
-    private static string TileFontSize(string lang) => lang switch
-    {
-        "fa" => "1.25rem",
-        "en" => "1.1rem",
-        _ => "1rem"
-    };
 
     private async Task SaveAsync()
     {

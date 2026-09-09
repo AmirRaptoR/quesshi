@@ -81,7 +81,7 @@
                 </span>
                 @if (isOwner)
                 {
-                    <a class="lobby-settings-line" href="/play/questions">@SettingsLine</a>
+                    <a class="lobby-settings-line" href="@SettingsSheet(snapshot)">@SettingsLine</a>
                 }
                 else
                 {
@@ -328,6 +328,17 @@
     /// <c>/play/questions</c>. The same text renders for everyone; only the owner's copy is also the
     /// link that opens that sheet (see the markup above).
     /// </summary>
+    /// <summary>
+    /// Where the owner's copy of that line leads: issue #89's questions sheet, opened on *this
+    /// lobby's* settings rather than on the player's last-used ones (they are not the same thing — a
+    /// lobby is a room that already exists), told where to come back to, and told which lobby to put
+    /// the answer to. The sheet does that through the endpoint the inline picker this line replaced
+    /// already used, so the room the owner is standing in actually changes when they press Done.
+    /// </summary>
+    private static string SettingsSheet(LobbySnapshot snapshot)
+        => QuestionsDraft.From(snapshot.Settings, $"/lobby/{snapshot.Code}", snapshot.MatchId, snapshot.IsLive)
+            .LinkTo("/play/questions");
+
     private string SettingsLine => _snapshot is null ? ""
         : L.Format("lobby.settingsLine", L.Num(_snapshot.Settings.QuestionCount), L["lang." + _snapshot.Settings.Lang]);
 

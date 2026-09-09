@@ -242,8 +242,9 @@
     /// <summary>
     /// The settings that used to be a whole form, as one line: what the next duel will be, and the
     /// way to change it. It sits on both tabs because it describes the questions, and the questions
-    /// are the same game either way — only the clock differs. Change opens issue #89's sheet; until
-    /// that lands the route holds a placeholder page rather than a dead button.
+    /// are the same game either way — only the clock differs. Change opens issue #89's sheet, which
+    /// comes back here on its own — the home is the return QuestionsDraft assumes when nothing in
+    /// the URL says otherwise, so this stays a plain route rather than a route plus a breadcrumb.
     /// </summary>
     private RenderFragment SettingsLine() =>
         @<button type="button" class="home-settings" @onclick="OpenSettings">
