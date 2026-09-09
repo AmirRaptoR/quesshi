@@ -63,7 +63,10 @@ public static class DuelSettingsLine
     private static string Questions(DuelSettingsSummary s, Translator l)
         => l.Format("home.settingsQuestions", l.Num(s.QuestionCount));
 
-    private static string Difficulty(DuelSettingsSummary s, Translator l)
+    /// <summary>Public because issue #89's slider says the same thing above its track — the level or
+    /// the span the two handles are standing on — and one wording for one fact is the whole reason
+    /// this class exists.</summary>
+    public static string Difficulty(DuelSettingsSummary s, Translator l)
         => s.MixedDifficulty ? l["home.settingsMixed"]
             : s.OneLevel ? l[$"level.{s.LevelFrom}"]
             // An en dash, not a hyphen: this is a span between two named levels, and it needs no

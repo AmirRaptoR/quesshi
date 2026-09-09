@@ -1257,7 +1257,7 @@ input[type='range'] { accent-color: var(--firouzeh); }
   font-size: var(--step--1);
   font-weight: 700;
 }
-=======
+
 /* ---- profile (#91) ---- */
 /* Profile stops being a settings form with a stats card bolted on: identity, a three-tile record and
    friends, with a gear as the only door into everything that used to sit here as fields. Settings
@@ -1269,19 +1269,6 @@ input[type='range'] { accent-color: var(--firouzeh); }
    back the space its padding just claimed, the same trick the mockup itself uses for both the gear
    and the settings back chevron. */
 .icon-hit {
-/* ---- lobby (#90) ---- */
-/* "Code first, faces not rows" — issue #90's whole rewrite of the lobby (see its mockup). The card
-   chrome the old lobby wrapped every section in is gone from the header, code and roster: a room
-   people are standing in reads better as one continuous page than as a stack of boxes, and the code
-   and face tiles are distinct enough in shape and colour that they need no border to read as their
-   own section. The two guest-only cards (identity, "keep this account") keep .card — those really
-   are two separate, occasional detours from the room itself, not the room. */
-
-/* The back chevron's tap target is the same 44px square as everything else new here even though the
-   icon it holds is drawn small — the negative margin pulls that extra hit area back in so it never
-   pushes the title over, the same trick a native back button plays. Flipped for RTL exactly like
-   .pager__arrow: "back" always points toward the reading-start edge, whichever edge that is. */
-.lobby-back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1310,38 +1297,6 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .record-tile {
   text-align: center;
   padding: 1rem 0.5rem;
-  color: var(--sadaf);
-}
-:root[dir="rtl"] .lobby-back { transform: scaleX(-1); }
-
-/* The share code: the one thing a visitor to this page actually needs, so it is drawn bigger than
-   any heading anywhere else in the app rather than filed under a label like everything used to be. */
-.lobby-code {
-  margin: 0.25rem 0 0;
-  font-size: var(--step-4);
-  font-weight: 800;
-  letter-spacing: 0.15em;
-  color: var(--firouzeh);
-}
-
-/* A pill-shaped .btn for Copy link / Share — same colours, hover and disabled behaviour as
-   .btn--ghost already has, just rounder and guaranteed the full 44px tap height regardless of how
-   short its label is. */
-.btn--pill { border-radius: 999px; min-height: 44px; padding-inline: 1.15rem; }
-
-/* --- the roster grid: face tiles instead of rows ------------------------------------------------- */
-/* Three columns up to a three-seat lobby, four beyond it (LobbyPresentation.RosterColumns) — two
-   across would strand a lonely third tile on its own row, and past four seats three across runs a
-   phone screen out of height before the last tile without scrolling. */
-.lobby-grid { display: grid; grid-template-columns: repeat(var(--lobby-cols, 3), minmax(0, 1fr)); gap: 0.6rem; }
-
-.lobby-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1rem 0.4rem;
-  text-align: center;
   border-radius: var(--r-md);
   background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
   border: 1px solid var(--line);
@@ -1473,6 +1428,62 @@ input[type='range'] { accent-color: var(--firouzeh); }
 }
 .switch.is-on .switch__track { background: var(--firouzeh); border-color: var(--firouzeh); }
 .switch.is-on .switch__thumb { inset-inline-start: 22px; background: var(--shab); }
+
+/* ---- lobby (#90) ---- */
+/* "Code first, faces not rows" — issue #90's whole rewrite of the lobby (see its mockup). The card
+   chrome the old lobby wrapped every section in is gone from the header, code and roster: a room
+   people are standing in reads better as one continuous page than as a stack of boxes, and the code
+   and face tiles are distinct enough in shape and colour that they need no border to read as their
+   own section. The two guest-only cards (identity, "keep this account") keep .card — those really
+   are two separate, occasional detours from the room itself, not the room. */
+
+/* The back chevron's tap target is the same 44px square as everything else new here even though the
+   icon it holds is drawn small — the negative margin pulls that extra hit area back in so it never
+   pushes the title over, the same trick a native back button plays. Flipped for RTL exactly like
+   .pager__arrow: "back" always points toward the reading-start edge, whichever edge that is. */
+.lobby-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -10px;
+  color: var(--sadaf);
+}
+:root[dir="rtl"] .lobby-back { transform: scaleX(-1); }
+
+/* The share code: the one thing a visitor to this page actually needs, so it is drawn bigger than
+   any heading anywhere else in the app rather than filed under a label like everything used to be. */
+.lobby-code {
+  margin: 0.25rem 0 0;
+  font-size: var(--step-4);
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--firouzeh);
+}
+
+/* A pill-shaped .btn for Copy link / Share — same colours, hover and disabled behaviour as
+   .btn--ghost already has, just rounder and guaranteed the full 44px tap height regardless of how
+   short its label is. */
+.btn--pill { border-radius: 999px; min-height: 44px; padding-inline: 1.15rem; }
+
+/* --- the roster grid: face tiles instead of rows ------------------------------------------------- */
+/* Three columns up to a three-seat lobby, four beyond it (LobbyPresentation.RosterColumns) — two
+   across would strand a lonely third tile on its own row, and past four seats three across runs a
+   phone screen out of height before the last tile without scrolling. */
+.lobby-grid { display: grid; grid-template-columns: repeat(var(--lobby-cols, 3), minmax(0, 1fr)); gap: 0.6rem; }
+
+.lobby-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.4rem;
+  text-align: center;
+  border-radius: var(--r-md);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border: 1px solid var(--line);
+}
 .lobby-tile--open { justify-content: center; background: none; border-style: dashed; border-color: var(--line-2); }
 .lobby-tile__plus {
   display: grid;
@@ -1555,3 +1566,264 @@ input[type='range'] { accent-color: var(--firouzeh); }
 }
 .lobby-quiet:hover:not(:disabled) { color: var(--sadaf-2); }
 .lobby-quiet:disabled { cursor: not-allowed; opacity: 0.6; }
+
+
+/* =====================================================
+   ---- the questions sheet and the topics page (#89) ----
+   Two screens that ask four questions between them, all of them by tap. What they replace is the
+   reason they look the way they do: a stack of labelled fields — Questions, Language, Difficulty,
+   Categories, each with a helper sentence under it — asked before every duel. Here the answer is the
+   control. Three words in three scripts are the language question; six numerals in a row are the
+   length one; a coloured ramp is the difficulty one. Only the ramp's ends are labelled, because
+   "Easy" and "Hard" are the scale rather than a heading above it.
+   ===================================================== */
+
+/* The sheet fills the screen so its one commit sits at the bottom of it rather than wherever the
+   controls happen to stop — a Done button floating halfway up a phone reads as the end of a section,
+   not the end of the page. The 12rem is the shell's own top and bottom padding plus the header. */
+.sheet { display: flex; flex-direction: column; gap: 1.35rem; min-height: calc(100dvh - 12rem); }
+.sheet__rest { flex: 1 1 1.5rem; }
+
+/* Done: the palette's primary, at the size of a decision. Rounder and heavier than .btn's default —
+   this is the only button on either screen, so it can afford to be the thing you see first. */
+.btn--done {
+  width: 100%;
+  min-height: 56px;
+  border-radius: var(--r-md);
+  font-size: var(--step-1);
+  font-weight: 800;
+}
+
+/* --- how many questions: bare numerals ------------------------------------------------------------
+   No label, and no "questions" after each number: six numerals in a row on a page titled Questions
+   are not ambiguous, and the word repeated six times is six times the reading for none of the
+   meaning. Each option carries a full 44px of height even though the numeral inside is small. */
+.count-row {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgb(22 34 92 / 0.5);
+}
+.count-row__option {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.15rem;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+.count-row__option:hover { color: var(--sadaf); }
+.count-row__option.is-on { color: var(--shab); background: var(--firouzeh); font-weight: 800; }
+
+/* --- how hard: two handles on one ramp ------------------------------------------------------------
+   The track is turquoise → saffron → pomegranate: the same three colours the app uses for "right",
+   "careful" and "wrong", read here as effort rather than as outcome. Narrowing dims the ends that
+   are out of play rather than shortening the bar, so the part you gave up stays visible next to the
+   part you kept — a short bar would just look like a different control. */
+.ramp__ends {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--step--1);
+  color: var(--sadaf-2);
+}
+.ramp__ramps { color: var(--zaferan); font-weight: 700; }
+.ramp__span { color: var(--sadaf); font-weight: 700; }
+
+.ramp__track { position: relative; height: 44px; display: flex; align-items: center; }
+
+.ramp__rail {
+  position: absolute;
+  inset-inline: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--firouzeh), var(--zaferan) 55%, var(--anaar));
+}
+/* A gradient has no logical direction keyword, so the one axis on this page that cannot mirror
+   itself is turned around by hand: easy stays at the reading start in both scripts. */
+:root[dir="rtl"] .ramp__rail { background: linear-gradient(to left, var(--firouzeh), var(--zaferan) 55%, var(--anaar)); }
+
+/* The ground colour laid back over the ends that are out of play — the ramp is still there under it,
+   greyed rather than gone. */
+.ramp__off {
+  position: absolute;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(9 14 34 / 0.72);
+  pointer-events: none;
+}
+.ramp__off--low { inset-inline-start: 0; }
+.ramp__off--high { inset-inline-end: 0; }
+
+/* Two native inputs stacked over that rail. Native because a range input is already keyboard-
+   operable, already announces itself, already mirrors in Persian and already handles a finger
+   sliding off it — all of which a pair of divs and a pointermove handler would have to reinvent,
+   badly. The input itself takes no pointer events so it cannot swallow taps meant for the handle
+   underneath it; only the two thumbs do, which is what lets either handle be grabbed wherever the
+   other one is standing. */
+.ramp__handle {
+  position: absolute;
+  inset-inline: 0;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  pointer-events: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ramp__handle::-webkit-slider-runnable-track { height: 44px; background: none; border: 0; }
+.ramp__handle::-moz-range-track { height: 44px; background: none; border: 0; }
+
+/* Mother-of-pearl with a ring of the page's own ground: on a coloured track a plain light circle
+   would smear into whatever it is standing on. Duplicated per engine because a rule listing both
+   vendor pseudo-elements is dropped whole by both of them. */
+.ramp__handle::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  margin-top: 9px;
+  border-radius: 50%;
+  border: 3px solid var(--shab);
+  background: var(--sadaf);
+  cursor: pointer;
+}
+.ramp__handle::-moz-range-thumb {
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--shab);
+  background: var(--sadaf);
+  cursor: pointer;
+}
+
+/* The focus ring belongs on the handle, not around the full-width invisible input: a box drawn round
+   the whole track would not say which of the two handles the arrow keys are about to move. */
+.ramp__handle:focus-visible { outline: none; }
+.ramp__handle:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--zaferan); outline-offset: 2px; }
+.ramp__handle:focus-visible::-moz-range-thumb { outline: 2px solid var(--zaferan); outline-offset: 2px; }
+
+/* Both handles on the hardest level leaves the top one with nowhere to go; bringing the easy handle
+   to the front is what lets the pair be pulled apart again. */
+.ramp__handle--front { z-index: 2; }
+
+/* --- the topics row: the one thing on this sheet that leads somewhere else ------------------------ */
+.topic-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 44px;
+  padding: 1rem 1.1rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  color: var(--sadaf);
+  transition: border-color 0.2s var(--ease);
+}
+.topic-row:hover { border-color: var(--line-2); }
+.topic-row__icons { display: flex; gap: 2px; font-size: 1.6rem; line-height: 1; }
+.topic-row__text { flex: 1; min-width: 0; }
+.topic-row__names {
+  display: block;
+  font-weight: 700;
+  /* Three names fit; a fourth would push the count off the row, so the line ends in an ellipsis and
+     the count under it carries the number the names no longer can. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topic-row__count { display: block; margin-top: 2px; font-size: var(--step--1); color: var(--sadaf-2); }
+.topic-row__go { flex: none; color: var(--firouzeh); }
+
+/* --- the topics page ------------------------------------------------------------------------------ */
+/* "Any topic": an action, not the absence of one. Outlined rather than filled — it undoes a choice
+   rather than being one, and a second filled pill up here would compete with the tiles below. */
+.any-pill {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--firouzeh);
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+.any-pill:hover { background: rgb(47 191 176 / 0.12); }
+
+/* Two columns at any width. Three would shrink the icon below the size that makes a topic
+   recognisable without reading its name, which is the whole reason these are tiles and not chips. */
+.topic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+
+.topic-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 132px;
+  padding: 0.75rem 0.6rem;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  font: inherit;
+  color: var(--sadaf-2);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.topic-tile:hover { border-color: var(--line-2); color: var(--sadaf); }
+.topic-tile__icon { font-size: 2.75rem; line-height: 1; }
+.topic-tile__name { font-weight: 700; text-align: center; line-height: 1.25; }
+
+/* Picked reads as filled, the same turquoise every "this one is chosen" surface in the app uses. */
+.topic-tile.is-on {
+  background: var(--firouzeh);
+  border-color: var(--firouzeh);
+  color: var(--shab);
+}
+.topic-tile.is-on .topic-tile__name { font-weight: 800; }
+
+/* The tick is belt to the fill's braces: a filled tile is obvious in colour, and a mark in the
+   corner is what says "picked" to somebody who cannot tell these two backgrounds apart. */
+.topic-tile__check {
+  position: absolute;
+  top: 10px;
+  inset-inline-end: 10px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--shab);
+  color: var(--firouzeh);
+}
+
+/* The button follows the grid down rather than sitting at the end of it: twenty tiles is a scroll,
+   and the count on the button is the receipt for a tile that may already be off-screen. The fade is
+   what keeps a tile from appearing to slide out from under it. */
+.topic-done {
+  position: sticky;
+  bottom: 4.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1.75rem;
+  background: linear-gradient(180deg, rgb(9 14 34 / 0), var(--shab) 45%);
+}
