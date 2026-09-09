@@ -1,0 +1,195 @@
+@*
+    The world, inline, in the app's own colours. One <path> per country straight out of
+    wwwroot/maps/world.svg, so a tap on a country is an ordinary Blazor click on the element the
+    browser already decided was hit — no hit-testing in JavaScript, and no second copy of "which
+    country is this" to keep in step with the map.
+
+    No pan and no zoom, deliberately (docs/sorting-and-map-questions.md): small countries are an
+    authoring constraint until they prove to be a real problem, and the naming bar underneath —
+    MapField's job, not this component's — is what makes a whole world usable on a phone without
+    them.
+
+    The same component draws three different things, because they are the same picture: a country
+    question, a city question, and either one revealed with the answer and the players' picks on it.
+    #77's admin form is a fourth caller and needs no fourth mode — an author setting a target is
+    simply a player picking one.
+*@
+@inject WorldMapAsset Asset
+@inject IJSRuntime Js
+
+<svg class="worldmap @(BaseLayer == 1 ? "worldmap--borders" : null) @(Interactive ? "worldmap--pick" : null)"
+     viewBox="@WorldMapProjection.ViewBox" preserveAspectRatio="xMidYMid meet" @ref="_svg"
+     role="img" aria-label="@Label" @onclick="OnMapClickAsync">
+
+    @* A transparent catcher under the land, so the ocean answers a tap the same way a continent
+       does and shows the same crosshair. fill:transparent rather than fill:none — "none" is not
+       hit-testable, which would make the Atlantic the one place a city question refused to answer. *@
+    @if (CityPicking)
+    {
+        <rect class="worldmap__sea" x="-180" y="-90" width="360" height="180" />
+    }
+
+    <g fill-rule="evenodd">
+        @foreach (var country in _countries)
+        {
+            <path class="worldmap__country @ToneOf(country.Iso)" d="@country.D" @key="country.Iso"
+                  @onclick="() => PickCountryAsync(country.Iso)" />
+        }
+    </g>
+
+    @* Painted last and in this order: the tolerance under the pins, the answer under the guesses,
+       so nothing a player is looking for can be hidden by something they already know. *@
+    @if (TargetPoint is { } target)
+    {
+        @if (ToleranceKm is { } radiusKm)
+        {
+            var (rx, ry) = WorldMapProjection.RadiusInDegrees(radiusKm, target.Lat);
+            <ellipse class="worldmap__tolerance" cx="@F(target.X)" cy="@F(target.Y)" rx="@F(rx)" ry="@F(ry)" />
+        }
+
+        @foreach (var mark in PointMarks.Where(m => m.Right == false))
+        {
+            var (x, y) = Place(mark.Pick);
+            <line class="worldmap__miss" x1="@F(x)" y1="@F(y)" x2="@F(target.X)" y2="@F(target.Y)" />
+        }
+
+        @* Wider than a player's pin, so a correct answer — whose pin lands on this exact spot — leaves
+           a saffron ring showing around the turquoise rather than covering the answer entirely. *@
+        <circle class="worldmap__pin worldmap__pin--target" cx="@F(target.X)" cy="@F(target.Y)" r="8" />
+    }
+
+    @foreach (var mark in PointMarks)
+    {
+        var (x, y) = Place(mark.Pick);
+        <circle class="worldmap__pin" style="@FillFor(mark.Right)" cx="@F(x)" cy="@F(y)" r="5" />
+        <line class="worldmap__cross" x1="@F(x - 11)" y1="@F(y)" x2="@F(x + 11)" y2="@F(y)" />
+        <line class="worldmap__cross" x1="@F(x)" y1="@F(y - 11)" x2="@F(x)" y2="@F(y + 11)" />
+    }
+</svg>
+
+@code {
+    /// <summary>A <c>MapTargetKind</c> ordinal off the card: 0 country, 1 city. It decides the whole
+    /// interaction — a tap either selects a region or drops a pin — which is exactly why the card
+    /// carries the target's <i>shape</i> when it cannot carry the target.</summary>
+    [Parameter] public int Shape { get; set; }
+
+    /// <summary>A <c>MapBaseLayer</c> ordinal: 0 blank (land silhouette only, so the player has to
+    /// know where the borders are), 1 borders.</summary>
+    [Parameter] public int BaseLayer { get; set; }
+
+    /// <summary>What the player has chosen so far, or null. Two-way bindable.</summary>
+    [Parameter] public MapPick? Selection { get; set; }
+
+    [Parameter] public EventCallback<MapPick> SelectionChanged { get; set; }
+
+    /// <summary>The answer is in, or the clock has run out. The map still draws what was picked.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Reveal only: where the answer actually was.</summary>
+    [Parameter] public MapPick? Target { get; set; }
+
+    /// <summary>
+    /// Reveal and authoring: how far from a city target still counts, drawn as the dashed ellipse.
+    /// Null draws nothing at all, which is what every play reveal does today — no reveal contract
+    /// carries the radius, so this is fed by #77's admin form, where the author is setting it and
+    /// most needs to see it.
+    /// </summary>
+    [Parameter] public double? ToleranceKm { get; set; }
+
+    /// <summary>Reveal only: each player's answer, drawn over the target.</summary>
+    [Parameter] public List<MapMark> Marks { get; set; } = [];
+
+    [Parameter] public string Label { get; set; } = "World map";
+
+    private ElementReference _svg;
+    private IReadOnlyList<MapCountry> _countries = [];
+
+    protected override async Task OnInitializedAsync() => _countries = await Asset.LoadAsync();
+
+    private bool Interactive => SelectionChanged.HasDelegate && !Disabled;
+
+    /// <summary>A city question wants a point anywhere, land or sea; a country question wants a region.</summary>
+    private bool CityPicking => Interactive && Shape == 1;
+
+    /// <summary>
+    /// Everything drawn as a pin: the picks that are points rather than countries. A country pick is
+    /// drawn by filling the country instead — see <see cref="ToneOf"/> — so the two never both
+    /// appear for the same answer.
+    /// </summary>
+    private List<MapMark> PointMarks
+    {
+        get
+        {
+            List<MapMark> marks = [.. Marks.Where(m => m.Pick.IsPoint)];
+
+            // The player's own live pick is a mark like any other; it simply has no verdict yet, and
+            // no label, because the bar beneath the map is already saying where it landed.
+            if (Selection is { IsPoint: true } selected) marks.Add(new MapMark(selected, "", null));
+
+            return marks;
+        }
+    }
+
+    private (double X, double Y, double Lat)? TargetPoint => Target is { IsPoint: true } t
+        ? (t.Longitude!.Value, -t.Latitude!.Value, t.Latitude.Value)
+        : null;
+
+    private static (double X, double Y) Place(MapPick pick)
+        => WorldMapProjection.Project(pick.Latitude!.Value, pick.Longitude!.Value);
+
+    /// <summary>
+    /// A country's fill. Saffron for the answer, pomegranate for a wrong pick, turquoise for a pick
+    /// whose verdict is not in or not knowable — the same three meanings those colours carry on
+    /// every answer tile in the app. The answer wins where a player got it right, because "you were
+    /// right" is the more useful of the two facts to be able to see at a glance.
+    /// </summary>
+    private string? ToneOf(string iso)
+    {
+        if (string.Equals(Target?.CountryCode, iso, StringComparison.Ordinal)) return "is-target";
+        if (string.Equals(Selection?.CountryCode, iso, StringComparison.Ordinal)) return "is-picked";
+
+        return Marks.FirstOrDefault(m => string.Equals(m.Pick.CountryCode, iso, StringComparison.Ordinal)) is { } mark
+            ? mark.Right == false ? "is-miss" : "is-picked"
+            : null;
+    }
+
+    /// <summary>
+    /// A player's pin. Pomegranate for a known miss; otherwise the default turquoise, which is what
+    /// the legend's swatch beside it shows and what "you picked this" means everywhere else in the
+    /// app. Saffron is reserved for the answer alone — a right pin that painted itself saffron would
+    /// be indistinguishable from the target it is sitting on, and would disagree with its own row in
+    /// the legend.
+    /// </summary>
+    private static string? FillFor(bool? right) => right == false ? "fill:var(--anaar)" : null;
+
+    private async Task PickCountryAsync(string iso)
+    {
+        // A city question's countries are scenery: the answer is a point, and the sea catcher
+        // beneath them means the tap is already on its way to OnMapClickAsync.
+        if (!Interactive || Shape != 0) return;
+
+        await SelectionChanged.InvokeAsync(MapPick.Country(iso));
+    }
+
+    /// <summary>
+    /// A tap becomes a point. <c>getScreenCTM</c> is the browser's own screen-to-viewBox matrix, so
+    /// this stays exact through any CSS size, any device pixel ratio and any aspect the layout hands
+    /// the svg — where a bounding-rect calculation would be a second, worse copy of a matrix that
+    /// already exists. Everything after the two numbers come back is plain arithmetic in C#, which
+    /// is where it can be tested.
+    /// </summary>
+    private async Task OnMapClickAsync(MouseEventArgs e)
+    {
+        if (!CityPicking) return;
+
+        var point = await Js.InvokeAsync<double[]?>("quesshi.mapPoint", _svg, e.ClientX, e.ClientY);
+        if (point is not [var x, var y]) return;
+
+        var (lat, lon) = WorldMapProjection.Unproject(x, y);
+        await SelectionChanged.InvokeAsync(MapPick.Point(lat, lon));
+    }
+
+    /// <summary>SVG attributes are markup, not display text: invariant culture or a Persian browser
+    /// writes coordinates the renderer cannot read. Same rule as <c>Shamseh</c>.</summary>
+    private static string F(double value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

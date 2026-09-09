@@ -12,6 +12,11 @@ builder.Services.AddScoped<Translator>();
 builder.Services.AddScoped<AppState>();
 builder.Services.AddScoped<Api>();
 
+// The world map is 150 KB and every map question in a duel draws the same one, so it is fetched and
+// parsed once and shared. Scoped, which for a WebAssembly app is the whole session — the same
+// reasoning LobbyClient's registration below gives.
+builder.Services.AddScoped<WorldMapAsset>();
+
 // One LiveClient per live duel: a page builds its own with the match's hub URL and disposes it when
 // the duel is over, so this registers the factory rather than a shared instance.
 builder.Services.AddTransient<Func<string, LiveClient>>(sp => hubUrl =>

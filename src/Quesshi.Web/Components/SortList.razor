@@ -1,0 +1,156 @@
+@*
+    A sorting question's answer: four served items the player drags into order.
+
+    Built on Pointer Events rather than HTML5 drag-and-drop, and that is not a preference. The
+    HTML5 drag API does not fire at all on touch in Safari without a polyfill, so on a phone-first
+    app it would mean the whole question type simply does not work for a large share of players.
+    pointerdown/pointermove/pointerup work everywhere, and are a few dozen lines.
+
+    Three rules the layout depends on, all of them in docs/sorting-and-map-questions.md:
+
+    * The row is inert. Only the grip starts a drag, so a scroll gesture that happens to begin on a
+      row scrolls the page instead of quietly reordering the player's answer mid-question.
+    * The grip is a real focusable button and the arrow keys move a row, so the drag is not the only
+      route to an answer.
+    * The grip sits at the row's *start* edge — the right in Persian — which it gets by being the
+      first child of a flex row rather than by any rule naming a side.
+
+    Everything decided during a drag lives in Quesshi.Web.Services.SortOrdering and SortDrag, where
+    it is tested. The JavaScript this reaches for is exactly the two things C# cannot see: pointer
+    capture, and where the rows are on the screen.
+*@
+@inject IJSRuntime Js
+@inject Translator L
+
+<ol class="sortlist" @ref="_list"
+    @onpointermove="OnPointerMoveAsync" @onpointerup="EndDragAsync" @onpointercancel="EndDragAsync">
+    @for (var i = 0; i < Ordering.Count; i++)
+    {
+        var place = i;
+        var served = Ordering.ServedAt(place);
+
+        @* Keyed by the served item, not by the place: Blazor then *moves* the row's DOM node when
+           the order changes instead of rewriting its contents in place. That matters here beyond
+           the usual efficiency argument — a node that was destroyed and rebuilt mid-drag would take
+           the pointer capture and the keyboard focus with it. *@
+        <li class="sortrow @(_dragging == place ? "sortrow--dragging" : null)" @key="served">
+            <button type="button" class="sortrow__grip" data-grip disabled="@Disabled"
+                    aria-label="@L.Format("sort.move", Items[served])"
+                    @onpointerdown="e => StartDragAsync(place, e)"
+                    @onkeydown="e => OnKeyAsync(place, e)">
+                <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" focusable="false" fill="currentColor">
+                    <circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" />
+                    <circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" />
+                    <circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" />
+                </svg>
+            </button>
+
+            <span class="grow" dir="auto">@Items[served]</span>
+            <span class="sortrow__place numeral">@L.Num(place + 1)</span>
+        </li>
+    }
+</ol>
+
+@if (!Disabled)
+{
+    <p class="faint" style="margin:.55rem 0 0;font-size:var(--step--1)">@L["sort.hint"]</p>
+}
+
+@code {
+    /// <summary>The items exactly as the card served them — already shuffled by the server. Indexed
+    /// by served position, which is what <see cref="Ordering"/> talks in.</summary>
+    [Parameter, EditorRequired] public List<string> Items { get; set; } = [];
+
+    /// <summary>The answer being built. Two-way bindable: the parent owns it, because the parent is
+    /// what submits <c>Ordering.Response</c> when the player locks the answer in.</summary>
+    [Parameter, EditorRequired] public SortOrdering Ordering { get; set; } = SortOrdering.Served(0);
+
+    [Parameter] public EventCallback<SortOrdering> OrderingChanged { get; set; }
+
+    /// <summary>Locked: the answer is in, or the clock has run out. The rows still render, so the
+    /// player can see what they submitted.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    private ElementReference _list;
+
+    /// <summary>Which place is being dragged, or null when nothing is. Follows the row as it moves,
+    /// so a continuing drag always knows where its own row ended up.</summary>
+    private int? _dragging;
+
+    private long _pointerId;
+
+    /// <summary>Where each row's centre was when the drag started; see <see cref="SortDrag"/>.</summary>
+    private double[] _midpoints = [];
+
+    /// <summary>
+    /// Arms the native arrow-key guard once. It cannot be an <c>@onkeydown:preventDefault</c> on the
+    /// grip: that flag is fixed at render time, so it would either apply to every key — trapping Tab
+    /// and stranding the focus it exists to serve — or to none, leaving the page scrolling under the
+    /// player every time they move a row.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Js.InvokeVoidAsync("quesshi.sort.arm", _list);
+    }
+
+    private async Task StartDragAsync(int place, PointerEventArgs e)
+    {
+        if (Disabled) return;
+
+        _dragging = place;
+        _pointerId = e.PointerId;
+
+        // Measured once, at the start. Four rows of short text are near enough the same height that
+        // re-measuring on every move would cost a forced layout per frame and change no outcome.
+        _midpoints = await Js.InvokeAsync<double[]>("quesshi.sort.midpoints", _list);
+
+        // Capture on the list, not on the grip, so every subsequent pointer event for this finger is
+        // delivered to the element that carries the move and up handlers — including the ones that
+        // happen well outside the list, which on a phone is most of them.
+        await Js.InvokeVoidAsync("quesshi.sort.capture", _list, e.PointerId);
+    }
+
+    private async Task OnPointerMoveAsync(PointerEventArgs e)
+    {
+        // Fires for every mouse movement across the list, drag or no drag; leaving without touching
+        // anything is the common case and must stay free of JavaScript round-trips.
+        if (_dragging is not { } from || e.PointerId != _pointerId) return;
+
+        var to = SortDrag.TargetPlace(_midpoints, e.ClientY);
+        if (to < 0 || to == from) return;
+
+        _dragging = to;
+        Ordering = Ordering.Move(from, to);
+        await OrderingChanged.InvokeAsync(Ordering);
+    }
+
+    private async Task EndDragAsync(PointerEventArgs e)
+    {
+        if (_dragging is null) return;
+
+        _dragging = null;
+        await Js.InvokeVoidAsync("quesshi.sort.release", _list, e.PointerId);
+    }
+
+    /// <summary>
+    /// The keyboard path, and deliberately the same operation the drag performs: a row moves one
+    /// place up or down. Up and down mean up and down in Persian too — the list runs down the page
+    /// in every language, so unlike the grip's edge there is nothing here to mirror.
+    /// </summary>
+    private async Task OnKeyAsync(int place, KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+
+        var moved = e.Key switch
+        {
+            "ArrowUp" => Ordering.MoveUp(place),
+            "ArrowDown" => Ordering.MoveDown(place),
+            _ => Ordering
+        };
+
+        if (ReferenceEquals(moved, Ordering)) return;
+
+        Ordering = moved;
+        await OrderingChanged.InvokeAsync(Ordering);
+    }
+}

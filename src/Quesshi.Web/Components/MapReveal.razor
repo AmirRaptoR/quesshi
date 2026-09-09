@@ -1,0 +1,80 @@
+@*
+    A map question's answer, revealed: the target and every player's pick on one map, with a legend
+    naming them underneath. The map alone would show two marks near each other; the legend is what
+    says which is which and which was yours.
+
+    The base layer defaults to borders even for a question played blank. That is deliberate: while
+    the question is open, hiding the borders is the difficulty; once it is answered, the borders are
+    the explanation of where you actually were.
+*@
+@inject WorldMapAsset Asset
+@inject Translator L
+
+<WorldMap BaseLayer="BaseLayer" Target="_target" Marks="_marks" ToleranceKm="ToleranceKm" Label="@L["map.label"]" />
+
+<div class="maplegend">
+    @if (_target is not null)
+    {
+        <div class="maplegend__row">
+            <span class="mapbar__mark mapbar__mark--target" aria-hidden="true"></span>
+            <span dir="auto">@L["map.answer"]</span>
+            <span class="grow" dir="ltr">@Describe(_target)</span>
+        </div>
+    }
+
+    @for (var i = 0; i < _marks.Count; i++)
+    {
+        var mark = _marks[i];
+        <div class="maplegend__row" @key="i">
+            <span class="mapbar__mark @(mark.Right == false ? "mapbar__mark--miss" : null)" aria-hidden="true"></span>
+            <span dir="auto">@mark.Label</span>
+            <span class="grow" dir="ltr">@Describe(mark.Pick)</span>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The round's target as an answer string — <c>"DE"</c> or <c>"52.37,4.9"</c>. Its own
+    /// shape says whether this was a country question or a city one, so no separate shape parameter
+    /// is needed: the reveal contracts carry the target, and the target knows what it is.</summary>
+    [Parameter] public string? CorrectTarget { get; set; }
+
+    /// <summary>Each player's answer, still as the string that came off the wire — see
+    /// <see cref="MapAnswerLine"/> for why the parsing happens here rather than in each caller.</summary>
+    [Parameter] public List<MapAnswerLine> Answers { get; set; } = [];
+
+    /// <summary>See the file comment — borders unless a caller insists otherwise.</summary>
+    [Parameter] public int BaseLayer { get; set; } = 1;
+
+    /// <summary>Null in play: no reveal contract carries the tolerance radius. Passed by any caller
+    /// that does know it.</summary>
+    [Parameter] public double? ToleranceKm { get; set; }
+
+    private IReadOnlyList<MapCountry> _countries = [];
+    private MapPick? _target;
+    private List<MapMark> _marks = [];
+
+    protected override async Task OnInitializedAsync() => _countries = await Asset.LoadAsync();
+
+    protected override void OnParametersSet()
+    {
+        _target = MapPick.Parse(CorrectTarget);
+
+        // A player who never answered, or whose answer will not parse, has nothing to draw and
+        // nothing to name. Dropping them in one place keeps the legend and the marks on the map
+        // above it in step by construction rather than by two filters agreeing.
+        _marks = [.. Answers
+            .Select(a => (a.Label, Pick: MapPick.Parse(a.Response), a.Right))
+            .Where(a => a.Pick is not null)
+            .Select(a => new MapMark(a.Pick!, a.Label, a.Right))];
+    }
+
+    /// <summary>
+    /// A pick in words: the country's name and code, or the coordinates. The same wording the
+    /// picking bar uses, from the same helper, so the answer a player reads at the reveal is spelled
+    /// the way the thing they tapped was spelled while they were choosing it.
+    /// </summary>
+    private string Describe(MapPick pick) => pick.IsCountry
+        ? $"{MapText.CountryName(_countries, pick.CountryCode)} ({pick.CountryCode})"
+        : L.Num(MapText.Coordinates(pick));
+}

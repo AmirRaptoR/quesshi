@@ -82,6 +82,27 @@
 
                     <MediaBlock Media="card.Media" />
 
+                    @* Kind 0 is the multiple-choice round this page was built around, and its markup
+                       below is untouched. The other two kinds need a control rather than a row of
+                       tiles, and both need an explicit commit — you cannot lock in an arrangement or
+                       a pin by touching it, the way you can lock in a choice by choosing it. *@
+                    @if (card.Kind == 1)
+                    {
+                        <SortList Items="card.Choices" @bind-Ordering="_ordering" Disabled="@AnswerClosed" />
+
+                        <button class="btn btn--block" style="margin-top:.9rem" disabled="@AnswerClosed"
+                                @onclick="() => ChooseAsync(-1, _ordering.Response)">
+                            @L["play.lockIn"]
+                        </button>
+                    }
+                    else if (card.Kind == 2)
+                    {
+                        <MapField Shape="card.TargetShape ?? 0" BaseLayer="card.BaseLayer ?? 0"
+                                  @bind-Selection="_pick" Disabled="@AnswerClosed"
+                                  OnConfirm="() => ChooseAsync(-1, _pick?.Response)" />
+                    }
+                    else
+                    {
                     <div class="answers">
                         @for (var i = 0; i < card.Choices.Count; i++)
                         {
@@ -93,6 +114,7 @@
                             </button>
                         }
                     </div>
+                    }
                 </section>
 
                 <p class="empty enter" style="margin-top:.7rem">
@@ -157,6 +179,23 @@
 
                     <MediaBlock Media="card.Media" Loop="false" Autoplay="false" />
 
+                    @* The renderer is chosen off the *card*, which carries the kind in every phase,
+                       rather than off the round: LiveRoundResultViewDto.Kind is filled in only for
+                       rounds the server has closed, and a client that has just been pushed a reveal
+                       is holding both. Using the one that is always right avoids depending on which
+                       of the two arrived. The answer itself comes off the round, which is the only
+                       thing carrying it. *@
+                    @if (card.Kind == 1)
+                    {
+                        <SortReveal CorrectOrder="round.CorrectOrder ?? []" Columns="SortColumnsFor(round)" />
+                    }
+                    else if (card.Kind == 2)
+                    {
+                        <MapReveal CorrectTarget="@round.CorrectTarget" BaseLayer="card.BaseLayer ?? 1"
+                                   Answers="MapAnswersFor(round)" />
+                    }
+                    else
+                    {
                     <div class="answers">
                         @for (var i = 0; i < card.Choices.Count; i++)
                         {
@@ -184,6 +223,7 @@
                             </div>
                         }
                     </div>
+                    }
                 </section>
 
                 <section class="card card--flat enter" style="margin-top:.85rem">
@@ -283,6 +323,14 @@
 
     private bool _locked;
     private int? _myChoice;
+
+    /// <summary>A sorting round's answer as the player is building it, cleared on every new round so
+    /// the next question never inherits the last one's arrangement.</summary>
+    private SortOrdering _ordering = SortOrdering.Served(0);
+
+    /// <summary>A map round's answer: the country or point last tapped. Unlike the sorting order,
+    /// this one <i>can</i> be restored after a reconnect — see <see cref="SyncLocalAnswerState"/>.</summary>
+    private MapPick? _pick;
 
     /// <summary>
     /// Every id in here has hit <c>LiveRules.MissesBeforeAbandon</c> and is done playing for good — a
@@ -406,6 +454,8 @@
         _view = _view with { Phase = "question", PhaseEndsAt = card.EndsAt, RoundIndex = card.Slot, CurrentCard = card, CurrentExplanation = null, Rounds = rounds };
         _locked = false;
         _myChoice = null;
+        _ordering = SortOrdering.Served(card.Choices.Count);
+        _pick = null;
         _answeredOthers.Clear();
         InvokeAsync(StateHasChanged);
     }
@@ -513,6 +563,14 @@
         _locked = mine is { Answered: true };
         _myChoice = mine?.ChoiceIndex;
 
+        // A sorting arrangement cannot come back: the server normalised it into stored-index terms
+        // at submission and the round in flight reveals no correct order to resolve it against, so
+        // the list is reset to the served order and left locked. A map answer can come back exactly
+        // — a country code or a point is the same string on both sides of the wire — so a player who
+        // dropped and reconnected mid-round still sees their own pin where they put it.
+        _ordering = SortOrdering.Served(_view?.CurrentCard?.Choices.Count ?? 0);
+        _pick = MapPick.Parse(mine?.Response);
+
         _answeredOthers.Clear();
         if (round is not null)
             foreach (var a in round.Answers.Where(a => a.PlayerId != MeId && a.Answered))
@@ -530,15 +588,23 @@
 
     // --- actions ----------------------------------------------------------------------------------
 
-    private async Task ChooseAsync(int index)
+    /// <summary>
+    /// One path for all three kinds. A choice answer sends its index and no response, exactly as it
+    /// always did; a sorting or map answer sends -1 and the response string, which is what
+    /// <c>AnswerDto</c> and <c>LiveHub.Answer</c> document. Nothing here submits an empty answer:
+    /// unlike the async screen there is no client-side timeout to represent, since the server closes
+    /// a live round on its own clock and records the miss itself.
+    /// </summary>
+    private async Task ChooseAsync(int index, string? response = null)
     {
         if (_locked || TimeUp || IsEliminatedMe || _view?.CurrentCard is null || _client is null) return;
+        if (index < 0 && response is null) return;
 
         _locked = true;
         _myChoice = index;
         StateHasChanged();
 
-        try { await _client.AnswerAsync(MatchId, _view.RoundIndex, index); }
+        try { await _client.AnswerAsync(MatchId, _view.RoundIndex, index, response); }
         catch { /* rejected as late or duplicate — the reveal that follows is authoritative */ }
     }
 
@@ -568,6 +634,47 @@
     }
 
     // --- derived state ------------------------------------------------------------------------------
+
+    /// <summary>Whether this player can still answer the round in flight. The choice tiles spell the
+    /// same three conditions out inline, unchanged; the sorting and map controls read them here.</summary>
+    private bool AnswerClosed => _locked || TimeUp || IsEliminatedMe;
+
+    /// <summary>
+    /// One column per player for a revealed sorting round, mine first. Every response arrives in
+    /// stored-index terms, which <see cref="AnswerReveal.PlacedItems"/> resolves against the round's
+    /// correct order — a lookup, never a re-shuffle, and never anything that needs the round's seed.
+    /// </summary>
+    private List<SortRevealColumn> SortColumnsFor(LiveRoundResultViewDto round)
+    {
+        var others = round.Answers.Where(a => a.PlayerId != MeId).ToList();
+        var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
+
+        List<SortRevealColumn> columns = [new(L["result.you"], AnswerReveal.PlacedItems(round.CorrectOrder, mine?.Response))];
+
+        // A capacity-2 duel says "Them", the way every other two-player surface in this app does;
+        // beyond two there is no "them" to speak of and each column carries a name instead.
+        columns.AddRange(others.Select(other => new SortRevealColumn(
+            others.Count == 1 ? L["result.them"] : NameOf(other.PlayerId),
+            AnswerReveal.PlacedItems(round.CorrectOrder, other.Response))));
+
+        return columns;
+    }
+
+    /// <summary>The same list for a revealed map round. <c>Correct</c> comes straight off the round's
+    /// own redacted answer, so unlike the async duel history this side never has to work out whether
+    /// a pin fell inside a radius it was never told.</summary>
+    private List<MapAnswerLine> MapAnswersFor(LiveRoundResultViewDto round)
+    {
+        var others = round.Answers.Where(a => a.PlayerId != MeId).ToList();
+        var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
+
+        List<MapAnswerLine> lines = [new(L["result.you"], mine?.Response, mine?.Correct)];
+
+        lines.AddRange(others.Select(other => new MapAnswerLine(
+            others.Count == 1 ? L["result.them"] : NameOf(other.PlayerId), other.Response, other.Correct)));
+
+        return lines;
+    }
 
     private bool TimeUp => _view?.CurrentCard is { } c && DateTimeOffset.UtcNow + Skew >= c.EndsAt;
     private TimeSpan Skew => _client?.Skew ?? TimeSpan.Zero;

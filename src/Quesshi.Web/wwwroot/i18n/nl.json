@@ -306,6 +306,10 @@
   "lobby.upgrade.taken": "Dat e-mailadres heeft al een account.",
   "lobby.upgrade.title": "Dit account bewaren",
   "lobby.waitingForOwner": "Wachten tot de eigenaar begint",
+  "map.answer": "Antwoord",
+  "map.label": "Wereldkaart",
+  "map.tapCountry": "Tik op een land",
+  "map.tapPoint": "Tik op de kaart om een speld te zetten",
   "media.audio": "Geluid",
   "media.image": "Afbeelding",
   "media.source": "Bron van de afbeelding",
@@ -325,6 +329,7 @@
   "password.tooShort": "Gebruik minstens 10 tekens.",
   "play.correct": "Goed",
   "play.finish": "Bekijk de uitslag",
+  "play.lockIn": "Vastleggen",
   "play.next": "Volgende",
   "play.of": "van",
   "play.points": "punten",
@@ -384,5 +389,8 @@
   "result.win": "Je hebt gewonnen",
   "result.you": "Jij",
   "session.unconfirmed.body": "We konden je sessie niet bevestigen. Je bent nog steeds ingelogd — controleer je verbinding en probeer het opnieuw.",
-  "session.unconfirmed.title": "Sessie niet bevestigd"
+  "session.unconfirmed.title": "Sessie niet bevestigd",
+  "sort.correctOrder": "Juiste volgorde",
+  "sort.hint": "Sleep een greep om een rij te verplaatsen, of gebruik de pijltjestoetsen omhoog en omlaag.",
+  "sort.move": "{0} verplaatsen"
 }

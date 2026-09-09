@@ -1,0 +1,56 @@
+@*
+    A sorting question's answer, revealed: the right order, and each player's beside it.
+
+    Two lists rather than one annotated list, because the question this reveal has to answer is
+    "where did I go wrong", and that is a comparison. Four short items in two columns makes
+    "these two disagree at place three" visible without reading a word; the same information folded
+    into one list with markers makes it something to work out.
+
+    Nothing here maps indices to items on its own — see AnswerReveal.SortRows, which is where that
+    lookup lives and where it is tested, and which is careful about the one thing that has a
+    plausible wrong reading: a stored response is in stored-index terms, not served ones.
+*@
+@inject Translator L
+
+<div class="sortreveal">
+    <div class="sortreveal__col">
+        <div class="sortreveal__head">@L["sort.correctOrder"]</div>
+        @foreach (var row in AnswerReveal.SortRows(CorrectOrder, CorrectOrder))
+        {
+            <div class="sortreveal__item sortreveal__item--right" @key="row.Place">
+                <span class="sortreveal__place">@L.Num(row.Place + 1)</span>
+                <span class="grow" dir="auto">@row.Correct</span>
+            </div>
+        }
+    </div>
+
+    @foreach (var column in Columns)
+    {
+        <div class="sortreveal__col" @key="column.Label">
+            <div class="sortreveal__head" dir="auto">@column.Label</div>
+            @foreach (var row in AnswerReveal.SortRows(CorrectOrder, column.Placed))
+            {
+                <div class="sortreveal__item @ToneOf(row)" @key="row.Place">
+                    <span class="sortreveal__place">@L.Num(row.Place + 1)</span>
+                    <span class="grow" dir="auto">@(row.Placed ?? "—")</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The items in their correct order, as text. Every reveal contract carries exactly this,
+    /// whether it calls it <c>CorrectOrder</c> or — on <c>RevealedQuestionDto</c>, where the stored
+    /// order <i>is</i> the answer — simply <c>Choices</c>.
+    /// </summary>
+    [Parameter, EditorRequired] public List<string> CorrectOrder { get; set; } = [];
+
+    /// <summary>One column per player who has an order to show: "You", "Them", or a name.</summary>
+    [Parameter, EditorRequired] public List<SortRevealColumn> Columns { get; set; } = [];
+
+    private static string ToneOf(SortRevealRow row) => row.Placed is null
+        ? "sortreveal__item--blank"
+        : row.Right ? "sortreveal__item--right" : "sortreveal__item--wrong";
+}

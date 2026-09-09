@@ -42,6 +42,49 @@
         },
         copy: async (text) => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },
 
+        // --- sorting questions: the two things a drag genuinely cannot do from C# ---------------
+        //
+        // Everything else about a sort answer — which row moves where, what the submitted string
+        // says — is decided in Quesshi.Web.Services.SortOrdering, where it can be tested. These
+        // three are here because they are the browser's own facts: pointer capture and element
+        // geometry have no C# equivalent.
+        sort: {
+          // Without capture, a finger that slides off the narrow grip stops delivering pointermove
+          // and the row is abandoned mid-drag — which on a phone is most drags. With it the grip
+          // keeps receiving events until the finger lifts, wherever on the screen it goes.
+          capture: (el, pointerId) => { try { el.setPointerCapture(pointerId); } catch { /* the pointer is already gone */ } },
+          release: (el, pointerId) => { try { el.releasePointerCapture(pointerId); } catch { /* likewise */ } },
+
+          // Each row's vertical centre in client coordinates, in DOM order, which is the input to
+          // SortDrag.TargetPlace. Read once when a drag starts: four short rows are near enough the
+          // same height that re-measuring on every pointermove would cost a layout per frame and
+          // change nothing.
+          midpoints: (list) => [...list.children].map(row => {
+            const box = row.getBoundingClientRect();
+            return box.top + box.height / 2;
+          }),
+
+          // The grip reorders with the arrow keys, which also scroll the page. Preventing that has
+          // to happen in a native listener: Blazor's @onkeydown:preventDefault is fixed at render
+          // time, so it cannot be "only for the arrows" — and applying it to every key would trap
+          // Tab and strand the focus it was added to serve.
+          arm: (list) => list.addEventListener('keydown', e => {
+            if (e.target.closest('[data-grip]') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) e.preventDefault();
+          })
+        },
+
+        // --- map questions -----------------------------------------------------------------------
+        // A tap in screen pixels to a point in the map's own viewBox units. getScreenCTM is the
+        // browser's own answer to that question, so it stays right through any CSS size, any device
+        // pixel ratio and any aspect the layout ends up giving the svg. Recomputing it from a
+        // bounding rect would be a second, worse copy of a matrix the browser already has.
+        mapPoint: (svg, clientX, clientY) => {
+          const ctm = svg.getScreenCTM();
+          if (!ctm) return null;
+          const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+          return [point.x, point.y];
+        },
+
         // Google Identity Services, loaded only when a client id is actually configured.
         google: async (clientId, dotnet) => {
           if (!window.google) {

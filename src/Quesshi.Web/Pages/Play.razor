@@ -39,6 +39,43 @@
 
             <MediaBlock Media="_card.Media" />
 
+            @* Kind 0 is the multiple-choice question this app was built around and its markup below
+               is untouched — every branch here is an alternative to it, never a change to it. Kinds
+               1 and 2 swap the answering surface for the reveal once the answer is in, rather than
+               disabling it in place the way a choice question colours its own tiles: there is no
+               way to draw "the correct order" or "where the answer was" on top of the control you
+               used to say something else. *@
+            @if (_card.Kind == 1)
+            {
+                @if (_result is { CorrectOrder: { Count: > 0 } correctOrder })
+                {
+                    <SortReveal CorrectOrder="correctOrder" Columns="MySortColumn" />
+                }
+                else
+                {
+                    <SortList Items="_card.Choices" @bind-Ordering="_ordering" Disabled="@(_result is not null)" />
+
+                    <button class="btn btn--block" style="margin-top:.9rem" disabled="@(_result is not null)"
+                            @onclick="() => AnswerAsync(-1, _ordering.Response)">
+                        @L["play.lockIn"]
+                    </button>
+                }
+            }
+            else if (_card.Kind == 2)
+            {
+                @if (_result is { CorrectTarget: { Length: > 0 } target })
+                {
+                    <MapReveal CorrectTarget="@target" BaseLayer="_card.BaseLayer ?? 1" Answers="MyMapAnswer" />
+                }
+                else
+                {
+                    <MapField Shape="_card.TargetShape ?? 0" BaseLayer="_card.BaseLayer ?? 0"
+                              @bind-Selection="_pick" Disabled="@(_result is not null)"
+                              OnConfirm="() => AnswerAsync(-1, _pick?.Response)" />
+                }
+            }
+            else
+            {
             <div class="answers">
                 @for (var i = 0; i < _card.Choices.Count; i++)
                 {
@@ -50,6 +87,7 @@
                     </button>
                 }
             </div>
+            }
         </section>
 
         @if (_result is { } result)
@@ -91,6 +129,14 @@
     private AnswerResultDto? _result;
     private int _remaining;
     private bool _timedOut;
+
+    /// <summary>A sorting question's answer as the player is building it: which served item is in
+    /// which place. Reset per card, so the next question never inherits the last one's arrangement.</summary>
+    private SortOrdering _ordering = SortOrdering.Served(0);
+
+    /// <summary>A map question's answer: the country or the point last tapped, or null before the
+    /// first tap.</summary>
+    private MapPick? _pick;
     private PeriodicTimer? _timer;
     private CancellationTokenSource _ticking = new();
 
@@ -107,6 +153,11 @@
             Nav.NavigateTo($"/duel/{MatchId}");
             return;
         }
+
+        // A sorting answer starts as the card served it, which is a real answer — "the order you
+        // showed me is already right" — and not a null one.
+        _ordering = SortOrdering.Served(_card.Choices.Count);
+        _pick = null;
 
         _remaining = _card.SecondsLimit;
         StartClock();
@@ -133,7 +184,10 @@
 
                     if (_remaining > 0) continue;
 
-                    await InvokeAsync(async () => await AnswerAsync(-1));
+                    // The one caller that may submit an empty answer, and the only place _timedOut
+                    // becomes true. A sorting or map answer also travels with a -1 index, so the
+                    // index alone can no longer mean "the clock ran out".
+                    await InvokeAsync(async () => await AnswerAsync(-1, timedOut: true));
                     return;
                 }
             }
@@ -141,15 +195,27 @@
         }, token);
     }
 
-    private async Task AnswerAsync(int choice)
+    /// <summary>
+    /// One submission path for all three kinds. A choice answer passes its index and no response,
+    /// exactly as it always did; a sorting or map answer passes -1 and the response string, which is
+    /// the convention <c>AnswerDto</c> documents. The timeout is the third caller, with -1 and no
+    /// response at all — which is why <see cref="_timedOut"/> now tests both, rather than reading a
+    /// -1 index as "the clock ran out" and mislabelling every sort and map answer as a timeout.
+    /// </summary>
+    private async Task AnswerAsync(int choice, string? response = null, bool timedOut = false)
     {
         if (_result is not null || _card is null) return;
 
+        // A sorting or map answer with nothing in it is not an answer. Only the clock may submit
+        // one, and it says so: without this a confirm button pressed before anything was tapped
+        // would record a timeout for a player who is still trying to answer.
+        if (!timedOut && choice < 0 && response is null) return;
+
         _ticking.Cancel();
-        _timedOut = choice < 0;
+        _timedOut = timedOut;
         _chosen = choice;
 
-        _result = await Api.AnswerAsync(MatchId, _card.Slot, choice)
+        _result = await Api.AnswerAsync(MatchId, _card.Slot, choice, response)
                   ?? new AnswerResultDto(false, -1, 0, null, false, 0);
 
         StateHasChanged();
@@ -170,6 +236,24 @@
     }
 
     private int _chosen = -1;
+
+    /// <summary>
+    /// The player's own sorting order for the reveal, taken from the items the card served and the
+    /// arrangement they left them in — not from a response string. The server normalises a
+    /// submission into stored-index terms and <c>AnswerResultDto</c> does not send that back, so the
+    /// client's own arrangement is both the only copy it has and the exact thing the player did.
+    /// <para>
+    /// Except on a timeout, where it is emphatically not: the rows are still sitting wherever they
+    /// were left, but nothing was ever submitted, and showing that arrangement as "yours" would
+    /// present an answer the player never gave — and, half the time, mark it wrong.
+    /// </para>
+    /// </summary>
+    private List<SortRevealColumn> MySortColumn =>
+        [new(L["result.you"], _timedOut ? null : [.. _ordering.Placed.Select(served => _card!.Choices[served])])];
+
+    /// <inheritdoc cref="MySortColumn"/>
+    private List<MapAnswerLine> MyMapAnswer =>
+        [new(L["result.you"], _timedOut ? null : _pick?.Response, _result?.Correct)];
 
     public async ValueTask DisposeAsync()
     {

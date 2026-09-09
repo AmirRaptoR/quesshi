@@ -79,6 +79,21 @@
 
                             <MediaBlock Media="row.Media" Loop="false" Autoplay="false" />
 
+                            @* A sorting question's Choices are its answer: this contract carries them
+                               in stored order, and stored order is correct order — which is why there
+                               is no second copy of them here and why each side's response indexes
+                               straight into them. A map question leaves Choices empty and puts the
+                               answer in CorrectTarget instead. The choice markup below is unchanged. *@
+                            @if (row.Kind == 1)
+                            {
+                                <SortReveal CorrectOrder="row.Choices" Columns="SortColumnsFor(row)" />
+                            }
+                            else if (row.Kind == 2)
+                            {
+                                <MapReveal CorrectTarget="@row.CorrectTarget" Answers="MapAnswersFor(row)" />
+                            }
+                            else
+                            {
                             <div class="stack" style="gap:.35rem">
                                 @for (var i = 0; i < row.Choices.Count; i++)
                                 {
@@ -93,6 +108,7 @@
                                     </div>
                                 }
                             </div>
+                            }
 
                             @if (!string.IsNullOrWhiteSpace(row.Explanation))
                             {
@@ -151,6 +167,34 @@
             Nav.NavigateTo($"/lobby/{_detail.Summary.Code}", replace: true);
     }
 
+    /// <summary>
+    /// Both sides of a revealed sorting question, mine first. "Them" is only a column when there is
+    /// somebody to be them: an unfinished or single-seat duel renders the correct order and my own
+    /// beside it rather than an empty column captioned with the opponent that does not exist.
+    /// </summary>
+    private List<SortRevealColumn> SortColumnsFor(RevealedQuestionDto row)
+    {
+        List<SortRevealColumn> columns = [new(L["result.you"], AnswerReveal.PlacedItems(row.Choices, row.MyResponse))];
+
+        if (_detail?.Summary.Opponent is not null)
+            columns.Add(new(L["result.them"], AnswerReveal.PlacedItems(row.Choices, row.TheirResponse)));
+
+        return columns;
+    }
+
+    /// <inheritdoc cref="SortColumnsFor"/>
+    private List<MapAnswerLine> MapAnswersFor(RevealedQuestionDto row)
+    {
+        List<MapAnswerLine> lines =
+            [new(L["result.you"], row.MyResponse, AnswerReveal.IsRight(row.Kind, row.CorrectIndex, row.CorrectTarget, row.MyChoice, row.MyResponse))];
+
+        if (_detail?.Summary.Opponent is not null)
+            lines.Add(new(L["result.them"], row.TheirResponse,
+                AnswerReveal.IsRight(row.Kind, row.CorrectIndex, row.CorrectTarget, row.TheirChoice, row.TheirResponse)));
+
+        return lines;
+    }
+
     private string Headline => _detail?.Summary.Outcome switch
     {
         "win" => L["result.win"],
@@ -167,12 +211,15 @@
     {
         if (side is null) return [];
 
+        // Right or wrong is per-kind now, and for one kind it is not knowable from here at all:
+        // AnswerReveal.IsRight returns null for a city target, whose verdict depends on a tolerance
+        // radius no reveal contract carries. A null ray reads as "not reached", which is a small
+        // inaccuracy on a decorative rosette and much better than asserting a wrong answer.
         if (_detail?.Reveal.Count > 0)
-            return [.. _detail.Reveal.Select(r =>
-            {
-                var choice = mine ? r.MyChoice : r.TheirChoice;
-                return choice is null ? (bool?)null : choice == r.CorrectIndex;
-            })];
+            return [.. _detail.Reveal.Select(r => AnswerReveal.IsRight(
+                r.Kind, r.CorrectIndex, r.CorrectTarget,
+                mine ? r.MyChoice : r.TheirChoice,
+                mine ? r.MyResponse : r.TheirResponse))];
 
         return [.. Enumerable.Range(0, _detail?.Summary.Questions ?? 6)
             .Select(i => i < side.Correct ? (bool?)true : i < side.Answered ? false : null)];
