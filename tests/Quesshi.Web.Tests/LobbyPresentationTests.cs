@@ -158,4 +158,95 @@ public class LobbyPresentationTests
 
         Assert.Equal(2, LobbyPresentation.Seats(snapshot).Count);
     }
+
+    // --- issue #90: the roster as face tiles, and the invite row as an avatar row ------------------
+
+    [Fact]
+    public void The_owners_own_seat_tile_reads_host()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")]));
+
+        Assert.Equal(LobbyPresentation.SeatState.Host, LobbyPresentation.SeatStateFor(snapshot, snapshot.Participants[0]));
+    }
+
+    [Fact]
+    public void Anyone_else_seated_reads_ready()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")]));
+
+        Assert.Equal(LobbyPresentation.SeatState.Ready, LobbyPresentation.SeatStateFor(snapshot, snapshot.Participants[1]));
+    }
+
+    [Fact]
+    public void A_still_empty_seat_reads_open()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 3));
+        var seats = LobbyPresentation.Seats(snapshot);
+
+        Assert.Equal(LobbyPresentation.SeatState.Open, LobbyPresentation.SeatStateFor(snapshot, seats[1]));
+    }
+
+    [Theory]
+    [InlineData(2, 3)]
+    [InlineData(3, 3)]
+    public void The_roster_grid_draws_three_columns_up_to_a_three_seat_lobby(int capacity, int expectedColumns)
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: capacity));
+
+        Assert.Equal(expectedColumns, LobbyPresentation.RosterColumns(snapshot));
+    }
+
+    [Theory]
+    [InlineData(4, 4)]
+    [InlineData(8, 4)]
+    public void The_roster_grid_draws_four_columns_beyond_a_three_seat_lobby(int capacity, int expectedColumns)
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: capacity));
+
+        Assert.Equal(expectedColumns, LobbyPresentation.RosterColumns(snapshot));
+    }
+
+    private static FriendDto Friend(string id, bool online = false, bool guest = false)
+        => new(id, id, $"seed-{id}", Score: 0, Online: online, IsGuest: guest);
+
+    [Fact]
+    public void An_invite_tile_is_available_for_a_friend_not_yet_touched()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 3));
+
+        Assert.Equal(LobbyPresentation.InviteTileState.Available,
+            LobbyPresentation.InviteState(snapshot, Friend("cam"), alreadyInvited: false));
+    }
+
+    [Fact]
+    public void An_invite_tile_is_invited_once_this_visit_has_sent_one()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 3));
+
+        Assert.Equal(LobbyPresentation.InviteTileState.Invited,
+            LobbyPresentation.InviteState(snapshot, Friend("cam"), alreadyInvited: true));
+    }
+
+    /// <summary>A guest friend can never receive an in-app invite — <c>LobbyHub.OnConnectedAsync</c>
+    /// refuses every guest connection outright — so the tile says "link only" instead of offering a
+    /// button that could never do anything, whether or not this visit already tried.</summary>
+    [Fact]
+    public void An_invite_tile_is_link_only_for_a_guest_friend_even_if_already_invited()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 3));
+
+        Assert.Equal(LobbyPresentation.InviteTileState.LinkOnly,
+            LobbyPresentation.InviteState(snapshot, Friend("cam", guest: true), alreadyInvited: true));
+    }
+
+    /// <summary>A friend who is already seated has nothing left to invite — this wins over "invited"
+    /// even when this same visit is the one that sent the invitation that got them there.</summary>
+    [Fact]
+    public void An_invite_tile_is_joined_once_the_friend_is_seated()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("cam")], capacity: 3));
+
+        Assert.Equal(LobbyPresentation.InviteTileState.Joined,
+            LobbyPresentation.InviteState(snapshot, Friend("cam"), alreadyInvited: true));
+    }
 }

@@ -42,6 +42,16 @@
         },
         copy: async (text) => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },
 
+        // The lobby's Share pill (issue #90): true means the OS share sheet handled it — accepted,
+        // cancelled, whatever the person did with it is theirs to decide, not something the page
+        // reacts to. False means there was no such sheet to hand off to at all, which is the one
+        // case Lobby.razor falls back to a plain copy for.
+        share: async (data) => {
+          if (!navigator.share) return false;
+          try { await navigator.share(data); } catch { /* cancelled or refused — still handled */ }
+          return true;
+        },
+
         // --- sorting questions: the two things a drag genuinely cannot do from C# ---------------
         //
         // Everything else about a sort answer — which row moves where, what the submitted string
