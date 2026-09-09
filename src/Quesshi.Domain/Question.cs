@@ -199,6 +199,30 @@ public sealed class Question
             throw new ArgumentException($"A {kind} question cannot have a map base layer.", nameof(baseLayer));
     }
 
+    /// <summary>
+    /// The choices exactly as a card must serve them for this question, in this round. Every card
+    /// builder goes through here and none of them shuffles on its own.
+    /// <para>
+    /// There are three card builders — the async endpoint, the live view mapper and the live grain's
+    /// own round push — and the spec is blunt about why they must not each reach for
+    /// <see cref="SortOrder"/> themselves: if any one of them derived the order differently, a
+    /// reconnect or a silo restart could show a player one arrangement and grade them against
+    /// another, which reads to the player as the game marking a right answer wrong. One method, one
+    /// permutation, and a builder cannot get it wrong by forgetting the kind: a
+    /// <see cref="QuestionKind.Choice"/> question serves its options as stored, a
+    /// <see cref="QuestionKind.Sort"/> one serves them shuffled, and a
+    /// <see cref="QuestionKind.Map"/> one has none to serve.
+    /// </para>
+    /// <para>
+    /// Note what this deliberately does not return: which stored index each served item came from.
+    /// For a sort question the stored order <i>is</i> the answer, so handing a card the permutation
+    /// alongside the items would put the answer on the wire under a different name.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> ServedChoices(string matchId, int slot) => Kind == QuestionKind.Sort
+        ? SortOrder.For(matchId, slot, Choices.Count).Shuffle(Choices)
+        : Choices;
+
     public bool IsCorrect(int choiceIndex) => choiceIndex == CorrectIndex;
 
     /// <summary>

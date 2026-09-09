@@ -105,6 +105,19 @@ public sealed record MapTarget
         => new(shape, countryCode, latitude, longitude, radiusKm);
 
     /// <summary>
+    /// This target as an answer string — the same form <see cref="Matches"/> reads and the same form
+    /// a player's answer is stored in: a country code, or <c>"lat,lon"</c> as
+    /// <see cref="Geo.Format(double, double)"/> writes it.
+    /// <para>
+    /// This is what a reveal carries. It exists so that every reveal path spells the target the one
+    /// way, rather than each mapper deciding for itself whether to send a code, a pair of numbers or
+    /// some third shape a client would then have to guess between — and so that what a player sees
+    /// as "the answer" is literally the string that would have been accepted as one.
+    /// </para>
+    /// </summary>
+    public string ToResponse() => IsCountry ? CountryCode! : Geo.Format(Latitude!.Value, Longitude!.Value);
+
+    /// <summary>
     /// Whether a submitted answer hits this target. A country answer is its code, a city answer is
     /// <c>"lat,lon"</c> as <see cref="Geo.Format(double, double)"/> writes it; anything that does
     /// not parse is simply wrong, because the alternative — throwing on the grading path — turns a

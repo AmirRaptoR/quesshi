@@ -242,12 +242,7 @@ public static class GameEndpoints
 
             var category = await categories.GetAsync(question.CategoryId);
 
-            // Note what is absent: the correct index never leaves the server before the answer arrives.
-            return Results.Ok(new QuestionCardDto(served.Slot, question.Id, question.Prompt, [.. question.Choices],
-                question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
-                category?.Icon ?? "◆", category?.Color ?? "#2EC4B6", (int)question.Level,
-                ToMediaDto(question.Media),
-                served.SecondsLimit, served.Total));
+            return Results.Ok(BuildCard(id, served, question, category));
         }).WithMetadata(new AllowGuest());
 
         api.MapPost("/matches/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
@@ -261,7 +256,8 @@ public static class GameEndpoints
             {
                 var outcome = await grains.GetGrain<IMatchGrain>(id).AnswerAsync(meId, body.Slot, body.ChoiceIndex);
                 return Results.Ok(new AnswerResultDto(outcome.Correct, outcome.CorrectIndex, outcome.Score,
-                    outcome.Explanation, outcome.RunFinished, outcome.RunScore));
+                    outcome.Explanation, outcome.RunFinished, outcome.RunScore,
+                    outcome.Kind, outcome.CorrectOrder, outcome.CorrectTarget));
             }
             catch (InvalidOperationException ex)
             {
@@ -499,13 +495,38 @@ public static class GameEndpoints
         return view.ToSummary(meId, id => names.GetValueOrDefault(id, ("—", id, false)));
     }
 
-    private static async Task<List<RevealedQuestionDto>> BuildRevealAsync(MatchView view, string meId,
+    /// <summary>
+    /// The async card, and the first of the three places that build one — the live view mapper
+    /// (<see cref="Mappers.BuildLiveCard"/>) and <c>LiveMatchGrain.BuildRoundCard</c> are the other
+    /// two. All three ask <see cref="Question.ServedChoices"/> for the items rather than laying them
+    /// out themselves, which is the whole point of that method: three builders each shuffling a
+    /// sorting question their own way is three chances to show a player one arrangement and grade
+    /// them against another.
+    /// <para>
+    /// Note what is absent, which is the older half of this method's job: the correct index never
+    /// leaves the server before the answer arrives. That rule grew rather than bent for the new
+    /// kinds — a sorting question's stored order is its answer, so the items go out shuffled and the
+    /// permutation stays here; a map question's target is its answer, so only the base layer and the
+    /// target's <i>shape</i> go out.
+    /// </para>
+    /// </summary>
+    internal static QuestionCardDto BuildCard(string matchId, ServedSlot served, Question question, Category? category)
+        => new(served.Slot, question.Id, question.Prompt, [.. question.ServedChoices(matchId, served.Slot)],
+            question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
+            category?.Icon ?? "◆", category?.Color ?? "#2EC4B6", (int)question.Level,
+            ToMediaDto(question.Media),
+            served.SecondsLimit, served.Total,
+            (int)question.Kind, (int?)question.BaseLayer, (int?)question.Target?.Shape);
+
+    internal static async Task<List<RevealedQuestionDto>> BuildRevealAsync(MatchView view, string meId,
         IQuestionRepository questions, ICategoryRepository categories)
     {
         var all = await questions.GetManyAsync(view.QuestionIds);
         var cats = (await categories.AllAsync()).ToDictionary(c => c.Id);
 
-        var mine = view.Runs.FirstOrDefault(r => r.PlayerId == meId)?.Choices ?? [];
+        var mineRun = view.Runs.FirstOrDefault(r => r.PlayerId == meId);
+        var mine = mineRun?.Choices ?? [];
+        var mineResponses = mineRun?.Responses ?? [];
 
         // RevealedQuestionDto is a two-sided (mine/theirs) shape, same reasoning as MatchSummaryDto's
         // own mine/theirs: for a capacity-2 duel "theirs" is unambiguous and this picks exactly the id
@@ -513,14 +534,24 @@ public static class GameEndpoints
         // whichever other real participant (see ParticipantIds) sorts first — a real answer set, never
         // a made-up id — rather than pretending the duel is still 1v1 or crashing on a missing choice.
         var otherId = ParticipantIds(view).FirstOrDefault(id => id != meId);
-        var theirs = otherId is null ? [] : view.Runs.FirstOrDefault(r => r.PlayerId == otherId)?.Choices ?? [];
+        var theirRun = otherId is null ? null : view.Runs.FirstOrDefault(r => r.PlayerId == otherId);
+        var theirs = theirRun?.Choices ?? [];
+        var theirResponses = theirRun?.Responses ?? [];
 
+        // The seed is not reachable from here and does not need to be. A sorting answer was
+        // normalised into stored-index terms at submission, and this contract carries the question's
+        // Choices in stored order, so "2,0,3,1" indexes straight into them. Anything here that
+        // reached for SortOrder would mean the stored answer was in the wrong space — a bug to
+        // report, not to compensate for.
         return [.. all.Select((q, slot) => new RevealedQuestionDto(slot, q.Id, q.Prompt, [.. q.Choices], q.CorrectIndex,
             slot < mine.Count ? mine[slot] : null,
             slot < theirs.Count ? theirs[slot] : null,
             cats.GetValueOrDefault(q.CategoryId)?.NameFor(q.Lang) ?? q.CategoryId,
             q.Explanation,
-            ToMediaDto(q.Media)))];
+            ToMediaDto(q.Media),
+            (int)q.Kind, q.Target?.ToResponse(),
+            slot < mineResponses.Count ? mineResponses[slot] : null,
+            slot < theirResponses.Count ? theirResponses[slot] : null))];
     }
 
     /// <summary>

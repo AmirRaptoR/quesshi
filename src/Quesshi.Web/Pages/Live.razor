@@ -399,7 +399,10 @@
     {
         if (_view is null) return;
 
-        List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(card.Slot), new(card.Slot, card.QuestionId, card.StartedAt, null, [])];
+        // The round that has just opened carries the card's kind and no answer of any sort: a client
+        // that has just been told what kind of round this is must not, in the same breath, be handed
+        // what the answer to it was.
+        List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(card.Slot), new(card.Slot, card.QuestionId, card.StartedAt, null, [], card.Kind)];
         _view = _view with { Phase = "question", PhaseEndsAt = card.EndsAt, RoundIndex = card.Slot, CurrentCard = card, CurrentExplanation = null, Rounds = rounds };
         _locked = false;
         _myChoice = null;
@@ -411,8 +414,12 @@
     {
         if (_view?.CurrentCard is not { } card) return;
 
-        List<LiveRoundAnswerViewDto> answers = [.. reveal.Players.Select(p => new LiveRoundAnswerViewDto(p.PlayerId, true, p.ChoiceIndex, p.Correct, p.RoundScore))];
-        List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(reveal.Slot), new(reveal.Slot, card.QuestionId, card.StartedAt, reveal.CorrectIndex, answers)];
+        // Every field of the reveal moves into the history the same way the correct index always has,
+        // kind-specific answers included: a client that reconnects after this round must find the
+        // same round it would have kept from the push, or the two would tell it different stories
+        // about the same slot.
+        List<LiveRoundAnswerViewDto> answers = [.. reveal.Players.Select(p => new LiveRoundAnswerViewDto(p.PlayerId, true, p.ChoiceIndex, p.Correct, p.RoundScore, p.Response))];
+        List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(reveal.Slot), new(reveal.Slot, card.QuestionId, card.StartedAt, reveal.CorrectIndex, answers, reveal.Kind, reveal.CorrectOrder, reveal.CorrectTarget)];
         List<LivePlayerViewDto> players = [.. _view.Players.Select(p =>
         {
             var mine = reveal.Players.FirstOrDefault(r => r.PlayerId == p.PlayerId);
