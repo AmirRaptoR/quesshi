@@ -21,14 +21,17 @@ may answer and when — and it is recorded under [Out of scope](#out-of-scope) w
 - **The redaction discipline.** `LiveRoundCardDto` and `QuestionCardDto` both carry the prompt and
   the choices and never the correct answer. Every new type has to keep that property rather than
   weaken it.
-- **The review flow.** Questions are written by the OpenRouter pipeline (`TopUpQuestionBank`) or by
-  hand in the admin panel, land as `QuestionStatus.Pending`, and become playable only once approved.
-  `ReportsBeforeSuppressed = 3` retires one that players flag.
+- **How a question becomes playable.** Questions are written by the OpenRouter pipeline
+  (`TopUpQuestionBank`) or by hand in the admin panel. Generated ones do **not** wait for review:
+  `TopUpOptions.AutoApprove` defaults to `true`, so a top-up publishes straight to players. Review is
+  the admin panel's `Approve`/`Reject`, and `ReportsBeforeSuppressed = 3` is what retires a question
+  players flag — dropping an approved one back to `Pending`.
 - **Deduplication.** `TopicKey.From(subject, aspect)` plus a unique `Lang + Topic` index stops the
   same question being written twice in one language.
-- **Selection.** `QuestionSetBuilder.BuildAsync` picks by language, category and difficulty, and
-  throws `NotEnoughQuestionsException` rather than quietly serving a different duel than the one
-  that was asked for.
+- **Selection.** `QuestionSetBuilder.BuildAsync` picks by language, category and difficulty and
+  throws `NotEnoughQuestionsException` when nothing fits. Its promise is narrower than it looks: a
+  *named* category that has no questions is honoured to the point of failure, but a category id that
+  does not exist at all falls back to randomly chosen active ones.
 
 ## Decisions
 
@@ -53,12 +56,23 @@ aggregates — `IQuestionRepository`, the unique `Lang + Topic` index, `TopicKey
 the admin panel all assume one collection and one shape, and forking them would cost far more than
 one enum.
 
-**Sorting reuses `Choices`.** The four items are stored in their correct order, and the card serves
-them shuffled, so correctness is "does the submitted order match the stored one". No new field
-holds the answer. The shuffle is seeded by `(matchId, slot)`, not by question id: everyone in a live
-duel must see the same arrangement, and seeding by question alone would hand a returning player the
-order they saw last time. The item count stays at `MatchRules.ChoicesPerQuestion`, which keeps the
-20-second clock honest and reuses the bound the generator and admin already validate against.
+**Sorting reuses `Choices`.** The four items are stored in their correct order and the card serves
+them shuffled, so no new field holds the answer. The item count stays at
+`MatchRules.ChoicesPerQuestion`, which keeps the 20-second clock honest and reuses the bound the
+generator and admin already validate against.
+
+The shuffle is seeded by `(matchId, slot)`, not by question id: everyone in a live duel must see the
+same arrangement, and seeding by question alone would hand a returning player the order they saw last
+time.
+
+**That seed decides where correctness is computed, so it needs stating exactly.** The card cannot
+reveal which stored index each served item came from — the stored order *is* the answer. So the
+player submits **served positions**, and the server has to invert the shuffle before comparing. The
+seed is reconstructible only where the match is known, which is the grain: `LiveMatchGrain` already
+computes correctness there (`var correct = question.IsCorrect(choiceIndex)`), and it holds the match
+id and the slot. So the grain derives the served order and passes it to the domain, and `Question`
+gains a checker of the form "given this served order, is this submission correct" rather than one
+that silently assumes an identity mapping.
 
 **Map adds a nullable target and a base layer**, and leaves `Choices` empty. The target is one of two
 shapes, so it is a small owned record rather than loose columns: a country carries an ISO 3166-1
@@ -66,18 +80,48 @@ alpha-2 code, a city carries a latitude, a longitude and a tolerance radius in k
 of the two is ever populated, and which one it is decides how an answer is checked. The base layer is
 `Blank` or `Borders`.
 
+**Validation becomes per-kind, and has to be spelled out** — `Question`'s current guard requires
+exactly four distinct choices and an in-range `CorrectIndex`, which is wrong for two of the three
+kinds:
+
+| | `Choice` | `Sort` | `Map` |
+|---|---|---|---|
+| `Choices` | 4, distinct | 4, distinct, in correct order | must be empty |
+| `CorrectIndex` | in range | unused, must be 0 | unused, must be 0 |
+| Target | — | — | required, exactly one shape |
+| Base layer | — | — | required |
+
 A country target is rejected unless its code exists in the bundled SVG, so a question can never be
-authored against a country the map cannot draw.
+authored against a country the map cannot draw. A city target needs latitude in −90..90, longitude in
+−180..180, and a positive radius; the radius is also bounded above, since a large enough one makes
+every answer correct.
 
 **The submitted answer gains one nullable string** beside `ChoiceIndex`, on both `AnswerRecord` and
-`LiveAnswer`: `"2,0,3,1"` for a sort, `"DE"` or `"52.37,4.90"` for a map. `Choice` questions keep
-using `ChoiceIndex` exactly as they do now, so every answer already stored in Redis and Mongo stays
-readable and every existing code path is untouched. `Correct` stays a `bool`, computed per kind
-inside the domain.
+`LiveAnswer`: `"2,0,3,1"` for a sort, `"DE"` or `"52.37,4.90"` for a map. `Correct` stays a `bool`.
 
-**Cards stay redacted.** A sort card carries the shuffled items; a map card carries the prompt and
-the base layer. The correct order and the target are revealed only at reveal — the same rule the
-two existing card DTOs already follow, extended rather than loosened.
+Be precise about what that does and does not cost, because "additive" is only true of *storage*:
+
+- **Stored answers are untouched.** Answers live in the Orleans grain state in Redis
+  (`MatchSnapshot`, `LiveRoundSnapshot`); the Mongo archive keeps participant results and question
+  ids, not individual answers. An old snapshot deserialises with the new field null and reads as the
+  `Choice` answer it always was.
+- **The submission path is not additive and has to change.** `AnswerDto` and `LiveHub.Answer` accept
+  only an `int`, `LiveMatch.Answer` and `Match.SubmitAnswer` take `int choiceIndex`, and
+  `LiveMatch.cs:340` range-checks it against `MatchRules.ChoicesPerQuestion`. All of those gain the
+  optional response string, and the range check becomes a `Choice`-only rule — a `Sort` or `Map`
+  answer arrives with `ChoiceIndex` unset and must not be rejected for it.
+- **`Question.IsCorrect(int)` is not enough.** It is `choiceIndex == CorrectIndex`. It grows a
+  per-kind sibling that takes the response string, and for `Sort` also the served order, as above.
+
+**Cards stay redacted, and gain a kind.** `QuestionCardDto` and `LiveRoundCardDto` both grow a
+`Kind`, because without it a client has no way to choose a renderer — today the shape is implied and
+that stops being true here. A sort card carries the shuffled items; a map card carries the prompt and
+the base layer. The correct order and the target are revealed only at reveal, which is the rule the
+two card DTOs already follow, extended rather than loosened.
+
+**The reveal contracts change too.** `AnswerResultDto` and `LiveRoundRevealDto` both carry a bare
+`int CorrectIndex`, which cannot express a sort order or a map target. Each gains the kind and a
+kind-appropriate answer field, and `CorrectIndex` keeps its meaning for `Choice` alone.
 
 ## 2. Play and scoring
 
@@ -113,8 +157,19 @@ than a variable is to remove.
 
 ## 3. Authoring
 
-**The generator gains a prompt per kind**, feeding the same pipeline and the same
-`Pending → Approved` review. `TopicKey` and the unique `Lang + Topic` index are unchanged.
+**The generator gains a prompt per kind**, feeding the same pipeline. `TopicKey` and the unique
+`Lang + Topic` index are unchanged.
+
+**Its inventory has to learn about kinds, or the new ones never get written.** `BucketCount` is
+`(Lang, CategoryId, Level, Approved, Pending)` and the top-up fills each bucket to a target. With
+3067 existing `Choice` questions every bucket already looks full, so a top-up would conclude there is
+nothing to do and generate no sorts and no maps at all. `Kind` joins the bucket key, and each kind
+gets its own target — a much smaller one for the new kinds than for `Choice`.
+
+**Generated questions publish immediately.** `AutoApprove` defaults to `true`, so a wrong sort order
+or a mislocated city goes straight to players. That is tolerable for multiple choice, where an error
+is obvious on sight; it is less so for an ordering nobody can verify at a glance. I would run the
+first top-up of each new kind with `AutoApprove` off and review by hand before trusting it.
 
 Each new kind gets one hard constraint, because each can fail in a way multiple-choice cannot:
 
@@ -157,13 +212,21 @@ Existing questions are untouched: they are `Choice`, and the current form keeps 
 
 Each step green before the next.
 
-1. **Domain** — `QuestionKind`, the sort and map fields, per-kind correctness, the nullable answer
-   string on `AnswerRecord` and `LiveAnswer`. Existing tests keep passing as the `Choice` case.
-2. **Selection and cards** — `QuestionSetBuilder` spanning kinds, and the two card DTOs carrying the
-   shuffled items or the base layer while still never carrying the answer.
-3. **The map asset** — the equirectangular SVG with ISO-coded paths, plus the projection helpers and
+1. **Domain** — `QuestionKind`, the sort and map fields, per-kind validation and correctness, the
+   nullable answer string on `AnswerRecord` and `LiveAnswer`. Existing tests keep passing as the
+   `Choice` case.
+2. **Persistence** — `QuestionDoc` serialises only `Choices` and `CorrectIndex` today and restores
+   without a kind, so it gains explicit mapping for the kind and the map target. A legacy document
+   has no kind field at all and must read back as `Choice`; that is a deliberate default, not
+   something to leave to enum-zero coincidence.
+3. **Selection, cards and reveals** — `QuestionSetBuilder` spanning kinds; the two card DTOs carrying
+   the kind plus the shuffled items or the base layer while still never carrying the answer; the two
+   reveal DTOs carrying a kind-appropriate answer instead of a bare `CorrectIndex`.
+4. **Submission** — `AnswerDto`, `LiveHub.Answer`, `LiveMatch.Answer` and `Match.SubmitAnswer` taking
+   the optional response, with the choice-range check scoped to `Choice`.
+5. **The map asset** — the equirectangular SVG with ISO-coded paths, plus the projection helpers and
    their tests. Self-contained and independently verifiable.
-4. **Play** — the sort list with its handle and keyboard path, the map component, and both reveals,
+6. **Play** — the sort list with its handle and keyboard path, the map component, and both reveals,
    in the live and async screens.
-5. **Authoring** — the generator prompts with their constraints and the coordinate check, then the
-   admin forms reusing the map component.
+7. **Authoring** — the bucket key gaining `Kind`, the generator prompts with their constraints and
+   the coordinate check, then the admin forms reusing the map component.
