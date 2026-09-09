@@ -247,7 +247,19 @@ public sealed class LiveMatchGrain(
         return true;
     }
 
-    public async Task<bool> AnswerAsync(string playerId, int slot, int choiceIndex)
+    /// <summary>
+    /// Grades and records one player's answer to the round in flight; false is a refusal, and the
+    /// caller learns nothing more than that (see <see cref="ILiveMatchGrain.AnswerAsync"/> for why).
+    /// <para>
+    /// The per-kind grading is <see cref="SubmittedAnswer.TryGrade"/>'s, and it comes before anything
+    /// that looks at the choice index, for the reason <c>MatchGrain.AnswerAsync</c> spells out: a
+    /// sorting or map answer arrives at -1, so a guard that reads -1 as "nothing was played" would
+    /// mark every one of them wrong. A malformed submission joins the other refusals here rather than
+    /// being stored as a wrong answer, and the round stays open for the player to try again inside
+    /// the same 20 seconds.
+    /// </para>
+    /// </summary>
+    public async Task<bool> AnswerAsync(string playerId, int slot, int choiceIndex, string? response = null)
     {
         if (_match is null || _match.IsOver) return false;
         if (slot < 0 || slot >= _match.QuestionIds.Count) return false;
@@ -255,7 +267,16 @@ public sealed class LiveMatchGrain(
         var question = await questions.GetAsync(_match.QuestionIds[slot]);
         if (question is null) return false;
 
-        var correct = question.IsCorrect(choiceIndex);
+        // A live duel has no client-submitted timeout: the buzzer closes the round and LiveMatch's
+        // own CloseRound records the miss, which is what starts a miss streak and eventually
+        // abandons a silent player. So an empty sorting or map response here is not the timeout it
+        // would be in an async run — it is a malformed submission, and accepting it would let a
+        // player lock in a guaranteed-wrong answer that also closes the round early for everyone.
+        if (question.Kind != QuestionKind.Choice && string.IsNullOrWhiteSpace(response)) return false;
+
+        if (!SubmittedAnswer.TryGrade(question, _match.Id, slot, choiceIndex, response, out var graded)) return false;
+
+        var correct = graded.Correct;
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
         var answeredBefore = _match.CurrentRound?.Answers.Count ?? 0;
@@ -264,7 +285,7 @@ public sealed class LiveMatchGrain(
         {
             // LiveMatch.Answer calls Advance first, so an answer arriving after the buzzer is
             // treated as late rather than scored into a round that has already closed.
-            _match.Answer(playerId, slot, choiceIndex, correct, clock.Now, question.Level);
+            _match.Answer(playerId, slot, graded.ChoiceIndex, correct, clock.Now, question.Level, question.Kind, graded.Response);
         }
         catch (InvalidOperationException)
         {

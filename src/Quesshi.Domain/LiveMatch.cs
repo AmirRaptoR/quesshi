@@ -318,8 +318,26 @@ public sealed class LiveMatch
         return changed;
     }
 
+    /// <summary>
+    /// Records one player's answer to the round in flight.
+    /// <para>
+    /// <paramref name="kind"/> and <paramref name="response"/> are what sorting and map questions
+    /// added. The kind is <i>told</i> to this class rather than derived by it, exactly as
+    /// <paramref name="correct"/> and <paramref name="level"/> already are: all three are facts about
+    /// a <see cref="Question"/>, and this is a pure state machine with no question bank, no storage
+    /// and no clock — handing it a <see cref="Question"/> to read them off would drag the whole
+    /// question repository into the one class that deliberately depends on nothing. The grain knows
+    /// the kind because it has just loaded the question to grade the answer, so passing it costs a
+    /// parameter and buys the rule below.
+    /// </para>
+    /// <para>
+    /// The kind is used for exactly one thing here — deciding whether the choice-range rule applies —
+    /// which is why it is not stored on the answer: the question already knows what kind it is, and a
+    /// second copy on every answer could only ever disagree with it.
+    /// </para>
+    /// </summary>
     public LiveAnswer Answer(string playerId, int slot, int choiceIndex, bool correct, DateTimeOffset now,
-        Difficulty level = Difficulty.Medium)
+        Difficulty level = Difficulty.Medium, QuestionKind kind = QuestionKind.Choice, string? response = null)
     {
         // Settle the clock first: real time has passed whether or not this particular call turns
         // out to be valid, so a rejected answer still leaves behind whatever this advanced — the
@@ -337,11 +355,20 @@ public sealed class LiveMatch
             throw new InvalidOperationException($"Expected an answer for round {round.Slot}, got {slot}.");
         if (round.HasAnswered(playerId))
             throw new InvalidOperationException("You have already answered this round.");
-        if (choiceIndex < 0 || choiceIndex >= MatchRules.ChoicesPerQuestion)
+
+        // The range check belongs to Choice alone. A sorting or map answer arrives with ChoiceIndex
+        // at -1 — the same sentinel a timeout uses — because there is no choice to point at, and the
+        // unconditional version of this rule would reject every one of them: the two new kinds would
+        // be unanswerable in a live duel while looking, from the outside, merely late. Their own
+        // validation happened before this call, in the grain: a sorting order that is not a
+        // permutation and a map answer that does not parse are refused there and never reach here,
+        // which is also where the -1 comes from, so nothing else in this method has to guess.
+        if (kind == QuestionKind.Choice && (choiceIndex < 0 || choiceIndex >= MatchRules.ChoicesPerQuestion))
             throw new InvalidOperationException($"Choice {choiceIndex} is out of range.");
 
         var taken = now - round.StartedAt;
-        var answer = new LiveAnswer(choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds);
+        var answer = new LiveAnswer(choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds,
+            response);
         round.Record(playerId, answer);
         _missStreak[playerId] = 0;
 

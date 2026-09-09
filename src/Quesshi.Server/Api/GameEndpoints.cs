@@ -248,13 +248,17 @@ public static class GameEndpoints
         api.MapPost("/matches/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
         {
             var meId = ctx.User.PlayerId()!;
-            // -1 is the timeout: the player ran out of clock, and the run still has to move on.
+            // -1 is the timeout: the player ran out of clock, and the run still has to move on. It is
+            // also every sorting and map answer, whose answer travels in Response — so this stays a
+            // check on the *index* alone and says nothing about the response beside it. The response
+            // cannot be validated here at all: a sorting answer is only meaningful against the
+            // round's own shuffle, and that seed is reconstructible only in the grain.
             if (body.ChoiceIndex is < -1 or >= MatchRules.ChoicesPerQuestion)
                 return Results.BadRequest(new { error = "bad_choice" });
 
             try
             {
-                var outcome = await grains.GetGrain<IMatchGrain>(id).AnswerAsync(meId, body.Slot, body.ChoiceIndex);
+                var outcome = await grains.GetGrain<IMatchGrain>(id).AnswerAsync(meId, body.Slot, body.ChoiceIndex, body.Response);
                 return Results.Ok(new AnswerResultDto(outcome.Correct, outcome.CorrectIndex, outcome.Score,
                     outcome.Explanation, outcome.RunFinished, outcome.RunScore,
                     outcome.Kind, outcome.CorrectOrder, outcome.CorrectTarget));

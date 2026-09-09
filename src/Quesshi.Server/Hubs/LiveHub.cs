@@ -68,12 +68,20 @@ public sealed class LiveHub(
     /// <summary>
     /// No return value on purpose: right/wrong is withheld until <c>RoundRevealed</c> reaches both
     /// players together, and the grain's own answer already returns nothing but success either way.
+    /// That covers a refusal too — a malformed sorting or map response is simply not recorded, and
+    /// the round is still open for another try until the buzzer.
+    /// <para>
+    /// <paramref name="response"/> carries a sorting or map answer, which <paramref name="choiceIndex"/>
+    /// cannot hold; those arrive with the index at -1. It is forwarded untouched: this hub validates
+    /// nothing about an answer, because a sorting answer only means anything against the round's own
+    /// shuffle and only the grain can reconstruct that.
+    /// </para>
     /// </summary>
-    public async Task Answer(string matchId, int round, int choiceIndex)
+    public async Task Answer(string matchId, int round, int choiceIndex, string? response)
     {
         var meId = Context.User!.PlayerId();
         if (meId is null) return;
-        await grains.GetGrain<ILiveMatchGrain>(matchId).AnswerAsync(meId, round, choiceIndex);
+        await grains.GetGrain<ILiveMatchGrain>(matchId).AnswerAsync(meId, round, choiceIndex, response);
     }
 
     /// <summary>

@@ -59,9 +59,24 @@ public class LiveRedactionKindTests(LiveClusterFixture fixture)
         return ids;
     }
 
+    /// <summary>
+    /// A fresh duel id whose round-0 shuffle actually shuffles. One id in twenty-four leaves all four
+    /// items where they were, and a test asserting that the card is <i>not</i> the stored order would
+    /// then fail on a duel that behaved perfectly — an unreproducible failure once every few hundred
+    /// runs, which is worse than the seed being slightly chosen.
+    /// </summary>
+    private static string NewShuffledId()
+    {
+        while (true)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            if (!SortOrder.IsIdentity(SortOrder.For(id, 0, MatchRules.ChoicesPerQuestion).Served)) return id;
+        }
+    }
+
     private async Task<(ILiveMatchGrain Grain, string Id)> StartedDuelAsync()
     {
-        var id = Guid.NewGuid().ToString("N");
+        var id = NewShuffledId();
         var questionIds = SeedMixed(id);
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id);
 
@@ -97,11 +112,31 @@ public class LiveRedactionKindTests(LiveClusterFixture fixture)
             .Where(e => e.Kind == "RoundRevealed").Select(e => (LiveRoundReveal)e.Payload)
             .Single(r => r.Slot == slot);
 
+    /// <summary>
+    /// How a round of each kind is actually played: a sorting round takes served positions in the
+    /// order the player placed them, a map round a country code, an ordinary round a choice index.
+    /// <para>
+    /// Issue #74 is what makes this necessary — the grain now refuses a sorting or map round anything
+    /// but its own shape, so these rounds are genuinely <i>played</i> rather than merely constructed
+    /// with a stored answer. The two players deliberately disagree, so a reveal that mixed their
+    /// answers up would show.
+    /// </para>
+    /// </summary>
+    private static (int ChoiceIndex, string? Response) PlayFor(int slot, bool first) => slot switch
+    {
+        0 => (-1, first ? "0,1,2,3" : "3,2,1,0"),
+        1 => (-1, first ? "DE" : "FR"),
+        _ => (first ? 0 : 1, (string?)null)
+    };
+
     /// <summary>Both answer, which closes the round at once and needs no buzzer.</summary>
     private static async Task CloseRoundAsync(ILiveMatchGrain grain, int slot)
     {
-        Assert.True(await grain.AnswerAsync(Amir, slot, 0));
-        Assert.True(await grain.AnswerAsync(Sara, slot, 1));
+        var (amirChoice, amirResponse) = PlayFor(slot, first: true);
+        var (saraChoice, saraResponse) = PlayFor(slot, first: false);
+
+        Assert.True(await grain.AnswerAsync(Amir, slot, amirChoice, amirResponse));
+        Assert.True(await grain.AnswerAsync(Sara, slot, saraChoice, saraResponse));
         await WaitForAsync(grain, v => v.Phase == (int)LivePhase.Reveal || v.State != (int)MatchState.InProgress);
     }
 
@@ -195,7 +230,7 @@ public class LiveRedactionKindTests(LiveClusterFixture fixture)
 
         // One player has locked in and the other has not: the round is open, and the answer that is
         // already in must not leak to the player who has not answered yet.
-        Assert.True(await grain.AnswerAsync(Sara, 0, 1));
+        Assert.True(await grain.AnswerAsync(Sara, 0, -1, "3,2,1,0"));
 
         var view = await grain.GetAsync(Amir);
         var round = view!.Rounds[0];
@@ -218,7 +253,7 @@ public class LiveRedactionKindTests(LiveClusterFixture fixture)
         await CloseRoundAsync(grain, 0);
         await AdvanceToNextRoundAsync(grain, 1);
 
-        Assert.True(await grain.AnswerAsync(Sara, 1, 1));
+        Assert.True(await grain.AnswerAsync(Sara, 1, -1, "FR"));
 
         var view = await grain.GetAsync(Amir);
         var round = view!.Rounds[1];

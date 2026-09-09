@@ -14,10 +14,11 @@ namespace Quesshi.Server.Tests;
 /// <see cref="AnswerOutcome"/>, so a test that built one itself would prove only that a record
 /// constructor copies fields.
 /// <para>
-/// The answers submitted here are all choice indices, because the submission path for a sorting or
-/// map answer is issue #74 and is deliberately untouched by this one. That costs these tests
-/// nothing: what is under test is what comes <i>back</i> from answering a sorting or map question,
-/// and that is decided by the question, not by what the player sent.
+/// The sorting and map rounds here are timed out rather than played — a bare -1 with no response,
+/// which is exactly what an async run submits when the clock beats the player. That costs these
+/// tests nothing: what is under test is what comes <i>back</i> from answering a sorting or map
+/// question, and that is decided by the question, not by what the player sent. The submissions
+/// themselves are driven in <see cref="AsyncSubmissionKindTests"/>.
 /// </para>
 /// </summary>
 [Collection(nameof(ClusterCollection))]
@@ -74,9 +75,24 @@ public class AsyncAnswerKindTests(ClusterFixture fixture) : IAsyncDisposable
         return client;
     }
 
+    /// <summary>
+    /// A fresh duel id whose round-0 shuffle actually shuffles. One id in twenty-four leaves all four
+    /// items where they were, and a test asserting that the card is <i>not</i> the stored order would
+    /// then fail on a duel that behaved perfectly — an unreproducible failure once every few hundred
+    /// runs, which is worse than the seed being slightly chosen.
+    /// </summary>
+    private static string NewShuffledId()
+    {
+        while (true)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            if (!SortOrder.IsIdentity(SortOrder.For(id, 0, MatchRules.ChoicesPerQuestion).Served)) return id;
+        }
+    }
+
     private async Task<(string Id, HttpClient Mine, HttpClient Theirs)> NewDuelAsync()
     {
-        var id = Guid.NewGuid().ToString("N");
+        var id = NewShuffledId();
         var questionIds = SeedMixed(id);
         var me = $"aak-me-{id[..8]}";
         var them = $"aak-them-{id[..8]}";
@@ -176,9 +192,10 @@ public class AsyncAnswerKindTests(ClusterFixture fixture) : IAsyncDisposable
     /// <summary>
     /// The duel history over the same real path: once both runs are finished,
     /// <see cref="RevealedQuestionDto"/> knows what kind each question was and what the answer to it
-    /// was. The two response fields are null here and correctly so — nothing can put a sorting or map
-    /// answer into a run until issue #74 lands the submission path; that they carry a stored answer
-    /// when there is one is asserted in <see cref="RevealContractKindTests"/>.
+    /// was. The two response fields are null here and correctly so — every sorting and map round in
+    /// this duel timed out, and a timeout of any kind stores no response; that they carry a stored
+    /// answer when there is one is asserted in <see cref="RevealContractKindTests"/> and, played
+    /// through the whole stack, in <see cref="AsyncSubmissionKindTests"/>.
     /// </summary>
     [Fact]
     public async Task The_finished_duels_history_names_the_kind_and_the_answer_of_every_question()

@@ -243,8 +243,25 @@ public sealed class Match
         return new ServedQuestion(run.NextSlot, _questionIds[run.NextSlot], now);
     }
 
+    /// <summary>
+    /// Records one answer of a run.
+    /// <para>
+    /// <paramref name="response"/> is the answer a choice index cannot hold: a sorting order in
+    /// stored-index terms, or a country code or <c>"lat,lon"</c> for a map question. It is stored
+    /// exactly as the grain normalised it and is never re-derived here — see
+    /// <see cref="SortOrder.ToStoredOrder"/> for why the inversion happens once, at submission, and
+    /// nowhere else.
+    /// </para>
+    /// <para>
+    /// Unlike <see cref="LiveMatch.Answer"/> this takes no <see cref="QuestionKind"/>, because it has
+    /// no rule that needs one: an async run has never range-checked the choice index (the endpoint
+    /// does, before the grain is ever called), so there is no Choice-only guard here to make
+    /// conditional. A parameter nothing reads would be a second, unenforced copy of the question's
+    /// own kind.
+    /// </para>
+    /// </summary>
     public AnswerRecord SubmitAnswer(string playerId, int slot, int choiceIndex, bool correct, DateTimeOffset now,
-        Difficulty level = Difficulty.Medium)
+        Difficulty level = Difficulty.Medium, string? response = null)
     {
         RequireParticipant(playerId);
 
@@ -260,7 +277,8 @@ public sealed class Match
             throw new InvalidOperationException($"Expected an answer for question {run.NextSlot}, got {slot}.");
 
         var taken = now - servedAt;
-        var answer = new AnswerRecord(slot, choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds);
+        var answer = new AnswerRecord(slot, choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds,
+            response);
         run.Record(answer);
 
         TryResolve(now);

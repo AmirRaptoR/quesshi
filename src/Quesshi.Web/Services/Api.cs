@@ -65,7 +65,10 @@ public sealed class Api(HttpClient http)
         return GetAsync<List<MatchSummaryDto>>(query.Length == 0 ? "api/matches" : $"api/matches?{query}");
     }
     public Task<MatchDetailDto?> MatchAsync(string id) => GetAsync<MatchDetailDto>($"api/matches/{id}");
-    public Task<AnswerResultDto?> AnswerAsync(string id, int slot, int choice) => PostAsync<AnswerResultDto>($"api/matches/{id}/answer", new { slot, choiceIndex = choice });
+    /// <summary>The response is the sorting or map answer a choice index cannot hold; a choice answer
+    /// sends it null and puts exactly the JSON on the wire it always did.</summary>
+    public Task<AnswerResultDto?> AnswerAsync(string id, int slot, int choice, string? response = null)
+        => PostAsync<AnswerResultDto>($"api/matches/{id}/answer", new { slot, choiceIndex = choice, response });
 
     // --- live duels ---
     public Task<LiveViewDto?> CreateLiveAsync(string? lang, List<string>? categories = null, int? questions = null, List<int>? levels = null)
