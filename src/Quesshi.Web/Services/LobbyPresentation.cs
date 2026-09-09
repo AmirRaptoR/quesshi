@@ -65,4 +65,49 @@ public static class LobbyPresentation
         while (seats.Count < s.Capacity) seats.Add(null);
         return seats;
     }
+
+    /// <summary>
+    /// What a face tile in the roster grid says about the seat it draws (issue #90's replacement for
+    /// the old text rows). There are exactly three states: the lobby's own owner, anyone else already
+    /// seated, and a still-open seat — <c>Lobby.razor</c> reads this once per tile rather than
+    /// re-deriving "is this the owner's seat" itself, so the one rule (<see cref="IsOwner"/>'s own
+    /// <c>Participants[0]</c> invariant) has one reader instead of two that could drift apart.
+    /// </summary>
+    public enum SeatState { Host, Ready, Open }
+
+    /// <summary><paramref name="seat"/> is one entry of <see cref="Seats"/> — null for a still-empty
+    /// seat, which is always <see cref="SeatState.Open"/> regardless of who else is seated.</summary>
+    public static SeatState SeatStateFor(LobbySnapshot s, LiveParticipantDto? seat)
+    {
+        if (seat is null) return SeatState.Open;
+        return s.Participants.Count > 0 && seat.PlayerId == s.Participants[0].PlayerId ? SeatState.Host : SeatState.Ready;
+    }
+
+    /// <summary>
+    /// How many columns the face-tile grid draws: three up to a three-seat lobby, four beyond it.
+    /// Three across leaves a two- or three-player lobby's tiles sized generously rather than
+    /// stretched thin; a bigger lobby (up to eight seats) needs the fourth column just to stay on one
+    /// screen on a phone without scrolling, the same "read from two seats to eight" goal <see
+    /// cref="Seats"/>'s own padding already serves.
+    /// </summary>
+    public static int RosterColumns(LobbySnapshot s) => s.Capacity <= 3 ? 3 : 4;
+
+    /// <summary>
+    /// What the invite avatar row shows for one of the owner's friends (issue #90's replacement for
+    /// the old per-row chip/button). The checks are ordered by how permanent each fact is:
+    /// <see cref="Joined"/> wins once true, because a friend already seated has nothing left to
+    /// invite regardless of anything else; then <see cref="LinkOnly"/>, since a guest account is
+    /// refused by <c>LobbyHub.OnConnectedAsync</c> outright, so no in-app invite could ever reach one
+    /// no matter how many times this owner taps; only then does whether *this visit* already sent an
+    /// invitation (<paramref name="alreadyInvited"/>, the caller's own <c>_invited</c> set) decide
+    /// between <see cref="Invited"/> and <see cref="Available"/>.
+    /// </summary>
+    public enum InviteTileState { Available, Invited, Joined, LinkOnly }
+
+    public static InviteTileState InviteState(LobbySnapshot s, FriendDto friend, bool alreadyInvited)
+    {
+        if (s.Participants.Any(p => p.PlayerId == friend.Id)) return InviteTileState.Joined;
+        if (friend.IsGuest) return InviteTileState.LinkOnly;
+        return alreadyInvited ? InviteTileState.Invited : InviteTileState.Available;
+    }
 }

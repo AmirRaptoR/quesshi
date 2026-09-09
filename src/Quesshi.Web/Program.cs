@@ -11,6 +11,7 @@ builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.H
 builder.Services.AddScoped<Translator>();
 builder.Services.AddScoped<AppState>();
 builder.Services.AddScoped<Api>();
+builder.Services.AddScoped<Sounds>();
 
 // The world map is 150 KB and every map question in a duel draws the same one, so it is fetched and
 // parsed once and shared. Scoped, which for a WebAssembly app is the whole session — the same

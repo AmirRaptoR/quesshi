@@ -997,8 +997,7 @@ a  { color: var(--firouzeh); text-decoration: none; }
    colour. */
 input[type='range'] { accent-color: var(--firouzeh); }
 
-/* ============================================================
-   ---- home (#88) ----
+/* =====================================================   ---- home (#88) ----
    The home is two tabs now — Live and Offline — and everything
    below belongs to them. It is written as its own block rather
    than woven into the sections above for a plain reason: the
@@ -1258,3 +1257,301 @@ input[type='range'] { accent-color: var(--firouzeh); }
   font-size: var(--step--1);
   font-weight: 700;
 }
+=======
+/* ---- profile (#91) ---- */
+/* Profile stops being a settings form with a stats card bolted on: identity, a three-tile record and
+   friends, with a gear as the only door into everything that used to sit here as fields. Settings
+   gets its own new pieces below too (script tiles, the sounds switch) rather than reusing Profile's
+   old form markup, since neither survives this issue looking anything like it used to. */
+
+/* A small icon rendered at a comfortable size sitting inside a 44px tap target without the target's
+   own extra padding pushing the surrounding layout around — the negative margin gives the hit area
+   back the space its padding just claimed, the same trick the mockup itself uses for both the gear
+   and the settings back chevron. */
+.icon-hit {
+/* ---- lobby (#90) ---- */
+/* "Code first, faces not rows" — issue #90's whole rewrite of the lobby (see its mockup). The card
+   chrome the old lobby wrapped every section in is gone from the header, code and roster: a room
+   people are standing in reads better as one continuous page than as a stack of boxes, and the code
+   and face tiles are distinct enough in shape and colour that they need no border to read as their
+   own section. The two guest-only cards (identity, "keep this account") keep .card — those really
+   are two separate, occasional detours from the room itself, not the room. */
+
+/* The back chevron's tap target is the same 44px square as everything else new here even though the
+   icon it holds is drawn small — the negative margin pulls that extra hit area back in so it never
+   pushes the title over, the same trick a native back button plays. Flipped for RTL exactly like
+   .pager__arrow: "back" always points toward the reading-start edge, whichever edge that is. */
+.lobby-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -10px;
+  border-radius: 50%;
+  color: var(--sadaf-2);
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.icon-hit:hover { color: var(--sadaf); background: rgb(47 191 176 / 0.1); }
+
+/* A "back" chevron is drawn once, pointing towards the start of reading order, and mirrored for the
+   languages that read the other way — the same rule .pager__arrow already applies to its own chevrons. */
+:root[dir="rtl"] .icon-hit--back .icon { transform: scaleX(-1); }
+
+/* --- identity: a large avatar, the name, and points with a rank alongside when there is one -------- */
+.profile-id { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 0.4rem; }
+.profile-id__avatar { width: 5.75rem; height: 5.75rem; font-size: var(--step-3); }
+.profile-id__name { margin-top: 0.85rem; font-size: var(--step-2); }
+.profile-id__meta { display: flex; align-items: baseline; gap: 0.4rem; margin-top: 0.3rem; font-size: var(--step--1); }
+.profile-id__points { font-size: var(--step-1); color: var(--zaferan); }
+
+/* --- record: three unlabelled tiles, the section's own aria-label carries what they are ------------ */
+.record-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; margin-top: 1.75rem; }
+.record-tile {
+  text-align: center;
+  padding: 1rem 0.5rem;
+  color: var(--sadaf);
+}
+:root[dir="rtl"] .lobby-back { transform: scaleX(-1); }
+
+/* The share code: the one thing a visitor to this page actually needs, so it is drawn bigger than
+   any heading anywhere else in the app rather than filed under a label like everything used to be. */
+.lobby-code {
+  margin: 0.25rem 0 0;
+  font-size: var(--step-4);
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--firouzeh);
+}
+
+/* A pill-shaped .btn for Copy link / Share — same colours, hover and disabled behaviour as
+   .btn--ghost already has, just rounder and guaranteed the full 44px tap height regardless of how
+   short its label is. */
+.btn--pill { border-radius: 999px; min-height: 44px; padding-inline: 1.15rem; }
+
+/* --- the roster grid: face tiles instead of rows ------------------------------------------------- */
+/* Three columns up to a three-seat lobby, four beyond it (LobbyPresentation.RosterColumns) — two
+   across would strand a lonely third tile on its own row, and past four seats three across runs a
+   phone screen out of height before the last tile without scrolling. */
+.lobby-grid { display: grid; grid-template-columns: repeat(var(--lobby-cols, 3), minmax(0, 1fr)); gap: 0.6rem; }
+
+.lobby-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.4rem;
+  text-align: center;
+  border-radius: var(--r-md);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border: 1px solid var(--line);
+}
+.record-tile__value { font-size: var(--step-2); font-weight: 800; font-variant-numeric: tabular-nums; }
+.record-tile__label { font-size: var(--step--1); color: var(--sadaf-2); margin-top: 0.15rem; }
+
+/* --- friends: a plain bold title rather than an eyebrow, "Add" as the section's one action ---------- */
+.friends-title { margin: 0; font-size: var(--step-1); font-weight: 700; }
+.link-action {
+  padding: 0.55rem 0.2rem; /* vertical padding alone gets this past the 44px tap-target rule without
+                               widening a link that is meant to read as text, not a button. */
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--firouzeh);
+  cursor: pointer;
+}
+.link-action:hover { color: var(--zaferan); }
+
+.friends-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-md);
+  color: var(--sadaf-2);
+  font-size: var(--step--1);
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--r-md);
+  background: rgb(22 34 92 / 0.5);
+  border: 1px solid var(--line);
+}
+.friend-row__avatar { position: relative; }
+.friend-row__dot { position: absolute; inset-inline-end: -2px; bottom: -2px; border: 2px solid var(--shab); }
+.friend-row__name { font-weight: 700; font-size: var(--step-0); }
+.friend-row__status { font-size: var(--step--1); margin-top: 0.1rem; }
+
+/* One pill, two finishes: filled turquoise when the tap sends an instant live challenge, outlined
+   when it creates an async duel instead — the same meaning "filled vs outlined" already carries
+   between .btn and .btn--ghost, just shaped as a pill to read as this row's one action rather than a
+   form control. Both are 44px tall regardless of the row's own smaller line-height. */
+.duel-pill {
+  flex: none;
+  min-height: 44px;
+  padding: 0 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.2s var(--ease), background 0.2s var(--ease);
+}
+.duel-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+.duel-pill--live { border: 1px solid transparent; background: var(--firouzeh); color: var(--shab); }
+.duel-pill--live:hover:not(:disabled) { filter: brightness(1.1); }
+.duel-pill--async { border: 1px solid var(--line-2); background: transparent; color: var(--sadaf); }
+.duel-pill--async:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+
+/* --- settings: script tiles for language, in the same three-per-row shape the #89 questions sheet
+   mockup already settled on — reused rather than a second design for the same three options. --------- */
+.script-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.script-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  padding: 0 0.4rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: rgb(22 34 92 / 0.5);
+  color: var(--sadaf);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.script-tile:hover { border-color: var(--line-2); }
+.script-tile.is-on { background: var(--firouzeh); color: var(--shab); border-color: var(--firouzeh); }
+
+.settings-row__label { font-weight: 700; }
+
+/* --- the sounds switch: a 44px-tall button around a smaller visual track, so the tap target meets
+   the rule this whole redesign holds every control to without the pill itself looking oversized. ---- */
+.switch {
+  flex: none;
+  width: 64px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.switch__track {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgb(9 14 34 / 0.55);
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.switch__thumb {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sadaf-2);
+  transition: inset-inline-start 0.2s var(--ease), background 0.2s var(--ease);
+}
+.switch.is-on .switch__track { background: var(--firouzeh); border-color: var(--firouzeh); }
+.switch.is-on .switch__thumb { inset-inline-start: 22px; background: var(--shab); }
+.lobby-tile--open { justify-content: center; background: none; border-style: dashed; border-color: var(--line-2); }
+.lobby-tile__plus {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  border: 1px dashed var(--line-2);
+  font-size: var(--step-1);
+  color: var(--sadaf-3);
+}
+
+/* A bigger .avatar for a face tile — the seat or friend is the whole point of the tile, not one
+   detail in a row that also has to fit a name. */
+.avatar--tile { width: 3.25rem; height: 3.25rem; font-size: var(--step-1); }
+
+/* --- invite: an avatar row of friends, tapped rather than read out of a list ---------------------- */
+.lobby-friends { display: flex; gap: 0.75rem; overflow-x: auto; padding-block: 0.1rem; }
+.lobby-friend {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 4.25rem;
+  padding: 0.2rem 0 0.35rem;
+  font: inherit;
+  color: var(--sadaf);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lobby-friend:disabled { cursor: default; opacity: 0.7; }
+.lobby-friend--dim { cursor: default; }
+.lobby-friend--dim .avatar { opacity: 0.5; }
+.lobby-friend__avatar-wrap { position: relative; }
+
+/* Logical inset properties rather than the mockup's literal "right" — the dot has to sit at the same
+   corner of the avatar in both reading directions relative to the tile, not the same physical side. */
+.lobby-friend__dot {
+  position: absolute;
+  inset-inline-end: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--firouzeh);
+  border: 2px solid var(--shab);
+}
+
+/* --- the settings summary: one line, tappable only for the owner --------------------------------- */
+.lobby-settings-line {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-inline-end: -0.3rem;
+  padding-inline: 0.3rem;
+  color: var(--sadaf-2);
+  font-size: var(--step--1);
+  text-decoration: none;
+}
+.lobby-settings-line:hover { color: var(--sadaf); }
+
+/* --- the quiet Leave/Cancel action: a text link that never competes with Start for attention ------ */
+.lobby-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--sadaf-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lobby-quiet:hover:not(:disabled) { color: var(--sadaf-2); }
+.lobby-quiet:disabled { cursor: not-allowed; opacity: 0.6; }
