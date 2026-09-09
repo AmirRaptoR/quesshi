@@ -306,6 +306,10 @@
   "lobby.upgrade.taken": "That email already has an account.",
   "lobby.upgrade.title": "Keep this account",
   "lobby.waitingForOwner": "Waiting for the owner to start",
+  "map.answer": "Answer",
+  "map.label": "World map",
+  "map.tapCountry": "Tap a country",
+  "map.tapPoint": "Tap the map to drop a pin",
   "media.audio": "Audio",
   "media.image": "Image",
   "media.source": "Image source",
@@ -325,6 +329,7 @@
   "password.tooShort": "Use at least 10 characters.",
   "play.correct": "Correct",
   "play.finish": "See result",
+  "play.lockIn": "Lock it in",
   "play.next": "Next",
   "play.of": "of",
   "play.points": "points",
@@ -384,5 +389,8 @@
   "result.win": "You won",
   "result.you": "You",
   "session.unconfirmed.body": "We couldn't confirm your session. Your sign-in is still safe — check your connection and try again.",
-  "session.unconfirmed.title": "Session unconfirmed"
+  "session.unconfirmed.title": "Session unconfirmed",
+  "sort.correctOrder": "Correct order",
+  "sort.hint": "Drag a handle to move a row, or use the up and down arrow keys.",
+  "sort.move": "Move {0}"
 }

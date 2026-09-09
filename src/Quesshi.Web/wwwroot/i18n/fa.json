@@ -306,6 +306,10 @@
   "lobby.upgrade.taken": "این ایمیل قبلاً یک حساب دارد.",
   "lobby.upgrade.title": "حفظ این حساب",
   "lobby.waitingForOwner": "منتظر شروع بازی از سوی میزبان",
+  "map.answer": "پاسخ",
+  "map.label": "نقشهٔ جهان",
+  "map.tapCountry": "روی یک کشور بزن",
+  "map.tapPoint": "روی نقشه بزن تا نشانه بگذاری",
   "media.audio": "صدا",
   "media.image": "تصویر",
   "media.source": "منبع تصویر",
@@ -325,6 +329,7 @@
   "password.tooShort": "دست‌کم ۱۰ نویسه لازم است.",
   "play.correct": "درست",
   "play.finish": "پایان",
+  "play.lockIn": "ثبت پاسخ",
   "play.next": "بعدی",
   "play.of": "از",
   "play.points": "امتیاز",
@@ -384,5 +389,8 @@
   "result.win": "بردی",
   "result.you": "تو",
   "session.unconfirmed.body": "نتوانستیم نشست تو را تأیید کنیم. ورودت هنوز معتبر است — اتصال را بررسی کن و دوباره امتحان کن.",
-  "session.unconfirmed.title": "نشست تأیید نشد"
+  "session.unconfirmed.title": "نشست تأیید نشد",
+  "sort.correctOrder": "ترتیب درست",
+  "sort.hint": "برای جابه‌جایی هر ردیف دستگیره‌اش را بکش، یا از کلیدهای بالا و پایین استفاده کن.",
+  "sort.move": "جابه‌جایی {0}"
 }

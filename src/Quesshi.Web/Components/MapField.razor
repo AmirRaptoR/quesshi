@@ -1,0 +1,71 @@
+@*
+    A map question as it is answered: the world, and beneath it a bar naming whatever the last tap
+    hit, with the control that locks it in.
+
+    The bar is not decoration. A world map on a phone with no pan and no zoom is a picture in which
+    Belgium and the Netherlands are two neighbouring thumbprints; without something saying which one
+    the tap landed on, the player only finds out at the reveal. Tapping again moves the pick, so the
+    bar is a chance to correct rather than a receipt.
+
+    The same component is #77's authoring control, where an admin sets a question's target by
+    clicking the map. That is why the confirm button is optional and the tolerance radius is a
+    parameter: an author needs to see the circle their radius actually draws, and has no "lock it
+    in" step at all — they have a form.
+*@
+@inject WorldMapAsset Asset
+@inject Translator L
+
+<WorldMap Shape="Shape" BaseLayer="BaseLayer" Disabled="Disabled" ToleranceKm="ToleranceKm"
+          Selection="Selection" SelectionChanged="SelectionChanged" Label="@Label" />
+
+<div class="mapbar @(Selection is null ? "mapbar--empty" : null)" role="status">
+    @if (Selection is null)
+    {
+        <span class="grow">@L[Shape == 1 ? "map.tapPoint" : "map.tapCountry"]</span>
+    }
+    else if (Selection.IsCountry)
+    {
+        <span class="mapbar__mark" aria-hidden="true"></span>
+        <span class="mapbar__name grow" dir="ltr">@MapText.CountryName(_countries, Selection.CountryCode)</span>
+        <span class="chip">@Selection.CountryCode</span>
+    }
+    else
+    {
+        <span class="mapbar__mark" aria-hidden="true"></span>
+        <span class="mapbar__coords grow" dir="ltr">@L.Num(MapText.Coordinates(Selection))</span>
+    }
+
+    @if (OnConfirm.HasDelegate)
+    {
+        <button class="btn btn--sm" disabled="@(Selection is null || Disabled)" @onclick="OnConfirm">@L["play.lockIn"]</button>
+    }
+</div>
+
+@code {
+    /// <summary>A <c>MapTargetKind</c> ordinal off the card: 0 country, 1 city.</summary>
+    [Parameter] public int Shape { get; set; }
+
+    /// <summary>A <c>MapBaseLayer</c> ordinal off the card: 0 blank, 1 borders.</summary>
+    [Parameter] public int BaseLayer { get; set; }
+
+    [Parameter] public MapPick? Selection { get; set; }
+
+    [Parameter] public EventCallback<MapPick> SelectionChanged { get; set; }
+
+    /// <summary>Set only where the radius is actually known — #77's admin form. No reveal contract
+    /// carries it, so a played round leaves it null and draws no circle.</summary>
+    [Parameter] public double? ToleranceKm { get; set; }
+
+    /// <summary>The answer is locked, or the clock has run out.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Supplied by a play screen, where an answer has to be committed; omitted by the admin
+    /// form, where the surrounding form is what commits it.</summary>
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private IReadOnlyList<MapCountry> _countries = [];
+
+    private string Label => L["map.label"];
+
+    protected override async Task OnInitializedAsync() => _countries = await Asset.LoadAsync();
+}

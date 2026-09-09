@@ -764,3 +764,191 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .answer--locked { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
 
 .live-code { font-size: var(--step-2); font-weight: 800; letter-spacing: .25em; color: var(--firouzeh); }
+
+/* ============================================================
+   Sorting and map questions (docs/sorting-and-map-questions.md)
+   Two new ways to answer, built out of the pieces already here:
+   the sort row is the answer tile with its key slot turned into
+   a grip, and the map sits in the same dark well the tiles do.
+   Nothing below invents a colour — the accents are the same
+   turquoise for "what you picked" and saffron for "what was
+   right" the choice questions have always used.
+   ============================================================ */
+
+/* --- the sort list ------------------------------------------------------- */
+/* An <ol>, because the order is the answer and a screen reader should say so. */
+.sortlist { display: grid; gap: 0.6rem; margin: 1.1rem 0 0; padding: 0; list-style: none; }
+
+/* Deliberately the same box as .answer: same padding, border, radius and well, so a sorting
+   question reads as the same family of thing as a choice question rather than as a different game.
+   No touch-action here — the row must stay inert so a scroll gesture that starts on it scrolls the
+   page instead of quietly reordering the player's answer. Only the grip claims the gesture. */
+.sortrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  font-weight: 600;
+  color: var(--sadaf);
+  background: rgb(9 14 34 / 0.5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.15s var(--ease);
+}
+
+/* The grip is the row's first flex child, which *is* the reading-start edge in both directions —
+   no `left` anywhere and no rtl override to keep in step, which is the whole point of laying it out
+   logically. touch-action:none is what stops the browser treating a downward drag on the grip as a
+   scroll and cancelling the pointer sequence halfway through. */
+.sortrow__grip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--firouzeh);
+  background: rgb(47 191 176 / 0.14);
+  cursor: grab;
+  touch-action: none;
+  transition: background 0.2s var(--ease);
+}
+.sortrow__grip:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+.sortrow__grip:disabled { cursor: default; opacity: 0.5; }
+.sortrow__grip:active:not(:disabled) { cursor: grabbing; }
+
+/* The place a row is in is the answer, so it is numbered rather than decorated. */
+.sortrow__place {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  font-size: var(--step--1);
+  color: var(--zaferan);
+  background: rgb(232 168 58 / 0.12);
+}
+
+/* The one moment of motion in the list, and it answers the player's own gesture: the row being
+   dragged lifts off the others rather than sliding among them invisibly. */
+.sortrow--dragging {
+  border-color: var(--zaferan);
+  background: rgb(232 168 58 / 0.12);
+  transform: scale(1.02);
+  box-shadow: 0 10px 24px -12px rgb(9 14 34 / 0.9);
+  cursor: grabbing;
+}
+.sortrow--dragging .sortrow__grip { background: rgb(232 168 58 / 0.22); color: var(--zaferan); }
+
+/* --- the sort reveal: the right order, and yours, side by side ------------ */
+/* Two columns on a phone and one on anything narrower, rather than a table: four short items in
+   two lists is the smallest arrangement in which "these two disagree at place 3" is visible at a
+   glance, which is the only thing this reveal has to say. */
+.sortreveal { display: grid; gap: 0.7rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); margin-top: 1.1rem; }
+.sortreveal__col { display: grid; gap: 0.35rem; align-content: start; }
+.sortreveal__head { font-size: var(--step--1); font-weight: 700; color: var(--sadaf-2); }
+.sortreveal__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: var(--step--1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.4);
+}
+.sortreveal__item--right { border-color: rgb(232 168 58 / 0.5); background: rgb(232 168 58 / 0.14); }
+.sortreveal__item--wrong { border-color: rgb(212 66 92 / 0.5); background: rgb(212 66 92 / 0.14); }
+.sortreveal__item--blank { border-style: dashed; color: var(--sadaf-3); }
+.sortreveal__place { flex: none; color: var(--sadaf-3); font-variant-numeric: tabular-nums; font-weight: 800; }
+
+/* --- the world map ------------------------------------------------------- */
+/* The sea is the well the answer tiles sit in, not a separate white panel, so a 360x180 rectangle
+   settles into the page instead of sitting on top of it as a foreign object. */
+.worldmap {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.5);
+  touch-action: manipulation;
+}
+
+/* Land is the same lifted lapis the cards are made of. Every stroke below is non-scaling: the
+   viewBox is 360 units wide, so a stroke-width of 1 would be one degree of longitude — about
+   110 km of coastline drawn as a line. */
+.worldmap__country { fill: var(--lajevard-up); stroke: none; transition: fill 0.18s var(--ease); }
+.worldmap--borders .worldmap__country { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.worldmap--pick .worldmap__country { cursor: pointer; }
+.worldmap--pick .worldmap__country:hover { fill: rgb(47 191 176 / 0.45); }
+
+/* What you picked is turquoise, what was right is saffron — the same two meanings those colours
+   carry on every answer tile in the app. Target wins where they are the same country, because
+   "you were right" is the more useful of the two things to see. */
+.worldmap__country.is-picked { fill: var(--firouzeh); }
+.worldmap__country.is-target { fill: var(--zaferan); }
+.worldmap__country.is-miss { fill: var(--anaar); }
+
+/* A filled country is a few pixels across at world scale, and on a phone that is not enough to
+   find by eye. The pale outline is what makes it read as "this one" from arm's length; it is drawn
+   over the border layer so it wins wherever the two meet. */
+.worldmap__country.is-picked,
+.worldmap__country.is-target,
+.worldmap__country.is-miss {
+  stroke: var(--sadaf);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  paint-order: stroke;
+}
+
+/* The catcher for a city question: a transparent rectangle over the whole viewBox, so a tap in the
+   middle of the Atlantic is as answerable as a tap on Berlin. */
+.worldmap__sea { fill: transparent; cursor: crosshair; }
+
+.worldmap__pin { fill: var(--firouzeh); stroke: var(--shab); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.worldmap__pin--target { fill: var(--zaferan); }
+.worldmap__cross { stroke: var(--shab); stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: 0.7; }
+
+/* The tolerance an answer is judged against, drawn as an ellipse rather than a circle — see
+   WorldMapProjection.RadiusInDegrees for why a circle here would be a picture of the rules that
+   disagrees with the rules. */
+.worldmap__tolerance {
+  fill: rgb(232 168 58 / 0.14);
+  stroke: var(--zaferan);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The line from a missed pin to where the answer actually was. */
+.worldmap__miss { stroke: var(--anaar); stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+
+/* --- the bar beneath the map: what you just hit -------------------------- */
+/* This bar is the whole reason a world map is usable on a phone with no pan and no zoom. It says
+   "Belgium", not "somewhere near where you meant", while there is still time to move. */
+.mapbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.4);
+}
+.mapbar--empty { color: var(--sadaf-3); }
+.mapbar__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapbar__coords { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mapbar__mark { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 2px; background: var(--firouzeh); transform: rotate(45deg); }
+.mapbar__mark--target { background: var(--zaferan); }
+.mapbar__mark--miss { background: var(--anaar); }
+
+/* The reveal's key: one row per thing drawn on the map above it. */
+.maplegend { display: grid; gap: 0.4rem; margin-top: 0.6rem; font-size: var(--step--1); }
+.maplegend__row { display: flex; align-items: center; gap: 0.5rem; }

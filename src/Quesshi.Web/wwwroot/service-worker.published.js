@@ -8,7 +8,10 @@ self.addEventListener('fetch', event => event.respondWith(onFetch(event)));
 
 const cacheNamePrefix = 'offline-cache-';
 const cacheName = `${cacheNamePrefix}${self.assetsManifest.version}`;
-const offlineAssetsInclude = [ /\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.blat$/, /\.dat$/, /\.webmanifest$/ ];
+// .svg is here for maps/world.svg. A map question with no map is unanswerable, and "works offline
+// in the PWA" was the whole reason the map ships as a static asset rather than coming from a tile
+// provider — leaving it out of the cache would have quietly undone that.
+const offlineAssetsInclude = [ /\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.svg$/, /\.blat$/, /\.dat$/, /\.webmanifest$/ ];
 const offlineAssetsExclude = [ /^service-worker\.js$/ ];
 
 // Replace with your base path if you are hosting on a subfolder. Ensure there is a trailing '/'.
