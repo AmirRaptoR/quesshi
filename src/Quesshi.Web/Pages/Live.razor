@@ -2,6 +2,7 @@
 @inherits PageBase
 @implements IAsyncDisposable
 @inject Func<string, LiveClient> ClientFactory
+@inject Sounds Sounds
 
 <PageTitle>@L["live.title"] · @L["app.name"]</PageTitle>
 
@@ -357,12 +358,39 @@
     private Timer? _ticker;
     private string? _boundMatchId;
 
+    /// <summary>The remaining-seconds reading the tick cue last fired for, so the 250ms ticker below
+    /// plays it once per second rather than up to four times over the same second. Null between
+    /// rounds and reset on every fresh <see cref="OnRoundStarted"/> — see <see cref="SoundTicks"/>.</summary>
+    private int? _lastTickedSecond;
+
     private string MeId => State.Me!.Id;
 
     protected override async Task LoadAsync()
     {
         await ConnectAsync();
-        _ticker = new Timer(_ => InvokeAsync(StateHasChanged), null, 250, 250);
+        _ticker = new Timer(OnTick, null, 250, 250);
+    }
+
+    /// <summary>
+    /// The ticker's own callback: it used to only ever trigger a redraw, so the countdown ring stays
+    /// live between server pushes. It also now checks the same remaining-seconds reading for the tick
+    /// cue — <see cref="SoundTicks.ShouldTick"/> is what keeps this to once per second rather than
+    /// once per 250ms tick, and only while a round's question is actually in flight (not, say, during
+    /// the reveal that follows it, whose own clock counts down to something else entirely).
+    /// </summary>
+    private void OnTick(object? _)
+    {
+        if (_view is { Phase: "question" } && _view.CurrentCard is { } card)
+        {
+            var remaining = RingClock.RemainingSeconds(card.EndsAt, DateTimeOffset.UtcNow, Skew);
+            if (SoundTicks.ShouldTick(remaining, _lastTickedSecond))
+            {
+                _lastTickedSecond = remaining;
+                _ = Sounds.Tick();
+            }
+        }
+
+        InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -457,6 +485,8 @@
         _ordering = SortOrdering.Served(card.Choices.Count);
         _pick = null;
         _answeredOthers.Clear();
+        _lastTickedSecond = null;
+        _ = Sounds.RoundStart();
         InvokeAsync(StateHasChanged);
     }
 
@@ -477,6 +507,12 @@
         })];
 
         _view = _view with { Phase = "reveal", PhaseEndsAt = reveal.EndsAt, CurrentExplanation = reveal.Explanation, Rounds = rounds, Players = players };
+
+        // The local player's own answer, and only that one — never a cue for how anyone else did.
+        // A player with no entry here (already eliminated, no seat at all) gets neither cue.
+        var mine = reveal.Players.FirstOrDefault(p => p.PlayerId == MeId);
+        if (mine is not null) _ = mine.Correct ? Sounds.Correct() : Sounds.Wrong();
+
         InvokeAsync(StateHasChanged);
     }
 
@@ -497,6 +533,20 @@
         List<StandingRowDto> standings = [.. ended.Standings.Select(s => new StandingRowDto(s.PlayerId, NameOf(s.PlayerId), AvatarOf(s.PlayerId), s.Score, s.Place, s.Outcome))];
 
         _view = _view with { Phase = "over", State = ended.State, WinnerId = ended.WinnerId, IsDraw = ended.IsDraw, AbandonedBy = ended.AbandonedBy, Players = players, Standings = standings };
+
+        // The local player's own row decides win or loss; a draw (or a no-contest, which leaves no
+        // row for anybody) earns neither cue — see SoundOutcomeMapping's own remarks.
+        var myStanding = standings.FirstOrDefault(s => s.PlayerId == MeId);
+        if (myStanding is not null)
+        {
+            _ = SoundOutcomeMapping.ForOutcome(myStanding.Outcome) switch
+            {
+                SoundOutcome.Win => Sounds.Win(),
+                SoundOutcome.Loss => Sounds.Loss(),
+                _ => Task.CompletedTask
+            };
+        }
+
         InvokeAsync(StateHasChanged);
     }
 

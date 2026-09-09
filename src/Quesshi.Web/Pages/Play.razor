@@ -1,6 +1,7 @@
 @page "/play/{MatchId}"
 @inherits PageBase
 @implements IAsyncDisposable
+@inject Sounds Sounds
 
 <PageTitle>@L["play.question"] · @L["app.name"]</PageTitle>
 
@@ -218,7 +219,32 @@
         _result = await Api.AnswerAsync(MatchId, _card.Slot, choice, response)
                   ?? new AnswerResultDto(false, -1, 0, null, false, 0);
 
+        _ = _result.Correct ? Sounds.Correct() : Sounds.Wrong();
+
+        // The run finishing is not the same thing as the duel resolving: an async opponent may still
+        // be mid-run, in which case Api.MatchAsync's own Outcome comes back "pending" and
+        // SoundOutcomeMapping plays neither cue. Fire-and-forget, and off the UI thread's own path to
+        // StateHasChanged below — the extra round trip is only for a sound, never for what the "next"
+        // button already needs to know.
+        if (_result.RunFinished) _ = PlayDuelOutcomeAsync();
+
         StateHasChanged();
+    }
+
+    /// <summary>See the remark on <see cref="AnswerAsync"/>'s own call site: the only place this page
+    /// asks the server anything beyond the answer it just submitted, and only ever to decide between
+    /// a win cue, a loss cue, or (a draw, or an opponent not yet finished) neither.</summary>
+    private async Task PlayDuelOutcomeAsync()
+    {
+        var detail = await Api.MatchAsync(MatchId);
+        if (detail is null) return;
+
+        _ = SoundOutcomeMapping.ForOutcome(detail.Summary.Outcome) switch
+        {
+            SoundOutcome.Win => Sounds.Win(),
+            SoundOutcome.Loss => Sounds.Loss(),
+            _ => Task.CompletedTask
+        };
     }
 
     private async Task AdvanceAsync()

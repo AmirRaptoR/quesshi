@@ -41,6 +41,7 @@
         // <label> or a bare chevron would be) and is mirrored for rtl by the .icon-hit--back rule in
         // app.css, the same trick .pager__arrow already uses for its own direction-sensitive chevron.
         case "chevron-back":
+        case "back":
             <path d="M15 6l-6 6 6 6" />
             break;
     }
@@ -48,6 +49,7 @@
 
 @code {
     /// <summary>One of: trash, eye, eye-off, close, gear, chevron-back.</summary>
+    /// <summary>One of: trash, eye, eye-off, close, back.</summary>
     [Parameter, EditorRequired] public string Name { get; set; } = "";
 
     [Parameter] public string Size { get; set; } = "1.05rem";

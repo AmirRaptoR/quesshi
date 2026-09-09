@@ -1008,6 +1008,19 @@ input[type='range'] { accent-color: var(--firouzeh); }
    back the space its padding just claimed, the same trick the mockup itself uses for both the gear
    and the settings back chevron. */
 .icon-hit {
+/* ---- lobby (#90) ---- */
+/* "Code first, faces not rows" — issue #90's whole rewrite of the lobby (see its mockup). The card
+   chrome the old lobby wrapped every section in is gone from the header, code and roster: a room
+   people are standing in reads better as one continuous page than as a stack of boxes, and the code
+   and face tiles are distinct enough in shape and colour that they need no border to read as their
+   own section. The two guest-only cards (identity, "keep this account") keep .card — those really
+   are two separate, occasional detours from the room itself, not the room. */
+
+/* The back chevron's tap target is the same 44px square as everything else new here even though the
+   icon it holds is drawn small — the negative margin pulls that extra hit area back in so it never
+   pushes the title over, the same trick a native back button plays. Flipped for RTL exactly like
+   .pager__arrow: "back" always points toward the reading-start edge, whichever edge that is. */
+.lobby-back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1036,6 +1049,38 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .record-tile {
   text-align: center;
   padding: 1rem 0.5rem;
+  color: var(--sadaf);
+}
+:root[dir="rtl"] .lobby-back { transform: scaleX(-1); }
+
+/* The share code: the one thing a visitor to this page actually needs, so it is drawn bigger than
+   any heading anywhere else in the app rather than filed under a label like everything used to be. */
+.lobby-code {
+  margin: 0.25rem 0 0;
+  font-size: var(--step-4);
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--firouzeh);
+}
+
+/* A pill-shaped .btn for Copy link / Share — same colours, hover and disabled behaviour as
+   .btn--ghost already has, just rounder and guaranteed the full 44px tap height regardless of how
+   short its label is. */
+.btn--pill { border-radius: 999px; min-height: 44px; padding-inline: 1.15rem; }
+
+/* --- the roster grid: face tiles instead of rows ------------------------------------------------- */
+/* Three columns up to a three-seat lobby, four beyond it (LobbyPresentation.RosterColumns) — two
+   across would strand a lonely third tile on its own row, and past four seats three across runs a
+   phone screen out of height before the last tile without scrolling. */
+.lobby-grid { display: grid; grid-template-columns: repeat(var(--lobby-cols, 3), minmax(0, 1fr)); gap: 0.6rem; }
+
+.lobby-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.4rem;
+  text-align: center;
   border-radius: var(--r-md);
   background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
   border: 1px solid var(--line);
@@ -1167,3 +1212,85 @@ input[type='range'] { accent-color: var(--firouzeh); }
 }
 .switch.is-on .switch__track { background: var(--firouzeh); border-color: var(--firouzeh); }
 .switch.is-on .switch__thumb { inset-inline-start: 22px; background: var(--shab); }
+.lobby-tile--open { justify-content: center; background: none; border-style: dashed; border-color: var(--line-2); }
+.lobby-tile__plus {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  border: 1px dashed var(--line-2);
+  font-size: var(--step-1);
+  color: var(--sadaf-3);
+}
+
+/* A bigger .avatar for a face tile — the seat or friend is the whole point of the tile, not one
+   detail in a row that also has to fit a name. */
+.avatar--tile { width: 3.25rem; height: 3.25rem; font-size: var(--step-1); }
+
+/* --- invite: an avatar row of friends, tapped rather than read out of a list ---------------------- */
+.lobby-friends { display: flex; gap: 0.75rem; overflow-x: auto; padding-block: 0.1rem; }
+.lobby-friend {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 4.25rem;
+  padding: 0.2rem 0 0.35rem;
+  font: inherit;
+  color: var(--sadaf);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lobby-friend:disabled { cursor: default; opacity: 0.7; }
+.lobby-friend--dim { cursor: default; }
+.lobby-friend--dim .avatar { opacity: 0.5; }
+.lobby-friend__avatar-wrap { position: relative; }
+
+/* Logical inset properties rather than the mockup's literal "right" — the dot has to sit at the same
+   corner of the avatar in both reading directions relative to the tile, not the same physical side. */
+.lobby-friend__dot {
+  position: absolute;
+  inset-inline-end: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--firouzeh);
+  border: 2px solid var(--shab);
+}
+
+/* --- the settings summary: one line, tappable only for the owner --------------------------------- */
+.lobby-settings-line {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-inline-end: -0.3rem;
+  padding-inline: 0.3rem;
+  color: var(--sadaf-2);
+  font-size: var(--step--1);
+  text-decoration: none;
+}
+.lobby-settings-line:hover { color: var(--sadaf); }
+
+/* --- the quiet Leave/Cancel action: a text link that never competes with Start for attention ------ */
+.lobby-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--sadaf-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lobby-quiet:hover:not(:disabled) { color: var(--sadaf-2); }
+.lobby-quiet:disabled { cursor: not-allowed; opacity: 0.6; }

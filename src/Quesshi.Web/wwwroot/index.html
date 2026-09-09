@@ -42,6 +42,16 @@
         },
         copy: async (text) => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },
 
+        // The lobby's Share pill (issue #90): true means the OS share sheet handled it — accepted,
+        // cancelled, whatever the person did with it is theirs to decide, not something the page
+        // reacts to. False means there was no such sheet to hand off to at all, which is the one
+        // case Lobby.razor falls back to a plain copy for.
+        share: async (data) => {
+          if (!navigator.share) return false;
+          try { await navigator.share(data); } catch { /* cancelled or refused — still handled */ }
+          return true;
+        },
+
         // --- sorting questions: the two things a drag genuinely cannot do from C# ---------------
         //
         // Everything else about a sort answer — which row moves where, what the submitted string
@@ -102,7 +112,76 @@
           window.google.accounts.id.renderButton(
             document.getElementById('google-button'),
             { theme: 'filled_black', size: 'large', width: 320, shape: 'pill' });
-        }
+        },
+
+        // --- sounds (#93): six cues synthesised with the Web Audio API, no audio files, so they still
+        // play offline in the PWA. Everything mutable lives inside this one closure — an IIFE, unlike
+        // every other property here — because "has the page seen a gesture yet" and "the AudioContext
+        // itself" are both private state a getter/method pair needs to share, and nothing else in this
+        // object needs that. The mute switch and the autoplay gate are both re-checked by Quesshi.Web's
+        // Sounds service on every call rather than here, so this stays pure mechanism: told to play a
+        // named cue, on an armed context, it plays it — it never itself decides whether it should.
+        sounds: (() => {
+          let ctx = null;
+          let armed = false;
+
+          // The autoplay policy: a context created outside a user gesture starts (and stays) suspended,
+          // and scheduling sound on a suspended context is legal but silent — never an exception, which
+          // is exactly the "no-op before the first gesture" the spec asks for even if this listener
+          // somehow never fired. Two event types because a keyboard-only player never fires a pointer
+          // event; {once:true} on each retires itself the instant either does, so a second tap later
+          // never tries to recreate or re-resume an already-running context.
+          const arm = () => {
+            if (armed) return;
+            armed = true;
+            try {
+              ctx = new (window.AudioContext || window.webkitAudioContext)();
+              ctx.resume();
+            } catch { /* Web Audio unsupported — every cue below stays a permanent, silent no-op */ }
+          };
+          document.addEventListener('pointerdown', arm, { once: true });
+          document.addEventListener('keydown', arm, { once: true });
+
+          // One short tone with a gain envelope — a fast linear attack so it does not click in, an
+          // exponential release so it does not click out either. exponentialRampToValueAtTime cannot
+          // target exactly 0 (it multiplies toward it forever), hence the 0.0001 floor.
+          const note = (freq, start, dur, type, peak) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            osc.connect(gain).connect(ctx.destination);
+            const t = ctx.currentTime + start;
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(peak, t + 0.005);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            osc.start(t);
+            osc.stop(t + dur + 0.02);
+          };
+
+          // Every cue under 400ms, peak gain around 0.15 — quiet enough to sit under a phone's own
+          // notification volume. roundStart and tick sit a little quieter still (0.08-0.1): they fire
+          // far more often than the other four, so they are the ones a player actually lives with.
+          const cues = {
+            correct: () => { note(660, 0, 0.12, 'sine', 0.15); note(880, 0.1, 0.16, 'sine', 0.15); },
+            wrong: () => note(160, 0, 0.25, 'triangle', 0.15),
+            roundStart: () => note(880, 0, 0.09, 'sine', 0.1),
+            tick: () => note(1200, 0, 0.05, 'square', 0.08),
+            win: () => { note(523, 0, 0.12, 'sine', 0.15); note(659, 0.1, 0.12, 'sine', 0.15); note(784, 0.2, 0.18, 'sine', 0.15); },
+            loss: () => { note(440, 0, 0.14, 'sine', 0.15); note(330, 0.12, 0.2, 'sine', 0.15); }
+          };
+
+          return {
+            // Quesshi.Web.Services.Sounds checks this before ever calling play — a cheap boolean read,
+            // not audio work, so there is nothing wrong with asking it on every single cue.
+            armed: () => armed,
+            play: (name) => { if (armed && cues[name]) cues[name](); },
+            // The settings switch (#91) reads this straight off window.quesshi, with no Blazor round
+            // trip: on once a gesture has happened and the player has not muted the same "quesshi.sounds"
+            // key every cue call already re-reads.
+            get enabled() { return armed && localStorage.getItem('quesshi.sounds') !== '0'; }
+          };
+        })()
       };
     </script>
     <script>
