@@ -18,8 +18,17 @@ public class QuestionTopUpTests
     private static GeneratedQuestion About(string prompt, string subject, string aspect)
         => new(prompt, ["a", "b", "c", "d"], 1, null) { Subject = subject, Aspect = aspect };
 
+    /// <summary>
+    /// One target for all three kinds, so a test that says "target two" means two of everything.
+    /// The three are separate settings in production — a sorting bucket wants far fewer than a
+    /// choice one — but a test that had to remember three numbers to say "this bucket is full"
+    /// would be testing arithmetic rather than the bank.
+    /// </summary>
     private TopUpQuestionBank Sut(IQuestionGenerator gen, int target = 2)
-        => new(_questions, _categories, gen, _log, _clock, _ids, new TopUpOptions { TargetPerBucket = target, MaxPerRun = 100 });
+        => new(_questions, _categories, gen, _log, _clock, _ids, new TopUpOptions
+        {
+            TargetPerBucket = target, SortTargetPerBucket = target, MapTargetPerBucket = target, MaxPerRun = 100
+        });
 
     private void OneCategory() => _categories.UpsertAsync(new Category("geography", "geography-fa", "Geography", "*", "#fff"));
 
@@ -65,6 +74,12 @@ public class QuestionTopUpTests
         Assert.Contains(Language.Nl, gen.Languages);
     }
 
+    /// <summary>
+    /// Healthy now means healthy <i>in every kind</i>: a bucket is only left alone once its choice,
+    /// sorting and map stock all sit at their own targets. Stocking only the choice half — which is
+    /// what this test used to do — is the exact situation the bank must NOT read as "nothing to do",
+    /// and <see cref="A_bank_full_of_choice_questions_still_generates_sorts_and_maps"/> pins that.
+    /// </summary>
     [Fact]
     public async Task Leaves_healthy_buckets_alone()
     {
@@ -72,8 +87,16 @@ public class QuestionTopUpTests
         foreach (var lang in new[] { Language.Fa, Language.En, Language.Nl })
             foreach (var level in MatchRules.AllLevels)
                 for (var i = 0; i < 5; i++)
+                {
                     await _questions.UpsertAsync(Question.Create($"{lang}{level}{i}", lang, "geography", level,
                         $"stocked {lang}{level}{i}", ["a", "b", "c", "d"], 0, T0, status: QuestionStatus.Approved));
+                    await _questions.UpsertAsync(Question.Create($"s{lang}{level}{i}", lang, "geography", level,
+                        $"stocked sort {lang}{level}{i}", ["a", "b", "c", "d"], 0, T0,
+                        status: QuestionStatus.Approved, kind: QuestionKind.Sort));
+                    await _questions.UpsertAsync(Question.Create($"m{lang}{level}{i}", lang, "geography", level,
+                        $"stocked map {lang}{level}{i}", [], 0, T0, status: QuestionStatus.Approved,
+                        kind: QuestionKind.Map, target: MapTarget.Country("NL"), baseLayer: MapBaseLayer.Borders));
+                }
 
         var gen = new ScriptedGenerator(Good("new"));
         var run = await Sut(gen).RunAsync();
@@ -247,5 +270,189 @@ public class QuestionTopUpTests
         Assert.Equal("inception|director", TopicKey.From(" Inception ", "Director"));
         Assert.Null(TopicKey.From("Inception", ""));
         Assert.Null(TopicKey.From(null, "director"));
+    }
+
+    // --- kinds ------------------------------------------------------------------------
+
+    private static GeneratedQuestion Sort(string prompt, string subject = "cities", string aspect = "population")
+        => new(prompt, ["a", "b", "c", "d"], 0, null) { Subject = subject, Aspect = aspect };
+
+    private static GeneratedQuestion Country(string prompt, string code)
+        => new(prompt, [], 0, null)
+        {
+            Subject = code, Aspect = "location",
+            TargetShape = MapTargetKind.Country, CountryCode = code
+        };
+
+    private static GeneratedQuestion City(string prompt, string code, double lat, double lon, double? radiusKm = 200)
+        => new(prompt, [], 0, null)
+        {
+            Subject = prompt, Aspect = "location",
+            TargetShape = MapTargetKind.City, CountryCode = code,
+            Latitude = lat, Longitude = lon, RadiusKm = radiusKm
+        };
+
+    /// <summary>
+    /// The failure the whole review of this feature turned on, and the reason kind joined the bucket
+    /// key. The bank holds nothing but choice questions, every choice bucket is comfortably full,
+    /// and a run measured against one target would conclude there was nothing to do and write no
+    /// sorting or map question — ever, in any category, however long it ran.
+    /// </summary>
+    [Fact]
+    public async Task A_bank_full_of_choice_questions_still_generates_sorts_and_maps()
+    {
+        OneCategory();
+
+        foreach (var lang in new[] { Language.Fa, Language.En, Language.Nl })
+            foreach (var level in MatchRules.AllLevels)
+                for (var i = 0; i < 40; i++)
+                    await _questions.UpsertAsync(Question.Create($"{lang}{level}{i}", lang, "geography", level,
+                        $"stocked {lang}{level}{i}", ["a", "b", "c", "d"], 0, T0, status: QuestionStatus.Approved));
+
+        var gen = new ScriptedGenerator();
+        gen.Sorts.Add(Sort("Order these cities by population"));
+        gen.Maps.Add(Country("Where is Germany?", "DE"));
+
+        var run = await Sut(gen, target: 25).RunAsync();
+
+        Assert.Contains(QuestionKind.Sort, gen.Kinds);
+        Assert.Contains(QuestionKind.Map, gen.Kinds);
+        Assert.DoesNotContain(QuestionKind.Choice, gen.Kinds);
+
+        Assert.Contains(_questions.Items, q => q.Kind == QuestionKind.Sort);
+        Assert.Contains(_questions.Items, q => q.Kind == QuestionKind.Map);
+        Assert.True(run.Inserted > 0);
+    }
+
+    /// <summary>
+    /// Each kind is measured against its own target and nothing else. With the choice target met
+    /// and the map target at zero, a run asks for sorting questions and only sorting questions —
+    /// which is the whole of what "a target per kind" has to mean to be worth the bucket key.
+    /// </summary>
+    [Fact]
+    public async Task Only_the_kinds_that_are_below_their_own_target_are_asked_for()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        var sut = new TopUpQuestionBank(_questions, _categories, gen, _log, _clock, _ids,
+            new TopUpOptions { TargetPerBucket = 0, SortTargetPerBucket = 2, MapTargetPerBucket = 0, MaxPerRun = 100 });
+
+        await sut.RunAsync();
+
+        Assert.NotEmpty(gen.Kinds);
+        Assert.All(gen.Kinds, kind => Assert.Equal(QuestionKind.Sort, kind));
+    }
+
+    /// <summary>
+    /// The check the spec asks for by name. A model will confidently give a real city, its real
+    /// country, and coordinates in a neighbouring one; only the map can tell. Amsterdam's own
+    /// coordinates are stored, the same city labelled Germany is not.
+    /// </summary>
+    [Fact]
+    public async Task A_city_whose_coordinates_are_outside_the_country_it_names_is_rejected()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        gen.Maps.Add(City("Where is Amsterdam?", "DE", 52.37, 4.90));
+
+        var run = await Sut(gen, target: 1).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 1, QuestionKind.Map);
+
+        Assert.Equal(0, run.Inserted);
+        Assert.Equal(1, run.Rejected);
+        Assert.Empty(_questions.Items);
+    }
+
+    [Fact]
+    public async Task A_city_whose_coordinates_are_inside_the_country_it_names_is_stored()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        gen.Maps.Add(City("Where is Amsterdam?", "NL", 52.37, 4.90, radiusKm: 120));
+
+        var run = await Sut(gen, target: 1).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 1, QuestionKind.Map);
+
+        Assert.Equal(1, run.Inserted);
+
+        var stored = Assert.Single(_questions.Items);
+        Assert.Equal(QuestionKind.Map, stored.Kind);
+        Assert.True(stored.Target!.IsCity);
+        Assert.Equal(120, stored.Target.RadiusKm);
+        Assert.Equal(MapBaseLayer.Borders, stored.BaseLayer);
+        Assert.Empty(stored.Choices);
+    }
+
+    /// <summary>A country the bundled map has no path for could never be highlighted, so it is not
+    /// a question however real the country is.</summary>
+    [Fact]
+    public async Task A_country_the_map_cannot_draw_is_rejected()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        gen.Maps.AddRange([Country("Where is Zubrowka?", "ZZ"), Country("Where is Germany?", "DE")]);
+
+        var run = await Sut(gen, target: 2).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 2, QuestionKind.Map);
+
+        Assert.Equal(1, run.Inserted);
+        Assert.Equal(1, run.Rejected);
+        Assert.Equal("DE", Assert.Single(_questions.Items).Target!.CountryCode);
+    }
+
+    /// <summary>A radius the game cannot draw is a difficulty setting, not a factual error, so the
+    /// question survives at the nearest playable bound rather than being thrown away.</summary>
+    [Fact]
+    public async Task An_unplayable_radius_is_clamped_rather_than_costing_the_question()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        gen.Maps.Add(City("Where is Amsterdam?", "NL", 52.37, 4.90, radiusKm: 2));
+
+        await Sut(gen, target: 1).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 1, QuestionKind.Map);
+
+        Assert.Equal(MapTarget.MinRadiusKm, Assert.Single(_questions.Items).Target!.RadiusKm);
+    }
+
+    /// <summary>Sorting questions store their items in the correct order and pin the index at zero —
+    /// the shuffle happens at serve time, so what is written down is the truth.</summary>
+    [Fact]
+    public async Task A_generated_sort_stores_its_items_in_the_given_order()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        gen.Sorts.Add(new GeneratedQuestion("Order these by population", ["Tokyo", "Delhi", "Cairo", "Lima"], 0, null)
+            { Subject = "cities", Aspect = "population" });
+
+        await Sut(gen, target: 1).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 1, QuestionKind.Sort);
+
+        var stored = Assert.Single(_questions.Items);
+        Assert.Equal(QuestionKind.Sort, stored.Kind);
+        Assert.Equal(["Tokyo", "Delhi", "Cairo", "Lima"], stored.Choices);
+        Assert.Equal(0, stored.CorrectIndex);
+        Assert.Null(stored.Target);
+        Assert.Null(stored.BaseLayer);
+    }
+
+    /// <summary>Topic de-duplication is not per kind: it is the store's unique (language, topic)
+    /// index, and it works on the new kinds because they go through the same acceptance path.</summary>
+    [Fact]
+    public async Task The_topic_index_still_stops_a_repeated_sort_or_map()
+    {
+        OneCategory();
+
+        var gen = new ScriptedGenerator();
+        gen.Sorts.AddRange([Sort("Order these cities by population", "cities", "population"),
+            Sort("Put these cities in order of how many people live there", "Cities", "Population")]);
+        gen.Maps.AddRange([Country("Where is Germany?", "DE"), Country("Find Germany on the map", "DE")]);
+
+        await Sut(gen, target: 4).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 4, QuestionKind.Sort);
+        await Sut(gen, target: 4).GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 4, QuestionKind.Map);
+
+        Assert.Single(_questions.Items, q => q.Topic == "cities|population");
+        Assert.Single(_questions.Items, q => q.Topic == "de|location");
     }
 }

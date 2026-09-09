@@ -24,4 +24,8 @@ public sealed class FakeQuestionGenerator : IQuestionGenerator
         => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
     public Task<IReadOnlyList<GeneratedQuestion>> GenerateIllustratedAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateSortAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
 }

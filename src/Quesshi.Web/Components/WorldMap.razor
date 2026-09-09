@@ -39,14 +39,14 @@
 
     @* Painted last and in this order: the tolerance under the pins, the answer under the guesses,
        so nothing a player is looking for can be hidden by something they already know. *@
+    @if (RingPoint is { } ring && ToleranceKm is { } radiusKm)
+    {
+        var (rx, ry) = WorldMapProjection.RadiusInDegrees(radiusKm, ring.Lat);
+        <ellipse class="worldmap__tolerance" cx="@F(ring.X)" cy="@F(ring.Y)" rx="@F(rx)" ry="@F(ry)" />
+    }
+
     @if (TargetPoint is { } target)
     {
-        @if (ToleranceKm is { } radiusKm)
-        {
-            var (rx, ry) = WorldMapProjection.RadiusInDegrees(radiusKm, target.Lat);
-            <ellipse class="worldmap__tolerance" cx="@F(target.X)" cy="@F(target.Y)" rx="@F(rx)" ry="@F(ry)" />
-        }
-
         @foreach (var mark in PointMarks.Where(m => m.Right == false))
         {
             var (x, y) = Place(mark.Pick);
@@ -130,8 +130,23 @@
         }
     }
 
-    private (double X, double Y, double Lat)? TargetPoint => Target is { IsPoint: true } t
-        ? (t.Longitude!.Value, -t.Latitude!.Value, t.Latitude.Value)
+    private (double X, double Y, double Lat)? TargetPoint => At(Target);
+
+    /// <summary>
+    /// Where the tolerance ellipse is centred: the answer, when there is one to reveal, and
+    /// otherwise whatever is currently picked.
+    /// <para>
+    /// That second case is the authoring one. An admin setting a city question has no "target" yet —
+    /// their pick <i>is</i> the target they are deciding on — and a radius they cannot see is a
+    /// number they cannot judge: 300 km is a different question in the Netherlands than it is in
+    /// Kazakhstan. A reveal is unaffected, because no reveal contract carries a radius, so
+    /// <see cref="ToleranceKm"/> is null there and nothing is drawn either way.
+    /// </para>
+    /// </summary>
+    private (double X, double Y, double Lat)? RingPoint => At(Target) ?? At(Selection);
+
+    private static (double X, double Y, double Lat)? At(MapPick? pick) => pick is { IsPoint: true } p
+        ? (p.Longitude!.Value, -p.Latitude!.Value, p.Latitude.Value)
         : null;
 
     private static (double X, double Y) Place(MapPick pick)

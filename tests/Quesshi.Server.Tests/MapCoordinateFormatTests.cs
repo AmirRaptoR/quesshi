@@ -106,4 +106,25 @@ public class MapCoordinateFormatTests
             CultureInfo.CurrentCulture = before;
         }
     }
+
+    /// <summary>
+    /// The tolerance bounds the browser offers and the ones the server enforces are the same two
+    /// numbers. <c>Quesshi.Shared.MapTolerance</c> has to copy them — the web project references no
+    /// domain, which is what keeps the wire contract free of it — and a copy with nothing pinning it
+    /// is a slider whose ends the server refuses, in a form that then reports an error the admin
+    /// cannot act on. Same reasoning as the Earth radius above.
+    /// </summary>
+    [Fact]
+    public void The_client_and_the_server_agree_on_the_tolerance_bounds()
+    {
+        Assert.Equal(MapTarget.MinRadiusKm, MapTolerance.MinKm);
+        Assert.Equal(MapTarget.MaxRadiusKm, MapTolerance.MaxKm);
+    }
+
+    /// <summary>And the value a new city question opens at is one the bounds allow.</summary>
+    [Fact]
+    public void The_default_tolerance_is_inside_those_bounds()
+    {
+        Assert.InRange(MapTolerance.DefaultKm, MapTolerance.MinKm, MapTolerance.MaxKm);
+    }
 }

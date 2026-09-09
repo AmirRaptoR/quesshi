@@ -22,8 +22,6 @@ namespace Quesshi.Shared;
 /// </summary>
 public static partial class WorldMapCountries
 {
-    private const string EmbeddedResourceName = "Quesshi.Shared.maps.world.svg";
-
     private static readonly Lazy<IReadOnlySet<string>> LazyCodes = new(Load);
 
     /// <summary>Every ISO 3166-1 alpha-2 code the map can draw, e.g. <c>"IR"</c>, <c>"NL"</c>.</summary>
@@ -31,15 +29,7 @@ public static partial class WorldMapCountries
 
     private static IReadOnlySet<string> Load()
     {
-        var assembly = typeof(WorldMapCountries).Assembly;
-        using var stream = assembly.GetManifestResourceStream(EmbeddedResourceName)
-            ?? throw new InvalidOperationException(
-                $"'{EmbeddedResourceName}' is not embedded in {assembly.GetName().Name}. " +
-                "Check the <EmbeddedResource> item in Quesshi.Shared.csproj still points at " +
-                "wwwroot/maps/world.svg.");
-
-        using var reader = new StreamReader(stream);
-        var svg = reader.ReadToEnd();
+        var svg = WorldMapSvg.Text;
 
         var codes = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match match in DataIsoAttribute().Matches(svg))

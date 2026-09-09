@@ -33,12 +33,19 @@ public sealed class InMemoryQuestions : IQuestionRepository
             .OrderBy(_ => _rng.Next())
             .Take(count)]);
 
+    /// <summary>
+    /// Grouped by kind as well, exactly as <c>MongoQuestionRepository</c> does. A fake that grouped
+    /// only by (language, category, level) would report a bank of 3067 choice questions as full
+    /// buckets and the top-up under test would then correctly decide there was nothing to do — the
+    /// real bug, passing as a green test, because the fake was the thing that had been fixed.
+    /// </summary>
     public Task<IReadOnlyList<BucketCount>> BucketCountsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<BucketCount>>([.. Items
-            .GroupBy(q => (q.Lang, q.CategoryId, q.Level))
+            .GroupBy(q => (q.Lang, q.CategoryId, q.Level, q.Kind))
             .Select(g => new BucketCount(g.Key.Lang, g.Key.CategoryId, g.Key.Level,
                 g.Count(q => q.Status == QuestionStatus.Approved),
-                g.Count(q => q.Status == QuestionStatus.Pending)))]);
+                g.Count(q => q.Status == QuestionStatus.Pending),
+                g.Key.Kind))]);
 
     public Task UpsertAsync(Question q, CancellationToken ct = default)
     {

@@ -62,6 +62,28 @@ public sealed class AdminApi(AdminHttpClient http)
 
     public Task<AdminQuestionPageDto?> AdminQuestionsAsync(string query) => GetAsync<AdminQuestionPageDto>($"api/admin/questions?{query}");
     public Task<AdminQuestionDto?> SaveQuestionAsync(SaveQuestionDto body) => PostAsync<AdminQuestionDto>("api/admin/questions", body);
+
+    /// <summary>
+    /// Save, and on a refusal say which rule was broken. The endpoint answers with a stable code —
+    /// <c>unknown_country</c>, <c>bad_radius</c> — rather than a sentence, because the panel is read
+    /// in three languages and the reason has to be translatable. A form that could only say "that
+    /// didn't work" would leave an admin guessing which of a dozen per-kind rules they broke.
+    /// </summary>
+    public async Task<(AdminQuestionDto? Saved, string? Error)> TrySaveQuestionAsync(SaveQuestionDto body)
+    {
+        try
+        {
+            var response = await Client.PostAsJsonAsync("api/admin/questions", body);
+
+            return response.IsSuccessStatusCode
+                ? (await response.Content.ReadFromJsonAsync<AdminQuestionDto>(), null)
+                : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
     public Task<bool> ApproveAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/questions/{id}/approve");
     public Task<bool> RejectAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/questions/{id}/reject");
     public Task<bool> DeleteQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/questions/{id}");
@@ -79,6 +101,11 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<AdminLivePageDto?> AdminLiveAsync() => GetAsync<AdminLivePageDto>("api/admin/live");
     public Task<bool> EndLiveDuelAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/live/{id}/end");
     public Task<bool> SetLiveEnabledAsync(bool value) => SendAsync(HttpMethod.Post, $"api/admin/live/enabled?value={value}");
+
+    /// <summary>The <c>{ "error": "code" }</c> body the question endpoint refuses with. Its own
+    /// record because <c>AdminAuthErrorDto</c> spells the same idea "reason", and reading one as the
+    /// other would silently produce a null code and an untranslated blank in the form.</summary>
+    private sealed record SaveError(string? Error);
 
     // --- plumbing ------------------------------------------------------------------
     private async Task<T?> GetAsync<T>(string url)

@@ -27,12 +27,7 @@ public static class AdminEndpoints
             IMatchArchive matches, IGenerationLog log, IQuestionGenerator generator, TopUpOptions topUp,
             IAiSpendLog spend, IClock clock, OpenRouterOptions ai, ILiveDirectory live, IGrainFactory grains) =>
         {
-            var buckets = await questions.BucketCountsAsync();
-            var thin = buckets.Where(b => b.Approved + b.Pending < topUp.TargetPerBucket)
-                .OrderBy(b => b.Approved + b.Pending)
-                .Take(24)
-                .Select(b => new BucketDto(b.Lang.Code(), b.CategoryId, (int)b.Level, b.Approved, b.Pending))
-                .ToList();
+            var thin = ThinBuckets.Report(await questions.BucketCountsAsync(), topUp);
 
             return new AdminDashboardDto(
                 await players.CountAsync(),
@@ -118,31 +113,34 @@ public static class AdminEndpoints
                 await questions.CountAsync(filter));
         });
 
+        // Writes a question of any kind, new or edited. Everything a kind may and may not carry is
+        // decided in one place (QuestionSaveBinding) so that a rejection comes back as a code the
+        // form can translate and show against the field that caused it, rather than as one English
+        // sentence for all fourteen ways a question can be wrong.
         admin.MapPost("/questions", async (SaveQuestionDto body, IQuestionRepository questions, IClock clock, IIdFactory ids) =>
         {
             // The level arrives as a raw int; casting an out-of-range one would store a nonsense enum.
             if (!Enum.IsDefined((Difficulty)body.Level)) return Results.BadRequest(new { error = "bad_level" });
 
-            try
-            {
-                Question.Validate(body.Prompt, body.Choices, body.CorrectIndex);
-            }
-            catch (Exception ex) when (ex is ArgumentException or ArgumentOutOfRangeException)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
+            if (QuestionSaveBinding.TryBind(body, out var kind, out var target, out var baseLayer) is { } error)
+                return Results.BadRequest(new { error });
 
             var media = string.IsNullOrWhiteSpace(body.MediaUrl)
                 ? MediaRef.None
-                : new MediaRef(Enum.TryParse<MediaKind>(body.MediaKind, true, out var kind) ? kind : MediaKind.Image, body.MediaUrl!);
+                : new MediaRef(Enum.TryParse<MediaKind>(body.MediaKind, true, out var mediaKind) ? mediaKind : MediaKind.Image, body.MediaUrl!);
 
             var status = ParseStatus(body.Status) ?? QuestionStatus.Pending;
             var existing = string.IsNullOrWhiteSpace(body.Id) ? null : await questions.GetAsync(body.Id!);
 
+            // WorldMapCountries.Codes is handed to the domain on both paths, not just on create: the
+            // way a question ends up pointing at a country the map cannot draw is somebody editing an
+            // old one, and validation that only ran for new questions would be validation that missed
+            // the case it was written for.
             if (existing is not null)
             {
                 existing.Edit(body.Lang.ToLanguage(), body.CategoryId, (Difficulty)body.Level,
-                    body.Prompt, body.Choices, body.CorrectIndex, media, body.Explanation);
+                    body.Prompt, body.Choices, body.CorrectIndex, media, body.Explanation,
+                    kind, target, baseLayer, WorldMapCountries.Codes);
                 existing.SetStatus(status);
 
                 await questions.UpsertAsync(existing);
@@ -150,7 +148,8 @@ public static class AdminEndpoints
             }
 
             var created = Question.Create(ids.NewId(), body.Lang.ToLanguage(), body.CategoryId, (Difficulty)body.Level,
-                body.Prompt, body.Choices, body.CorrectIndex, clock.Now, media, body.Explanation, QuestionSource.Admin, status);
+                body.Prompt, body.Choices, body.CorrectIndex, clock.Now, media, body.Explanation, QuestionSource.Admin, status,
+                topic: null, kind: kind, target: target, baseLayer: baseLayer, knownCountryCodes: WorldMapCountries.Codes);
 
             await questions.UpsertAsync(created);
             return Results.Ok(created.ToAdminDto());
@@ -276,13 +275,16 @@ public static class AdminEndpoints
             return Results.Ok(run.ToDto());
         });
 
-        // Generate into one bucket, on demand.
+        // Generate into one bucket, on demand — one kind at a time, because each kind is a different
+        // prompt and a different set of ways a candidate can be wrong, and an admin asking for sorts
+        // wants to look at sorts.
         admin.MapPost("/generate/bucket", async (GenerateRequestDto body, TopUpQuestionBank topUp) =>
         {
             if (!Enum.IsDefined((Difficulty)body.Level)) return Results.BadRequest(new { error = "bad_level" });
+            if (!QuestionSaveBinding.TryParseKind(body.Kind, out var kind)) return Results.BadRequest(new { error = "bad_kind" });
 
             var run = await topUp.GenerateOnceAsync(body.Lang.ToLanguage(), body.CategoryId,
-                (Difficulty)body.Level, Math.Clamp(body.Count, 1, 20));
+                (Difficulty)body.Level, Math.Clamp(body.Count, 1, 20), kind);
 
             return Results.Ok(run.ToDto());
         });

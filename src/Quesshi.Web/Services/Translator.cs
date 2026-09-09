@@ -29,12 +29,22 @@ public sealed class Translator(HttpClient http)
     public string Name(CategoryDto category)
         => Lang switch
         {
-            "fa" => Or(category.NameFa, category.NameEn),
-            "nl" => Or(category.NameNl, category.NameEn),
-            _ => Or(category.NameEn, category.NameFa)
+            "fa" => Prefer(category.NameFa, category.NameEn),
+            "nl" => Prefer(category.NameNl, category.NameEn),
+            _ => Prefer(category.NameEn, category.NameFa)
         };
 
-    private static string Or(string first, string second) => first.Length > 0 ? first : second;
+    private static string Prefer(string first, string second) => first.Length > 0 ? first : second;
+
+    /// <summary>
+    /// A key's text, or <paramref name="fallback"/> when there is no such key. The indexer's habit
+    /// of rendering a missing key as the key itself is right for the app's own strings — a gap is
+    /// meant to be visible — but wrong where the key is built from something the server sent: an
+    /// error code the panel has no wording for yet would put a raw identifier in front of an admin,
+    /// and "that didn't work" is more use than "bad_target_shape".
+    /// </summary>
+    public string Or(string key, string fallback)
+        => _tables.TryGetValue(Lang, out var table) && table.TryGetValue(key, out var value) ? value : fallback;
 
     /// <summary>Every language the app ships, in the order the picker offers them.</summary>
     public static readonly string[] All = ["fa", "en", "nl"];

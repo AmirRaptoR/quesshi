@@ -17,7 +17,19 @@ public sealed class FakeQuestions : IQuestionRepository
     public Task<long> CountAsync(QuestionFilter f, CancellationToken ct = default) => Task.FromResult((long)Items.Count);
     public Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string c, Difficulty l, int n, IReadOnlyCollection<string> ex, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Question>>([.. Items.Where(q => q.CategoryId == c && q.Level == l && q.Lang == lang && !ex.Contains(q.Id)).Take(n)]);
-    public Task<IReadOnlyList<BucketCount>> BucketCountsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<BucketCount>>([]);
+    /// <summary>
+    /// Grouped by kind as well as by (language, category, level), exactly as the real repository
+    /// does. It used to answer with nothing at all, which was harmless while a bucket was one thing;
+    /// it stopped being harmless once the dashboard's job became showing that a category full of
+    /// choice questions has no sorting questions in it.
+    /// </summary>
+    public Task<IReadOnlyList<BucketCount>> BucketCountsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<BucketCount>>([.. Items
+            .GroupBy(q => (q.Lang, q.CategoryId, q.Level, q.Kind))
+            .Select(g => new BucketCount(g.Key.Lang, g.Key.CategoryId, g.Key.Level,
+                g.Count(q => q.Status == QuestionStatus.Approved),
+                g.Count(q => q.Status == QuestionStatus.Pending),
+                g.Key.Kind))]);
     public Task UpsertAsync(Question q, CancellationToken ct = default) { Items.RemoveAll(x => x.Id == q.Id); Items.Add(q); return Task.CompletedTask; }
     public Task<int> UpsertManyAsync(IReadOnlyList<Question> qs, CancellationToken ct = default) { foreach (var q in qs) UpsertAsync(q, ct); return Task.FromResult(qs.Count); }
     public Task DeleteAsync(string id, CancellationToken ct = default) { Items.RemoveAll(x => x.Id == id); return Task.CompletedTask; }
