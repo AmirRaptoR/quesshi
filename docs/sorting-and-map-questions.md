@@ -65,6 +65,16 @@ The shuffle is seeded by `(matchId, slot)`, not by question id: everyone in a li
 same arrangement, and seeding by question alone would hand a returning player the order they saw last
 time.
 
+**One helper owns the permutation, and every caller goes through it.** Cards are built in more than
+one place — `GameEndpoints.cs:246` for async, `Mappers.cs:239` and `LiveMatchGrain`'s own builder for
+live — and the correctness check is a fourth caller. If any of them derives the order differently, a
+reconnect or a silo restart can show a player one arrangement and grade them against another, which
+would read as the game marking a right answer wrong. So the domain owns a single
+`SortOrder.For(matchId, slot, count)` returning the served permutation, and its inverse, with the
+algorithm pinned: a Fisher–Yates shuffle over a deterministic seed derived from the match id and
+slot, not `Random.Shared` and not `GetHashCode`, which is not stable across processes. Its test is
+that the same inputs give the same order on repeated calls and in a fresh process.
+
 **That seed decides where correctness is computed, so it needs stating exactly.** The card cannot
 reveal which stored index each served item came from — the stored order *is* the answer. So the
 player submits **served positions**, and the server has to invert the shuffle before comparing. The
@@ -87,14 +97,20 @@ kinds:
 | | `Choice` | `Sort` | `Map` |
 |---|---|---|---|
 | `Choices` | 4, distinct | 4, distinct, in correct order | must be empty |
-| `CorrectIndex` | in range | unused, must be 0 | unused, must be 0 |
-| Target | — | — | required, exactly one shape |
-| Base layer | — | — | required |
+| `CorrectIndex` | in range | must be 0 | must be 0 |
+| Target | must be null | must be null | required, exactly one shape |
+| Base layer | must be null | must be null | required |
+
+The "must be null" cells are the point of the table, not padding: a rule that only says what a kind
+*needs* lets a `Choice` question carry a stray map target that nothing reads and nothing rejects,
+and the first sign of it is a question behaving oddly after someone edits its kind.
 
 A country target is rejected unless its code exists in the bundled SVG, so a question can never be
-authored against a country the map cannot draw. A city target needs latitude in −90..90, longitude in
-−180..180, and a positive radius; the radius is also bounded above, since a large enough one makes
-every answer correct.
+authored against a country the map cannot draw. A city target needs latitude in −90..90 and longitude
+in −180..180, both finite — NaN and infinity are rejected explicitly, since they pass a naive range
+check and then make every distance comparison false. The radius is 10 to 2000 km: below 10 the target
+is smaller than a fingertip on a world map, and above 2000 a continent's worth of answers is
+"correct", which is not a question.
 
 **The submitted answer gains one nullable string** beside `ChoiceIndex`, on both `AnswerRecord` and
 `LiveAnswer`: `"2,0,3,1"` for a sort, `"DE"` or `"52.37,4.90"` for a map. `Correct` stays a `bool`.
@@ -119,9 +135,12 @@ that stops being true here. A sort card carries the shuffled items; a map card c
 the base layer. The correct order and the target are revealed only at reveal, which is the rule the
 two card DTOs already follow, extended rather than loosened.
 
-**The reveal contracts change too.** `AnswerResultDto` and `LiveRoundRevealDto` both carry a bare
-`int CorrectIndex`, which cannot express a sort order or a map target. Each gains the kind and a
-kind-appropriate answer field, and `CorrectIndex` keeps its meaning for `Choice` alone.
+**The reveal contracts change too — all three of them.** `AnswerResultDto`, `LiveRoundRevealDto` and
+`RevealedQuestionDto` each carry a bare `int CorrectIndex`, which cannot express a sort order or a map
+target; `RevealedQuestionDto` additionally holds `MyChoice`/`TheirChoice` as ints, so the duel history
+would render a finished sort as two blanks. Each gains the kind and a kind-appropriate answer field,
+along with the live-history mapping that builds them, and `CorrectIndex` keeps its meaning for
+`Choice` alone.
 
 ## 2. Play and scoring
 
@@ -163,8 +182,19 @@ than a variable is to remove.
 **Its inventory has to learn about kinds, or the new ones never get written.** `BucketCount` is
 `(Lang, CategoryId, Level, Approved, Pending)` and the top-up fills each bucket to a target. With
 3067 existing `Choice` questions every bucket already looks full, so a top-up would conclude there is
-nothing to do and generate no sorts and no maps at all. `Kind` joins the bucket key, and each kind
-gets its own target — a much smaller one for the new kinds than for `Choice`.
+nothing to do and generate no sorts and no maps at all. `Kind` joins the bucket key.
+
+Two details decide whether that actually works:
+
+- **The legacy default has to be applied in the query, not only in the mapper.**
+  `BucketCountsAsync` does not go through `ToDomain` — it projects `Lang`, `CategoryId`, `Level` and
+  `Status` straight off the document and groups on those (`MongoQuestionRepository.cs:56`). A missing
+  `Kind` field must be coalesced to `Choice` *there*, or every pre-existing question lands in a null
+  bucket and the counts are wrong in a way nothing announces.
+- **Per-kind targets need somewhere to live.** `TopUpOptions` exposes a single `TargetPerBucket` and
+  the admin dashboard applies one threshold to every bucket. So the option becomes a target per kind,
+  `BucketDto` gains the kind, and the dashboard groups by it — otherwise the admin sees three
+  identical-looking buckets per category measured against the wrong threshold.
 
 **Generated questions publish immediately.** `AutoApprove` defaults to `true`, so a wrong sort order
 or a mislocated city goes straight to players. That is tolerable for multiple choice, where an error
@@ -176,7 +206,10 @@ Each new kind gets one hard constraint, because each can fail in a way multiple-
 - **A sort must name an objective criterion.** "Order these by population" is verifiable; "order
   these by beauty" stores an opinion and then tells every player who disagrees that they are wrong.
   The prompt demands a measurable axis, and the criterion is shown to the player as part of the
-  question.
+  question. Be honest about the limit: this is prompt guidance, not a validation rule — no check can
+  decide mechanically whether an axis is objective, so a subjective sort will pass validation. The
+  defence is review, which is the concrete reason to run the first top-ups of this kind with
+  `AutoApprove` off, and the player report path afterwards.
 - **A map answer is checked against the map.** A country target must resolve to a path in the SVG. A
   city target is the riskier one, since a model will confidently produce coordinates that are off by
   a country, so the generator is asked for the city *and* its country and the pipeline verifies the
