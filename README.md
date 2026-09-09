@@ -188,10 +188,27 @@ The app ships with **no questions**. Seeding creates the thirteen categories and
 database, one administrator — everything else is yours to fill.
 
 Questions arrive two ways. **Admin → Generate now** asks a model through OpenRouter to top up any
-`(language, category, level)` bucket below target; a category is only topped up in languages it
+`(language, category, level, kind)` bucket below target; a category is only topped up in languages it
 already has questions in, so adding a language does not silently commission a whole new bank in it.
 The same run can happen nightly if `Generation:Nightly` is on; it ships off. Admins also write and
 edit questions by hand in `/admin/questions`.
+
+**Kind is part of the bucket.** A question is multiple choice, an ordering of four items, or a place
+on the world map, and each kind has its own target — `Generation:TargetPerBucket` for choice
+questions, `Generation:SortTargetPerBucket` and `Generation:MapTargetPerBucket` for the other two,
+which are much smaller. Without the kind in the key, a bank of three thousand choice questions makes
+every bucket look full and no ordering or map question is ever written; the dashboard groups its thin
+buckets the same way, so each row is measured against the target that describes it.
+
+**Run the first top-up of a new kind with `Generation:AutoApprove` off.** Generated questions
+otherwise publish straight to players, which is tolerable for multiple choice — a wrong answer is
+obvious on sight — and much less so for an ordering nobody can verify at a glance, or a city that is
+in the wrong country. Two constraints do what can be done automatically: a map question's country
+must be one the bundled SVG can draw, and a generated city's coordinates are checked against that
+country's own outline on the same map players tap, so a model that names Porto and gives Rome's
+coordinates is caught before anything is stored. The third constraint cannot be automated — an
+ordering question must sort by something measurable, and no check can decide whether "by importance"
+is objective — so that one is prompt guidance backed by review and the player report path.
 
 Dropping `questions.<lang>*.json` files into `src/Quesshi.Server/Seed/` seeds them on the next
 start, and re-seeding is idempotent: a question's id is derived from its language, category and
@@ -262,7 +279,10 @@ anything that is not `Development` must either configure `Smtp:Host` or ask for
 | `OpenRouter:ApiKey`           | Turns on question generation. Without it the generator reports itself unconfigured.       |
 | `OpenRouter:Model`            | Any model id OpenRouter serves, e.g. `google/gemini-2.5-flash`.                            |
 | `Generation:Nightly`          | Runs the top-up every night. Off by default; the admin button works regardless.           |
-| `Generation:AutoApprove`      | Publish generated questions immediately instead of parking them for review.               |
+| `Generation:TargetPerBucket`  | How many multiple-choice questions a (language, category, level) bucket should hold. Default 25. |
+| `Generation:SortTargetPerBucket` | The same for ordering questions. Default 6.                                            |
+| `Generation:MapTargetPerBucket` | The same for map questions. Default 6.                                                  |
+| `Generation:AutoApprove`      | Publish generated questions immediately instead of parking them for review. **Turn off before the first run of a new kind.** |
 | `Live:Enabled`                | Whether a new live duel can start. On by default. Toggle at runtime from the admin dashboard; a duel already in flight always finishes. |
 
 Put local values in `appsettings.Development.json` or user secrets. **Do not commit keys** —

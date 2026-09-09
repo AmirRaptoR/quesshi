@@ -107,6 +107,12 @@
                 <div class="notice" style="margin-top:.8rem">@L["admin.noKey"]</div>
             }
 
+            @* Beside the button that spends the money, because that is where the decision is made.
+               Generated questions publish straight to players unless Generation:AutoApprove is off,
+               and a wrong sort order or a city in the wrong country is not obvious on sight the way
+               a wrong multiple-choice answer is. *@
+            <p class="faint" style="margin:.8rem 0 0;font-size:var(--step--1)">@L["admin.reviewFirstHint"]</p>
+
             @if (_data.Runs.Count > 0)
             {
                 <div class="scroll-x" style="margin-top:.8rem">
@@ -132,27 +138,43 @@
 
         @if (_data.ThinBuckets.Count > 0)
         {
+            @* Grouped by kind, and each group measured against its own target. Ungrouped, the same
+               category showed up three times over with the same language and level and wildly
+               different meanings, all judged against one number that described only the first of
+               them — which is how a bank of three thousand choice questions read as "nothing to
+               generate" while holding no sorting questions at all. *@
             <section class="card enter" style="margin-top:1rem">
                 <span class="eyebrow">@L["admin.thin"]</span>
-                <div class="scroll-x" style="margin-top:.8rem">
-                    <table class="table">
-                        <thead>
-                            <tr><th>@L["admin.category"]</th><th>@L["admin.language"]</th><th>@L["admin.level"]</th><th>@L["admin.approved"]</th><th>@L["admin.pending"]</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var bucket in _data.ThinBuckets)
-                            {
-                                <tr>
-                                    <td>@bucket.CategoryId</td>
-                                    <td dir="ltr">@bucket.Lang</td>
-                                    <td>@L["level." + bucket.Level]</td>
-                                    <td class="numeral">@L.Num(bucket.Approved)</td>
-                                    <td class="numeral faint">@L.Num(bucket.Pending)</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+
+                @foreach (var group in _data.ThinBuckets.GroupBy(b => b.Kind))
+                {
+                    <div class="row row--between" style="margin-top:1rem">
+                        <span class="faint" style="font-size:var(--step--1);font-weight:700">@L["admin.kind." + group.Key]</span>
+                        <span class="faint" style="font-size:var(--step--1)">
+                            @L.Format("admin.thin.target", L.Num(group.First().Target))
+                        </span>
+                    </div>
+
+                    <div class="scroll-x" style="margin-top:.5rem">
+                        <table class="table">
+                            <thead>
+                                <tr><th>@L["admin.category"]</th><th>@L["admin.language"]</th><th>@L["admin.level"]</th><th>@L["admin.approved"]</th><th>@L["admin.pending"]</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var bucket in group)
+                                {
+                                    <tr>
+                                        <td>@bucket.CategoryId</td>
+                                        <td dir="ltr">@bucket.Lang</td>
+                                        <td>@L["level." + bucket.Level]</td>
+                                        <td class="numeral">@L.Num(bucket.Approved)</td>
+                                        <td class="numeral faint">@L.Num(bucket.Pending)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </section>
         }
     }

@@ -952,3 +952,47 @@ a  { color: var(--firouzeh); text-decoration: none; }
 /* The reveal's key: one row per thing drawn on the map above it. */
 .maplegend { display: grid; gap: 0.4rem; margin-top: 0.6rem; font-size: var(--step--1); }
 .maplegend__row { display: flex; align-items: center; gap: 0.5rem; }
+
+/* --- the question editor's mode switches --------------------------------- */
+/* A question's kind decides what the rest of the editor means — four items in order, or a point on
+   a map, or the multiple-choice form that has always been here. That is a mode, not one field among
+   five, so it shows all three options and the current one at once instead of hiding two of them
+   inside a dropdown beside language and level. The map target's two shapes use the same control for
+   the same reason, and reusing it rather than inventing a second look keeps the panel's vocabulary
+   at one word per idea.
+   Laid out with flex and logical properties only: in Persian the first option sits at the right,
+   with nothing to override. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.4);
+}
+.segmented__option {
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+.segmented__option:hover { background: rgb(47 191 176 / 0.1); }
+
+/* Turquoise for "this is the one selected", the same meaning it carries on every answer tile. */
+.segmented__option.is-on { color: var(--firouzeh); background: rgb(47 191 176 / 0.16); }
+
+/* Which shape a question is, in the listing. Only drawn for the two kinds that are not the
+   default — a bank of three thousand choice questions does not need three thousand labels
+   saying so. */
+.chip--kind { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); }
+
+/* The tolerance slider. One declaration rather than a rebuilt track: the native control is
+   keyboard-operable, announces itself and handles RTL already, and all it needed was the house
+   colour. */
+input[type='range'] { accent-color: var(--firouzeh); }

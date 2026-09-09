@@ -57,7 +57,19 @@ public static class Mappers
         q.Media.Kind == MediaKind.None ? null : new MediaDto(q.Media.Kind.ToString().ToLowerInvariant(), q.Media.Url, q.Media.Attribution),
         q.CreatedAt, q.TimesServed, q.TimesCorrect,
         q.ReportCount,
-        [.. q.Reports.Select(r => new QuestionReportDto(r.PlayerId, "", r.Reason.ToString().ToLowerInvariant(), r.At))]);
+        [.. q.Reports.Select(r => new QuestionReportDto(r.PlayerId, "", r.Reason.ToString().ToLowerInvariant(), r.At))],
+        q.Kind.ToString().ToLowerInvariant(), q.Target.ToDto(), q.BaseLayer?.ToString().ToLowerInvariant());
+
+    /// <summary>
+    /// A map target on its way to the admin form. Unlike every play-facing mapper, this one is
+    /// <i>allowed</i> to send the answer: the admin panel is where the answer is authored and an
+    /// editor that could not show what it was editing would be useless. The redaction rule the card
+    /// DTOs keep is a rule about players, not about admins.
+    /// </summary>
+    public static MapTargetDto? ToDto(this MapTarget? target) => target is null
+        ? null
+        : new MapTargetDto(target.Shape.ToString().ToLowerInvariant(), target.CountryCode,
+            target.Latitude, target.Longitude, target.RadiusKm);
 
     public static AdminUserDto ToAdminDto(this Player p)
         => new(p.Id, p.DisplayName, p.Email, p.AvatarSeed, p.IsBanned, p.Stats.ToDto(), p.CreatedAt);

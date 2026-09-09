@@ -34,6 +34,12 @@
                 }
             </select>
 
+            <select class="select" style="width:auto" @bind="_ask.Kind">
+                <option value="choice">@L["admin.kind.choice"]</option>
+                <option value="sort">@L["admin.kind.sort"]</option>
+                <option value="map">@L["admin.kind.map"]</option>
+            </select>
+
             <input class="input" style="width:5.5rem" type="number" min="1" max="20" @bind="_ask.Count" aria-label="@L["admin.count"]" />
 
             <button class="btn" disabled="@(_generating || !_generatorReady)" @onclick="GenerateAsync">
@@ -47,6 +53,15 @@
 
         <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["admin.generateHint"]</p>
         <p class="faint" style="margin:.2rem 0 0;font-size:var(--step--1)">@L["admin.imagesHint"]</p>
+
+        @* Where an admin actually meets the decision: beside the button that spends the money and,
+           with AutoApprove on, publishes straight to players. A wrong sort order or a mislocated
+           city is not obvious on sight the way a wrong multiple-choice answer is, so the first run
+           of either kind is the one to review by hand. Shown only for the kinds it is about. *@
+        @if (_ask.Kind != "choice")
+        {
+            <div class="notice" style="margin-top:.7rem">@L["admin.reviewFirstHint"]</div>
+        }
 
         @if (!_generatorReady)
         {
@@ -149,23 +164,103 @@
                     </select>
                 </div>
 
+                @* The kind decides what the rest of this form means, so it is shown as three
+                   options rather than hidden in a fifth dropdown beside language and level. *@
                 <div class="field">
-                    <label>@L["admin.prompt"]</label>
-                    <textarea class="textarea" rows="2" @bind="_editing.Prompt"></textarea>
+                    <label id="kind-label">@L["admin.kind"]</label>
+                    <div class="segmented" role="radiogroup" aria-labelledby="kind-label">
+                        @foreach (var kind in Kinds)
+                        {
+                            var value = kind;
+                            <button type="button" class="segmented__option @(_editing.Kind == value ? "is-on" : null)"
+                                    role="radio" aria-checked="@(_editing.Kind == value)"
+                                    @onclick="() => _editing!.Kind = value">@L["admin.kind." + value]</button>
+                        }
+                    </div>
                 </div>
 
                 <div class="field">
-                    <label>@L["admin.choices"] · @L["admin.correct"]</label>
-                    @for (var i = 0; i < 4; i++)
+                    <label>@L["admin.prompt"]</label>
+                    <textarea class="textarea" rows="2" @bind="_editing.Prompt"></textarea>
+                    @if (_editing.IsSort)
                     {
-                        var index = i;
-                        <div class="row" style="margin-bottom:.4rem">
-                            <input type="radio" name="correct" checked="@(_editing.CorrectIndex == index)"
-                                   @onchange="() => _editing.CorrectIndex = index" aria-label="@($"Correct: {index + 1}")" />
-                            <input class="input grow" @bind="_editing.Choices[index]" />
-                        </div>
+                        <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["admin.sortCriterionHint"]</p>
                     }
                 </div>
+
+                @if (_editing.IsMap)
+                {
+                    @* The authoring tool and the game are the same component in the same mode: an
+                       author setting a target is a player picking one, so the two cannot drift. *@
+                    <div class="field">
+                        <label id="shape-label">@L["admin.target"]</label>
+                        <div class="segmented" role="radiogroup" aria-labelledby="shape-label">
+                            @foreach (var shape in Shapes)
+                            {
+                                var value = shape;
+                                <button type="button" class="segmented__option @(_editing.TargetShape == value ? "is-on" : null)"
+                                        role="radio" aria-checked="@(_editing.TargetShape == value)"
+                                        @onclick="() => _editing!.TargetShape = value">@L["admin.target." + value]</button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>@L["admin.baseLayer"]</label>
+                        <select class="select" style="width:auto" @bind="_editing.BaseLayer">
+                            <option value="borders">@L["admin.baseLayer.borders"]</option>
+                            <option value="blank">@L["admin.baseLayer.blank"]</option>
+                        </select>
+                    </div>
+
+                    <MapField Shape="@(_editing.IsCity ? 1 : 0)" BaseLayer="@(_editing.BaseLayer == "blank" ? 0 : 1)"
+                              Selection="_editing.Pick" SelectionChanged="PickTarget"
+                              ToleranceKm="@(_editing.IsCity ? _editing.RadiusKm : null)" />
+
+                    @if (_editing.IsCity)
+                    {
+                        @* The ring on the map above redraws as this moves, which is the only way to
+                           judge a radius: 300 km is a different question in the Netherlands than it
+                           is in Kazakhstan, and a number on its own says neither. *@
+                        <div class="field">
+                            <label for="radius">@L["admin.radius"]</label>
+                            <div class="row" style="gap:.75rem">
+                                <input id="radius" class="grow" type="range" step="10"
+                                       min="@MapTolerance.MinKm" max="@MapTolerance.MaxKm"
+                                       @bind="_editing.RadiusKm" @bind:event="oninput" />
+                                <span class="chip" dir="ltr">@L.Num(((int)_editing.RadiusKm).ToString()) @L["admin.km"]</span>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="field">
+                        <label>@(_editing.IsSort ? L["admin.items"] : $"{L["admin.choices"]} · {L["admin.correct"]}")</label>
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            var index = i;
+                            <div class="row" style="margin-bottom:.4rem">
+                                @if (_editing.IsSort)
+                                {
+                                    @* The place a row is in is the answer, so it is numbered — the
+                                       same marker the play screen uses for the same meaning. *@
+                                    <span class="sortrow__place">@L.Num((index + 1).ToString())</span>
+                                }
+                                else
+                                {
+                                    <input type="radio" name="correct" checked="@(_editing.CorrectIndex == index)"
+                                           @onchange="() => _editing.CorrectIndex = index" aria-label="@($"Correct: {index + 1}")" />
+                                }
+                                <input class="input grow" @bind="_editing.Choices[index]" />
+                            </div>
+                        }
+                        @if (_editing.IsSort)
+                        {
+                            <p class="faint" style="margin:.35rem 0 0;font-size:var(--step--1)">@L["admin.sortOrderHint"]</p>
+                        }
+                    </div>
+                }
 
                 <div class="field">
                     <label>@L["admin.explanation"]</label>
@@ -237,6 +332,10 @@
                             <span class="chip">@CategoryName(question.CategoryId)</span>
                             <span class="chip">@L["level." + question.Level]</span>
                             <span class="chip @StatusClass(question.Status)">@L["admin." + question.Status]</span>
+                            @if (question.Kind != "choice")
+                            {
+                                <span class="chip chip--kind">@L["admin.kind." + question.Kind]</span>
+                            }
                             @if (question.TimesServed > 0)
                             {
                                 <span class="chip faint">@L.Num(question.TimesCorrect)/@L.Num(question.TimesServed)</span>
@@ -265,9 +364,22 @@
                     <MediaBlock Media="question.Media" Compact="true" Autoplay="false" Loop="false" />
 
                     <div class="row" dir="auto" style="gap:.4rem;flex-wrap:wrap;font-size:var(--step--1);margin-top:.4rem">
-                        @for (var i = 0; i < question.Choices.Count; i++)
+                        @if (question.Kind == "map")
                         {
-                            <span class="chip @(i == question.CorrectIndex ? "chip--win" : null)">@question.Choices[i]</span>
+                            @* A map question's answer is its target, so the row shows that rather
+                               than four empty chips. *@
+                            <span class="chip chip--win" dir="ltr">@TargetLabel(question)</span>
+                        }
+                        else
+                        {
+                            @for (var i = 0; i < question.Choices.Count; i++)
+                            {
+                                @* A sorting question is stored in its correct order, so the row is
+                                   numbered and nothing is marked "the" right one: the order is. *@
+                                <span class="chip @(question.Kind == "choice" && i == question.CorrectIndex ? "chip--win" : null)">
+                                    @(question.Kind == "sort" ? $"{L.Num((i + 1).ToString())}. " : "")@question.Choices[i]
+                                </span>
+                            }
                         }
                     </div>
                 </article>
@@ -281,6 +393,25 @@
 
 @code {
     private static readonly int[] Levels = [1, 2, 3, 4, 5];
+
+    /// <summary>The three shapes a question can be, in the order the enum defines them.</summary>
+    private static readonly string[] Kinds = ["choice", "sort", "map"];
+
+    /// <summary>What a map question's answer can be. Two, and never both at once.</summary>
+    private static readonly string[] Shapes = ["country", "city"];
+
+    /// <summary>
+    /// A map question's answer, for the listing: a country code, or the coordinates and how close a
+    /// pin has to land. Written left-to-right whatever the panel's language, because a coordinate
+    /// pair and an ISO code are both read that way.
+    /// </summary>
+    private string TargetLabel(AdminQuestionDto question) => question.Target switch
+    {
+        { Shape: "city", Latitude: { } lat, Longitude: { } lon, RadiusKm: { } radius }
+            => $"{WorldMapProjection.FormatPoint(lat, lon)} · {(int)radius} {L["admin.km"]}",
+        { CountryCode: { } code } => code,
+        _ => "—"
+    };
 
     /// <summary>A category's display name, falling back to the slug for one that has since been deleted.</summary>
     private string CategoryName(string id)
@@ -343,7 +474,7 @@
         _generating = true;
         _lastRun = null;
 
-        _lastRun = await Api.GenerateBucketAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level, _ask.Count))
+        _lastRun = await Api.GenerateBucketAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level, _ask.Count, _ask.Kind))
                    ?? new GenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now, 0, 0, 0, L["common.error"]);
 
         _generating = false;
@@ -449,14 +580,24 @@
         _error = null;
     }
 
+    /// <summary>A click on the map, recorded against whichever half of the target this shape uses.</summary>
+    private void PickTarget(MapPick pick) => _editing?.Apply(pick);
+
     private async Task SaveAsync()
     {
         _busy = true; _error = null;
 
-        var saved = await Api.SaveQuestionAsync(_editing!.ToDto());
+        var (saved, error) = await Api.TrySaveQuestionAsync(_editing!.ToDto());
         _busy = false;
 
-        if (saved is null) { _error = L["common.error"]; return; }
+        // The server names the rule that was broken; the panel translates it. Anything it does not
+        // have a translation for falls back to the general failure rather than showing a raw code —
+        // an admin should never be reading an identifier out of a form.
+        if (saved is null)
+        {
+            _error = error is null ? L["common.error"] : L.Or("admin.err." + error, L["common.error"]);
+            return;
+        }
 
         _editing = null;
         await FetchAsync();
