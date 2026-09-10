@@ -321,7 +321,25 @@
     protected override bool AllowsGuest => true;
 
     private LiveClient? _client;
-    private LiveViewDto? _view;
+    private LiveViewDto? _viewValue;
+
+    /// <summary>
+    /// Every assignment to <see cref="_view"/> goes through here — the one place that notices a live
+    /// duel has reached its last phase, rather than four call sites each remembering to (issue #102):
+    /// the initial join and its HTTP fallback, the <c>Ended</c> push, a rejoin catch-up, and the
+    /// route-reuse reconnect in <c>OnParametersSetAsync</c> (which sets this to null, a no-op below,
+    /// before <c>ConnectAsync</c> assigns the new duel's view through the same setter).
+    /// </summary>
+    private LiveViewDto? _view
+    {
+        get => _viewValue;
+        set
+        {
+            _viewValue = value;
+            if (value is { Phase: "over" }) _ = State.ForgetFinishedGuestMatchAsync(MatchId);
+        }
+    }
+
     private bool _refused;
     private bool _reconnecting;
 

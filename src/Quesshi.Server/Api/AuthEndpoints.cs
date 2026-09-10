@@ -82,7 +82,7 @@ public static class AuthEndpoints
         if (match is null) return Results.NotFound(new { error = "no_such_code" });
 
         var challenger = await players.GetAsync(match.ChallengerId);
-        return Results.Ok(new InviteDto(match.Code, challenger?.DisplayName ?? "—",
+        return Results.Ok(new InviteDto(match.Code, match.Id, challenger?.DisplayName ?? "—",
             challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
             match.State == MatchState.AwaitingOpponent, match.IsLive));
     }
