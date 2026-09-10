@@ -259,6 +259,25 @@ public class MatchGrainTests(ClusterFixture fixture)
         Assert.True(await grain.JoinAsync(Sara)); // idempotent for someone already seated
     }
 
+    /// <summary>
+    /// The async twin of <c>LiveMatchGrainTests.Two_concurrent_joins_for_the_last_seat_leave_exactly_one_seated</c>:
+    /// Orleans serialises every call into a single grain activation's turn queue, so this proves the
+    /// capacity guard added to <c>Match.Join</c> decides the race deterministically.
+    /// </summary>
+    [Fact]
+    public async Task Two_concurrent_joins_for_the_last_seat_leave_exactly_one_seated()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY12", Amir, capacity: 2);
+
+        var results = await Task.WhenAll(grain.JoinAsync(Sara), grain.JoinAsync(Vahid));
+
+        Assert.Single(results, true);
+        Assert.Single(results, false);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(2, view!.Participants.Count);
+    }
+
     [Fact]
     public async Task Reaching_capacity_no_longer_auto_starts_but_Start_draws_a_real_playable_question_set()
     {
@@ -421,6 +440,73 @@ public class MatchGrainTests(ClusterFixture fixture)
 
         // Questions are drawn now, so settings can no longer change.
         Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+    }
+
+    /// <summary>
+    /// The async twin of <c>LiveMatchGrainTests</c>'s own equal-settings no-op test: a lobby whose
+    /// question set is already drawn while still <c>AwaitingOpponent</c> — exactly the shape
+    /// <c>CreateAsync</c> builds — can still have its capacity widened, because the settings half is
+    /// attempted only when the requested settings actually differ from the lobby's own.
+    /// </summary>
+    [Fact]
+    public async Task UpdateSettingsAsync_widens_capacity_alongside_the_lobbys_own_unchanged_settings_once_drawn()
+    {
+        var grain = NewMatch(out _, out var questionIds);
+        await grain.CreateAsync((int)Language.En, Amir, questionIds, "MLOBBY13");
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, questionIds.Count, [], [], 4);
+        Assert.True(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(4, view!.Capacity);
+        Assert.Equal((int)MatchState.AwaitingOpponent, view.State); // untouched otherwise
+    }
+
+    /// <summary>Atomic apply-both-or-neither (issue #104): a capacity half that fails (below the seated
+    /// count) must leave the settings half unapplied too, even though the settings half alone would
+    /// have succeeded.</summary>
+    [Fact]
+    public async Task UpdateSettingsAsync_refuses_both_halves_when_the_capacity_half_alone_would_fail()
+    {
+        var (grain, id) = await NewLobbyAsync("MLOBBY14", Amir, capacity: 3);
+        SeedQuestions(id + "-extra");
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // 3 seated
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], 2); // 2 < 3 seated
+        Assert.False(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity); // unchanged
+
+        Assert.True(await grain.StartAsync(Amir));
+        var afterStart = await grain.GetAsync(Amir);
+        Assert.Equal(MatchRules.QuestionsPerMatch, afterStart!.QuestionIds.Count); // settings half never applied either
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_omitting_capacity_leaves_it_unchanged()
+    {
+        var (grain, _) = await NewLobbyAsync("MLOBBY15", Amir, capacity: 3);
+
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity);
+    }
+
+    [Fact]
+    public async Task A_capacity_change_survives_deactivation_and_reactivation()
+    {
+        var (grain, id) = await NewLobbyAsync("MLOBBY16", Amir, capacity: 2);
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 5));
+
+        await fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id)
+            .AsReference<Orleans.Core.Internal.IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+
+        var view = await fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id).GetAsync(Amir);
+        Assert.Equal(5, view!.Capacity);
     }
 
     [Fact]

@@ -225,6 +225,53 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
             new UpdateDuelSettingsDto("nl", [Category], 20, null), Amir, Grains, LiveShared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
     }
+
+    [Fact]
+    public async Task UpdateSettings_with_a_capacity_outside_2_to_8_is_refused_before_the_domain_sees_it()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
+
+        var tooSmall = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 1), Amir, Grains, LiveShared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));
+        Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
+
+        var tooBig = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 9), Amir, Grains, LiveShared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
+        Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
+
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity); // neither attempt touched it
+    }
+
+    [Fact]
+    public async Task UpdateSettings_with_a_valid_capacity_but_a_non_owner_caller_is_400_cannot_update_settings()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+
+        var result = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 4), Sara, Grains, LiveShared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("cannot_update_settings", CrossTypeCodeTests.ErrorOf(result));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_seats_three_of_four_after_the_owner_steps_capacity_from_two_to_four()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
+
+        var result = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], MatchRules.QuestionsPerMatch, null, 4), Amir, Grains, LiveShared.Players);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Vahid);
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Equal(4, view!.Capacity);
+        Assert.Equal(3, view.Players.Count); // one open seat left
+    }
     [Fact]
     public async Task The_owner_can_reopen_the_lobby_they_just_created()
     {

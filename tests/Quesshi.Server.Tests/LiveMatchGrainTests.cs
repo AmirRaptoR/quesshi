@@ -274,6 +274,26 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.Equal((int)LiveJoinResult.Full, await grain.JoinAsync(Stranger));
     }
 
+    /// <summary>
+    /// Two strangers racing for a two-seat lobby's one open seat (issue #104): Orleans serialises every
+    /// call into a single grain activation's turn queue, so this proves the capacity guard added to
+    /// <c>LiveMatch.Join</c> actually decides the race deterministically rather than both callers seeing
+    /// a stale "one seat left" and both being seated.
+    /// </summary>
+    [Fact]
+    public async Task Two_concurrent_joins_for_the_last_seat_leave_exactly_one_seated()
+    {
+        var (grain, _) = await NewLobbyAsync("LOBBY11", Amir, capacity: 2);
+
+        var results = await Task.WhenAll(grain.JoinAsync(Sara), grain.JoinAsync(Vahid));
+
+        Assert.Single(results, (int)LiveJoinResult.Joined);
+        Assert.Single(results, (int)LiveJoinResult.Full);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(2, view!.Players.Count);
+    }
+
     [Fact]
     public async Task Reaching_capacity_no_longer_auto_starts_but_Start_draws_a_real_playable_question_set()
     {
@@ -406,6 +426,93 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
         // Questions are drawn now, so settings can no longer change.
         Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+    }
+
+    /// <summary>
+    /// The equal-settings no-op rule (issue #104): a lobby whose question set is already drawn while
+    /// still in <see cref="LivePhase.Lobby"/> — exactly the shape <c>CreateAsync</c> builds for
+    /// matchmaking's pairing path — can still have its capacity widened, because the settings half is
+    /// attempted only when the requested settings actually differ from the lobby's own. Without this
+    /// rule the settings half would always refuse (<c>QuestionIds</c> is non-empty) and a capacity-only
+    /// PUT that resends the lobby's current settings could never succeed.
+    /// </summary>
+    [Fact]
+    public async Task UpdateSettingsAsync_widens_capacity_alongside_the_lobbys_own_unchanged_settings_once_drawn()
+    {
+        var grain = NewGrain(out _, out var questionIds);
+        await grain.CreateAsync("LOBBY12", (int)Language.En, Amir, questionIds); // pre-drawn, still Lobby phase
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, questionIds.Count, [], [], 4);
+        Assert.True(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(4, view!.Capacity);
+        Assert.Equal((int)LivePhase.Lobby, view.Phase); // untouched otherwise
+    }
+
+    /// <summary>
+    /// Atomic apply-both-or-neither (issue #104): a capacity half that fails (below the seated count)
+    /// must leave the settings half unapplied too, even though the settings half alone would have
+    /// succeeded.
+    /// </summary>
+    [Fact]
+    public async Task UpdateSettingsAsync_refuses_both_halves_when_the_capacity_half_alone_would_fail()
+    {
+        var (grain, id) = await NewLobbyAsync("LOBBY13", Amir, capacity: 3);
+        SeedQuestions(id + "-extra");
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // 3 seated
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], 2); // 2 < 3 seated
+        Assert.False(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity); // unchanged
+
+        Assert.True(await grain.StartAsync(Amir));
+        var afterStart = await grain.GetAsync(Amir);
+        Assert.Equal(MatchRules.QuestionsPerMatch, afterStart!.TotalRounds); // settings half was never applied either
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_omitting_capacity_leaves_it_unchanged()
+    {
+        var (grain, _) = await NewLobbyAsync("LOBBY14", Amir, capacity: 3);
+
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_is_refused_after_expiry_and_leaves_the_lobby_correctly_expired()
+    {
+        var (grain, id) = await NewLobbyAsync("LOBBY15", Amir, capacity: 2);
+        Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
+        await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 4);
+        Assert.False(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.NoContest, view!.State); // still correctly expired, not resurrected
+        var row = await LiveShared.Archive.ByCodeAsync("LOBBY15");
+        Assert.Equal(MatchState.NoContest, row!.State); // and persisted
+    }
+
+    [Fact]
+    public async Task A_capacity_change_survives_deactivation_and_reactivation()
+    {
+        var (grain, id) = await NewLobbyAsync("LOBBY16", Amir, capacity: 2);
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 5));
+
+        await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id)
+            .AsReference<Orleans.Core.Internal.IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+
+        var view = await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id).GetAsync(Amir);
+        Assert.Equal(5, view!.Capacity);
     }
 
     [Fact]
