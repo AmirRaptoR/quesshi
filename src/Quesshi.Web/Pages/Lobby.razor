@@ -92,6 +92,17 @@
                 </span>
                 @if (isOwner)
                 {
+                    @* The seat stepper (issue #104): owner-only, capacity 2-8 and never below the
+                       seated count -- CapacityStepMin/MaxCapacity mirror the domain's own bounds so a
+                       disabled end here means the server would refuse it too. *@
+                    <span class="row" style="gap:.35rem">
+                        <button type="button" class="btn btn--ghost btn--pill" style="padding:.15rem .6rem"
+                                disabled="@(snapshot.Capacity <= LobbyPresentation.CapacityStepMin(snapshot) || _busy)"
+                                @onclick="() => ChangeCapacityAsync(-1)">−</button>
+                        <button type="button" class="btn btn--ghost btn--pill" style="padding:.15rem .6rem"
+                                disabled="@(snapshot.Capacity >= LobbyPresentation.MaxCapacity || _busy)"
+                                @onclick="() => ChangeCapacityAsync(1)">+</button>
+                    </span>
                     <a class="lobby-settings-line" href="@SettingsSheet(snapshot)">@SettingsLine</a>
                 }
                 else
@@ -578,6 +589,28 @@
         _busy = true;
         await Api.LeaveLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
         Nav.NavigateTo("/");
+    }
+
+    /// <summary>
+    /// The owner-only seat stepper (issue #104). Sends the lobby's own <em>current</em> settings
+    /// alongside the new capacity — the coercion trap <see cref="UpdateDuelSettingsDto"/>'s own remarks
+    /// warn about: an absent <c>Lang</c>/<c>Questions</c>/<c>Categories</c> on this endpoint is coerced
+    /// to a default, not left alone, so a capacity-only change that omitted them would silently reset
+    /// the lobby's question settings.
+    /// </summary>
+    private async Task ChangeCapacityAsync(int delta)
+    {
+        if (_snapshot is null || _busy) return;
+
+        var next = _snapshot.Capacity + delta;
+        if (next < LobbyPresentation.CapacityStepMin(_snapshot) || next > LobbyPresentation.MaxCapacity) return;
+
+        _busy = true; _error = null;
+        var settings = _snapshot.Settings;
+        var ok = await Api.UpdateLobbySettingsAsync(_snapshot.MatchId, _snapshot.IsLive,
+            new UpdateDuelSettingsDto(settings.Lang, settings.CategoryIds, settings.QuestionCount, settings.Levels, next));
+        if (ok) await RefreshAsync(); else _error = L["common.error"];
+        _busy = false;
     }
 
     private async Task SaveIdentityAsync()

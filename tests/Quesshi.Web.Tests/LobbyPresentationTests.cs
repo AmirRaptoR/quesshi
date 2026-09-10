@@ -98,6 +98,24 @@ public class LobbyPresentationTests
         Assert.True(LobbyPresentation.IsFull(snapshot));
     }
 
+    // ---- CapacityStepMin: the seat stepper's own bounds (issue #104) ----
+
+    [Fact]
+    public void The_stepper_floor_is_two_when_fewer_than_two_are_seated()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 4));
+
+        Assert.Equal(2, LobbyPresentation.CapacityStepMin(snapshot));
+    }
+
+    [Fact]
+    public void The_stepper_floor_rises_with_the_seated_count()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara"), P("vahid")], capacity: 4));
+
+        Assert.Equal(3, LobbyPresentation.CapacityStepMin(snapshot));
+    }
+
     [Fact]
     public void Settings_are_locked_once_the_question_set_is_drawn_for_a_live_lobby()
     {

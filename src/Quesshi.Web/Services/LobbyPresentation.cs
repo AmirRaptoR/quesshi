@@ -55,6 +55,15 @@ public static class LobbyPresentation
     /// take-a-seat button renders enabled or as <c>lobby.invite.full</c>.</summary>
     public static bool IsFull(LobbySnapshot s) => s.Participants.Count >= s.Capacity;
 
+    /// <summary>The domain's own ceiling on a duel's seat count (<c>LiveMatch.CanSetCapacity</c> /
+    /// <c>Match.CanSetCapacity</c>) — the owner-only seat stepper's upper bound.</summary>
+    public const int MaxCapacity = 8;
+
+    /// <summary>The seat stepper's lower bound: capacity can never drop below however many are already
+    /// seated, nor below 2 — the same floor <c>CanSetCapacity</c> enforces server-side. This only
+    /// decides whether the stepper's own <c>−</c> renders enabled; the server is what actually refuses.</summary>
+    public static int CapacityStepMin(LobbySnapshot s) => Math.Max(2, s.Participants.Count);
+
     /// <summary>Where a page holding this snapshot belongs once it is no longer waiting — read the
     /// other way, this is exactly what Duel.razor/Live.razor send a still-waiting visitor to instead:
     /// this page, at <c>/lobby/{Code}</c>.</summary>
