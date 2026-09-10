@@ -23,12 +23,22 @@ public interface IMatchGrain : IGrainWithStringKey
     Task<bool> JoinAsync(string playerId);
 
     /// <summary>
-    /// The owner starts the duel once at least two are seated — the affordance a lobby with room to
-    /// spare needs, since reaching capacity already starts it on its own. Refused for anyone but the
+    /// The owner starts the duel once at least two are seated — the only way a lobby ever leaves
+    /// <c>AwaitingOpponent</c>, whether it is full or has room to spare. Refused for anyone but the
     /// owner, below two participants, or once joins have already closed.
     /// </summary>
     [Alias("StartAsync")]
     Task<bool> StartAsync(string playerId);
+
+    /// <summary>
+    /// The random-matchmaking counterpart to <see cref="StartAsync"/>, for the offline
+    /// <c>random: true</c> pairing branch of <c>POST /api/matches</c>: no owner check, since the
+    /// joiner who just got paired calls this, not the lobby's owner. Called right after both sides
+    /// are seated, now that <see cref="JoinAsync"/> no longer starts a duel on its own once it fills
+    /// every seat.
+    /// </summary>
+    [Alias("StartPairedAsync")]
+    Task<bool> StartPairedAsync();
 
     /// <summary>
     /// A seated player leaves before the duel starts. For anyone but the owner this frees their seat;
@@ -40,11 +50,14 @@ public interface IMatchGrain : IGrainWithStringKey
     Task<bool> LeaveAsync(string playerId);
 
     /// <summary>
-    /// The owner changes the lobby's <c>DuelSettings</c>. Refused for anyone but the owner, and
-    /// refused once the question set is drawn.
+    /// The owner changes the lobby's <c>DuelSettings</c> and, optionally, its <c>Capacity</c> in the
+    /// same call — atomically: both halves are validated before either is applied. <paramref name="capacity"/>
+    /// null means "leave capacity alone". Refused for anyone but the owner; the settings half is
+    /// refused once the question set is drawn, and the capacity half below 2, above 8, below the
+    /// seated count, or once joins have already closed.
     /// </summary>
     [Alias("UpdateSettingsAsync")]
-    Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels);
+    Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels, int? capacity);
 
     [Alias("ServeNextAsync")]
     Task<ServedSlot?> ServeNextAsync(string playerId);

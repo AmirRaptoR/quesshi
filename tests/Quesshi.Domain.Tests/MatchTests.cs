@@ -22,10 +22,13 @@ public class MatchTests
         return m;
     }
 
+    /// <summary>Seated to capacity 2 and explicitly started by the owner — joining alone no longer
+    /// starts a duel, so every test that wants an in-progress duel has to ask for it.</summary>
     private static Match Joined()
     {
         var m = NewMatch();
         m.Join(Opponent, T0);
+        m.Start(Challenger, T0);
         return m;
     }
 
@@ -38,12 +41,14 @@ public class MatchTests
         return m;
     }
 
-    /// <summary>A three-player lobby, filled to capacity so it has started.</summary>
+    /// <summary>A three-player lobby, filled to capacity and explicitly started by the owner — joining
+    /// alone no longer starts a duel, even once it fills every seat.</summary>
     private static Match Joined3()
     {
         var m = NewMatchN(3);
         m.Join(Opponent, T0);
         m.Join(Third, T0);
+        m.Start(Challenger, T0);
         return m;
     }
 
@@ -133,6 +138,45 @@ public class MatchTests
     [Fact]
     public void A_third_player_cannot_join_a_taken_match()
         => Assert.Throws<InvalidOperationException>(() => Joined().Join("u-else", T0));
+
+    /// <summary>
+    /// The core of issue #104: a two-seat lobby used to start the instant its second seat filled. It
+    /// no longer does; the owner's <see cref="Match.Start"/> is the only door into
+    /// <see cref="MatchState.InProgress"/>, for a two-seat lobby exactly as for a bigger one.
+    /// </summary>
+    [Fact]
+    public void Join_leaves_a_two_seat_lobby_open_once_it_is_full()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+        Assert.Equal([Challenger, Opponent], m.Participants);
+    }
+
+    [Fact]
+    public void A_third_join_into_a_full_two_seat_lobby_is_refused()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.Throws<InvalidOperationException>(() => m.Join(Third, T0));
+        Assert.Equal(2, m.Participants.Count);
+    }
+
+    [Fact]
+    public void A_full_lobby_reopens_once_a_non_owner_leaves_and_the_owner_can_still_start_it()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+        Assert.Throws<InvalidOperationException>(() => m.Join(Third, T0)); // confirm it is actually full first
+
+        Assert.True(m.Leave(Opponent, T0));
+        m.Join(Third, T0);
+        Assert.Equal([Challenger, Third], m.Participants);
+        Assert.True(m.Start(Challenger, T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+    }
 
     [Fact]
     public void A_stranger_cannot_play_a_match_they_are_not_in()
@@ -418,6 +462,101 @@ public class MatchTests
 
         Assert.False(m.UpdateSettings(Opponent, DuelSettings.Create(Language.Fa, 20, [], [])));
         Assert.Equal(original, m.Settings);
+    }
+
+    // ---- SetCapacity ----
+
+    [Fact]
+    public void The_owner_widens_capacity_in_the_lobby_phase()
+    {
+        var m = NewMatch();
+        Assert.True(m.CanSetCapacity(Challenger, 4));
+        Assert.True(m.SetCapacity(Challenger, 4, T0));
+        Assert.Equal(4, m.Capacity);
+    }
+
+    [Fact]
+    public void SetCapacity_is_refused_for_a_non_owner()
+    {
+        var m = NewMatch();
+        Assert.False(m.CanSetCapacity(Opponent, 4));
+        Assert.False(m.SetCapacity(Opponent, 4, T0));
+        Assert.Equal(2, m.Capacity);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void SetCapacity_is_refused_outside_two_to_eight(int capacity)
+    {
+        var m = NewMatch();
+        Assert.False(m.CanSetCapacity(Challenger, capacity));
+        Assert.False(m.SetCapacity(Challenger, capacity, T0));
+        Assert.Equal(2, m.Capacity);
+    }
+
+    [Fact]
+    public void SetCapacity_is_refused_below_the_seated_count()
+    {
+        var m = NewMatchN(4);
+        m.Join(Opponent, T0);
+        m.Join(Third, T0); // 3 seated
+
+        Assert.False(m.CanSetCapacity(Challenger, 2));
+        Assert.False(m.SetCapacity(Challenger, 2, T0));
+        Assert.Equal(4, m.Capacity);
+    }
+
+    [Fact]
+    public void SetCapacity_is_refused_once_the_duel_has_started()
+    {
+        var m = Joined(); // capacity 2, already started
+        Assert.False(m.CanSetCapacity(Challenger, 4));
+        Assert.False(m.SetCapacity(Challenger, 4, T0));
+        Assert.Equal(2, m.Capacity);
+    }
+
+    // ---- StartByPairing ----
+
+    /// <summary>
+    /// The random-matchmaking door into <c>BeginDuel</c>, once <see cref="Join"/> no longer auto-starts
+    /// on its own: no owner check, since the joiner triggers this, not the owner pressing Start.
+    /// </summary>
+    [Fact]
+    public void StartByPairing_begins_the_duel_once_two_are_seated_and_questions_are_drawn()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.True(m.StartByPairing(T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+    }
+
+    [Fact]
+    public void StartByPairing_is_refused_below_two_participants()
+    {
+        var m = NewMatch();
+        Assert.False(m.StartByPairing(T0));
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+    }
+
+    [Fact]
+    public void StartByPairing_is_refused_once_the_lobby_has_already_started()
+    {
+        var m = Joined();
+        Assert.False(m.StartByPairing(T0));
+    }
+
+    [Fact]
+    public void A_widened_lobby_can_seat_more_than_the_original_capacity()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+        Assert.True(m.SetCapacity(Challenger, 4, T0));
+
+        m.Join(Third, T0);
+        Assert.Equal([Challenger, Opponent, Third], m.Participants);
+        Assert.Equal(MatchState.AwaitingOpponent, m.State); // still short of the new capacity
     }
 
     // ---- N-player standings ----

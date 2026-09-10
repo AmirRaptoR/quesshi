@@ -33,4 +33,27 @@ public sealed record DuelSettings(
 
         return new DuelSettings(language, questionCount, categoryIds, levels);
     }
+
+    /// <summary>
+    /// Hand-written, because the record-synthesized <c>Equals</c> compares <see cref="CategoryIds"/>
+    /// and <see cref="Levels"/> by the declared <c>IReadOnlyList&lt;T&gt;</c> type, which has no
+    /// <c>IEquatable</c> of its own and so falls back to reference equality on whatever concrete list
+    /// happens to be passed — meaning two independently built (but content-identical) instances, the
+    /// normal shape of anything that has crossed an HTTP request, would never compare equal. That
+    /// silently breaks the equal-settings no-op rule <c>UpdateSettingsAsync</c> relies on to let a
+    /// capacity-only change through once the question set is drawn (issue #104).
+    /// </summary>
+    public bool Equals(DuelSettings? other) =>
+        other is not null && Language == other.Language && QuestionCount == other.QuestionCount
+        && CategoryIds.SequenceEqual(other.CategoryIds) && Levels.SequenceEqual(other.Levels);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Language);
+        hash.Add(QuestionCount);
+        foreach (var id in CategoryIds) hash.Add(id);
+        foreach (var level in Levels) hash.Add(level);
+        return hash.ToHashCode();
+    }
 }

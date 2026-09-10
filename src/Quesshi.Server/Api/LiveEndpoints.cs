@@ -66,6 +66,14 @@ public static class LiveEndpoints
             IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
             await GetAsync(id, ctx.User.PlayerId()!, grains, players, questions, categories, clock)).WithMetadata(new AllowGuest());
 
+        // No side effects: nothing is joined, started, drawn or written. No RequiresLiveEnabled —
+        // that marker belongs only to endpoints that would start a new live duel, and a lobby read is
+        // a read, so this keeps working while Live:Enabled is off.
+        api.MapGet("/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+            IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
+            await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players, questions, categories, clock))
+            .WithMetadata(new AllowGuest());
+
         api.MapDelete("/{id}", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await CancelAsync(id, ctx.User.PlayerId()!, grains));
 
@@ -133,6 +141,8 @@ public static class LiveEndpoints
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
         IGrainFactory grains, IPlayerRepository players)
     {
+        if (body.Capacity is { } capacity and (< 2 or > 8)) return Results.BadRequest(new { error = "bad_capacity" });
+
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
 
@@ -140,7 +150,7 @@ public static class LiveEndpoints
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
 
-        var ok = await grains.GetGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        var ok = await grains.GetGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 
@@ -237,6 +247,26 @@ public static class LiveEndpoints
     {
         var view = await grains.GetGrain<ILiveMatchGrain>(id).GetAsync(meId);
         if (view is null) return Results.NotFound();
+
+        var lookup = await players.LiveLookupAsync(view);
+        return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
+    }
+
+    /// <summary>
+    /// The lobby page's read path (issue #104): resolves <paramref name="code"/> for the code-&gt;id
+    /// lookup only, then reads through <c>ILiveMatchGrain.LobbyViewAsync</c> — participant-or-still-
+    /// lobby, never <see cref="GetAsync"/>'s participant-only <c>GetAsync</c> grain method, which
+    /// <c>LiveHub.Join</c> relies on staying strict.
+    /// </summary>
+    internal static async Task<IResult> ByCodeAsync(string code, string meId, IGrainFactory grains,
+        IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock)
+    {
+        var found = await archive.ByCodeAsync(code);
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (!found.IsLive) return Results.BadRequest(new { error = "not_a_live_code" });
+
+        var view = await grains.GetGrain<ILiveMatchGrain>(found.Id).LobbyViewAsync(meId);
+        if (view is null) return Results.NotFound(new { error = "no_such_code" });
 
         var lookup = await players.LiveLookupAsync(view);
         return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));

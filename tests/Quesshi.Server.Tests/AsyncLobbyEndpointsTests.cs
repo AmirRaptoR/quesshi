@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Infrastructure;
@@ -77,7 +78,8 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         var lobby = await CreateLobbyAsync(capacity: 3);
         var grain = Grains.GetGrain<IMatchGrain>(lobby.Id);
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, drawing the question set
+        await grain.JoinAsync(Vahid); // fills capacity, but still waits for Start (issue #104)
+        Assert.True(await grain.StartAsync(Amir)); // draws the question set
 
         // Every seated player takes their first turn, so each has a PlayerRun to report -- a run is
         // created lazily on first ServeNext, exactly like a capacity-2 match's opponent.
@@ -107,7 +109,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         var lobby = await CreateLobbyAsync(capacity: 3);
         var grain = Grains.GetGrain<IMatchGrain>(lobby.Id);
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, indexing the archive row again
+        await grain.JoinAsync(Vahid); // fills capacity, indexing the archive row again
 
         var list = await GameEndpoints.ListMatchesAsync(Vahid, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
@@ -190,10 +192,102 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
     public async Task UpdateSettings_is_refused_once_the_question_set_is_drawn()
     {
         var lobby = await CreateLobbyAsync(capacity: 2);
-        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara); // auto-starts, drawing the set
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).StartAsync(Amir); // draws the set
 
         var result = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
             new UpdateDuelSettingsDto("en", [Category], 20, null), Amir, Grains, Shared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_with_a_capacity_outside_2_to_8_is_refused_before_the_domain_sees_it()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 3);
+
+        var tooSmall = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 1), Amir, Grains, Shared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));
+        Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
+
+        var tooBig = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 9), Amir, Grains, Shared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
+        Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
+
+        var view = await Grains.GetGrain<IMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity); // neither attempt touched it
+    }
+
+    [Fact]
+    public async Task UpdateSettings_with_a_valid_capacity_but_a_non_owner_caller_is_400_cannot_update_settings()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 3);
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara);
+
+        var result = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 4), Sara, Grains, Shared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("cannot_update_settings", CrossTypeCodeTests.ErrorOf(result));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_seats_three_of_four_after_the_owner_steps_capacity_from_two_to_four()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 2);
+
+        var result = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], MatchRules.QuestionsPerMatch, null, 4), Amir, Grains, Shared.Players);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Vahid);
+        var view = await Grains.GetGrain<IMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Equal(4, view!.Capacity);
+        Assert.Equal(3, view.Participants.Count); // one open seat left
+    }
+
+    // ---- ByCodeAsync: the read path (issue #104) ----
+
+    private async Task<IResult> ByCodeAsync(string code, string meId)
+        => await GameEndpoints.ByCodeAsync(code, meId, Grains, Shared.Archive, Shared.Players);
+
+    [Fact]
+    public async Task ByCode_reads_an_open_lobby_for_a_non_participant_without_seating_them()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 3);
+
+        var result = await ByCodeAsync(lobby.Code, Sara);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (MatchSummaryDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("awaitingopponent", dto.State);
+
+        // Reading twice changes nothing -- no side effects at all.
+        await ByCodeAsync(lobby.Code, Sara);
+        var view = await Grains.GetGrain<IMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.DoesNotContain(view!.Runs, r => r.PlayerId == Sara);
+    }
+
+    [Fact]
+    public async Task ByCode_is_200_for_a_participant_and_404_for_a_non_participant_once_the_match_has_started()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 2);
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara);
+        Assert.True(await Grains.GetGrain<IMatchGrain>(lobby.Id).StartAsync(Amir));
+
+        var forOwner = await ByCodeAsync(lobby.Code, Amir);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(forOwner));
+
+        var forStranger = await ByCodeAsync(lobby.Code, Stranger);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(forStranger));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(forStranger));
+    }
+
+    [Fact]
+    public async Task ByCode_on_an_unknown_code_is_404()
+    {
+        var result = await ByCodeAsync("NO-SUCH-CODE", Sara);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(result));
     }
 }

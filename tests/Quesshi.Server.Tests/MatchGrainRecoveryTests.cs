@@ -65,6 +65,7 @@ public class MatchGrainRecoveryTests(MatchRecoveryClusterFixture fixture)
         var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id);
         await grain.CreateAsync((int)Language.En, winner, questionIds, "RCVR01");
         await grain.JoinAsync(loser);
+        await grain.StartAsync(winner);
 
         // The winner finishes first: their settlement effect (inside PlayerGrain) and MatchGrain's own
         // checkpoint recording it both land for real before anything fails — the failure below sits
@@ -109,6 +110,7 @@ public class MatchGrainRecoveryTests(MatchRecoveryClusterFixture fixture)
         var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id);
         await grain.CreateAsync((int)Language.En, winner, questionIds, "RCVR02");
         await grain.JoinAsync(loser);
+        await grain.StartAsync(winner);
 
         await PlayAsync(grain, winner, correctCount: 5);
 
@@ -179,6 +181,7 @@ public class MatchGrainRecoveryTests(MatchRecoveryClusterFixture fixture)
         var match = Match.Create(id, "LEGACY", playerA, settings, capacity: 2, now);
         match.DrawQuestions(questionIds);
         match.Join(playerB, now);
+        match.Start(playerA, now);
         foreach (var player in new[] { playerA, playerB })
         {
             for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)

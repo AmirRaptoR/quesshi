@@ -28,6 +28,7 @@ public class AnswerSubmissionKindTests
         var m = LiveMatch.Create("lm-kind", "CODEK1", Challenger, NewSettings(), capacity: 2, T0);
         m.DrawQuestions(Ten);
         m.Join(Opponent, T0);
+        m.Start(Challenger, T0);
         m.Advance(T0 + LiveRules.StartCountdown);
         return m;
     }

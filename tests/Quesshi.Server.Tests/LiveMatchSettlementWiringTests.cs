@@ -82,6 +82,7 @@ public class LiveMatchSettlementWiringTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync(id.ToUpperInvariant(), (int)Language.En, challenger, questionIds);
         await grain.JoinAsync(opponent);
+        await grain.StartAsync(challenger);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, challenger, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
 
@@ -137,6 +138,7 @@ public class LiveMatchSettlementWiringTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync(id.ToUpperInvariant(), (int)Language.En, amir, questionIds);
         await grain.JoinAsync(sara);
+        await grain.StartAsync(amir);
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
 
@@ -267,6 +269,7 @@ public class LiveMatchSettlementWiringTests(LiveClusterFixture fixture)
         var m = LiveMatch.Create(Guid.NewGuid().ToString("N"), "LEGACY1", challenger, settings, capacity: 2, start);
         m.DrawQuestions(ids);
         m.Join(opponent, start);
+        m.Start(challenger, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0
         for (var slot = 0; slot < ids.Count; slot++)

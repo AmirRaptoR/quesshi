@@ -55,7 +55,8 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
     {
         var m = NewLobby(id, a, questionIds, capacity: 3, start);
         m.Join(b, start);
-        m.Join(c, start); // fills capacity -- auto-starts, exactly as a 1v1's second join does
+        m.Join(c, start); // fills capacity, but still waits for Start (issue #104)
+        m.Start(a, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0
 
@@ -77,6 +78,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
     {
         var m = NewDuel(id, a, questionIds, start);
         m.Join(b, start);
+        m.Start(a, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0
 
@@ -130,6 +132,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var asyncGrain = fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>("parity-async");
         await asyncGrain.CreateAsync((int)Language.En, asyncA, SeedQuestions("parity-async"), "PARASY");
         await asyncGrain.JoinAsync(asyncB);
+        await asyncGrain.StartAsync(asyncA);
         await PlayAsyncDuelAsync(asyncGrain, asyncA, correctCount: 6);
         await PlayAsyncDuelAsync(asyncGrain, asyncB, correctCount: 3);
 
@@ -176,6 +179,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var start = Shared.Clock.Now;
         var m = NewDuel("nocontest-1", a, SeedQuestions("nocontest"), start);
         m.Join(b, start);
+        m.Start(a, start);
         // Nobody ever answers; the lobby/round clock runs out and the duel becomes a no-contest.
         m.Advance(start + LiveRules.StartCountdown + MatchRules.QuestionTime + LiveRules.StaleAfter + LiveRules.StaleAfter);
         Assert.Equal(MatchState.NoContest, m.State);
@@ -209,6 +213,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var m = NewLobby("allabandon-1", a, SeedQuestions("allabandon"), capacity: 3, start);
         m.Join(b, start);
         m.Join(c, start);
+        m.Start(a, start);
 
         // Nobody answers, but the clock is walked forward in steps far shorter than StaleAfter, so
         // each round closes on its own schedule and every player earns three real misses. A single
@@ -254,6 +259,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var ids = SeedQuestions("abandon");
         var m = NewDuel("abandon-1", quitter, ids, start);
         m.Join(winner, start);
+        m.Start(quitter, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now); // opens round 0
 
@@ -298,6 +304,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var ids = SeedQuestions("repeat");
         var m = NewDuel("repeat-1", quitter, ids, start);
         m.Join(winner, start);
+        m.Start(quitter, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now);
         AbandonBySilence(m, winner, ref now);
@@ -332,6 +339,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
         var ids = SeedQuestions("guestabandon");
         var m = NewDuel("guestabandon-1", quitter.Id, ids, start);
         m.Join(winner, start);
+        m.Start(quitter.Id, start);
         var now = start + LiveRules.StartCountdown;
         m.Advance(now);
         AbandonBySilence(m, winner, ref now);

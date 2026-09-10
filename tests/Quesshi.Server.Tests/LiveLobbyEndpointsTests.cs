@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Domain;
@@ -217,11 +218,59 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
     public async Task UpdateSettings_is_refused_once_the_question_set_is_drawn()
     {
         var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
-        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara); // auto-starts, drawing the set
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).StartAsync(Amir); // draws the set
 
         var result = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
             new UpdateDuelSettingsDto("nl", [Category], 20, null), Amir, Grains, LiveShared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_with_a_capacity_outside_2_to_8_is_refused_before_the_domain_sees_it()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
+
+        var tooSmall = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 1), Amir, Grains, LiveShared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));
+        Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
+
+        var tooBig = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 9), Amir, Grains, LiveShared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
+        Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
+
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity); // neither attempt touched it
+    }
+
+    [Fact]
+    public async Task UpdateSettings_with_a_valid_capacity_but_a_non_owner_caller_is_400_cannot_update_settings()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+
+        var result = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], null, null, 4), Sara, Grains, LiveShared.Players);
+        Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("cannot_update_settings", CrossTypeCodeTests.ErrorOf(result));
+    }
+
+    [Fact]
+    public async Task UpdateSettings_seats_three_of_four_after_the_owner_steps_capacity_from_two_to_four()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
+
+        var result = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
+            new UpdateDuelSettingsDto("en", [Category], MatchRules.QuestionsPerMatch, null, 4), Amir, Grains, LiveShared.Players);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Vahid);
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Equal(4, view!.Capacity);
+        Assert.Equal(3, view.Players.Count); // one open seat left
     }
     [Fact]
     public async Task The_owner_can_reopen_the_lobby_they_just_created()
@@ -242,4 +291,62 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
         Assert.Contains(Amir, view.Participants); // and it is still the owner's
     }
 
+    // ---- ByCodeAsync: the read path (issue #104) ----
+
+    private async Task<IResult> ByCodeAsync(string code, string meId)
+        => await LiveEndpoints.ByCodeAsync(code, meId, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
+
+    [Fact]
+    public async Task ByCode_reads_an_open_lobby_for_a_non_participant_without_seating_them()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
+
+        var result = await ByCodeAsync(lobby.Code, Sara);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (LiveViewDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("lobby", dto.Phase);
+        Assert.Single(dto.Participants); // Sara was never seated by the read
+
+        // Reading twice changes nothing -- no side effects at all.
+        await ByCodeAsync(lobby.Code, Sara);
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Single(view!.Players);
+    }
+
+    [Fact]
+    public async Task ByCode_is_200_for_a_participant_and_404_for_a_non_participant_once_the_duel_has_started()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+        Assert.True(await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).StartAsync(Amir));
+
+        var forOwner = await ByCodeAsync(lobby.Code, Amir);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(forOwner));
+
+        var forStranger = await ByCodeAsync(lobby.Code, Stranger);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(forStranger));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(forStranger));
+    }
+
+    [Fact]
+    public async Task ByCode_refuses_take_a_seat_when_full_and_still_answers_as_the_lobby_fills()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+
+        // Full but still in lobby phase: a visitor can read it (and see it is full), just not join it.
+        var result = await ByCodeAsync(lobby.Code, Vahid);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (LiveViewDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("lobby", dto.Phase);
+        Assert.Equal(2, dto.Participants.Count);
+    }
+
+    [Fact]
+    public async Task ByCode_on_an_unknown_code_is_404()
+    {
+        var result = await ByCodeAsync("NO-SUCH-CODE", Sara);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(result));
+    }
 }

@@ -7,6 +7,13 @@ namespace Quesshi.Shared;
 /// and for a count outside <c>MatchRules.QuestionCountChoices</c> — the last of which is coerced to the
 /// default rather than rejected, the same courtesy <c>CreateMatchDto</c>/<c>CreateLobbyDto</c> already
 /// get at creation.
+/// <para>
+/// <see cref="Capacity"/> is genuinely optional, unlike the settings fields above: null means "leave
+/// capacity alone", not "reset to a default" — the seat stepper sends it alongside the lobby's
+/// <em>current</em> settings, so a capacity-only change never resets question count, language,
+/// categories or levels. Validated 2-8 at the endpoint before the domain ever sees it, same as
+/// <c>CreateLobbyDto.Capacity</c>.
+/// </para>
 /// </summary>
 public sealed record UpdateDuelSettingsDto(string? Lang = null,
-    List<string>? Categories = null, int? Questions = null, List<int>? Levels = null);
+    List<string>? Categories = null, int? Questions = null, List<int>? Levels = null, int? Capacity = null);

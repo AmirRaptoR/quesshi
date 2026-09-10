@@ -70,6 +70,52 @@ public class LobbyPresentationTests
         Assert.True(LobbyPresentation.CanStart(snapshot, "amir"));
     }
 
+    // ---- IsParticipant / IsFull: the read path's own take-a-seat states (issue #104) ----
+
+    [Fact]
+    public void A_seated_player_is_a_participant_and_a_visitor_is_not()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")], capacity: 3));
+
+        Assert.True(LobbyPresentation.IsParticipant(snapshot, "amir"));
+        Assert.True(LobbyPresentation.IsParticipant(snapshot, "sara"));
+        Assert.False(LobbyPresentation.IsParticipant(snapshot, "stranger"));
+    }
+
+    [Fact]
+    public void A_lobby_with_an_open_seat_is_not_full()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")], capacity: 3));
+
+        Assert.False(LobbyPresentation.IsFull(snapshot));
+    }
+
+    [Fact]
+    public void A_lobby_seated_to_capacity_is_full()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")], capacity: 2));
+
+        Assert.True(LobbyPresentation.IsFull(snapshot));
+    }
+
+    // ---- CapacityStepMin: the seat stepper's own bounds (issue #104) ----
+
+    [Fact]
+    public void The_stepper_floor_is_two_when_fewer_than_two_are_seated()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 4));
+
+        Assert.Equal(2, LobbyPresentation.CapacityStepMin(snapshot));
+    }
+
+    [Fact]
+    public void The_stepper_floor_rises_with_the_seated_count()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara"), P("vahid")], capacity: 4));
+
+        Assert.Equal(3, LobbyPresentation.CapacityStepMin(snapshot));
+    }
+
     [Fact]
     public void Settings_are_locked_once_the_question_set_is_drawn_for_a_live_lobby()
     {

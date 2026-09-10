@@ -83,6 +83,7 @@ public class LiveSubmissionKindTests(LiveClusterFixture fixture)
 
         await grain.CreateAsync(id[..8].ToUpperInvariant(), (int)Language.En, Amir, questionIds);
         Assert.True(await grain.JoinAsync(Sara) is (int)LiveJoinResult.Joined or (int)LiveJoinResult.AlreadyIn);
+        await grain.StartAsync(Amir);
 
         LiveShared.TimeProvider.Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);

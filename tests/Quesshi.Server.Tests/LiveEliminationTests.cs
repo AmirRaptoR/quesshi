@@ -83,7 +83,8 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
     {
         var (grain, _) = await NewLobbyAsync("LET-CAP3", Amir, capacity: 3);
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, exactly as a 1v1's second join does
+        await grain.JoinAsync(Vahid); // fills capacity, but still waits for Start (issue #104)
+        Assert.True(await grain.StartAsync(Amir));
 
         var view = await grain.GetAsync(Amir);
         Assert.Equal((int)MatchState.InProgress, view!.State);
@@ -119,6 +120,7 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         var (grain, id) = await NewLobbyAsync("LET-STAND3", Amir, capacity: 3);
         await grain.JoinAsync(Sara);
         await grain.JoinAsync(Vahid);
+        Assert.True(await grain.StartAsync(Amir));
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
@@ -162,6 +164,7 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         var (grain, id) = await NewLobbyAsync("LET-ELIM1", Amir, capacity: 3);
         await grain.JoinAsync(Sara);
         await grain.JoinAsync(Vahid);
+        Assert.True(await grain.StartAsync(Amir));
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
 

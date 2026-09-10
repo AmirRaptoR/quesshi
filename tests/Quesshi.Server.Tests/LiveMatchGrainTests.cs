@@ -198,7 +198,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var row = await LiveShared.Archive.ByCodeAsync("MIRROR2");
         Assert.NotNull(row);
         Assert.Equal(Sara, row!.OpponentId);
-        Assert.Equal(MatchState.InProgress, row.State);
+        Assert.Equal(MatchState.AwaitingOpponent, row.State); // filling the seat no longer starts it
     }
 
     [Fact]
@@ -243,6 +243,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var joinedGrain = NewGrain(out _, out var joinedIds);
         await joinedGrain.CreateAsync("CANCEL3", (int)Language.En, Amir, joinedIds);
         await joinedGrain.JoinAsync(Sara);
+        Assert.True(await joinedGrain.StartAsync(Amir));
         Assert.False(await joinedGrain.CancelAsync(Amir)); // no longer in the lobby
 
         var stillLobby = await strangerGrain.GetAsync(Amir);
@@ -269,12 +270,53 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var (grain, _) = await NewLobbyAsync("LOBBY02", Amir, capacity: 3);
 
         Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Sara));
-        Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Vahid)); // fills capacity, auto-starts
+        Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Vahid)); // fills capacity, still waiting for Start
         Assert.Equal((int)LiveJoinResult.Full, await grain.JoinAsync(Stranger));
     }
 
+    /// <summary>
+    /// Two strangers racing for a two-seat lobby's one open seat (issue #104): Orleans serialises every
+    /// call into a single grain activation's turn queue, so this proves the capacity guard added to
+    /// <c>LiveMatch.Join</c> actually decides the race deterministically rather than both callers seeing
+    /// a stale "one seat left" and both being seated.
+    /// </summary>
     [Fact]
-    public async Task Reaching_capacity_auto_starts_and_draws_a_real_playable_question_set()
+    public async Task Two_concurrent_joins_for_the_last_seat_leave_exactly_one_seated()
+    {
+        var (grain, _) = await NewLobbyAsync("LOBBY11", Amir, capacity: 2);
+
+        var results = await Task.WhenAll(grain.JoinAsync(Sara), grain.JoinAsync(Vahid));
+
+        Assert.Single(results, (int)LiveJoinResult.Joined);
+        Assert.Single(results, (int)LiveJoinResult.Full);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(2, view!.Players.Count);
+    }
+
+    /// <summary>
+    /// A capacity shrink racing a join for the seat that shrink would remove (issue #104): whichever of
+    /// the two the single grain activation's turn queue serves first decides the other's outcome, but
+    /// either order must leave a defined result — <c>Players.Count</c> never above whatever
+    /// <c>Capacity</c> ends up being.
+    /// </summary>
+    [Fact]
+    public async Task A_capacity_shrink_racing_a_join_never_leaves_more_players_than_the_final_capacity()
+    {
+        var (grain, _) = await NewLobbyAsync("LOBBY17", Amir, capacity: 3);
+        await grain.JoinAsync(Sara); // 2 seated; capacity 3 has exactly one open seat
+
+        var join = grain.JoinAsync(Vahid);
+        var shrink = grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 2);
+        await Task.WhenAll(join, shrink);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.True(view!.Players.Count <= view.Capacity,
+            $"Players.Count={view.Players.Count} exceeded Capacity={view.Capacity}");
+    }
+
+    [Fact]
+    public async Task Reaching_capacity_no_longer_auto_starts_but_Start_draws_a_real_playable_question_set()
     {
         var (grain, _) = await NewLobbyAsync("LOBBY03", Amir, capacity: 3);
 
@@ -282,29 +324,43 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         await grain.JoinAsync(Vahid); // the third seat fills capacity
 
         var afterFill = await grain.GetAsync(Amir);
-        Assert.Equal((int)MatchState.InProgress, afterFill!.State);
-        Assert.Equal((int)LivePhase.Countdown, afterFill.Phase);
-        Assert.Equal(MatchRules.QuestionsPerMatch, afterFill.TotalRounds); // questions were drawn
+        Assert.Equal((int)MatchState.AwaitingOpponent, afterFill!.State); // full, but still waiting for Start
+        Assert.Equal((int)LivePhase.Lobby, afterFill.Phase);
+        Assert.Equal(0, afterFill.TotalRounds); // nothing drawn until Start
         Assert.NotNull(await grain.GetAsync(Vahid)); // the third seat is a real, recognised participant
+
+        Assert.True(await grain.StartAsync(Amir));
+        var started = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.InProgress, started!.State);
+        Assert.Equal((int)LivePhase.Countdown, started.Phase);
+        Assert.Equal(MatchRules.QuestionsPerMatch, started.TotalRounds); // Start drew the question set
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         var opened = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
         Assert.Equal(0, opened.RoundIndex);
     }
 
+    /// <summary>
+    /// The core of issue #104: a two-seat lobby used to start the instant its second seat filled,
+    /// indistinguishable from a bigger lobby's owner never getting to press Start. It no longer does.
+    /// </summary>
     [Fact]
-    public async Task A_capacity_two_lobby_created_through_CreateLobbyAsync_behaves_exactly_like_a_1v1_today()
+    public async Task A_capacity_two_lobby_stays_open_once_full_until_the_owner_presses_Start()
     {
         var (grain, _) = await NewLobbyAsync("LOBBY04", Amir, capacity: 2);
 
-        // The second join is the only thing that ever happens — nobody calls StartAsync, exactly as
-        // a 1v1 works today, and it both seats the opponent and begins the duel in the same call.
         Assert.Equal((int)LiveJoinResult.Joined, await grain.JoinAsync(Sara));
 
-        var view = await grain.GetAsync(Amir);
-        Assert.Equal((int)MatchState.InProgress, view!.State);
-        Assert.Equal((int)LivePhase.Countdown, view.Phase);
-        Assert.Equal(MatchRules.QuestionsPerMatch, view.TotalRounds);
+        var afterJoin = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, afterJoin!.State);
+        Assert.Equal((int)LivePhase.Lobby, afterJoin.Phase);
+        Assert.Equal(0, afterJoin.TotalRounds);
+
+        Assert.True(await grain.StartAsync(Amir));
+        var started = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.InProgress, started!.State);
+        Assert.Equal((int)LivePhase.Countdown, started.Phase);
+        Assert.Equal(MatchRules.QuestionsPerMatch, started.TotalRounds);
     }
 
     [Fact]
@@ -328,9 +384,10 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task StartAsync_is_refused_once_the_lobby_has_already_started()
     {
         var (grain, _) = await NewLobbyAsync("LOBBY06", Amir, capacity: 2);
-        await grain.JoinAsync(Sara); // auto-starts at capacity 2
+        await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
-        Assert.False(await grain.StartAsync(Amir));
+        Assert.False(await grain.StartAsync(Amir)); // already started
     }
 
     [Fact]
@@ -367,7 +424,8 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var (grain, _) = await NewLobbyAsync("LOBBY09", Amir, capacity: 2);
         Assert.False(await grain.LeaveAsync(Stranger)); // never seated
 
-        await grain.JoinAsync(Sara); // auto-starts at capacity 2
+        await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Assert.False(await grain.LeaveAsync(Sara)); // no longer in the lobby
     }
 
@@ -377,17 +435,105 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var (grain, id) = await NewLobbyAsync("LOBBY10", Amir, capacity: 3);
         SeedQuestions(id + "-extra"); // 20 total distinct En/geography questions, regardless of test order
 
-        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, [], [])); // not the owner
-        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], []));
+        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, [], [], null)); // not the owner
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], null));
 
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- draws 20 questions, per the updated settings
+        await grain.JoinAsync(Vahid); // fills capacity, but no longer draws on its own (issue #104)
+        Assert.True(await grain.StartAsync(Amir)); // Start draws 20 questions, per the updated settings
 
-        var afterFill = await grain.GetAsync(Amir);
-        Assert.Equal(20, afterFill!.TotalRounds);
+        var afterStart = await grain.GetAsync(Amir);
+        Assert.Equal(20, afterStart!.TotalRounds);
 
         // Questions are drawn now, so settings can no longer change.
-        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], []));
+        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+    }
+
+    /// <summary>
+    /// The equal-settings no-op rule (issue #104): a lobby whose question set is already drawn while
+    /// still in <see cref="LivePhase.Lobby"/> — exactly the shape <c>CreateAsync</c> builds for
+    /// matchmaking's pairing path — can still have its capacity widened, because the settings half is
+    /// attempted only when the requested settings actually differ from the lobby's own. Without this
+    /// rule the settings half would always refuse (<c>QuestionIds</c> is non-empty) and a capacity-only
+    /// PUT that resends the lobby's current settings could never succeed.
+    /// </summary>
+    [Fact]
+    public async Task UpdateSettingsAsync_widens_capacity_alongside_the_lobbys_own_unchanged_settings_once_drawn()
+    {
+        var grain = NewGrain(out _, out var questionIds);
+        await grain.CreateAsync("LOBBY12", (int)Language.En, Amir, questionIds); // pre-drawn, still Lobby phase
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, questionIds.Count, [], [], 4);
+        Assert.True(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(4, view!.Capacity);
+        Assert.Equal((int)LivePhase.Lobby, view.Phase); // untouched otherwise
+    }
+
+    /// <summary>
+    /// Atomic apply-both-or-neither (issue #104): a capacity half that fails (below the seated count)
+    /// must leave the settings half unapplied too, even though the settings half alone would have
+    /// succeeded.
+    /// </summary>
+    [Fact]
+    public async Task UpdateSettingsAsync_refuses_both_halves_when_the_capacity_half_alone_would_fail()
+    {
+        var (grain, id) = await NewLobbyAsync("LOBBY13", Amir, capacity: 3);
+        SeedQuestions(id + "-extra");
+        await grain.JoinAsync(Sara);
+        await grain.JoinAsync(Vahid); // 3 seated
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], 2); // 2 < 3 seated
+        Assert.False(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity); // unchanged
+
+        Assert.True(await grain.StartAsync(Amir));
+        var afterStart = await grain.GetAsync(Amir);
+        Assert.Equal(MatchRules.QuestionsPerMatch, afterStart!.TotalRounds); // settings half was never applied either
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_omitting_capacity_leaves_it_unchanged()
+    {
+        var (grain, _) = await NewLobbyAsync("LOBBY14", Amir, capacity: 3);
+
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal(3, view!.Capacity);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_is_refused_after_expiry_and_leaves_the_lobby_correctly_expired()
+    {
+        var (grain, id) = await NewLobbyAsync("LOBBY15", Amir, capacity: 2);
+        Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
+        await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
+
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 4);
+        Assert.False(ok);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.NoContest, view!.State); // still correctly expired, not resurrected
+        var row = await LiveShared.Archive.ByCodeAsync("LOBBY15");
+        Assert.Equal(MatchState.NoContest, row!.State); // and persisted
+    }
+
+    [Fact]
+    public async Task A_capacity_change_survives_deactivation_and_reactivation()
+    {
+        var (grain, id) = await NewLobbyAsync("LOBBY16", Amir, capacity: 2);
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 5));
+
+        await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id)
+            .AsReference<Orleans.Core.Internal.IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+
+        var view = await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id).GetAsync(Amir);
+        Assert.Equal(5, view!.Capacity);
     }
 
     [Fact]
@@ -412,14 +558,15 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     // ---- The clock ----
 
     [Fact]
-    public async Task Joining_starts_the_countdown_and_it_opens_round_zero_on_schedule()
+    public async Task Starting_the_lobby_begins_the_countdown_and_it_opens_round_zero_on_schedule()
     {
         var grain = NewGrain(out _, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
-        var afterJoin = await grain.GetAsync(Amir);
-        Assert.Equal((int)LivePhase.Countdown, afterJoin!.Phase);
+        var afterStart = await grain.GetAsync(Amir);
+        Assert.Equal((int)LivePhase.Countdown, afterStart!.Phase);
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         var opened = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
@@ -432,6 +579,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
         // One big jump, entirely off the clock, from the countdown. LiveMatch's widened staleness
         // test (issue #49) now recognises a gap this size as an outage the instant Advance is
@@ -454,6 +602,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
@@ -483,6 +632,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -510,6 +660,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -534,6 +685,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -555,6 +707,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -578,6 +731,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out _, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -598,6 +752,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out _, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -607,6 +762,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain2 = NewGrain(out _, out var q2);
         await grain2.CreateAsync("TESTCODE2", (int)Language.En, Amir, q2);
         await grain2.JoinAsync(Sara);
+        Assert.True(await grain2.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain2, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -623,6 +779,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -644,6 +801,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForEventAsync(id, "RoundStarted", 1);
 
@@ -659,6 +817,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out _, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -690,6 +849,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForEventAsync(id, "RoundStarted", 1);
 
@@ -714,6 +874,10 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.NotNull(await grain.GetAsync(Amir));
 
         await grain.JoinAsync(Sara);
+        var stillLobby = await grain.GetAsync(Amir);
+        Assert.Equal((int)LivePhase.Lobby, stillLobby!.Phase); // filling the seat no longer starts it
+
+        Assert.True(await grain.StartAsync(Amir));
         var countdown = await grain.GetAsync(Amir);
         Assert.Equal((int)LivePhase.Countdown, countdown!.Phase);
         Assert.NotNull(countdown.PhaseEndsAt);
@@ -755,6 +919,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
         await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question);
 
@@ -779,6 +944,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, ghostIds); // none of these ids exist in the question repository
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
         Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
 
@@ -821,6 +987,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var grain = NewGrain(out var id, out var questionIds);
         await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
         await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
         await PlayFullDuelAsync(grain);
         await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.Resolved, timeoutMs: 10_000);
@@ -832,17 +999,18 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
         // Every round: RoundStarted, then OpponentAnswered for the first of the two answers (both
         // players answer here, unlike the silence this test used to drive), then RoundRevealed.
-        // Issue #53's lobby page addition: Sara's join fires CountdownStarted (the phase transition
-        // it causes, handled inside AfterChangeAsync/NotifyAsync) and then LobbyUpdated (JoinAsync's
-        // own explicit push for a real new seat, fired after AfterChangeAsync returns).
-        Assert.Equal("CountdownStarted", kinds[0]);
-        Assert.Equal("LobbyUpdated", kinds[1]);
+        // Issue #104 removed Join's auto-start: Sara's join fires its own LobbyUpdated (JoinAsync's
+        // explicit push for a real new seat), and only Amir's later StartAsync fires CountdownStarted
+        // (the phase transition it causes) followed by its own explicit LobbyUpdated push.
+        Assert.Equal("LobbyUpdated", kinds[0]);
+        Assert.Equal("CountdownStarted", kinds[1]);
+        Assert.Equal("LobbyUpdated", kinds[2]);
         for (var slot = 0; slot < rounds; slot++)
-            Assert.Equal(["RoundStarted", "OpponentAnswered", "RoundRevealed"], kinds.Skip(2 + slot * 3).Take(3));
+            Assert.Equal(["RoundStarted", "OpponentAnswered", "RoundRevealed"], kinds.Skip(3 + slot * 3).Take(3));
         Assert.Equal("Ended", kinds[^1]);
-        Assert.Equal(2 + rounds * 3 + 1, kinds.Count);
+        Assert.Equal(3 + rounds * 3 + 1, kinds.Count);
 
-        Assert.Equal(1, kinds.Count(k => k == "LobbyUpdated"));
+        Assert.Equal(2, kinds.Count(k => k == "LobbyUpdated"));
         Assert.Equal(1, kinds.Count(k => k == "CountdownStarted"));
         Assert.Equal(rounds, kinds.Count(k => k == "RoundStarted"));
         Assert.Equal(rounds, kinds.Count(k => k == "OpponentAnswered"));
@@ -860,6 +1028,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
             var grain = NewGrain(out var id, out var questionIds);
             await grain.CreateAsync("TESTCODE", (int)Language.En, Amir, questionIds);
             await grain.JoinAsync(Sara);
+            Assert.True(await grain.StartAsync(Amir));
 
             await PlayFullDuelAsync(grain);
 

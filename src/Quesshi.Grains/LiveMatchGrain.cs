@@ -137,16 +137,6 @@ public sealed class LiveMatchGrain(
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
 
-        // The join that fills the last seat also starts the duel, synchronously, inside TryJoin
-        // itself — exactly as it always has for a capacity-2 lobby (see LiveMatch.Join's own remarks).
-        // That means the question set has to already exist the instant this call is made: DrawQuestions
-        // refuses once the duel has left the lobby phase, which this join is about to do. Drawing here,
-        // one join early, is what lets a bigger lobby's very last join behave identically to a 1v1's
-        // second one — the legacy, pre-drawn creation path never hits this (QuestionIds is never empty
-        // there), so it costs that path nothing.
-        if (_match.QuestionIds.Count == 0 && !_match.IsParticipant(playerId) && _match.Participants.Count + 1 == _match.Capacity)
-            await DrawQuestionsAsync();
-
         // TryJoin settles the clock first even on a call that is then refused (the lobby may have
         // just expired) — that still has to be persisted, so every outcome but SelfJoin — which
         // touches nothing — goes through AfterChangeAsync.
@@ -190,6 +180,22 @@ public sealed class LiveMatchGrain(
         return true;
     }
 
+    /// <summary>The random-matchmaking counterpart to <see cref="StartAsync"/>: see the interface's
+    /// own remarks. Draws the question set first, exactly as <see cref="StartAsync"/> does, since
+    /// neither pairing site draws it themselves.</summary>
+    public async Task<bool> StartPairedAsync()
+    {
+        if (_match is null || _match.Phase != LivePhase.Lobby) return false;
+
+        var phaseBefore = _match.Phase;
+        if (_match.QuestionIds.Count == 0) await DrawQuestionsAsync();
+        if (!_match.StartByPairing(clock.Now)) return false;
+
+        await AfterChangeAsync(phaseBefore, false);
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
+        return true;
+    }
+
     public async Task<bool> LeaveAsync(string playerId)
     {
         if (_match is null) return false;
@@ -204,7 +210,21 @@ public sealed class LiveMatchGrain(
         return true;
     }
 
-    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels)
+    /// <summary>
+    /// Atomically updates settings, capacity, or both — see the interface's own remarks.
+    /// <paramref name="capacity"/> null skips the capacity half entirely. The clock is settled once, up
+    /// front, before either half is evaluated, and that one <c>now</c> is reused for every clock-facing
+    /// call below — <see cref="LiveMatch.SetCapacity"/> settles the clock again itself (see its own
+    /// remarks), and a second, later <c>clock.Now</c> read here could cross the lobby's expiry between
+    /// the pre-check and the apply, silently discarding an already-approved capacity change. Settling
+    /// may itself expire the lobby, and that has to be persisted even when the update this call was
+    /// making is then refused — exactly as <see cref="JoinAsync"/> and <see cref="LeaveAsync"/> already
+    /// behave. The settings half is only attempted when the requested settings actually differ from the
+    /// current ones — the equal-settings no-op rule — because <see cref="LiveMatch.UpdateSettings"/>
+    /// always refuses once the question set is drawn, and a capacity-only change must still succeed on
+    /// a pre-drawn lobby.
+    /// </summary>
+    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels, int? capacity)
     {
         if (_match is null) return false;
 
@@ -218,9 +238,31 @@ public sealed class LiveMatchGrain(
             return false; // an invalid combination refuses the change outright, same as at creation
         }
 
-        if (!_match.UpdateSettings(playerId, settings)) return false;
+        var now = clock.Now;
+        var phaseBefore = _match.Phase;
+        var wasOver = _match.IsOver;
+        _match.Advance(now);
 
-        await SaveAsync();
+        var settingsChanged = settings != _match.Settings;
+        var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
+        var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity);
+
+        if (!settingsOk || !capacityOk)
+        {
+            await AfterChangeAsync(phaseBefore, wasOver); // persist whatever Advance just settled, even though refused
+            return false;
+        }
+
+        // Apply half, both checked against the return value: CanSetCapacity/settingsOk were evaluated
+        // against the state Advance(now) just settled into, and nothing between here and the apply
+        // calls can change that state again — but discarding either's own result would silently claim
+        // success for a half that the domain itself refused.
+        var settingsApplied = !settingsChanged || _match.UpdateSettings(playerId, settings);
+        var capacityApplied = capacity is not { } toApply || _match.SetCapacity(playerId, toApply, now);
+
+        await AfterChangeAsync(phaseBefore, wasOver);
+        if (!settingsApplied || !capacityApplied) return false;
+
         await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
@@ -308,6 +350,16 @@ public sealed class LiveMatchGrain(
     public async Task<LiveView?> GetAsync(string forPlayerId)
     {
         if (_match is null || !_match.IsParticipant(forPlayerId)) return null;
+        return await ViewAsync(_match, forPlayerId);
+    }
+
+    /// <summary>The no-side-effect lobby read: see the interface's own remarks. Deliberately reads
+    /// straight off <c>_match</c> with no <c>Advance</c> call of its own — a read must never be the
+    /// thing that expires a lobby out from under a concurrent join or start.</summary>
+    public async Task<LiveView?> LobbyViewAsync(string forPlayerId)
+    {
+        if (_match is null) return null;
+        if (!_match.IsParticipant(forPlayerId) && _match.Phase != LivePhase.Lobby) return null;
         return await ViewAsync(_match, forPlayerId);
     }
 

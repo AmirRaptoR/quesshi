@@ -35,8 +35,9 @@ public sealed class Match
 
     public Language Lang => Settings.Language;
 
-    /// <summary>How many seats this lobby has, fixed at creation: 2 to 8.</summary>
-    public int Capacity { get; }
+    /// <summary>How many seats this lobby has: 2 to 8, set at creation and changeable by the owner
+    /// while the lobby is still open — see <see cref="SetCapacity"/>.</summary>
+    public int Capacity { get; private set; }
 
     /// <summary>Every seated player, in join order. <c>Participants[0]</c> is always
     /// <see cref="OwnerId"/> — the one who created this lobby and the only one who may change its
@@ -126,30 +127,29 @@ public sealed class Match
         // checking Phase.
         TryForfeit(now);
         if (State != MatchState.AwaitingOpponent) throw new InvalidOperationException("This challenge has already been taken.");
+        if (_participants.Count >= Capacity) throw new InvalidOperationException("This lobby is full.");
 
         _participants.Add(playerId);
 
-        // A capacity-2 lobby starting the instant its second seat fills is not a special case of
-        // this rule — it is this rule, with Capacity == 2. That is exactly what keeps 1v1 behaviour
-        // unchanged: the owner-presses-Start affordance a bigger lobby needs (see Start) never gets a
-        // chance to apply, because a two-seat lobby can never be in a state where it is needed — the
-        // very join that seats the second player is always also the one that reaches Capacity.
-        if (_participants.Count == Capacity) BeginDuel();
+        // No auto-start here, even for a two-seat lobby that has just filled its last seat: the
+        // owner's Start is the only door into BeginDuel now (see Start's own remarks). A capacity-2
+        // lobby used to be "not a special case of this rule — it is this rule, with Capacity == 2",
+        // which is exactly what made an owner's Back press silently re-seat and start a finished
+        // duel; removing the special case removes the bug.
     }
 
     /// <summary>
-    /// The actual state flip out of the lobby, shared by the two doors that reach it: <see cref="Join"/>
-    /// reaching <see cref="Capacity"/> on its own, and the owner's explicit <see cref="Start"/>. Neither
-    /// caller may invoke this before the question set is ready — the grain draws it (via
-    /// <see cref="DrawQuestions"/>) one join early for the auto-start case, and <see cref="Start"/>
+    /// The actual state flip out of the lobby. <see cref="Start"/> is now the only door that reaches
+    /// this — a lobby reaching <see cref="Capacity"/> on its own no longer does (see <see cref="Join"/>'s
+    /// own remarks) — so the question set is always ready by the time this runs: <see cref="Start"/>
     /// checks <see cref="QuestionIds"/> itself before ever calling in here.
     /// </summary>
     private void BeginDuel() => State = MatchState.InProgress;
 
     /// <summary>
-    /// The owner's explicit counterpart to <see cref="Join"/>'s auto-start: starts the duel once at
-    /// least two are seated, for a lobby with room to spare that nobody is going to fill the rest of.
-    /// Refused for anyone but the owner, below two participants, once the lobby has already left
+    /// The owner starts the duel once at least two are seated — the only way a lobby ever leaves
+    /// <see cref="MatchState.AwaitingOpponent"/>, whether it is full or has room to spare. Refused for
+    /// anyone but the owner, below two participants, once the lobby has already left
     /// <see cref="MatchState.AwaitingOpponent"/>, or while <see cref="QuestionIds"/> is still empty —
     /// the grain draws the question set (via <see cref="DrawQuestions"/>) before ever calling this,
     /// since that needs the question bank it owns, not this class.
@@ -158,6 +158,21 @@ public sealed class Match
     {
         if (State != MatchState.AwaitingOpponent || playerId != OwnerId || _participants.Count < 2 || _questionIds.Count == 0)
             return false;
+
+        BeginDuel();
+        return true;
+    }
+
+    /// <summary>
+    /// The random-matchmaking counterpart to the owner's <see cref="Start"/>, for the offline
+    /// <c>random: true</c> pairing branch of <c>POST /api/matches</c>: no owner check, since the
+    /// joiner who just got paired calls this, not the lobby's owner. Otherwise identical to
+    /// <see cref="Start"/> — at least two seated, still <see cref="MatchState.AwaitingOpponent"/>, and
+    /// the question set already drawn.
+    /// </summary>
+    public bool StartByPairing(DateTimeOffset now)
+    {
+        if (State != MatchState.AwaitingOpponent || _participants.Count < 2 || _questionIds.Count == 0) return false;
 
         BeginDuel();
         return true;
@@ -212,6 +227,30 @@ public sealed class Match
         if (playerId != OwnerId || _questionIds.Count > 0) return false;
 
         Settings = settings;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether <see cref="SetCapacity"/> would succeed right now, without changing anything — lets a
+    /// caller validate a combined settings-and-capacity update before committing to either half. Owner
+    /// only, still awaiting an opponent, 2 to 8, and never below however many are already seated.
+    /// </summary>
+    public bool CanSetCapacity(string playerId, int capacity) =>
+        playerId == OwnerId && State == MatchState.AwaitingOpponent && capacity is >= 2 and <= 8 && capacity >= _participants.Count;
+
+    /// <summary>
+    /// The owner widens or narrows how many seats this lobby has, for as long as it is still open.
+    /// Validate-then-apply: <see cref="CanSetCapacity"/> is the predicate half, this is the apply half,
+    /// so a caller who needs to know the outcome before committing (see
+    /// <c>IMatchGrain.UpdateSettingsAsync</c>'s atomic settings-plus-capacity update) never has to undo
+    /// a mutation that turns out to be only half-valid.
+    /// </summary>
+    public bool SetCapacity(string playerId, int capacity, DateTimeOffset now)
+    {
+        TryForfeit(now);
+        if (!CanSetCapacity(playerId, capacity)) return false;
+
+        Capacity = capacity;
         return true;
     }
 

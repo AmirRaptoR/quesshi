@@ -145,8 +145,13 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         Assert.Equal(503, CrossTypeCodeTests.StatusOf(result));
     }
 
+    /// <summary>
+    /// Issue #104: filling a two-seat lobby by joining no longer starts it on its own — the owner's
+    /// Start is the only door into countdown, for this plain-challenge lobby exactly as for one made
+    /// through the N-player lobby path.
+    /// </summary>
     [Fact]
-    public async Task Join_moves_the_lobby_to_countdown_and_notifies_the_challenger_exactly_once()
+    public async Task Join_seats_the_opponent_but_leaves_the_lobby_open_for_the_owner_to_press_Start()
     {
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
@@ -155,9 +160,12 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
 
         var dto = ViewOf(result);
-        Assert.Equal("countdown", dto.Phase);
+        Assert.Equal("lobby", dto.Phase);
         Assert.Equal(Sara, dto.Participants[1].PlayerId);
 
+        Assert.DoesNotContain(LiveShared.Notifier.EventsFor(created.Id), e => e.Kind == "CountdownStarted");
+
+        Assert.True(await Grains.GetGrain<ILiveMatchGrain>(created.Id).StartAsync(Amir));
         Assert.Single(LiveShared.Notifier.EventsFor(created.Id), e => e.Kind == "CountdownStarted");
     }
 
@@ -298,6 +306,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
         var ids = NewIds();
         var created = ViewOf(await CreateAsync(ids));
         await LiveEndpoints.JoinAsync(created.Code, Sara, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
+        await Grains.GetGrain<ILiveMatchGrain>(created.Id).StartAsync(Amir);
 
         var result = await LiveEndpoints.CancelAsync(created.Id, Amir, Grains);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
@@ -320,7 +329,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
         Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
         var dto = (GuestLiveResultDto)CrossTypeCodeTests.ValueOf(result);
-        Assert.Equal("countdown", dto.Live.Phase);
+        Assert.Equal("lobby", dto.Live.Phase); // filling the seat no longer starts it (issue #104)
         Assert.Equal(playersBefore + 1, LiveShared.Players.Items.Count);
 
         // The guest holding that token may now GET their own duel and join by code (already-joined -> idempotent).

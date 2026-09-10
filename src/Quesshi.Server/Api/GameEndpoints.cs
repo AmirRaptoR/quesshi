@@ -148,7 +148,11 @@ public static class GameEndpoints
                 if (waitingMatchId is { Length: > 0 })
                 {
                     var opponentMatch = grains.GetGrain<IMatchGrain>(waitingMatchId);
-                    if (await opponentMatch.JoinAsync(meId))
+                    // Join no longer starts the duel on its own (issue #104) — random pairing has to
+                    // start it explicitly, the same way a shared-link lobby's owner presses Start. A
+                    // failed start is treated exactly like a failed join always was: fall through and
+                    // mint a fresh match for the caller instead.
+                    if (await opponentMatch.JoinAsync(meId) && await opponentMatch.StartPairedAsync())
                         return Results.Ok(await SummaryAsync(opponentMatch, meId, players));
                 }
             }
@@ -182,7 +186,16 @@ public static class GameEndpoints
 
         api.MapPost("/matches/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
-            await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players));
+            await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players))
+            .WithMetadata(new AllowGuest());
+
+        // No side effects: nothing is joined, started, drawn or written. A participant may read at
+        // any phase; a non-participant only while the lobby is still open, so a duel already in
+        // progress cannot be inspected by code alone (see ByCodeAsync's own remarks).
+        api.MapGet("/matches/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+            IMatchArchive archive, IPlayerRepository players) =>
+            await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players))
+            .WithMetadata(new AllowGuest());
 
         // --- async lobby lifecycle (issue #52) -----------------------------------------------------
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
@@ -337,6 +350,30 @@ public static class GameEndpoints
     }
 
     /// <summary>
+    /// The lobby page's read path (issue #104): resolves <paramref name="code"/> for the code-&gt;id
+    /// lookup only — participation is decided from the grain's own roster (<c>IMatchGrain.GetAsync</c>
+    /// is already unrestricted, so the access rule below is applied here rather than in the grain, the
+    /// same split <c>LobbyViewAsync</c> makes explicit on the live side). A participant may read at any
+    /// phase; a non-participant may read only while the duel is still <c>AwaitingOpponent</c>, so no
+    /// in-progress round, answer or reveal is reachable by a code alone.
+    /// </summary>
+    internal static async Task<IResult> ByCodeAsync(string code, string meId, IGrainFactory grains,
+        IMatchArchive archive, IPlayerRepository players)
+    {
+        var found = await archive.ByCodeAsync(code);
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
+
+        var view = await grains.GetGrain<IMatchGrain>(found.Id).GetAsync(meId);
+        if (view is null) return Results.NotFound(new { error = "no_such_code" });
+
+        if (!IsIn(view, meId) && view.State != (int)MatchState.AwaitingOpponent)
+            return Results.NotFound(new { error = "no_such_code" });
+
+        return Results.Ok(await ToSummaryAsync(view, meId, players));
+    }
+
+    /// <summary>
     /// Opens an N-player async lobby (2-8 seats) with these settings, drawing no questions yet —
     /// <c>Start</c> draws them from whatever the settings say at that instant. Mirrors
     /// <see cref="LiveEndpoints.CreateLobbyAsync"/> exactly, capacity validation and question-count
@@ -366,6 +403,8 @@ public static class GameEndpoints
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
         IGrainFactory grains, IPlayerRepository players)
     {
+        if (body.Capacity is { } capacity and (< 2 or > 8)) return Results.BadRequest(new { error = "bad_capacity" });
+
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
 
@@ -373,7 +412,7 @@ public static class GameEndpoints
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
 
-        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 
