@@ -60,6 +60,7 @@ public class MatchListTests(ClusterFixture fixture, ITestOutputHelper output)
             var grain = Grains.GetGrain<IMatchGrain>(id);
             await grain.CreateAsync((int)Language.En, me, SeedQuestions(id), $"{prefix}{i:D3}".ToUpperInvariant());
             await grain.JoinAsync(rival);
+            await grain.StartAsync(me);
             if (i >= resolved) continue;
             await PlayAsync(grain, me, correctCount: 4);
             await PlayAsync(grain, rival, correctCount: 2);
