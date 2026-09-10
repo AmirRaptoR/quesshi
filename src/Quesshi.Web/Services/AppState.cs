@@ -248,6 +248,21 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
         await js.InvokeVoidAsync("quesshi.remove", GuestMatchLiveKey);
     }
 
+    /// <summary>
+    /// Clears the pin once the duel it points at has finished — a result seen, a forfeit, an
+    /// abandonment, or a live duel reaching phase <c>over</c> (issue #102). A no-op unless
+    /// <paramref name="matchId"/> is still the one pinned: a stale tab finishing duel A must not erase
+    /// a pin that has since moved on to duel B. Leaves the guest token alone — a finished duel's own
+    /// page, and the "keep your score" sign-in link on it, both still need it.
+    /// </summary>
+    public async Task ForgetFinishedGuestMatchAsync(string matchId)
+    {
+        if (GuestMatchId != matchId) return;
+
+        await ForgetGuestMatchAsync();
+        Changed?.Invoke();
+    }
+
     public void SetMe(MeDto me)
     {
         Me = me;

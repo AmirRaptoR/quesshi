@@ -154,6 +154,11 @@
 
     private string MeId => State.Me!.Id;
 
+    /// <summary>The states <see cref="MatchSummaryDto.State"/> carries once a duel has nothing left
+    /// to happen to it — see <c>Mappers.ToSummary</c>'s lower-cased <c>State.ToString()</c>. A guest's
+    /// pin is cleared on reaching any of these (issue #102); every other state leaves it in place.</summary>
+    private static readonly HashSet<string> TerminalStates = ["resolved", "forfeited", "abandoned", "nocontest"];
+
     /// <summary>
     /// Issue #53: a duel still <c>AwaitingOpponent</c> has no result to show at all — that is now
     /// <c>/lobby/{code}</c>'s job, roster and share code both, replacing the inline "waiting for an
@@ -164,7 +169,13 @@
     {
         _detail = await Api.MatchAsync(MatchId);
         if (_detail is { Summary.State: "awaitingopponent" })
+        {
             Nav.NavigateTo($"/lobby/{_detail.Summary.Code}", replace: true);
+            return;
+        }
+
+        if (State.IsGuest && _detail is { Summary.State: { } state } && TerminalStates.Contains(state))
+            await State.ForgetFinishedGuestMatchAsync(MatchId);
     }
 
     /// <summary>
