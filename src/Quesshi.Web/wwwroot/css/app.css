@@ -143,7 +143,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   font-weight: 600;
   transition: color 0.2s var(--ease), background 0.2s var(--ease);
 }
-.tabbar__link:hover { color: var(--sadaf-2); }
+@media (hover: hover) and (pointer: fine) {
+  .tabbar__link:hover { color: var(--sadaf-2); }
+}
 .tabbar__link.active { color: var(--zaferan); background: rgb(232 168 58 / 0.1); }
 .tabbar__icon { font-size: 1.15rem; line-height: 1; }
 
@@ -197,13 +199,17 @@ a  { color: var(--firouzeh); text-decoration: none; }
   cursor: pointer;
   transition: transform 0.15s var(--ease), filter 0.2s var(--ease), background 0.2s var(--ease);
 }
-.btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+}
 .btn:active:not(:disabled) { transform: translateY(0); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn--block { width: 100%; }
 .btn--gold  { background: var(--zaferan); }
 .btn--ghost { background: transparent; color: var(--sadaf); border-color: var(--line-2); }
-.btn--ghost:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+@media (hover: hover) and (pointer: fine) {
+  .btn--ghost:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+}
 .btn--danger { background: var(--anaar); color: var(--sadaf); }
 .btn--sm { padding: 0.45rem 0.75rem; font-size: var(--step--1); }
 
@@ -417,7 +423,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   cursor: pointer;
   transition: background 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.15s var(--ease);
 }
-.answer:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); border-color: var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .answer:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); border-color: var(--line-2); }
+}
 .answer:disabled { cursor: default; }
 .answer__key {
   flex: none;
@@ -449,12 +457,16 @@ a  { color: var(--firouzeh); text-decoration: none; }
   border-bottom: 1px dotted var(--sadaf-3);
   cursor: pointer;
 }
-.report__open:hover { color: var(--anaar); border-bottom-color: var(--anaar); }
+@media (hover: hover) and (pointer: fine) {
+  .report__open:hover { color: var(--anaar); border-bottom-color: var(--anaar); }
+}
 
 .report { display: grid; gap: 0.4rem; }
 .report__reasons { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .report__reason { cursor: pointer; }
-.report__reason:hover:not(:disabled) { border-color: var(--anaar); color: var(--anaar); }
+@media (hover: hover) and (pointer: fine) {
+  .report__reason:hover:not(:disabled) { border-color: var(--anaar); color: var(--anaar); }
+}
 
 /* --- accuracy bars ------------------------------------------------------- */
 .meter { height: 6px; border-radius: 999px; background: rgb(237 227 208 / 0.1); overflow: hidden; }
@@ -484,10 +496,12 @@ a  { color: var(--firouzeh); text-decoration: none; }
   cursor: pointer;
   transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
-.pager__page:hover:not(:disabled), .pager__step:hover:not(:disabled) {
-  color: var(--sadaf);
-  background: rgb(47 191 176 / 0.1);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .pager__page:hover:not(:disabled), .pager__step:hover:not(:disabled) {
+    color: var(--sadaf);
+    background: rgb(47 191 176 / 0.1);
+    border-color: var(--line-2);
+  }
 }
 .pager__page.is-current {
   color: var(--shab);
@@ -508,7 +522,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .table { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
 .table th, .table td { padding: 0.6rem 0.5rem; text-align: start; border-bottom: 1px solid var(--line); vertical-align: top; }
 .table th { color: var(--sadaf-2); font-weight: 700; white-space: nowrap; }
-.table tr:hover td { background: rgb(47 191 176 / 0.05); }
+@media (hover: hover) and (pointer: fine) {
+  .table tr:hover td { background: rgb(47 191 176 / 0.05); }
+}
 .scroll-x { overflow-x: auto; }
 
 .grid-2 { display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); }
@@ -570,7 +586,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   font-variant-numeric: tabular-nums;
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
-.segmented__option:hover { color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .segmented__option:hover { color: var(--sadaf); }
+}
 .segmented__option.is-on { color: var(--shab); background: var(--firouzeh); }
 .segmented__option:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -596,7 +614,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   cursor: pointer;
   transition: background 0.2s var(--ease);
 }
-.stepper__btn:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+@media (hover: hover) and (pointer: fine) {
+  .stepper__btn:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+}
 .stepper__btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .stepper__value { min-width: 1.1rem; text-align: center; }
 
@@ -616,7 +636,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   cursor: pointer;
   transition: border-color 0.2s var(--ease), background 0.2s var(--ease), color 0.2s var(--ease);
 }
-.picker__chip:hover { border-color: var(--line-2); color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .picker__chip:hover { border-color: var(--line-2); color: var(--sadaf); }
+}
 .picker__chip.is-on {
   color: var(--sadaf);
   border-color: var(--pick, var(--firouzeh));
@@ -681,10 +703,12 @@ a  { color: var(--firouzeh); text-decoration: none; }
   background: transparent;
   border-color: rgb(212 66 92 / 0.35);
 }
-.btn--icon-danger:hover:not(:disabled) {
-  color: var(--sadaf);
-  background: var(--anaar);
-  border-color: var(--anaar);
+@media (hover: hover) and (pointer: fine) {
+  .btn--icon-danger:hover:not(:disabled) {
+    color: var(--sadaf);
+    background: var(--anaar);
+    border-color: var(--anaar);
+  }
 }
 
 /* --- the landing page ---------------------------------------------------- */
@@ -735,7 +759,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
 /* A category with no questions in the chosen language is shown, not hidden: knowing it exists and
    is empty is more useful than wondering where it went. */
 .picker__chip:disabled { opacity: 0.35; cursor: not-allowed; }
-.picker__chip:disabled:hover { border-color: var(--line); color: var(--sadaf-2); }
+@media (hover: hover) and (pointer: fine) {
+  .picker__chip:disabled:hover { border-color: var(--line); color: var(--sadaf-2); }
+}
 
 /* --- live duel bar: option A, a row above the topbar ---------------------- */
 /* justify-content:space-between plus plain DOM order is already direction-aware — "mine" sits at
@@ -761,7 +787,11 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .duelbar__side--out .avatar { filter: grayscale(1); }
 
 /* --- live answers: locked (chosen, outcome still withheld) ---------------- */
+/* A stuck iOS :hover reads the same turquoise as a plain background tint, so the mark that says
+   "this is what you picked" has to be one hover cannot fake: a filled key chip, the same trick
+   .answer--right and .answer--wrong already use, rather than a few points of alpha on the tile. */
 .answer--locked { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
+.answer--locked .answer__key { color: var(--shab); background: var(--firouzeh); }
 
 .live-code { font-size: var(--step-2); font-weight: 800; letter-spacing: .25em; color: var(--firouzeh); }
 
@@ -815,7 +845,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   touch-action: none;
   transition: background 0.2s var(--ease);
 }
-.sortrow__grip:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+@media (hover: hover) and (pointer: fine) {
+  .sortrow__grip:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+}
 .sortrow__grip:disabled { cursor: default; opacity: 0.5; }
 .sortrow__grip:active:not(:disabled) { cursor: grabbing; }
 
@@ -885,7 +917,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .worldmap__country { fill: var(--lajevard-up); stroke: none; transition: fill 0.18s var(--ease); }
 .worldmap--borders .worldmap__country { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .worldmap--pick .worldmap__country { cursor: pointer; }
-.worldmap--pick .worldmap__country:hover { fill: rgb(47 191 176 / 0.45); }
+@media (hover: hover) and (pointer: fine) {
+  .worldmap--pick .worldmap__country:hover { fill: rgb(47 191 176 / 0.45); }
+}
 
 /* What you picked is turquoise, what was right is saffron — the same two meanings those colours
    carry on every answer tile in the app. Target wins where they are the same country, because
@@ -982,7 +1016,9 @@ a  { color: var(--firouzeh); text-decoration: none; }
   cursor: pointer;
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
-.segmented__option:hover { background: rgb(47 191 176 / 0.1); }
+@media (hover: hover) and (pointer: fine) {
+  .segmented__option:hover { background: rgb(47 191 176 / 0.1); }
+}
 
 /* Turquoise for "this is the one selected", the same meaning it carries on every answer tile. */
 .segmented__option.is-on { color: var(--firouzeh); background: rgb(47 191 176 / 0.16); }
@@ -1061,7 +1097,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
-.home-tabs__tab:hover:not(.is-on) { color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .home-tabs__tab:hover:not(.is-on) { color: var(--sadaf); }
+}
 .home-tabs__tab.is-on { font-weight: 800; color: var(--shab); background: var(--firouzeh); }
 
 /* --- the one action per tab ---------------------------------------------- */
@@ -1083,7 +1121,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: filter 0.2s var(--ease), transform 0.15s var(--ease);
 }
-.home-primary:hover:not(:disabled) { filter: brightness(1.07); }
+@media (hover: hover) and (pointer: fine) {
+  .home-primary:hover:not(:disabled) { filter: brightness(1.07); }
+}
 .home-primary:active:not(:disabled) { transform: translateY(1px); }
 .home-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .home-primary__icon, .home-primary__go { flex: none; }
@@ -1115,7 +1155,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: border-color 0.2s var(--ease);
 }
-.home-tile:hover:not(:disabled) { border-color: var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .home-tile:hover:not(:disabled) { border-color: var(--line-2); }
+}
 .home-tile:disabled { opacity: 0.45; cursor: not-allowed; }
 .home-tile.is-on { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
 .home-tile__icon { color: var(--firouzeh); }
@@ -1141,7 +1183,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
 }
-.home-choice__option:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); }
+@media (hover: hover) and (pointer: fine) {
+  .home-choice__option:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); }
+}
 .home-choice__option:disabled { opacity: 0.45; cursor: not-allowed; }
 .home-choice__option.is-on { color: var(--shab); background: var(--firouzeh); border-color: var(--firouzeh); }
 
@@ -1167,7 +1211,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: border-color 0.2s var(--ease), color 0.2s var(--ease);
 }
-.home-settings:hover { border-color: var(--line-2); color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .home-settings:hover { border-color: var(--line-2); color: var(--sadaf); }
+}
 .home-settings__text { flex: 1; min-width: 0; }
 .home-settings__change { flex: none; font-weight: 700; color: var(--firouzeh); }
 
@@ -1198,7 +1244,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: transform 0.15s var(--ease);
 }
-.home-face:hover:not(:disabled) { transform: translateY(-2px); }
+@media (hover: hover) and (pointer: fine) {
+  .home-face:hover:not(:disabled) { transform: translateY(-2px); }
+}
 .home-face:disabled { opacity: 0.5; cursor: progress; }
 .home-face__tile { position: relative; width: 3.5rem; height: 3.5rem; font-size: var(--step-1); }
 .home-face__dot {
@@ -1233,7 +1281,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: border-color 0.2s var(--ease);
 }
-.home-duel:hover { border-color: var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .home-duel:hover { border-color: var(--line-2); }
+}
 
 /* Saffron edge and the lifted lapis: the duels waiting on this player are the ones with something
    to do, and they are meant to be the first thing the eye lands on in the list. */
@@ -1279,7 +1329,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   color: var(--sadaf-2);
   transition: color 0.2s var(--ease), background 0.2s var(--ease);
 }
-.icon-hit:hover { color: var(--sadaf); background: rgb(47 191 176 / 0.1); }
+@media (hover: hover) and (pointer: fine) {
+  .icon-hit:hover { color: var(--sadaf); background: rgb(47 191 176 / 0.1); }
+}
 
 /* A "back" chevron is drawn once, pointing towards the start of reading order, and mirrored for the
    languages that read the other way — the same rule .pager__arrow already applies to its own chevrons. */
@@ -1317,7 +1369,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   color: var(--firouzeh);
   cursor: pointer;
 }
-.link-action:hover { color: var(--zaferan); }
+@media (hover: hover) and (pointer: fine) {
+  .link-action:hover { color: var(--zaferan); }
+}
 
 .friends-empty {
   display: flex;
@@ -1366,9 +1420,13 @@ input[type='range'] { accent-color: var(--firouzeh); }
 }
 .duel-pill:disabled { opacity: 0.5; cursor: not-allowed; }
 .duel-pill--live { border: 1px solid transparent; background: var(--firouzeh); color: var(--shab); }
-.duel-pill--live:hover:not(:disabled) { filter: brightness(1.1); }
+@media (hover: hover) and (pointer: fine) {
+  .duel-pill--live:hover:not(:disabled) { filter: brightness(1.1); }
+}
 .duel-pill--async { border: 1px solid var(--line-2); background: transparent; color: var(--sadaf); }
-.duel-pill--async:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+@media (hover: hover) and (pointer: fine) {
+  .duel-pill--async:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+}
 
 /* --- friends: remove, restored (issue #92) -----------------------------------------------------
    #91's redesign dropped the old bare "×" along with the settings-form Profile it came from. Back as
@@ -1376,7 +1434,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
    a first tap swaps for plain "Remove?" text — .is-confirm widens the circle into a pill rather than
    trying to cram a word into a 44px circle — and reverts on its own if the second tap never comes. */
 .friend-row__remove { flex: none; color: var(--sadaf-3); }
-.friend-row__remove:hover { color: var(--anaar); background: rgb(212 66 92 / 0.12); }
+@media (hover: hover) and (pointer: fine) {
+  .friend-row__remove:hover { color: var(--anaar); background: rgb(212 66 92 / 0.12); }
+}
 .friend-row__remove.is-confirm {
   width: auto;
   padding: 0 0.8rem;
@@ -1384,7 +1444,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   color: var(--anaar);
   background: rgb(212 66 92 / 0.12);
 }
-.friend-row__remove.is-confirm:hover { background: rgb(212 66 92 / 0.2); }
+@media (hover: hover) and (pointer: fine) {
+  .friend-row__remove.is-confirm:hover { background: rgb(212 66 92 / 0.2); }
+}
 .friend-row__removeText { font-size: var(--step--1); font-weight: 700; white-space: nowrap; }
 
 /* --- settings: script tiles for language, in the same three-per-row shape the #89 questions sheet
@@ -1405,7 +1467,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
-.script-tile:hover { border-color: var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .script-tile:hover { border-color: var(--line-2); }
+}
 .script-tile.is-on { background: var(--firouzeh); color: var(--shab); border-color: var(--firouzeh); }
 
 .settings-row__label { font-weight: 700; }
@@ -1562,7 +1626,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   font-size: var(--step--1);
   text-decoration: none;
 }
-.lobby-settings-line:hover { color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .lobby-settings-line:hover { color: var(--sadaf); }
+}
 
 /* --- the quiet Leave/Cancel action: a text link that never competes with Start for attention ------ */
 .lobby-quiet {
@@ -1581,7 +1647,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   border: 0;
   cursor: pointer;
 }
-.lobby-quiet:hover:not(:disabled) { color: var(--sadaf-2); }
+@media (hover: hover) and (pointer: fine) {
+  .lobby-quiet:hover:not(:disabled) { color: var(--sadaf-2); }
+}
 .lobby-quiet:disabled { cursor: not-allowed; opacity: 0.6; }
 
 
@@ -1638,7 +1706,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
-.count-row__option:hover { color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .count-row__option:hover { color: var(--sadaf); }
+}
 .count-row__option.is-on { color: var(--shab); background: var(--firouzeh); font-weight: 800; }
 
 /* --- how hard: two handles on one ramp ------------------------------------------------------------
@@ -1750,7 +1820,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   color: var(--sadaf);
   transition: border-color 0.2s var(--ease);
 }
-.topic-row:hover { border-color: var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .topic-row:hover { border-color: var(--line-2); }
+}
 .topic-row__icons { display: flex; gap: 2px; font-size: 1.6rem; line-height: 1; }
 .topic-row__text { flex: 1; min-width: 0; }
 .topic-row__names {
@@ -1784,7 +1856,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: background 0.2s var(--ease);
 }
-.any-pill:hover { background: rgb(47 191 176 / 0.12); }
+@media (hover: hover) and (pointer: fine) {
+  .any-pill:hover { background: rgb(47 191 176 / 0.12); }
+}
 
 /* Two columns at any width. Three would shrink the icon below the size that makes a topic
    recognisable without reading its name, which is the whole reason these are tiles and not chips. */
@@ -1807,7 +1881,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   cursor: pointer;
   transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
-.topic-tile:hover { border-color: var(--line-2); color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .topic-tile:hover { border-color: var(--line-2); color: var(--sadaf); }
+}
 .topic-tile__icon { font-size: 2.75rem; line-height: 1; }
 .topic-tile__name { font-weight: 700; text-align: center; line-height: 1.25; }
 
