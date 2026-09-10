@@ -133,6 +133,8 @@ public static class LiveEndpoints
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
         IGrainFactory grains, IPlayerRepository players)
     {
+        if (body.Capacity is { } capacity and (< 2 or > 8)) return Results.BadRequest(new { error = "bad_capacity" });
+
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
 
@@ -140,7 +142,7 @@ public static class LiveEndpoints
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
 
-        var ok = await grains.GetGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        var ok = await grains.GetGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 

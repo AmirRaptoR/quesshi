@@ -91,13 +91,6 @@ public sealed class MatchGrain(
         if (_match is null) return false;
         if (_match.IsParticipant(playerId)) return true;
 
-        // The join that fills the last seat also starts the duel, synchronously, inside Join itself —
-        // exactly as it always has for a capacity-2 match. Drawing the question set here, one join
-        // early, is what lets a bigger lobby's very last join behave identically to a 1v1's second one;
-        // the legacy, pre-drawn creation path never hits this (QuestionIds is never empty there).
-        if (_match.QuestionIds.Count == 0 && _match.Participants.Count + 1 == _match.Capacity)
-            await DrawQuestionsAsync();
-
         try
         {
             _match.Join(playerId, clock.Now);
@@ -137,6 +130,22 @@ public sealed class MatchGrain(
         return true;
     }
 
+    /// <summary>The random-matchmaking counterpart to <see cref="StartAsync"/>: see the interface's
+    /// own remarks. Draws the question set first, exactly as <see cref="StartAsync"/> does, since
+    /// neither pairing site draws it themselves.</summary>
+    public async Task<bool> StartPairedAsync()
+    {
+        if (_match is null || _match.State != MatchState.AwaitingOpponent) return false;
+
+        if (_match.QuestionIds.Count == 0) await DrawQuestionsAsync();
+        if (!_match.StartByPairing(clock.Now)) return false;
+
+        await SaveAsync();
+        await IndexAsync();
+        await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
+        return true;
+    }
+
     public async Task<bool> LeaveAsync(string playerId)
     {
         if (_match is null) return false;
@@ -157,7 +166,12 @@ public sealed class MatchGrain(
         return true;
     }
 
-    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels)
+    /// <summary>
+    /// Atomically updates settings, capacity, or both — mirrors <c>LiveMatchGrain.UpdateSettingsAsync</c>
+    /// exactly, including the equal-settings no-op rule and settling the clock (here, <see cref="Match.TryForfeit"/>)
+    /// once, up front, before either half is evaluated.
+    /// </summary>
+    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels, int? capacity)
     {
         if (_match is null) return false;
 
@@ -171,7 +185,22 @@ public sealed class MatchGrain(
             return false; // an invalid combination refuses the change outright, same as at creation
         }
 
-        if (!_match.UpdateSettings(playerId, settings)) return false;
+        var wasOver = _match.IsOver;
+        _match.TryForfeit(clock.Now);
+
+        var settingsChanged = settings != _match.Settings;
+        var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
+        var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity);
+
+        if (!settingsOk || !capacityOk)
+        {
+            await SaveAsync(); // persist whatever TryForfeit just settled, even though refused
+            if (!wasOver && _match.IsOver) await SettleAsync();
+            return false;
+        }
+
+        if (settingsChanged) _match.UpdateSettings(playerId, settings);
+        if (capacity is { } toApply) _match.SetCapacity(playerId, toApply, clock.Now);
 
         await SaveAsync();
         await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));

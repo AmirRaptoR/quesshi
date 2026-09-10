@@ -148,7 +148,11 @@ public static class GameEndpoints
                 if (waitingMatchId is { Length: > 0 })
                 {
                     var opponentMatch = grains.GetGrain<IMatchGrain>(waitingMatchId);
-                    if (await opponentMatch.JoinAsync(meId))
+                    // Join no longer starts the duel on its own (issue #104) — random pairing has to
+                    // start it explicitly, the same way a shared-link lobby's owner presses Start. A
+                    // failed start is treated exactly like a failed join always was: fall through and
+                    // mint a fresh match for the caller instead.
+                    if (await opponentMatch.JoinAsync(meId) && await opponentMatch.StartPairedAsync())
                         return Results.Ok(await SummaryAsync(opponentMatch, meId, players));
                 }
             }
@@ -182,7 +186,8 @@ public static class GameEndpoints
 
         api.MapPost("/matches/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
-            await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players));
+            await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players))
+            .WithMetadata(new AllowGuest());
 
         // --- async lobby lifecycle (issue #52) -----------------------------------------------------
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
@@ -366,6 +371,8 @@ public static class GameEndpoints
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
         IGrainFactory grains, IPlayerRepository players)
     {
+        if (body.Capacity is { } capacity and (< 2 or > 8)) return Results.BadRequest(new { error = "bad_capacity" });
+
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
 
@@ -373,7 +380,7 @@ public static class GameEndpoints
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
 
-        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels);
+        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 

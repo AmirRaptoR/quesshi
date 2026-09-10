@@ -65,6 +65,7 @@ public class MatchGrainTests(ClusterFixture fixture)
         var grain = NewMatch(out var id, out var questionIds);
         await grain.CreateAsync((int)Language.En, Amir, questionIds, "CODE01");
         Assert.True(await grain.JoinAsync(Sara));
+        Assert.True(await grain.StartAsync(Amir));
 
         await PlayAsync(grain, Amir, correctCount: 5);
         await PlayAsync(grain, Sara, correctCount: 2);
@@ -99,6 +100,7 @@ public class MatchGrainTests(ClusterFixture fixture)
         var grain = NewMatch(out _, out var questionIds);
         await grain.CreateAsync((int)Language.En, winner, questionIds, "SETASY");
         await grain.JoinAsync(loser);
+        await grain.StartAsync(winner);
 
         await PlayAsync(grain, winner, correctCount: 5);
         await PlayAsync(grain, loser, correctCount: 2);
@@ -222,6 +224,7 @@ public class MatchGrainTests(ClusterFixture fixture)
         var grain = NewMatch(out _, out var questionIds);
         await grain.CreateAsync((int)Language.En, Amir, questionIds, "GUEST1");
         await grain.JoinAsync(guest.Id);
+        await grain.StartAsync(Amir);
 
         await PlayAsync(grain, Amir, correctCount: 6);
         await PlayAsync(grain, guest.Id, correctCount: 3);
@@ -251,36 +254,48 @@ public class MatchGrainTests(ClusterFixture fixture)
         var (grain, _) = await NewLobbyAsync("MLOBBY2", Amir, capacity: 3);
 
         Assert.True(await grain.JoinAsync(Sara));
-        Assert.True(await grain.JoinAsync(Vahid)); // fills capacity, auto-starts
+        Assert.True(await grain.JoinAsync(Vahid)); // fills capacity, still waiting for Start
         Assert.False(await grain.JoinAsync(Stranger));
         Assert.True(await grain.JoinAsync(Sara)); // idempotent for someone already seated
     }
 
     [Fact]
-    public async Task Reaching_capacity_auto_starts_and_draws_a_real_playable_question_set()
+    public async Task Reaching_capacity_no_longer_auto_starts_but_Start_draws_a_real_playable_question_set()
     {
         var (grain, _) = await NewLobbyAsync("MLOBBY3", Amir, capacity: 3);
 
         await grain.JoinAsync(Sara);
         await grain.JoinAsync(Vahid); // the third seat fills capacity
 
+        var afterFill = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, afterFill!.State); // full, but still waiting for Start
+        Assert.Empty(afterFill.QuestionIds); // nothing drawn until Start
+
+        Assert.True(await grain.StartAsync(Amir));
         var view = await grain.GetAsync(Amir);
         Assert.Equal((int)MatchState.InProgress, view!.State);
-        Assert.Equal(MatchRules.QuestionsPerMatch, view.QuestionIds.Count); // questions were drawn
+        Assert.Equal(MatchRules.QuestionsPerMatch, view.QuestionIds.Count); // Start drew the question set
 
         var served = await grain.ServeNextAsync(Vahid); // the third seat is a real, playable participant
         Assert.NotNull(served);
     }
 
+    /// <summary>
+    /// The core of issue #104: a two-seat lobby used to start the instant its second seat filled,
+    /// indistinguishable from a bigger lobby's owner never getting to press Start. It no longer does.
+    /// </summary>
     [Fact]
-    public async Task A_capacity_two_match_created_through_CreateLobbyAsync_behaves_exactly_like_a_1v1_today()
+    public async Task A_capacity_two_match_stays_open_once_full_until_the_owner_presses_Start()
     {
         var (grain, _) = await NewLobbyAsync("MLOBBY4", Amir, capacity: 2);
 
-        // The second join is the only thing that ever happens — nobody calls StartAsync, exactly as
-        // a 1v1 works today, and it both seats the opponent and begins the duel in the same call.
         Assert.True(await grain.JoinAsync(Sara));
 
+        var afterJoin = await grain.GetAsync(Amir);
+        Assert.Equal((int)MatchState.AwaitingOpponent, afterJoin!.State);
+        Assert.Empty(afterJoin.QuestionIds);
+
+        Assert.True(await grain.StartAsync(Amir));
         var view = await grain.GetAsync(Amir);
         Assert.Equal((int)MatchState.InProgress, view!.State);
         Assert.Equal(MatchRules.QuestionsPerMatch, view.QuestionIds.Count);
@@ -313,9 +328,10 @@ public class MatchGrainTests(ClusterFixture fixture)
     public async Task StartAsync_is_refused_once_the_lobby_has_already_started()
     {
         var (grain, _) = await NewLobbyAsync("MLOBBY6", Amir, capacity: 2);
-        await grain.JoinAsync(Sara); // auto-starts at capacity 2
+        await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
 
-        Assert.False(await grain.StartAsync(Amir));
+        Assert.False(await grain.StartAsync(Amir)); // already started
     }
 
     [Fact]
@@ -382,7 +398,8 @@ public class MatchGrainTests(ClusterFixture fixture)
         var (grain, _) = await NewLobbyAsync("MLOBBY9", Amir, capacity: 2);
         Assert.False(await grain.LeaveAsync(Stranger)); // never seated
 
-        await grain.JoinAsync(Sara); // auto-starts at capacity 2
+        await grain.JoinAsync(Sara);
+        Assert.True(await grain.StartAsync(Amir));
         Assert.False(await grain.LeaveAsync(Sara)); // no longer in the lobby
     }
 
@@ -392,17 +409,18 @@ public class MatchGrainTests(ClusterFixture fixture)
         var (grain, id) = await NewLobbyAsync("MLOBBY10", Amir, capacity: 3);
         SeedQuestions(id + "-extra"); // 20 total distinct En/geography questions, regardless of test order
 
-        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, [], [])); // not the owner
-        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], []));
+        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, [], [], null)); // not the owner
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], null));
 
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- draws 20 questions, per the updated settings
+        await grain.JoinAsync(Vahid); // fills capacity, but no longer draws on its own (issue #104)
+        Assert.True(await grain.StartAsync(Amir)); // Start draws 20 questions, per the updated settings
 
         var view = await grain.GetAsync(Amir);
         Assert.Equal(20, view!.QuestionIds.Count);
 
         // Questions are drawn now, so settings can no longer change.
-        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], []));
+        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
     }
 
     [Fact]

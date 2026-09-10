@@ -243,7 +243,13 @@ public sealed class LiveMatchmakingGrain(
             await grain.CreateAsync(code, lang, challengerId, [.. set.Select(q => q.Id)]);
 
             var joinResult = (LiveJoinResult)await grain.JoinAsync(opponentId);
-            return joinResult == LiveJoinResult.Joined ? matchId : null;
+            if (joinResult != LiveJoinResult.Joined) return null;
+
+            // Join no longer starts the duel on its own (issue #104) — the random queue has to start
+            // it explicitly, exactly as a shared-link lobby's owner presses Start. A failed start is
+            // treated exactly like a failed join always was: return null, and the caller tells both
+            // players the duel could not be built.
+            return await grain.StartPairedAsync() ? matchId : null;
         }
 
         return null;

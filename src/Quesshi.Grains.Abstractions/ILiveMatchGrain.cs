@@ -29,12 +29,22 @@ public interface ILiveMatchGrain : IGrainWithStringKey
     Task<int> JoinAsync(string playerId);
 
     /// <summary>
-    /// The owner starts the duel once at least two are seated — the affordance a lobby with room to
-    /// spare needs, since reaching capacity already starts it on its own. Refused for anyone but the
-    /// owner, below two participants, or once the lobby has already left the lobby phase.
+    /// The owner starts the duel once at least two are seated — the only way a lobby ever leaves the
+    /// lobby phase, whether it is full or has room to spare. Refused for anyone but the owner, below
+    /// two participants, or once the lobby has already left the lobby phase.
     /// </summary>
     [Alias("StartAsync")]
     Task<bool> StartAsync(string playerId);
+
+    /// <summary>
+    /// The random-matchmaking counterpart to <see cref="StartAsync"/>: no owner check, since the
+    /// joiner who just got paired calls this, not the lobby's owner. Called from exactly the two
+    /// pairing sites — <c>LiveMatchmakingGrain.BuildDuelAsync</c> and the live random queue — right
+    /// after both sides are seated, now that <see cref="JoinAsync"/> no longer starts a duel on its
+    /// own once it fills every seat.
+    /// </summary>
+    [Alias("StartPairedAsync")]
+    Task<bool> StartPairedAsync();
 
     /// <summary>
     /// A seated player leaves before the duel starts. For anyone but the owner this frees their seat;
@@ -46,12 +56,17 @@ public interface ILiveMatchGrain : IGrainWithStringKey
     Task<bool> LeaveAsync(string playerId);
 
     /// <summary>
-    /// The owner changes the lobby's <c>DuelSettings</c>. Refused for anyone but the owner, and
-    /// refused once the question set is drawn — see <see cref="CreateLobbyAsync"/>'s own remarks on why
-    /// that crosses the boundary as primitives.
+    /// The owner changes the lobby's <c>DuelSettings</c> and, optionally, its <c>Capacity</c> in the
+    /// same call — atomically: both halves are validated before either is applied, so a refused
+    /// capacity change never leaves the settings half applied on its own, or vice versa.
+    /// <paramref name="capacity"/> null means "leave capacity alone". Refused for anyone but the
+    /// owner; the settings half is refused once the question set is drawn, and the capacity half
+    /// below 2, above 8, below the seated count, or once the lobby has left the lobby phase — see
+    /// <see cref="CreateLobbyAsync"/>'s own remarks on why <c>DuelSettings</c> crosses this boundary as
+    /// primitives.
     /// </summary>
     [Alias("UpdateSettingsAsync")]
-    Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels);
+    Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels, int? capacity);
 
     /// <summary>
     /// True only when the caller is the owner and the duel is still in the lobby: it ends the
@@ -84,6 +99,17 @@ public interface ILiveMatchGrain : IGrainWithStringKey
     /// <summary>Redacted for the asking player: the round in flight never reveals the correct index or the opponent's choice.</summary>
     [Alias("GetAsync")]
     Task<LiveView?> GetAsync(string forPlayerId);
+
+    /// <summary>
+    /// A no-side-effect read for a page loading `/lobby/{code}` — nothing is joined, started, drawn
+    /// or written. Returns the view when <paramref name="forPlayerId"/> is already a participant (at
+    /// any phase), or when the duel is still in its lobby phase (for an unseated visitor deciding
+    /// whether to take a seat), and null otherwise. Deliberately not <see cref="GetAsync"/>: that
+    /// method's null-for-non-participant return is <c>LiveHub.Join</c>'s own proof of participation,
+    /// and relaxing it here instead would open the gameplay hub to anyone who merely knows a code.
+    /// </summary>
+    [Alias("LobbyViewAsync")]
+    Task<LiveView?> LobbyViewAsync(string forPlayerId);
 
     /// <summary>Admin-facing: finishes an in-flight duel early as a no-contest.</summary>
     [Alias("EndAsync")]
