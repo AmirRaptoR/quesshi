@@ -41,6 +41,17 @@
             <a class="btn btn--ghost" href="/">@L["common.back"]</a>
         </div>
     }
+    else if (!_snapshot.Waiting)
+    {
+        @* Past lobby phase, and a snapshot at all means the read returned one -- the read refuses a
+           non-participant here (404), so reaching this branch already means the caller is seated.
+           No redirect on the initial load (issue #104): a Back press into a started duel must render
+           this card, not bounce straight back into the duel and make Back unusable. *@
+        <div class="empty enter">
+            <p>@L["lobby.alreadyStarted"]</p>
+            <a class="btn btn--block" href="@LobbyPresentation.TargetRoute(_snapshot)">@L["lobby.goToDuel"]</a>
+        </div>
+    }
     else
     {
         var snapshot = _snapshot;
@@ -262,12 +273,23 @@
                 <p class="faint" style="margin:.6rem 0 0;text-align:center;font-size:var(--step--1)">@L["lobby.startHint"]</p>
                 <button type="button" class="lobby-quiet" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leaveOwner"]</button>
             }
-            else
+            else if (LobbyPresentation.IsParticipant(snapshot, MeId))
             {
                 @* Disabled rather than hidden: this is the same "here is what happens next" slot the
                    owner's own button fills, just one this visitor cannot press themselves. *@
                 <button class="btn btn--block" disabled>@L["lobby.waitingForOwner"]</button>
                 <button type="button" class="lobby-quiet" disabled="@_busy" @onclick="LeaveAsync">@L["lobby.leave"]</button>
+            }
+            else
+            {
+                @* An unseated visitor: nothing to leave, so no second button here -- only take-a-seat,
+                   disabled once the lobby is full (issue #104). *@
+                var full = LobbyPresentation.IsFull(snapshot);
+                <button class="btn btn--block" disabled="@(full || _busy)" @onclick="TakeSeatAsync">@L["lobby.takeSeat"]</button>
+                @if (full)
+                {
+                    <p class="faint" style="margin:.6rem 0 0;text-align:center;font-size:var(--step--1)">@L["lobby.invite.full"]</p>
+                }
             }
         </div>
     }
@@ -380,14 +402,21 @@
             }
         }
 
-        if (!await RefreshAsync() || _snapshot is not { Waiting: true }) return;
+        // The initial load reads without redirecting (issue #104): a Back press into a duel that has
+        // already left its lobby phase must render the "already started" card, not bounce straight
+        // back into the duel the way every later refresh still does (see RefreshAsync's own remarks).
+        if (!await ReadAsync() || _snapshot is not { } snapshot) return;
+
+        if (!LobbyPresentation.IsParticipant(snapshot, MeId)) return; // an unseated visitor: nothing more to fetch or connect
 
         // Only the owner ever renders the invite section, and only a real signed-in player ever owns
         // a lobby at all (creating one is refused for a guest well before this page exists) — so this
         // is never spent on a visitor who could not use it.
-        if (LobbyPresentation.IsOwner(_snapshot, MeId)) _friends = (await Api.MeAsync())?.Friends ?? [];
+        if (snapshot.Waiting && LobbyPresentation.IsOwner(snapshot, MeId)) _friends = (await Api.MeAsync())?.Friends ?? [];
 
-        await ConnectAsync();
+        // An unseated visitor's socket stays closed (issue #104): LiveHub.Join refuses anyone not a
+        // participant anyway, and a duel already past its lobby phase has nothing left to push here.
+        if (snapshot.Waiting) await ConnectAsync();
     }
 
     /// <summary>
@@ -436,15 +465,14 @@
     }
 
     /// <summary>
-    /// Re-fetches this lobby's state by joining its code again — idempotent (<c>AlreadyIn</c>) for
-    /// anyone already seated, which is every legitimate visitor to this page — and is what both the
-    /// initial load and every <see cref="LiveClient.LobbyUpdated"/> push run. There is no separate
-    /// GetAsync-by-code endpoint to call instead: the join endpoints already are that read for a
-    /// participant, live or async alike. Which endpoint to call is only ever unknown on the very
-    /// first call — a duel's kind never changes once created — so every later refresh skips the extra
-    /// invite lookup and reuses what the first one already learned.
+    /// The read path (issue #104): resolves this page's code through the by-code read for its duel
+    /// kind — no side effects, nothing joined, started, drawn or written — so a visitor who is not (or
+    /// no longer) seated sees the lobby's actual state instead of a join call's 400. Which endpoint to
+    /// call is only ever unknown on the very first call — a duel's kind never changes once created —
+    /// so every later refresh skips the extra invite lookup and reuses what the first one learned.
+    /// Never redirects itself; see <see cref="RefreshAsync"/> for the caller that does.
     /// </summary>
-    private async Task<bool> RefreshAsync()
+    private async Task<bool> ReadAsync()
     {
         bool isLive;
         if (_snapshot is { } known)
@@ -460,24 +488,53 @@
 
         if (isLive)
         {
-            var view = await Api.JoinLiveAsync(Code);
+            var view = await Api.LiveByCodeAsync(Code);
             if (view is null) return false;
             _snapshot = LobbyPresentation.From(view);
         }
         else
         {
-            var summary = await Api.JoinAsync(Code);
+            var summary = await Api.MatchByCodeAsync(Code);
             if (summary is null) return false;
             _snapshot = LobbyPresentation.From(summary);
         }
 
-        if (!_snapshot.Waiting) Nav.NavigateTo(LobbyPresentation.TargetRoute(_snapshot), replace: true);
         return true;
+    }
+
+    /// <summary>
+    /// Every refresh after the initial load — a <see cref="LiveClient.LobbyUpdated"/> push, the
+    /// owner's own Start, a take-a-seat, or the guest identity save — redirects to
+    /// <see cref="LobbyPresentation.TargetRoute"/> the moment the duel leaves its lobby phase, exactly
+    /// as before issue #104. Only <see cref="LoadAsync"/> reads without this redirect, precisely so a
+    /// Back press does not bounce straight back into the duel.
+    /// </summary>
+    private async Task<bool> RefreshAsync()
+    {
+        if (!await ReadAsync()) return false;
+        if (!_snapshot!.Waiting) Nav.NavigateTo(LobbyPresentation.TargetRoute(_snapshot), replace: true);
+        return true;
+    }
+
+    /// <summary>
+    /// The explicit take-a-seat action (issue #104) — the only thing left in this page that actually
+    /// joins. A lost race for the last seat (the join fails) is not an error: re-reading settles the
+    /// page into the disabled full-lobby state on its own, with no generic error banner.
+    /// </summary>
+    private async Task TakeSeatAsync()
+    {
+        if (_snapshot is null || _busy) return;
+
+        _busy = true;
+        if (_snapshot.IsLive) await Api.JoinLiveAsync(_snapshot.Code); else await Api.JoinAsync(_snapshot.Code);
+        await RefreshAsync();
+        if (_snapshot is { Waiting: true } && LobbyPresentation.IsParticipant(_snapshot, MeId)) await ConnectAsync();
+        _busy = false;
     }
 
     private async Task ConnectAsync()
     {
-        if (_snapshot is null) return;
+        if (_snapshot is null || _client is not null) return; // already connected -- take-a-seat can race a push here
 
         _client = ClientFactory("/hub/live");
         _client.LobbyUpdated += OnLobbyUpdated;
