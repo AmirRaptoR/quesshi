@@ -108,16 +108,18 @@
         State.Changed += StateHasChanged;
         await State.InitialiseAsync();
 
-        if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
+        // One invite lookup decides everything below: which endpoint joins this code, and — if
+        // nobody is signed in, or the join itself fails — what the card underneath renders. It also
+        // decides the branch just below: a pinned guest is sent back to their own duel only when this
+        // code actually names it (issue #102) — a stale pin must not swallow a different code's link.
+        _invite = await Api.InviteAsync(Code);
+
+        if (JoinRedirect.TargetFor(State.IsGuest, State.GuestMatchId, _invite) is { } mine)
         {
             // A guest reopening their own link belongs back in their duel, not at a second one.
-            Nav.NavigateTo(State.GuestMatchIsLive ? $"/live/{mine}" : $"/duel/{mine}");
+            Nav.NavigateTo(mine);
             return;
         }
-
-        // One invite lookup decides everything below: which endpoint joins this code, and — if
-        // nobody is signed in, or the join itself fails — what the card underneath renders.
-        _invite = await Api.InviteAsync(Code);
 
         // Somebody already signed in does not need the guest path at all — take the seat and play.
         if (State.SignedIn && !State.IsGuest && _invite is not null)
