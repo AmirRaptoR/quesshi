@@ -22,10 +22,13 @@ public class MatchTests
         return m;
     }
 
+    /// <summary>Seated to capacity 2 and explicitly started by the owner — joining alone no longer
+    /// starts a duel, so every test that wants an in-progress duel has to ask for it.</summary>
     private static Match Joined()
     {
         var m = NewMatch();
         m.Join(Opponent, T0);
+        m.Start(Challenger, T0);
         return m;
     }
 
@@ -38,12 +41,14 @@ public class MatchTests
         return m;
     }
 
-    /// <summary>A three-player lobby, filled to capacity so it has started.</summary>
+    /// <summary>A three-player lobby, filled to capacity and explicitly started by the owner — joining
+    /// alone no longer starts a duel, even once it fills every seat.</summary>
     private static Match Joined3()
     {
         var m = NewMatchN(3);
         m.Join(Opponent, T0);
         m.Join(Third, T0);
+        m.Start(Challenger, T0);
         return m;
     }
 
@@ -133,6 +138,45 @@ public class MatchTests
     [Fact]
     public void A_third_player_cannot_join_a_taken_match()
         => Assert.Throws<InvalidOperationException>(() => Joined().Join("u-else", T0));
+
+    /// <summary>
+    /// The core of issue #104: a two-seat lobby used to start the instant its second seat filled. It
+    /// no longer does; the owner's <see cref="Match.Start"/> is the only door into
+    /// <see cref="MatchState.InProgress"/>, for a two-seat lobby exactly as for a bigger one.
+    /// </summary>
+    [Fact]
+    public void Join_leaves_a_two_seat_lobby_open_once_it_is_full()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+        Assert.Equal([Challenger, Opponent], m.Participants);
+    }
+
+    [Fact]
+    public void A_third_join_into_a_full_two_seat_lobby_is_refused()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.Throws<InvalidOperationException>(() => m.Join(Third, T0));
+        Assert.Equal(2, m.Participants.Count);
+    }
+
+    [Fact]
+    public void A_full_lobby_reopens_once_a_non_owner_leaves_and_the_owner_can_still_start_it()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+        Assert.Throws<InvalidOperationException>(() => m.Join(Third, T0)); // confirm it is actually full first
+
+        Assert.True(m.Leave(Opponent, T0));
+        m.Join(Third, T0);
+        Assert.Equal([Challenger, Third], m.Participants);
+        Assert.True(m.Start(Challenger, T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+    }
 
     [Fact]
     public void A_stranger_cannot_play_a_match_they_are_not_in()

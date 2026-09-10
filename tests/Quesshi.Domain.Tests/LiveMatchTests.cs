@@ -19,10 +19,14 @@ public class LiveMatchTests
         return m;
     }
 
+    /// <summary>Seated to capacity 2 and explicitly started by the owner — joining alone no longer
+    /// starts a duel (see <see cref="Join_leaves_a_two_seat_lobby_open_once_it_is_full"/>), so every
+    /// test that wants an in-progress duel has to ask for it.</summary>
     private static LiveMatch Joined()
     {
         var m = NewMatch();
         m.Join(Opponent, T0);
+        m.Start(Challenger, T0);
         return m;
     }
 
@@ -34,13 +38,14 @@ public class LiveMatchTests
         return m;
     }
 
-    /// <summary>A three-player lobby, filled to capacity so it has auto-started.</summary>
+    /// <summary>A three-player lobby, filled to capacity and explicitly started by the owner.</summary>
     private static LiveMatch Joined3()
     {
         var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 3, T0);
         m.DrawQuestions(Ten);
         m.Join(Opponent, T0);
         m.Join(Third, T0);
+        m.Start(Challenger, T0);
         return m;
     }
 
@@ -119,9 +124,50 @@ public class LiveMatchTests
         Assert.Equal([Challenger, Opponent], m.Participants);
 
         m.Join(Third, T0);
-        Assert.Equal(MatchState.InProgress, m.State);
-        Assert.Equal(LivePhase.Countdown, m.Phase);
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+        Assert.Equal(LivePhase.Lobby, m.Phase);
         Assert.Equal([Challenger, Opponent, Third], m.Participants);
+    }
+
+    /// <summary>
+    /// The core of issue #104: a two-seat lobby — every lobby before capacity was choosable — used to
+    /// start the instant its second seat filled. It no longer does; the owner's <see cref="LiveMatch.Start"/>
+    /// is the only door into <see cref="LivePhase.Countdown"/>, for a two-seat lobby exactly as for a
+    /// bigger one.
+    /// </summary>
+    [Fact]
+    public void Join_leaves_a_two_seat_lobby_open_once_it_is_full()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.Equal(MatchState.AwaitingOpponent, m.State);
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+        Assert.Equal([Challenger, Opponent], m.Participants);
+    }
+
+    [Fact]
+    public void A_third_join_into_a_full_two_seat_lobby_is_refused()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.Throws<InvalidOperationException>(() => m.Join(Third, T0));
+        Assert.Equal(2, m.Participants.Count);
+        Assert.Equal(LiveJoinResult.Full, m.TryJoin(Third, T0));
+    }
+
+    [Fact]
+    public void A_full_lobby_reopens_once_a_non_owner_leaves_and_the_owner_can_still_start_it()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+        Assert.Equal(LiveJoinResult.Full, m.TryJoin(Third, T0)); // confirm it is actually full first
+
+        Assert.True(m.Leave(Opponent, T0));
+        Assert.Equal(LiveJoinResult.Joined, m.TryJoin(Third, T0));
+        Assert.True(m.Start(Challenger, T0));
+        Assert.Equal(MatchState.InProgress, m.State);
     }
 
     [Theory]
@@ -348,7 +394,7 @@ public class LiveMatchTests
     {
         var m = NewMatch();
         Assert.Equal(LiveJoinResult.Joined, m.TryJoin(Opponent, T0));
-        Assert.Equal(MatchState.InProgress, m.State);
+        Assert.Equal(MatchState.AwaitingOpponent, m.State); // filling the lobby no longer starts it
     }
 
     [Fact]
@@ -384,6 +430,7 @@ public class LiveMatchTests
     {
         var m = Joined();
         Assert.Equal(LiveJoinResult.Full, m.TryJoin("u-stranger", T0));
+        Assert.Equal(2, m.Participants.Count); // Capacity is never exceeded
     }
 
     [Fact]

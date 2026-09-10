@@ -126,30 +126,29 @@ public sealed class Match
         // checking Phase.
         TryForfeit(now);
         if (State != MatchState.AwaitingOpponent) throw new InvalidOperationException("This challenge has already been taken.");
+        if (_participants.Count >= Capacity) throw new InvalidOperationException("This lobby is full.");
 
         _participants.Add(playerId);
 
-        // A capacity-2 lobby starting the instant its second seat fills is not a special case of
-        // this rule — it is this rule, with Capacity == 2. That is exactly what keeps 1v1 behaviour
-        // unchanged: the owner-presses-Start affordance a bigger lobby needs (see Start) never gets a
-        // chance to apply, because a two-seat lobby can never be in a state where it is needed — the
-        // very join that seats the second player is always also the one that reaches Capacity.
-        if (_participants.Count == Capacity) BeginDuel();
+        // No auto-start here, even for a two-seat lobby that has just filled its last seat: the
+        // owner's Start is the only door into BeginDuel now (see Start's own remarks). A capacity-2
+        // lobby used to be "not a special case of this rule — it is this rule, with Capacity == 2",
+        // which is exactly what made an owner's Back press silently re-seat and start a finished
+        // duel; removing the special case removes the bug.
     }
 
     /// <summary>
-    /// The actual state flip out of the lobby, shared by the two doors that reach it: <see cref="Join"/>
-    /// reaching <see cref="Capacity"/> on its own, and the owner's explicit <see cref="Start"/>. Neither
-    /// caller may invoke this before the question set is ready — the grain draws it (via
-    /// <see cref="DrawQuestions"/>) one join early for the auto-start case, and <see cref="Start"/>
+    /// The actual state flip out of the lobby. <see cref="Start"/> is now the only door that reaches
+    /// this — a lobby reaching <see cref="Capacity"/> on its own no longer does (see <see cref="Join"/>'s
+    /// own remarks) — so the question set is always ready by the time this runs: <see cref="Start"/>
     /// checks <see cref="QuestionIds"/> itself before ever calling in here.
     /// </summary>
     private void BeginDuel() => State = MatchState.InProgress;
 
     /// <summary>
-    /// The owner's explicit counterpart to <see cref="Join"/>'s auto-start: starts the duel once at
-    /// least two are seated, for a lobby with room to spare that nobody is going to fill the rest of.
-    /// Refused for anyone but the owner, below two participants, once the lobby has already left
+    /// The owner starts the duel once at least two are seated — the only way a lobby ever leaves
+    /// <see cref="MatchState.AwaitingOpponent"/>, whether it is full or has room to spare. Refused for
+    /// anyone but the owner, below two participants, once the lobby has already left
     /// <see cref="MatchState.AwaitingOpponent"/>, or while <see cref="QuestionIds"/> is still empty —
     /// the grain draws the question set (via <see cref="DrawQuestions"/>) before ever calling this,
     /// since that needs the question bank it owns, not this class.
