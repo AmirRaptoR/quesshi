@@ -217,7 +217,8 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
     public async Task UpdateSettings_is_refused_once_the_question_set_is_drawn()
     {
         var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
-        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara); // auto-starts, drawing the set
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).StartAsync(Amir); // draws the set
 
         var result = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
             new UpdateDuelSettingsDto("nl", [Category], 20, null), Amir, Grains, LiveShared.Players);

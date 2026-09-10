@@ -77,7 +77,8 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         var lobby = await CreateLobbyAsync(capacity: 3);
         var grain = Grains.GetGrain<IMatchGrain>(lobby.Id);
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, drawing the question set
+        await grain.JoinAsync(Vahid); // fills capacity, but still waits for Start (issue #104)
+        Assert.True(await grain.StartAsync(Amir)); // draws the question set
 
         // Every seated player takes their first turn, so each has a PlayerRun to report -- a run is
         // created lazily on first ServeNext, exactly like a capacity-2 match's opponent.
@@ -107,7 +108,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         var lobby = await CreateLobbyAsync(capacity: 3);
         var grain = Grains.GetGrain<IMatchGrain>(lobby.Id);
         await grain.JoinAsync(Sara);
-        await grain.JoinAsync(Vahid); // fills capacity -- auto-starts, indexing the archive row again
+        await grain.JoinAsync(Vahid); // fills capacity, indexing the archive row again
 
         var list = await GameEndpoints.ListMatchesAsync(Vahid, activeOnly: false, take: null, Shared.Archive, Shared.Players, Grains);
 
@@ -190,7 +191,8 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
     public async Task UpdateSettings_is_refused_once_the_question_set_is_drawn()
     {
         var lobby = await CreateLobbyAsync(capacity: 2);
-        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara); // auto-starts, drawing the set
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara);
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).StartAsync(Amir); // draws the set
 
         var result = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
             new UpdateDuelSettingsDto("en", [Category], 20, null), Amir, Grains, Shared.Players);

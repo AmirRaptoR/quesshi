@@ -381,7 +381,10 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
         Assert.NotNull(view);
         Assert.Equal(challenger, view!.Participants[0]);
         Assert.Equal(target, view.Participants[1]);
-        Assert.NotEqual((int)LivePhase.Lobby, view.Phase); // the target already joined — a 2-seat lobby fills and starts on the spot
+        // Issue #104: a 2-seat lobby filling no longer starts it on the spot -- both land on the
+        // lobby with the owner's Start button live, exactly as a bigger lobby's accepted invite does.
+        Assert.Equal((int)LivePhase.Lobby, view.Phase);
+        Assert.True(await match.StartAsync(challenger));
     }
 
     [Fact]
@@ -567,7 +570,8 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
         var lobby = await NewLobbyAsync(challenger, "chal-started");
 
         var lobbyGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(lobby.Id);
-        await lobbyGrain.JoinAsync(thirdParty); // fills the capacity-2 lobby and starts it
+        await lobbyGrain.JoinAsync(thirdParty); // fills the capacity-2 lobby
+        await lobbyGrain.StartAsync(challenger); // ...and starting it is what actually closes it
 
         var result = (LiveChallengeResult)await matchmaking.ChallengeAsync(Guid.NewGuid().ToString("N"), challenger, target, lobby.Id);
 

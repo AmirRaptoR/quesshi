@@ -76,7 +76,7 @@ public class GuestInvitationReachTests(LiveClusterFixture fixture) : IAsyncDispo
 
         Assert.Equal(HttpStatusCode.OK, joinResponse.StatusCode);
         var result = await joinResponse.Content.ReadFromJsonAsync<GuestLiveResultDto>();
-        Assert.Equal("countdown", result!.Live.Phase);
+        Assert.Equal("lobby", result!.Live.Phase); // filling the seat no longer starts it (issue #104)
         Assert.True(result.Me.IsGuest);
     }
 
