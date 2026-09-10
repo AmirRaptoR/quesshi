@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Infrastructure;
@@ -197,5 +198,49 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         var result = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
             new UpdateDuelSettingsDto("en", [Category], 20, null), Amir, Grains, Shared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(result));
+    }
+
+    // ---- ByCodeAsync: the read path (issue #104) ----
+
+    private async Task<IResult> ByCodeAsync(string code, string meId)
+        => await GameEndpoints.ByCodeAsync(code, meId, Grains, Shared.Archive, Shared.Players);
+
+    [Fact]
+    public async Task ByCode_reads_an_open_lobby_for_a_non_participant_without_seating_them()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 3);
+
+        var result = await ByCodeAsync(lobby.Code, Sara);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (MatchSummaryDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("awaitingopponent", dto.State);
+
+        // Reading twice changes nothing -- no side effects at all.
+        await ByCodeAsync(lobby.Code, Sara);
+        var view = await Grains.GetGrain<IMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.DoesNotContain(view!.Runs, r => r.PlayerId == Sara);
+    }
+
+    [Fact]
+    public async Task ByCode_is_200_for_a_participant_and_404_for_a_non_participant_once_the_match_has_started()
+    {
+        var lobby = await CreateLobbyAsync(capacity: 2);
+        await Grains.GetGrain<IMatchGrain>(lobby.Id).JoinAsync(Sara);
+        Assert.True(await Grains.GetGrain<IMatchGrain>(lobby.Id).StartAsync(Amir));
+
+        var forOwner = await ByCodeAsync(lobby.Code, Amir);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(forOwner));
+
+        var forStranger = await ByCodeAsync(lobby.Code, Stranger);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(forStranger));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(forStranger));
+    }
+
+    [Fact]
+    public async Task ByCode_on_an_unknown_code_is_404()
+    {
+        var result = await ByCodeAsync("NO-SUCH-CODE", Sara);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(result));
     }
 }

@@ -115,5 +115,34 @@ public class LiveKillSwitchEndpointTests(LiveClusterFixture fixture) : IAsyncDis
         }
     }
 
+    /// <summary>
+    /// Issue #104: <c>GET /api/live/by-code/{code}</c> carries no <c>RequiresLiveEnabled</c> marker on
+    /// purpose — that marker belongs only to endpoints that would start a new live duel, and a lobby
+    /// read is a read, so a lobby created while the switch was on must still be readable by code while
+    /// it is off, the same way <see cref="While_off_a_duel_already_in_flight_still_answers_GET_and_can_still_be_cancelled"/>
+    /// already proves for the participant-only GET.
+    /// </summary>
+    [Fact]
+    public async Task While_off_reading_a_lobby_by_code_still_answers_GET()
+    {
+        await SettingsGrain.SetEnabledAsync(true);
+        using var client = AuthedClient(NewPlayer());
+
+        var created = await client.PostAsJsonAsync("/api/live", new CreateMatchDto(false, "en", [Category], null));
+        Assert.NotEqual(HttpStatusCode.ServiceUnavailable, created.StatusCode);
+        var view = await created.Content.ReadFromJsonAsync<LiveViewDto>();
+
+        await SettingsGrain.SetEnabledAsync(false);
+        try
+        {
+            var get = await client.GetAsync($"/api/live/by-code/{view!.Code}");
+            Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        }
+        finally
+        {
+            await SettingsGrain.SetEnabledAsync(true);
+        }
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }

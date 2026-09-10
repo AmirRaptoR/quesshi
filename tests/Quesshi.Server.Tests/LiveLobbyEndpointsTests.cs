@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Domain;
@@ -243,4 +244,62 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
         Assert.Contains(Amir, view.Participants); // and it is still the owner's
     }
 
+    // ---- ByCodeAsync: the read path (issue #104) ----
+
+    private async Task<IResult> ByCodeAsync(string code, string meId)
+        => await LiveEndpoints.ByCodeAsync(code, meId, Grains, LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
+
+    [Fact]
+    public async Task ByCode_reads_an_open_lobby_for_a_non_participant_without_seating_them()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
+
+        var result = await ByCodeAsync(lobby.Code, Sara);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (LiveViewDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("lobby", dto.Phase);
+        Assert.Single(dto.Participants); // Sara was never seated by the read
+
+        // Reading twice changes nothing -- no side effects at all.
+        await ByCodeAsync(lobby.Code, Sara);
+        var view = await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).GetAsync(Amir);
+        Assert.Single(view!.Players);
+    }
+
+    [Fact]
+    public async Task ByCode_is_200_for_a_participant_and_404_for_a_non_participant_once_the_duel_has_started()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+        Assert.True(await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).StartAsync(Amir));
+
+        var forOwner = await ByCodeAsync(lobby.Code, Amir);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(forOwner));
+
+        var forStranger = await ByCodeAsync(lobby.Code, Stranger);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(forStranger));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(forStranger));
+    }
+
+    [Fact]
+    public async Task ByCode_refuses_take_a_seat_when_full_and_still_answers_as_the_lobby_fills()
+    {
+        var lobby = await CreateLobbyAsync(NewIds(), capacity: 2);
+        await Grains.GetGrain<ILiveMatchGrain>(lobby.Id).JoinAsync(Sara);
+
+        // Full but still in lobby phase: a visitor can read it (and see it is full), just not join it.
+        var result = await ByCodeAsync(lobby.Code, Vahid);
+        Assert.Equal(200, CrossTypeCodeTests.StatusOf(result));
+        var dto = (LiveViewDto)CrossTypeCodeTests.ValueOf(result);
+        Assert.Equal("lobby", dto.Phase);
+        Assert.Equal(2, dto.Participants.Count);
+    }
+
+    [Fact]
+    public async Task ByCode_on_an_unknown_code_is_404()
+    {
+        var result = await ByCodeAsync("NO-SUCH-CODE", Sara);
+        Assert.Equal(404, CrossTypeCodeTests.StatusOf(result));
+        Assert.Equal("no_such_code", CrossTypeCodeTests.ErrorOf(result));
+    }
 }

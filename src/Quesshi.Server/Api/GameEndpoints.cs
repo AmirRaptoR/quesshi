@@ -189,6 +189,14 @@ public static class GameEndpoints
             await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
 
+        // No side effects: nothing is joined, started, drawn or written. A participant may read at
+        // any phase; a non-participant only while the lobby is still open, so a duel already in
+        // progress cannot be inspected by code alone (see ByCodeAsync's own remarks).
+        api.MapGet("/matches/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+            IMatchArchive archive, IPlayerRepository players) =>
+            await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players))
+            .WithMetadata(new AllowGuest());
+
         // --- async lobby lifecycle (issue #52) -----------------------------------------------------
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
         // capacity-aware IMatchGrain.JoinAsync a 2-to-8-seat lobby needs, so an N-player async lobby is
@@ -339,6 +347,30 @@ public static class GameEndpoints
         if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
 
         return Results.Ok(await SummaryAsync(grain, meId, players));
+    }
+
+    /// <summary>
+    /// The lobby page's read path (issue #104): resolves <paramref name="code"/> for the code-&gt;id
+    /// lookup only — participation is decided from the grain's own roster (<c>IMatchGrain.GetAsync</c>
+    /// is already unrestricted, so the access rule below is applied here rather than in the grain, the
+    /// same split <c>LobbyViewAsync</c> makes explicit on the live side). A participant may read at any
+    /// phase; a non-participant may read only while the duel is still <c>AwaitingOpponent</c>, so no
+    /// in-progress round, answer or reveal is reachable by a code alone.
+    /// </summary>
+    internal static async Task<IResult> ByCodeAsync(string code, string meId, IGrainFactory grains,
+        IMatchArchive archive, IPlayerRepository players)
+    {
+        var found = await archive.ByCodeAsync(code);
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
+
+        var view = await grains.GetGrain<IMatchGrain>(found.Id).GetAsync(meId);
+        if (view is null) return Results.NotFound(new { error = "no_such_code" });
+
+        if (!IsIn(view, meId) && view.State != (int)MatchState.AwaitingOpponent)
+            return Results.NotFound(new { error = "no_such_code" });
+
+        return Results.Ok(await ToSummaryAsync(view, meId, players));
     }
 
     /// <summary>
