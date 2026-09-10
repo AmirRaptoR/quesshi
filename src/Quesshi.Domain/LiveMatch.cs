@@ -213,6 +213,22 @@ public sealed class LiveMatch
     }
 
     /// <summary>
+    /// The random-matchmaking counterpart to the owner's <see cref="Start"/>, for the two paths that
+    /// pair strangers into a duel rather than seat them through a shared lobby link
+    /// (<c>LiveMatchmakingGrain.BuildDuelAsync</c> and the live random queue): no owner check, since
+    /// the joiner who just got paired calls this, not the lobby's owner. Otherwise identical to
+    /// <see cref="Start"/> — at least two seated, still in <see cref="LivePhase.Lobby"/>, and the
+    /// question set already drawn.
+    /// </summary>
+    public bool StartByPairing(DateTimeOffset now)
+    {
+        if (Phase != LivePhase.Lobby || _participants.Count < 2 || _questionIds.Count == 0) return false;
+
+        BeginDuel(now);
+        return true;
+    }
+
+    /// <summary>
     /// A seated, non-owner player gives up their seat before the duel starts, freeing it for someone
     /// else to take. The owner cannot leave this way — there is no ownership transfer, so an owner's
     /// departure has to end the whole lobby instead (the grain does this with <see cref="EndNoContest"/>

@@ -394,6 +394,38 @@ public class LiveMatchTests
         Assert.Equal(2, m.Capacity);
     }
 
+    // ---- StartByPairing ----
+
+    /// <summary>
+    /// The random-matchmaking door into <c>BeginDuel</c>, once <see cref="Join"/> no longer auto-starts
+    /// on its own: no owner check, since the joiner triggers this, not the owner pressing Start.
+    /// </summary>
+    [Fact]
+    public void StartByPairing_begins_the_duel_once_two_are_seated_and_questions_are_drawn()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+
+        Assert.True(m.StartByPairing(T0));
+        Assert.Equal(MatchState.InProgress, m.State);
+        Assert.Equal(LivePhase.Countdown, m.Phase);
+    }
+
+    [Fact]
+    public void StartByPairing_is_refused_below_two_participants()
+    {
+        var m = NewMatch();
+        Assert.False(m.StartByPairing(T0));
+        Assert.Equal(LivePhase.Lobby, m.Phase);
+    }
+
+    [Fact]
+    public void StartByPairing_is_refused_once_the_lobby_has_already_started()
+    {
+        var m = Joined();
+        Assert.False(m.StartByPairing(T0));
+    }
+
     [Fact]
     public void A_widened_lobby_can_seat_more_than_the_original_capacity()
     {
