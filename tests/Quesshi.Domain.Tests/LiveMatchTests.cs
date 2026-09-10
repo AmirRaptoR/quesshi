@@ -341,6 +341,71 @@ public class LiveMatchTests
         Assert.Equal(Language.En, m.Lang);
     }
 
+    // ---- SetCapacity ----
+
+    [Fact]
+    public void The_owner_widens_capacity_in_the_lobby_phase()
+    {
+        var m = NewMatch();
+        Assert.True(m.CanSetCapacity(Challenger, 4));
+        Assert.True(m.SetCapacity(Challenger, 4, T0));
+        Assert.Equal(4, m.Capacity);
+    }
+
+    [Fact]
+    public void SetCapacity_is_refused_for_a_non_owner()
+    {
+        var m = NewMatch();
+        Assert.False(m.CanSetCapacity(Opponent, 4));
+        Assert.False(m.SetCapacity(Opponent, 4, T0));
+        Assert.Equal(2, m.Capacity);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void SetCapacity_is_refused_outside_two_to_eight(int capacity)
+    {
+        var m = NewMatch();
+        Assert.False(m.CanSetCapacity(Challenger, capacity));
+        Assert.False(m.SetCapacity(Challenger, capacity, T0));
+        Assert.Equal(2, m.Capacity);
+    }
+
+    [Fact]
+    public void SetCapacity_is_refused_below_the_seated_count()
+    {
+        var m = LiveMatch.Create("lm3", "CODE03", Challenger, NewSettings(), capacity: 4, T0);
+        m.DrawQuestions(Ten);
+        m.Join(Opponent, T0);
+        m.Join(Third, T0); // 3 seated
+
+        Assert.False(m.CanSetCapacity(Challenger, 2));
+        Assert.False(m.SetCapacity(Challenger, 2, T0));
+        Assert.Equal(4, m.Capacity);
+    }
+
+    [Fact]
+    public void SetCapacity_is_refused_once_the_duel_has_started()
+    {
+        var m = Joined(); // capacity 2, already started
+        Assert.False(m.CanSetCapacity(Challenger, 4));
+        Assert.False(m.SetCapacity(Challenger, 4, T0));
+        Assert.Equal(2, m.Capacity);
+    }
+
+    [Fact]
+    public void A_widened_lobby_can_seat_more_than_the_original_capacity()
+    {
+        var m = NewMatch();
+        m.Join(Opponent, T0);
+        Assert.True(m.SetCapacity(Challenger, 4, T0));
+
+        m.Join(Third, T0);
+        Assert.Equal([Challenger, Opponent, Third], m.Participants);
+        Assert.Equal(MatchState.AwaitingOpponent, m.State); // still short of the new capacity
+    }
+
     // ---- Rounds and the clock ----
 
     [Fact]
@@ -352,7 +417,7 @@ public class LiveMatchTests
     }
 
     [Fact]
-    public void Join_starts_the_countdown()
+    public void Starting_a_joined_lobby_begins_the_countdown()
     {
         var m = Joined();
         Assert.Equal(MatchState.InProgress, m.State);

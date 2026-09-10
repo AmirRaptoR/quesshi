@@ -41,8 +41,9 @@ public sealed class LiveMatch
 
     public Language Lang => Settings.Language;
 
-    /// <summary>How many seats this lobby has, fixed at creation: 2 to 8.</summary>
-    public int Capacity { get; }
+    /// <summary>How many seats this lobby has: 2 to 8, set at creation and changeable by the owner
+    /// while the lobby is still open — see <see cref="SetCapacity"/>.</summary>
+    public int Capacity { get; private set; }
 
     /// <summary>Every seated player, in join order. <c>Participants[0]</c> is always
     /// <see cref="OwnerId"/> — the one who created this lobby and the only one who may change its
@@ -237,6 +238,30 @@ public sealed class LiveMatch
         if (playerId != OwnerId || _questionIds.Count > 0) return false;
 
         Settings = settings;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether <see cref="SetCapacity"/> would succeed right now, without changing anything — lets a
+    /// caller validate a combined settings-and-capacity update before committing to either half. Owner
+    /// only, lobby phase only, 2 to 8, and never below however many are already seated.
+    /// </summary>
+    public bool CanSetCapacity(string playerId, int capacity) =>
+        playerId == OwnerId && Phase == LivePhase.Lobby && capacity is >= 2 and <= 8 && capacity >= _participants.Count;
+
+    /// <summary>
+    /// The owner widens or narrows how many seats this lobby has, for as long as it is still open.
+    /// Validate-then-apply: <see cref="CanSetCapacity"/> is the predicate half, this is the apply half,
+    /// so a caller who needs to know the outcome before committing (see
+    /// <c>ILiveMatchGrain.UpdateSettingsAsync</c>'s atomic settings-plus-capacity update) never has to
+    /// undo a mutation that turns out to be only half-valid.
+    /// </summary>
+    public bool SetCapacity(string playerId, int capacity, DateTimeOffset now)
+    {
+        Advance(now);
+        if (!CanSetCapacity(playerId, capacity)) return false;
+
+        Capacity = capacity;
         return true;
     }
 
