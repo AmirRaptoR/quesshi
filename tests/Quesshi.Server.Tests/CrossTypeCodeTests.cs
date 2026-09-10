@@ -86,6 +86,8 @@ public class CrossTypeCodeTests(ClusterFixture fixture)
 
         Assert.True(liveInvite.Live);
         Assert.False(asyncInvite.Live);
+        Assert.Equal(liveId, liveInvite.MatchId);
+        Assert.Equal(asyncId, asyncInvite.MatchId);
     }
 
     [Fact]
