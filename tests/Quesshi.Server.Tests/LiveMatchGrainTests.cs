@@ -294,6 +294,27 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.Equal(2, view!.Players.Count);
     }
 
+    /// <summary>
+    /// A capacity shrink racing a join for the seat that shrink would remove (issue #104): whichever of
+    /// the two the single grain activation's turn queue serves first decides the other's outcome, but
+    /// either order must leave a defined result — <c>Players.Count</c> never above whatever
+    /// <c>Capacity</c> ends up being.
+    /// </summary>
+    [Fact]
+    public async Task A_capacity_shrink_racing_a_join_never_leaves_more_players_than_the_final_capacity()
+    {
+        var (grain, _) = await NewLobbyAsync("LOBBY17", Amir, capacity: 3);
+        await grain.JoinAsync(Sara); // 2 seated; capacity 3 has exactly one open seat
+
+        var join = grain.JoinAsync(Vahid);
+        var shrink = grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 2);
+        await Task.WhenAll(join, shrink);
+
+        var view = await grain.GetAsync(Amir);
+        Assert.True(view!.Players.Count <= view.Capacity,
+            $"Players.Count={view.Players.Count} exceeded Capacity={view.Capacity}");
+    }
+
     [Fact]
     public async Task Reaching_capacity_no_longer_auto_starts_but_Start_draws_a_real_playable_question_set()
     {
