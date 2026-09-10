@@ -580,7 +580,14 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void OnRematchCreated(RematchCreatedDto r) => InvokeAsync(() => Nav.NavigateTo($"/live/{r.NewMatchId}"));
+    /// <summary>
+    /// Only the owner is seated in a freshly derived rematch lobby, so <c>GET /api/live/{id}</c> refuses
+    /// every other participant — navigating them straight to <c>/live/{id}</c> would 404. Landing on the
+    /// lobby by code instead (issue #104) lets an invitee take a seat there; a code falls back to the
+    /// id route only for a record that predates <see cref="RematchCreatedDto.NewMatchCode"/>.
+    /// </summary>
+    private void OnRematchCreated(RematchCreatedDto r) => InvokeAsync(() => Nav.NavigateTo(
+        r.NewMatchCode is { Length: > 0 } code ? $"/lobby/{code}" : $"/live/{r.NewMatchId}"));
 
     private void OnRematchFailed()
     {
@@ -676,7 +683,10 @@
         switch (outcome.Status)
         {
             case "created" when outcome.NewMatchId is not null:
-                Nav.NavigateTo($"/live/{outcome.NewMatchId}");
+                // The same lobby-by-code landing OnRematchCreated sends every other participant to
+                // (issue #104) — the requester is this rematch lobby's owner, still just as unseated-
+                // for-the-duel-itself as anyone else until Start is pressed there.
+                Nav.NavigateTo(outcome.NewMatchCode is { Length: > 0 } code ? $"/lobby/{code}" : $"/live/{outcome.NewMatchId}");
                 break;
             default: // "refused" or "failed" — nothing to press again for, or the server needs another try
                 _rematchPressed = false;

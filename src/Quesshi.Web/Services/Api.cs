@@ -94,6 +94,17 @@ public sealed class Api(HttpClient http)
         int? questions = null, List<int>? levels = null)
         => PostAsync<LiveViewDto>("api/live/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
 
+    /// <summary>
+    /// The lobby page's own read path (issue #104): resolves a code to its current state without
+    /// joining it, so a visitor who is not (or no longer) seated, or who reloads after the duel has
+    /// started, sees what is actually there instead of a join call's 400. Null on a 404 (unknown code,
+    /// or a non-participant reading a duel past its lobby phase) exactly as every other call here.
+    /// </summary>
+    public Task<LiveViewDto?> LiveByCodeAsync(string code) => GetAsync<LiveViewDto>($"api/live/by-code/{Uri.EscapeDataString(Code(code))}");
+
+    /// <summary>The async twin of <see cref="LiveByCodeAsync"/>.</summary>
+    public Task<MatchSummaryDto?> MatchByCodeAsync(string code) => GetAsync<MatchSummaryDto>($"api/matches/by-code/{Uri.EscapeDataString(Code(code))}");
+
     public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
     public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");
     public Task<bool> UpdateLobbySettingsAsync(string id, bool isLive, UpdateDuelSettingsDto settings)
