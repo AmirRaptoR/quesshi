@@ -213,12 +213,16 @@ public sealed class LiveMatchGrain(
     /// <summary>
     /// Atomically updates settings, capacity, or both — see the interface's own remarks.
     /// <paramref name="capacity"/> null skips the capacity half entirely. The clock is settled once, up
-    /// front, before either half is evaluated: settling may itself expire the lobby, and that has to be
-    /// persisted even when the update this call was making is then refused — exactly as
-    /// <see cref="JoinAsync"/> and <see cref="LeaveAsync"/> already behave. The settings half is only
-    /// attempted when the requested settings actually differ from the current ones — the equal-settings
-    /// no-op rule — because <see cref="LiveMatch.UpdateSettings"/> always refuses once the question set
-    /// is drawn, and a capacity-only change must still succeed on a pre-drawn lobby.
+    /// front, before either half is evaluated, and that one <c>now</c> is reused for every clock-facing
+    /// call below — <see cref="LiveMatch.SetCapacity"/> settles the clock again itself (see its own
+    /// remarks), and a second, later <c>clock.Now</c> read here could cross the lobby's expiry between
+    /// the pre-check and the apply, silently discarding an already-approved capacity change. Settling
+    /// may itself expire the lobby, and that has to be persisted even when the update this call was
+    /// making is then refused — exactly as <see cref="JoinAsync"/> and <see cref="LeaveAsync"/> already
+    /// behave. The settings half is only attempted when the requested settings actually differ from the
+    /// current ones — the equal-settings no-op rule — because <see cref="LiveMatch.UpdateSettings"/>
+    /// always refuses once the question set is drawn, and a capacity-only change must still succeed on
+    /// a pre-drawn lobby.
     /// </summary>
     public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels, int? capacity)
     {
@@ -234,9 +238,10 @@ public sealed class LiveMatchGrain(
             return false; // an invalid combination refuses the change outright, same as at creation
         }
 
+        var now = clock.Now;
         var phaseBefore = _match.Phase;
         var wasOver = _match.IsOver;
-        _match.Advance(clock.Now);
+        _match.Advance(now);
 
         var settingsChanged = settings != _match.Settings;
         var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
@@ -248,10 +253,16 @@ public sealed class LiveMatchGrain(
             return false;
         }
 
-        if (settingsChanged) _match.UpdateSettings(playerId, settings);
-        if (capacity is { } toApply) _match.SetCapacity(playerId, toApply, clock.Now);
+        // Apply half, both checked against the return value: CanSetCapacity/settingsOk were evaluated
+        // against the state Advance(now) just settled into, and nothing between here and the apply
+        // calls can change that state again — but discarding either's own result would silently claim
+        // success for a half that the domain itself refused.
+        var settingsApplied = !settingsChanged || _match.UpdateSettings(playerId, settings);
+        var capacityApplied = capacity is not { } toApply || _match.SetCapacity(playerId, toApply, now);
 
         await AfterChangeAsync(phaseBefore, wasOver);
+        if (!settingsApplied || !capacityApplied) return false;
+
         await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }

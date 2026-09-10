@@ -169,7 +169,10 @@ public sealed class MatchGrain(
     /// <summary>
     /// Atomically updates settings, capacity, or both — mirrors <c>LiveMatchGrain.UpdateSettingsAsync</c>
     /// exactly, including the equal-settings no-op rule and settling the clock (here, <see cref="Match.TryForfeit"/>)
-    /// once, up front, before either half is evaluated.
+    /// once, up front, before either half is evaluated — and reusing that one <c>now</c> for every
+    /// clock-facing call below, since <see cref="Match.SetCapacity"/> settles the clock again itself and
+    /// a second, later <c>clock.Now</c> read here could cross the match's forfeit deadline between the
+    /// pre-check and the apply, silently discarding an already-approved capacity change.
     /// </summary>
     public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount, List<string> categoryIds, List<int> levels, int? capacity)
     {
@@ -185,8 +188,9 @@ public sealed class MatchGrain(
             return false; // an invalid combination refuses the change outright, same as at creation
         }
 
+        var now = clock.Now;
         var wasOver = _match.IsOver;
-        _match.TryForfeit(clock.Now);
+        _match.TryForfeit(now);
 
         var settingsChanged = settings != _match.Settings;
         var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
@@ -199,10 +203,17 @@ public sealed class MatchGrain(
             return false;
         }
 
-        if (settingsChanged) _match.UpdateSettings(playerId, settings);
-        if (capacity is { } toApply) _match.SetCapacity(playerId, toApply, clock.Now);
+        // Apply half, both checked against the return value: CanSetCapacity/settingsOk were evaluated
+        // against the state TryForfeit(now) just settled into, and nothing between here and the apply
+        // calls can change that state again — but discarding either's own result would silently claim
+        // success for a half that the domain itself refused.
+        var settingsApplied = !settingsChanged || _match.UpdateSettings(playerId, settings);
+        var capacityApplied = capacity is not { } toApply || _match.SetCapacity(playerId, toApply, now);
 
         await SaveAsync();
+        if (!wasOver && _match.IsOver) await SettleAsync();
+        if (!settingsApplied || !capacityApplied) return false;
+
         await SafeNotifyAsync(() => notifier.LobbyUpdatedAsync(_match.Id));
         return true;
     }
