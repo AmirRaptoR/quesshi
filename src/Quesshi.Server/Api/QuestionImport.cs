@@ -136,7 +136,7 @@ public static class QuestionImport
         var statusRaw = Field(f, "status");
         QuestionStatus status;
         if (statusRaw is null) status = QuestionStatus.Pending;
-        else if (Enum.TryParse(statusRaw, true, out status)) { }
+        else if (Enum.TryParse(statusRaw, true, out status) && Enum.IsDefined(status)) { }
         else return (null, prompt, "bad_status");
 
         var mediaUrl = Field(f, "mediaurl");
@@ -147,7 +147,7 @@ public static class QuestionImport
             var mediaKindRaw = Field(f, "mediakind");
             MediaKind mediaKind;
             if (mediaKindRaw is null) mediaKind = MediaKind.Image;
-            else if (Enum.TryParse(mediaKindRaw, true, out mediaKind)) { }
+            else if (Enum.TryParse(mediaKindRaw, true, out mediaKind) && Enum.IsDefined(mediaKind)) { }
             else return (null, prompt, "bad_media_kind");
             media = new MediaRef(mediaKind, mediaUrl);
         }
@@ -214,7 +214,7 @@ public static class QuestionImport
     private static bool TryParseKind(string? value, out QuestionKind kind)
     {
         kind = QuestionKind.Choice;
-        return !string.IsNullOrWhiteSpace(value) && Enum.TryParse(value, true, out kind);
+        return !string.IsNullOrWhiteSpace(value) && Enum.TryParse(value, true, out kind) && Enum.IsDefined(kind);
     }
 
     // --- CSV ---------------------------------------------------------------------------

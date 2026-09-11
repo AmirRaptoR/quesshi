@@ -17,7 +17,7 @@ public static class QuestionImportTemplates
 
     public static (string? Error, TemplateFile? File) Build(string? kind, string? format)
     {
-        if (string.IsNullOrWhiteSpace(kind) || !Enum.TryParse<QuestionKind>(kind, true, out var parsedKind))
+        if (string.IsNullOrWhiteSpace(kind) || !Enum.TryParse<QuestionKind>(kind, true, out var parsedKind) || !Enum.IsDefined(parsedKind))
             return ("bad_kind", null);
 
         var normalizedFormat = format?.Trim().ToLowerInvariant();

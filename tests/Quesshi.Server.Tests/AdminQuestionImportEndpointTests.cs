@@ -231,6 +231,20 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
         Assert.Equal("bad_status", result.Error);
     }
 
+    [Fact]
+    public async Task A_numeric_but_undefined_status_value_rejects_the_row_rather_than_silently_defaulting()
+    {
+        using var client = AdminClient();
+        var prompt = $"Numeric bad status {Guid.NewGuid():N}?";
+
+        var report = await ImportAsync(client, "choice", "csv",
+            Csv(ChoiceHeader, ChoiceRow(prompt, status: "99")));
+
+        var result = report.Rows.Single();
+        Assert.False(result.Accepted);
+        Assert.Equal("bad_status", result.Error);
+    }
+
     // --- TopicKey dedup -----------------------------------------------------------------
 
     [Fact]
@@ -429,6 +443,9 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
             (await client.GetAsync("/api/admin/questions/import/template?kind=jigsaw&format=csv")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/admin/questions/import/template?kind=choice&format=xml")).StatusCode);
+        // A numeric string Enum.TryParse would otherwise accept as an undefined QuestionKind value.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/admin/questions/import/template?kind=99&format=csv")).StatusCode);
     }
 
     // --- malformed input --------------------------------------------------------------
@@ -488,6 +505,7 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
     [Theory]
     [InlineData("jigsaw", "csv")]
     [InlineData("", "csv")]
+    [InlineData("99", "csv")] // a numeric string Enum.TryParse would otherwise accept as an undefined value
     public async Task An_unrecognised_or_missing_kind_fails_the_whole_request(string kind, string format)
     {
         using var client = AdminClient();
