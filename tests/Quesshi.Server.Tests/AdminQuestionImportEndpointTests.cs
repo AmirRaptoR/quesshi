@@ -321,5 +321,60 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
         Assert.Equal(csvReport.Rows.Single().Error, jsonReport.Rows.Single().Error);
     }
 
+    // --- templates -----------------------------------------------------------------
+
+    [Theory]
+    [InlineData("choice", "csv", "text/csv", new[] { "lang", "categoryId", "level", "prompt",
+        "choice1", "choice2", "choice3", "choice4", "correctIndex" })]
+    [InlineData("sort", "csv", "text/csv", new[] { "lang", "categoryId", "level", "prompt",
+        "item1", "item2", "item3", "item4" })]
+    [InlineData("map", "csv", "text/csv", new[] { "lang", "categoryId", "level", "prompt",
+        "targetShape", "countryCode", "latitude", "longitude", "radiusKm", "baseLayer" })]
+    public async Task A_CSV_template_exists_for_every_kind_with_the_documented_columns(
+        string kind, string format, string contentType, string[] mustContainColumns)
+    {
+        using var client = AdminClient();
+
+        var response = await client.GetAsync($"/api/admin/questions/import/template?kind={kind}&format={format}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(contentType, response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+        Assert.Contains($"{kind}-template.csv", response.Content.Headers.ContentDisposition?.FileName);
+
+        var header = (await response.Content.ReadAsStringAsync()).Split('\r', '\n')[0].ToLowerInvariant();
+        Assert.All(mustContainColumns, c => Assert.Contains(c.ToLowerInvariant(), header));
+    }
+
+    [Theory]
+    [InlineData("choice")]
+    [InlineData("sort")]
+    [InlineData("map")]
+    public async Task A_JSON_template_exists_for_every_kind_and_parses_back_as_an_array(string kind)
+    {
+        using var client = AdminClient();
+
+        var response = await client.GetAsync($"/api/admin/questions/import/template?kind={kind}&format=json");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+
+        var doc = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, doc.ValueKind);
+        Assert.True(doc.GetArrayLength() > 0);
+        Assert.True(doc[0].TryGetProperty("prompt", out _));
+    }
+
+    [Fact]
+    public async Task An_unrecognised_kind_or_format_for_a_template_is_refused()
+    {
+        using var client = AdminClient();
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/admin/questions/import/template?kind=jigsaw&format=csv")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/admin/questions/import/template?kind=choice&format=xml")).StatusCode);
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }
