@@ -270,5 +270,56 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
         Assert.All(report.Rows, r => Assert.True(r.Accepted));
     }
 
+    // --- CSV and JSON agree -------------------------------------------------------------
+
+    [Fact]
+    public async Task An_equivalent_CSV_row_and_JSON_row_produce_the_same_outcome()
+    {
+        using var client = AdminClient();
+        var prompt = $"Same either way {Guid.NewGuid():N}?";
+
+        var csvReport = await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, ChoiceRow(prompt)));
+
+        var json = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                lang = "en", categoryId = "geography", level = 2, prompt,
+                choice1 = "Sargasso Sea", choice2 = "Baltic Sea", choice3 = "Red Sea", choice4 = "Black Sea",
+                correctIndex = 0
+            }
+        });
+        var jsonReport = await ImportAsync(client, "choice", "json", json);
+
+        Assert.True(csvReport.Rows.Single().Accepted);
+        Assert.Equal(csvReport.Rows.Single().Accepted, jsonReport.Rows.Single().Accepted);
+        Assert.Equal(csvReport.Rows.Single().Error, jsonReport.Rows.Single().Error);
+    }
+
+    [Fact]
+    public async Task An_equivalent_invalid_CSV_row_and_JSON_row_are_both_rejected_with_the_same_code()
+    {
+        using var client = AdminClient();
+        var prompt = $"Both wrong {Guid.NewGuid():N}?";
+
+        var badChoiceRow = ChoiceRow(prompt);
+        badChoiceRow[Array.IndexOf(ChoiceHeader, "choice2")] = "";
+        var csvReport = await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, badChoiceRow));
+
+        var json = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                lang = "en", categoryId = "geography", level = 2, prompt,
+                choice1 = "Sargasso Sea", choice2 = "", choice3 = "Red Sea", choice4 = "Black Sea",
+                correctIndex = 0
+            }
+        });
+        var jsonReport = await ImportAsync(client, "choice", "json", json);
+
+        Assert.Equal("bad_choices", csvReport.Rows.Single().Error);
+        Assert.Equal(csvReport.Rows.Single().Error, jsonReport.Rows.Single().Error);
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }
