@@ -108,6 +108,13 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
             d.CorrectIndex >= 0 && d.CorrectIndex < d.Choices.Count ? d.Choices[d.CorrectIndex] : ""))];
     }
 
+    public async Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
+    {
+        var filter = F.Eq(q => q.Lang, (int)lang) & F.Type(q => q.Topic, BsonType.String);
+        var topics = await db.Questions.Distinct(q => q.Topic, filter, cancellationToken: ct).ToListAsync(ct);
+        return topics.Where(t => t is not null).Select(t => t!).ToHashSet();
+    }
+
     private static FilterDefinition<QuestionDoc> Build(QuestionFilter f)
     {
         var filter = F.Empty;

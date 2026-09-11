@@ -28,4 +28,12 @@ public interface IQuestionRepository
     /// similar wording are the same question however much padding one of them carries.
     /// </summary>
     Task<IReadOnlyCollection<(string Prompt, string Answer)>> ExistingQuestionsAsync(string categoryId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every distinct, non-null topic already stored for a language — what a bulk import checks a
+    /// row's <see cref="TopicKey"/> against before anything is written. The store's own unique index
+    /// on (language, topic) enforces this for a real write, but a dry run has nothing written yet to
+    /// check that index against, so the check has to be explicit here too.
+    /// </summary>
+    Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default);
 }

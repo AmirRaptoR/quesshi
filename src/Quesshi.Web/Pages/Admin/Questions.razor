@@ -1,5 +1,6 @@
 @page "/admin/questions"
 @inherits AdminPageBase
+@inject IJSRuntime Js
 
 <PageTitle>@L["admin.questions"] · @L["app.name"]</PageTitle>
 
@@ -84,6 +85,61 @@
                     <button class="btn btn--ghost btn--sm" style="margin-inline-start:.6rem" @onclick="ShowPendingAsync">@L["admin.reviewPending"]</button>
                 }
             </div>
+        }
+    </section>
+
+    <section class="card card--flat">
+        <span class="eyebrow">@L["admin.import"]</span>
+
+        <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.6rem">
+            <select class="select" style="width:auto" @bind="_import.Kind">
+                <option value="choice">@L["admin.kind.choice"]</option>
+                <option value="sort">@L["admin.kind.sort"]</option>
+                <option value="map">@L["admin.kind.map"]</option>
+            </select>
+
+            <select class="select" style="width:auto" @bind="_import.Format">
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+            </select>
+
+            <button class="btn btn--ghost btn--sm" @onclick="DownloadTemplateAsync">@L["admin.import.template"]</button>
+
+            <InputFile OnChange="PickImportFileAsync" />
+
+            <button class="btn btn--sm" disabled="@(_import.File is null || _importing)" @onclick="DryRunImportAsync">
+                @(_importing ? L["admin.import.working"] : L["admin.import.dryRun"])
+            </button>
+
+            @if (_importReport is { DryRun: true, Accepted: > 0 })
+            {
+                <button class="btn btn--gold btn--sm" disabled="@_importing" @onclick="CommitImportAsync">
+                    @L["admin.import.commit"]
+                </button>
+            }
+        </div>
+
+        <p class="faint" style="margin:.5rem 0 0;font-size:var(--step--1)">@L["admin.import.hint"]</p>
+
+        @if (_importReport is { } report)
+        {
+            <div class="notice @(report is { DryRun: false, Rejected: 0 } ? "notice--good" : null)" style="margin-top:.7rem">
+                @L.Format("admin.import.summary", L.Num(report.Total), L.Num(report.Accepted), L.Num(report.Rejected))
+                @(report.DryRun ? "" : " · " + L["admin.import.committed"])
+            </div>
+
+            @if (report.Rows.Any(r => !r.Accepted))
+            {
+                <table class="table" style="margin-top:.5rem">
+                    <thead><tr><th>#</th><th>@L["admin.prompt"]</th><th>@L["admin.import.error"]</th></tr></thead>
+                    <tbody>
+                        @foreach (var row in report.Rows.Where(r => !r.Accepted))
+                        {
+                            <tr><td>@row.Row</td><td>@(row.Prompt ?? "—")</td><td dir="ltr">@row.Error</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
         }
     </section>
 
@@ -426,6 +482,10 @@
     private GenerationRunDto? _lastRun;
     private bool _generating, _generatorReady;
 
+    private readonly ImportForm _import = new();
+    private ImportReportDto? _importReport;
+    private bool _importing;
+
     private AdminQuestionPageDto? _results;
     private List<CategoryDto> _categories = [];
     private QuestionForm? _editing;
@@ -616,6 +676,39 @@
 
         _editing!.MediaKind = media.Kind;
         _editing.MediaUrl = media.Url;
+    }
+
+    private void PickImportFileAsync(InputFileChangeEventArgs e)
+    {
+        _import.File = e.File;
+        _importReport = null;
+    }
+
+    private async Task DownloadTemplateAsync()
+    {
+        if (await Api.DownloadImportTemplateAsync(_import.Kind, _import.Format) is not { } file) { _error = L["common.error"]; return; }
+
+        var contentType = _import.Format == "json" ? "application/json" : "text/csv";
+        await Js.InvokeVoidAsync("quesshi.download", file.FileName, contentType, Convert.ToBase64String(file.Bytes));
+    }
+
+    private Task DryRunImportAsync() => RunImportAsync(dryRun: true);
+    private Task CommitImportAsync() => RunImportAsync(dryRun: false);
+
+    private async Task RunImportAsync(bool dryRun)
+    {
+        if (_import.File is not { } file) return;
+
+        _importing = true;
+        using var content = new MultipartFormDataContent();
+        // 20 MB matches the server's own cap; a larger file is refused there anyway.
+        content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
+
+        _importReport = await Api.ImportQuestionsAsync(_import.Kind, _import.Format, dryRun, content);
+        _importing = false;
+
+        if (_importReport is null) { _error = L["common.error"]; return; }
+        if (!dryRun) await FetchAsync();
     }
 
     private async Task ApproveAsync(string id) { await Api.ApproveAsync(id); await FetchAsync(); }

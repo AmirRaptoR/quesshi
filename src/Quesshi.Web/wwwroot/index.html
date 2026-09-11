@@ -41,6 +41,17 @@
           document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
         },
         copy: async (text) => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },
+        // A downloaded byte array from the server, saved as a file — the only way a Blazor WASM
+        // page can trigger a save dialog, since the admin API needs a bearer token an <a href>
+        // navigation would never send.
+        download: (filename, contentType, bytesBase64) => {
+          const bytes = Uint8Array.from(atob(bytesBase64), c => c.charCodeAt(0));
+          const url = URL.createObjectURL(new Blob([bytes], { type: contentType }));
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        },
 
         // The lobby's Share pill (issue #90): true means the OS share sheet handled it — accepted,
         // cancelled, whatever the person did with it is theirs to decide, not something the page
