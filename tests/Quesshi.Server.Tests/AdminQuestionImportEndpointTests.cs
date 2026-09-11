@@ -176,5 +176,99 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
         Assert.Equal("bad_status", result.Error);
     }
 
+    // --- TopicKey dedup -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Two_rows_in_one_file_with_the_same_topic_report_one_accepted_and_one_rejected()
+    {
+        using var client = AdminClient();
+        var subject = $"subject{Guid.NewGuid():N}";
+        var aspect = "capital";
+        var first = $"First phrasing {Guid.NewGuid():N}?";
+        var second = $"Second phrasing {Guid.NewGuid():N}?";
+
+        var body = Csv(ChoiceHeader, ChoiceRow(first, subject, aspect), ChoiceRow(second, subject, aspect));
+
+        var report = await ImportAsync(client, "choice", "csv", body, dryRun: false);
+
+        Assert.Equal(1, report.Accepted);
+        Assert.Equal(1, report.Rejected);
+        Assert.Single(report.Rows, r => r.Accepted);
+        Assert.Single(report.Rows, r => !r.Accepted && r.Error == "duplicate_topic");
+        Assert.Single(LiveShared.Questions.Items, q => q.Prompt == first || q.Prompt == second);
+    }
+
+    [Fact]
+    public async Task An_invalid_row_does_not_reserve_its_topic_for_a_later_row()
+    {
+        using var client = AdminClient();
+        var subject = $"subject-{Guid.NewGuid():N}";
+        var aspect = "capital";
+
+        var invalid = ChoiceRow($"Invalid {Guid.NewGuid():N}?", subject, aspect);
+        invalid[Array.IndexOf(ChoiceHeader, "choice1")] = ""; // blank choice -> bad_choices, not accepted
+        var valid = ChoiceRow($"Valid {Guid.NewGuid():N}?", subject, aspect);
+
+        var report = await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, invalid, valid));
+
+        Assert.Equal(1, report.Accepted);
+        Assert.Equal("bad_choices", report.Rows[0].Error);
+        Assert.True(report.Rows[1].Accepted);
+    }
+
+    [Fact]
+    public async Task A_topic_matching_an_already_stored_question_in_the_same_language_is_rejected()
+    {
+        using var client = AdminClient();
+        var subject = $"subject-{Guid.NewGuid():N}";
+        var aspect = "capital";
+
+        await ImportAsync(client, "choice", "csv",
+            Csv(ChoiceHeader, ChoiceRow($"Already there {Guid.NewGuid():N}?", subject, aspect)), dryRun: false);
+
+        var report = await ImportAsync(client, "choice", "csv",
+            Csv(ChoiceHeader, ChoiceRow($"Same topic, new wording {Guid.NewGuid():N}?", subject, aspect)));
+
+        Assert.Equal("duplicate_topic", report.Rows.Single().Error);
+    }
+
+    [Fact]
+    public async Task The_same_topic_in_a_different_language_is_unaffected()
+    {
+        using var client = AdminClient();
+        var subject = $"subject-{Guid.NewGuid():N}";
+        var aspect = "capital";
+
+        var enRow = ChoiceRow($"English phrasing {Guid.NewGuid():N}?", subject, aspect);
+        await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, enRow), dryRun: false);
+
+        var nlRow = ChoiceRow($"Dutch phrasing {Guid.NewGuid():N}?", subject, aspect);
+        nlRow[Array.IndexOf(ChoiceHeader, "lang")] = "nl";
+
+        var report = await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, nlRow));
+
+        Assert.True(report.Rows.Single().Accepted);
+    }
+
+    [Theory]
+    [InlineData("only-subject", "")]
+    [InlineData("", "only-aspect")]
+    [InlineData("", "")]
+    public async Task A_row_missing_one_or_both_topic_halves_is_never_dedup_rejected(string subject, string aspect)
+    {
+        using var client = AdminClient();
+        var subjectValue = subject.Length > 0 ? $"{subject}-{Guid.NewGuid():N}" : "";
+        var aspectValue = aspect.Length > 0 ? $"{aspect}-{Guid.NewGuid():N}" : "";
+
+        var body = Csv(ChoiceHeader,
+            ChoiceRow($"First {Guid.NewGuid():N}?", subjectValue, aspectValue),
+            ChoiceRow($"Second {Guid.NewGuid():N}?", subjectValue, aspectValue));
+
+        var report = await ImportAsync(client, "choice", "csv", body);
+
+        Assert.Equal(2, report.Accepted);
+        Assert.All(report.Rows, r => Assert.True(r.Accepted));
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }
