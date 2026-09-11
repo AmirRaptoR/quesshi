@@ -159,8 +159,8 @@ public static class AdminEndpoints
         // above. dryRun defaults to true so an admin always sees the report before anything is
         // written. See QuestionImport for why dedup is decided explicitly rather than left to the
         // store's unique index.
-        admin.MapPost("/questions/import", async (IFormFile? file, string? kind, string? format, bool dryRun,
-            IQuestionRepository questions, IClock clock, IIdFactory ids) =>
+        admin.MapPost("/questions/import", async (IFormFile? file, string? kind, string? format,
+            IQuestionRepository questions, IClock clock, IIdFactory ids, bool dryRun = true) =>
         {
             await using var stream = file?.OpenReadStream();
             var (error, report) = await QuestionImport.RunAsync(kind, format, stream, file?.Length ?? 0, dryRun,

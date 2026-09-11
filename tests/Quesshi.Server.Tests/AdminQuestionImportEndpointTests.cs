@@ -155,6 +155,27 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
     // --- dry run vs. commit -----------------------------------------------------------
 
     [Fact]
+    public async Task Omitting_dryRun_from_the_query_string_still_defaults_to_a_dry_run()
+    {
+        using var client = AdminClient();
+        var before = LiveShared.Questions.Items.Count;
+        var prompt = $"Defaulted dry run {Guid.NewGuid():N}?";
+
+        using var content = new MultipartFormDataContent
+        {
+            { new StringContent(Csv(ChoiceHeader, ChoiceRow(prompt)), Encoding.UTF8), "file", "import.csv" }
+        };
+        var response = await client.PostAsync("/api/admin/questions/import?kind=choice&format=csv", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var report = (await response.Content.ReadFromJsonAsync<ImportReportDto>())!;
+        Assert.True(report.DryRun);
+        Assert.Equal(1, report.Accepted);
+        Assert.Equal(before, LiveShared.Questions.Items.Count);
+        Assert.DoesNotContain(LiveShared.Questions.Items, q => q.Prompt == prompt);
+    }
+
+    [Fact]
     public async Task A_dry_run_never_changes_the_question_count()
     {
         using var client = AdminClient();
