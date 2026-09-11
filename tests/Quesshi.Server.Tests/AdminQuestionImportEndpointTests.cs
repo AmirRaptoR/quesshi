@@ -118,5 +118,63 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
         Assert.True(report.Rows.Single().Accepted);
     }
 
+    // --- dry run vs. commit -----------------------------------------------------------
+
+    [Fact]
+    public async Task A_dry_run_never_changes_the_question_count()
+    {
+        using var client = AdminClient();
+        var before = LiveShared.Questions.Items.Count;
+        var prompt = $"Dry run only {Guid.NewGuid():N}?";
+
+        var report = await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, ChoiceRow(prompt)), dryRun: true);
+
+        Assert.Equal(1, report.Accepted);
+        Assert.Equal(before, LiveShared.Questions.Items.Count);
+        Assert.DoesNotContain(LiveShared.Questions.Items, q => q.Prompt == prompt);
+    }
+
+    [Fact]
+    public async Task Committing_inserts_exactly_the_accepted_rows_as_admin_authored_and_pending_by_default()
+    {
+        using var client = AdminClient();
+        var prompt = $"Commit me {Guid.NewGuid():N}?";
+
+        var report = await ImportAsync(client, "choice", "csv", Csv(ChoiceHeader, ChoiceRow(prompt)), dryRun: false);
+
+        Assert.Equal(1, report.Accepted);
+        var stored = LiveShared.Questions.Items.Single(q => q.Prompt == prompt);
+        Assert.Equal(QuestionSource.Admin, stored.Source);
+        Assert.Equal(QuestionKind.Choice, stored.Kind);
+        Assert.Equal(QuestionStatus.Pending, stored.Status);
+    }
+
+    [Fact]
+    public async Task An_explicit_status_column_is_honoured_on_commit()
+    {
+        using var client = AdminClient();
+        var prompt = $"Approved on import {Guid.NewGuid():N}?";
+
+        await ImportAsync(client, "choice", "csv",
+            Csv(ChoiceHeader, ChoiceRow(prompt, status: "approved")), dryRun: false);
+
+        var stored = LiveShared.Questions.Items.Single(q => q.Prompt == prompt);
+        Assert.Equal(QuestionStatus.Approved, stored.Status);
+    }
+
+    [Fact]
+    public async Task An_unrecognised_status_value_rejects_the_row_rather_than_silently_defaulting()
+    {
+        using var client = AdminClient();
+        var prompt = $"Bad status {Guid.NewGuid():N}?";
+
+        var report = await ImportAsync(client, "choice", "csv",
+            Csv(ChoiceHeader, ChoiceRow(prompt, status: "definitely-not-a-status")));
+
+        var result = report.Rows.Single();
+        Assert.False(result.Accepted);
+        Assert.Equal("bad_status", result.Error);
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }
