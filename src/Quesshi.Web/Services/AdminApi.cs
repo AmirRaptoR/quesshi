@@ -97,6 +97,32 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<GenerationRunDto?> GenerateIllustratedAsync(GenerateRequestDto body) => PostAsync<GenerationRunDto>("api/admin/generate/illustrated", body);
     public Task<MediaDto?> UploadAsync(MultipartFormDataContent content) => PostContentAsync<MediaDto>("api/admin/media", content);
 
+    /// <summary>Dry run or commit — same endpoint, `dryRun` decides whether anything is written.</summary>
+    public async Task<ImportReportDto?> ImportQuestionsAsync(string kind, string format, bool dryRun, MultipartFormDataContent content)
+    {
+        try
+        {
+            var response = await Client.PostAsync($"api/admin/questions/import?kind={kind}&format={format}&dryRun={dryRun}", content);
+            return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ImportReportDto>() : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>The raw bytes and the filename the server chose, for the client to save — there is
+    /// no `Content-Disposition`-following browser navigation on the admin API, which needs a bearer
+    /// token a plain link click never sends.</summary>
+    public async Task<(byte[] Bytes, string FileName)?> DownloadImportTemplateAsync(string kind, string format)
+    {
+        try
+        {
+            var response = await Client.GetAsync($"api/admin/questions/import/template?kind={kind}&format={format}");
+            if (!response.IsSuccessStatusCode) return null;
+
+            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"{kind}-template.{format}");
+        }
+        catch { return null; }
+    }
+
     // --- live duels ------------------------------------------------------------------
     public Task<AdminLivePageDto?> AdminLiveAsync() => GetAsync<AdminLivePageDto>("api/admin/live");
     public Task<bool> EndLiveDuelAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/live/{id}/end");
