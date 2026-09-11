@@ -155,6 +155,28 @@ public static class AdminEndpoints
             return Results.Ok(created.ToAdminDto());
         });
 
+        // Bulk import: one file, one declared kind, validated through the same path as the form
+        // above. dryRun defaults to true so an admin always sees the report before anything is
+        // written. See QuestionImport for why dedup is decided explicitly rather than left to the
+        // store's unique index.
+        admin.MapPost("/questions/import", async (IFormFile? file, string? kind, string? format, bool dryRun,
+            IQuestionRepository questions, IClock clock, IIdFactory ids) =>
+        {
+            await using var stream = file?.OpenReadStream();
+            var (error, report) = await QuestionImport.RunAsync(kind, format, stream, file?.Length ?? 0, dryRun,
+                questions, clock, ids);
+
+            return error is not null ? Results.BadRequest(new { error }) : Results.Ok(report);
+        }).DisableAntiforgery();
+
+        admin.MapGet("/questions/import/template", (string? kind, string? format) =>
+        {
+            var (error, template) = QuestionImportTemplates.Build(kind, format);
+            if (error is not null) return Results.BadRequest(new { error });
+
+            return Results.File(template!.Content, template.ContentType, template.FileName);
+        });
+
         // The review queue: everything players have complained about, worst first.
         admin.MapGet("/reported", async (int? skip, int? take, IQuestionRepository questions, IPlayerRepository players) =>
         {

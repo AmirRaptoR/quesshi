@@ -85,4 +85,8 @@ public sealed class InMemoryQuestions : IQuestionRepository
             // quietly returns "", which is the worst kind of difference between the two.
             [.. Items.Where(q => q.CategoryId == categoryId).Select(q => (q.Prompt,
                 q.CorrectIndex >= 0 && q.CorrectIndex < q.Choices.Count ? q.Choices[q.CorrectIndex] : ""))]);
+
+    public Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<string>>(Items.Where(q => q.Lang == lang && q.Topic is { Length: > 0 })
+            .Select(q => q.Topic!).ToHashSet());
 }

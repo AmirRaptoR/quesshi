@@ -35,4 +35,8 @@ public sealed class FakeQuestions : IQuestionRepository
     public Task DeleteAsync(string id, CancellationToken ct = default) { Items.RemoveAll(x => x.Id == id); return Task.CompletedTask; }
     public Task<IReadOnlyCollection<(string Prompt, string Answer)>> ExistingQuestionsAsync(string categoryId, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyCollection<(string, string)>>([]);
+
+    public Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<string>>(Items.Where(q => q.Lang == lang && q.Topic is { Length: > 0 })
+            .Select(q => q.Topic!).ToHashSet());
 }
