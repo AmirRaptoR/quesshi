@@ -118,6 +118,40 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
         Assert.True(report.Rows.Single().Accepted);
     }
 
+    private static readonly string[] MapHeader =
+        ["lang", "categoryId", "level", "prompt", "targetShape", "countryCode", "latitude", "longitude", "radiusKm",
+            "baseLayer", "explanation", "mediaUrl", "mediaKind", "status", "subject", "aspect"];
+
+    private static string[] MapCountryRow(string prompt) =>
+        ["en", "geography", "2", prompt, "country", "NL", "", "", "", "borders", "", "", "", "", "", ""];
+
+    [Fact]
+    public async Task A_country_map_row_is_accepted_with_its_target_and_base_layer()
+    {
+        using var client = AdminClient();
+        var prompt = $"Which country {Guid.NewGuid():N}?";
+
+        var report = await ImportAsync(client, "map", "csv", Csv(MapHeader, MapCountryRow(prompt)), dryRun: false);
+
+        Assert.True(report.Rows.Single().Accepted);
+        var stored = LiveShared.Questions.Items.Single(q => q.Prompt == prompt);
+        Assert.Equal(QuestionKind.Map, stored.Kind);
+        Assert.True(stored.Target!.IsCountry);
+        Assert.Equal(MapBaseLayer.Borders, stored.BaseLayer);
+    }
+
+    [Fact]
+    public async Task A_map_row_with_an_unknown_country_is_rejected_with_the_forms_own_code()
+    {
+        using var client = AdminClient();
+        var row = MapCountryRow($"Unknown country {Guid.NewGuid():N}?");
+        row[Array.IndexOf(MapHeader, "countryCode")] = "ZZ";
+
+        var report = await ImportAsync(client, "map", "csv", Csv(MapHeader, row));
+
+        Assert.Equal("unknown_country", report.Rows.Single().Error);
+    }
+
     // --- dry run vs. commit -----------------------------------------------------------
 
     [Fact]
