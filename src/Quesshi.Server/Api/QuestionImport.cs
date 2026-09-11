@@ -227,8 +227,7 @@ public static class QuestionImport
         if (records.Count == 0) return (null, [], []);
 
         var header = records[0].Select(h => h.Trim().ToLowerInvariant()).ToList();
-        var expected = CommonFields.Concat(KindFields[kind]).ToHashSet();
-        if (!expected.IsSubsetOf(header) && !header.ToHashSet().IsSupersetOf(RequiredCsvColumns(kind)))
+        if (!header.ToHashSet().IsSupersetOf(RequiredCsvColumns(kind)))
             return ("bad_row", null, null);
 
         var rows = new List<Dictionary<string, string>>();
