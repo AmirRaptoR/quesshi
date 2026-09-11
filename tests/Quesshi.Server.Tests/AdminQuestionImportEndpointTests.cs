@@ -392,34 +392,45 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
 
     // --- templates -----------------------------------------------------------------
 
+    private static readonly string[] CommonColumns =
+        ["lang", "categoryId", "level", "prompt", "explanation", "mediaUrl", "mediaKind", "status", "subject", "aspect"];
+
+    private static readonly Dictionary<string, string[]> KindColumns = new()
+    {
+        ["choice"] = ["choice1", "choice2", "choice3", "choice4", "correctIndex"],
+        ["sort"] = ["item1", "item2", "item3", "item4"],
+        ["map"] = ["targetShape", "countryCode", "latitude", "longitude", "radiusKm", "baseLayer"],
+    };
+
+    private static HashSet<string> ExpectedColumns(string kind) =>
+        [.. CommonColumns.Concat(KindColumns[kind]).Select(c => c.ToLowerInvariant())];
+
     [Theory]
-    [InlineData("choice", "csv", "text/csv", new[] { "lang", "categoryId", "level", "prompt",
-        "choice1", "choice2", "choice3", "choice4", "correctIndex" })]
-    [InlineData("sort", "csv", "text/csv", new[] { "lang", "categoryId", "level", "prompt",
-        "item1", "item2", "item3", "item4" })]
-    [InlineData("map", "csv", "text/csv", new[] { "lang", "categoryId", "level", "prompt",
-        "targetShape", "countryCode", "latitude", "longitude", "radiusKm", "baseLayer" })]
-    public async Task A_CSV_template_exists_for_every_kind_with_the_documented_columns(
-        string kind, string format, string contentType, string[] mustContainColumns)
+    [InlineData("choice", "text/csv")]
+    [InlineData("sort", "text/csv")]
+    [InlineData("map", "text/csv")]
+    public async Task A_CSV_template_exists_for_every_kind_with_exactly_the_documented_columns(
+        string kind, string contentType)
     {
         using var client = AdminClient();
 
-        var response = await client.GetAsync($"/api/admin/questions/import/template?kind={kind}&format={format}");
+        var response = await client.GetAsync($"/api/admin/questions/import/template?kind={kind}&format=csv");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(contentType, response.Content.Headers.ContentType?.MediaType);
         Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
         Assert.Contains($"{kind}-template.csv", response.Content.Headers.ContentDisposition?.FileName);
 
-        var header = (await response.Content.ReadAsStringAsync()).Split('\r', '\n')[0].ToLowerInvariant();
-        Assert.All(mustContainColumns, c => Assert.Contains(c.ToLowerInvariant(), header));
+        var header = (await response.Content.ReadAsStringAsync()).Split('\r', '\n')[0]
+            .Split(',').Select(c => c.ToLowerInvariant()).ToHashSet();
+        Assert.Equal(ExpectedColumns(kind), header);
     }
 
     [Theory]
     [InlineData("choice")]
     [InlineData("sort")]
     [InlineData("map")]
-    public async Task A_JSON_template_exists_for_every_kind_and_parses_back_as_an_array(string kind)
+    public async Task A_JSON_template_exists_for_every_kind_with_exactly_the_documented_keys(string kind)
     {
         using var client = AdminClient();
 
@@ -427,11 +438,15 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+        Assert.Contains($"{kind}-template.json", response.Content.Headers.ContentDisposition?.FileName);
 
         var doc = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(JsonValueKind.Array, doc.ValueKind);
         Assert.True(doc.GetArrayLength() > 0);
-        Assert.True(doc[0].TryGetProperty("prompt", out _));
+
+        var keys = doc[0].EnumerateObject().Select(p => p.Name.ToLowerInvariant()).ToHashSet();
+        Assert.Equal(ExpectedColumns(kind), keys);
     }
 
     [Fact]
