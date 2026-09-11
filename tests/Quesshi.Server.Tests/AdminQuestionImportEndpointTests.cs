@@ -376,5 +376,98 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
             (await client.GetAsync("/api/admin/questions/import/template?kind=choice&format=xml")).StatusCode);
     }
 
+    // --- malformed input --------------------------------------------------------------
+
+    [Fact]
+    public async Task A_CSV_row_with_the_wrong_number_of_columns_is_rejected_without_aborting_the_rest()
+    {
+        using var client = AdminClient();
+        var goodPrompt = $"Fine {Guid.NewGuid():N}?";
+
+        // One column short, mid-file, followed by a perfectly good row.
+        var badLine = string.Join(',', ChoiceRow($"Broken {Guid.NewGuid():N}?").Take(ChoiceHeader.Length - 1));
+        var body = Csv(ChoiceHeader) + badLine + "\n" + string.Join(',', ChoiceRow(goodPrompt)) + "\n";
+
+        var report = await ImportAsync(client, "choice", "csv", body);
+
+        Assert.Equal(2, report.Total);
+        Assert.Equal("bad_row", report.Rows[0].Error);
+        Assert.Null(report.Rows[0].Prompt);
+        Assert.True(report.Rows[1].Accepted);
+    }
+
+    [Fact]
+    public async Task A_non_object_JSON_array_element_is_rejected_without_aborting_the_rest()
+    {
+        using var client = AdminClient();
+        var goodPrompt = $"Fine {Guid.NewGuid():N}?";
+
+        var json = $$"""
+        [
+          "not an object",
+          { "lang": "en", "categoryId": "geography", "level": 2, "prompt": {{JsonSerializer.Serialize(goodPrompt)}},
+            "choice1": "a", "choice2": "b", "choice3": "c", "choice4": "d", "correctIndex": 0 }
+        ]
+        """;
+
+        var report = await ImportAsync(client, "choice", "json", json);
+
+        Assert.Equal(2, report.Total);
+        Assert.Equal("bad_row", report.Rows[0].Error);
+        Assert.True(report.Rows[1].Accepted);
+    }
+
+    [Fact]
+    public async Task A_whole_document_JSON_syntax_error_fails_the_request_rather_than_producing_a_report()
+    {
+        using var client = AdminClient();
+
+        var response = await PostImportAsync(client, "choice", "json", "{ this is not json ][");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("bad_json", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+    }
+
+    // --- request-level rejections -------------------------------------------------------
+
+    [Theory]
+    [InlineData("jigsaw", "csv")]
+    [InlineData("", "csv")]
+    public async Task An_unrecognised_or_missing_kind_fails_the_whole_request(string kind, string format)
+    {
+        using var client = AdminClient();
+
+        var response = await PostImportAsync(client, kind, format, Csv(ChoiceHeader, ChoiceRow("x")));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("bad_kind", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task An_unrecognised_format_fails_the_whole_request()
+    {
+        using var client = AdminClient();
+
+        var response = await PostImportAsync(client, "choice", "xml", Csv(ChoiceHeader, ChoiceRow("x")));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("bad_format", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task An_empty_file_fails_the_whole_request()
+    {
+        using var client = AdminClient();
+        using var content = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([]), "file", "import.csv" }
+        };
+
+        var response = await client.PostAsync("/api/admin/questions/import?kind=choice&format=csv&dryRun=true", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("empty_file", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }
