@@ -23,6 +23,10 @@ public static class AdminEndpoints
     {
         var admin = app.MapGroup("/api/admin").RequireAuthorization("admin");
 
+        // Matching has a separate bounded context and persistence contract. Keep its authoring
+        // routes parallel to the trivia routes so the latter remain byte-compatible.
+        admin.MapMatchingAdmin();
+
         admin.MapGet("/dashboard", async (IPlayerRepository players, IQuestionRepository questions,
             IMatchArchive matches, IGenerationLog log, IQuestionGenerator generator, TopUpOptions topUp,
             IAiSpendLog spend, IClock clock, OpenRouterOptions ai, ILiveDirectory live, IGrainFactory grains) =>
@@ -234,6 +238,8 @@ public static class AdminEndpoints
 
             var slug = Slugify(body.Id.Length > 0 ? body.Id : nameEn);
             if (slug.Length == 0) return Results.BadRequest(new { error = "bad_id" });
+            if (slug.StartsWith("m-", StringComparison.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = "reserved_prefix" });
 
             var all = await categories.AllAsync();
             var icon = new[] { iconFa, iconEn, iconNl, body.Icon.Trim() }.FirstOrDefault(i => i.Length > 0) ?? "";

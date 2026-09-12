@@ -60,6 +60,17 @@ public static class Mappers
         [.. q.Reports.Select(r => new QuestionReportDto(r.PlayerId, "", r.Reason.ToString().ToLowerInvariant(), r.At))],
         q.Kind.ToString().ToLowerInvariant(), q.Target.ToDto(), q.BaseLayer?.ToString().ToLowerInvariant());
 
+    public static MatchingQuestionDto ToAdminDto(this MatchingQuestion q) => new(
+        q.Id, q.Lang.Code(), q.MatchingCategoryId, q.Prompt,
+        q.AnswerSource.ToString().ToLowerInvariant(), [.. q.FixedChoices],
+        q.Status.ToString().ToLowerInvariant(), q.Source.ToString().ToLowerInvariant(),
+        q.Media.Kind == MediaKind.None ? null : new MediaDto(
+            q.Media.Kind.ToString().ToLowerInvariant(), q.Media.Url, q.Media.Attribution),
+        q.Topic, q.CreatedAt, q.UpdatedAt, q.TimesServed);
+
+    public static MatchingCategoryDto ToDto(this MatchingCategory c, Language lang) => new(
+        c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl);
+
     /// <summary>
     /// A map target on its way to the admin form. Unlike every play-facing mapper, this one is
     /// <i>allowed</i> to send the answer: the admin panel is where the answer is authored and an
