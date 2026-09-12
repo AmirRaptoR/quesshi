@@ -100,6 +100,16 @@ public class AnswerRevealTests
     }
 
     [Fact]
+    public void A_players_answer_is_never_marked_right_or_wrong()
+    {
+        // Every field a Choice reveal would call "correct" — index 0, from Question.CorrectIndex
+        // being pinned there — must not be read as one for this kind.
+        Assert.Null(AnswerReveal.IsRight(kind: 3, correctIndex: 0, correctTarget: null, choiceIndex: 0, response: null));
+        Assert.Null(AnswerReveal.IsRight(kind: 3, correctIndex: 0, correctTarget: null, choiceIndex: 1, response: null));
+        Assert.Null(AnswerReveal.IsRight(kind: 3, correctIndex: 0, correctTarget: null, choiceIndex: null, response: null));
+    }
+
+    [Fact]
     public void A_sorting_answer_is_right_when_its_stored_order_is_the_identity()
     {
         Assert.True(AnswerReveal.IsRight(1, 0, null, -1, "0,1,2,3"));

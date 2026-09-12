@@ -95,6 +95,10 @@ public static class AnswerReveal
             2 => MapPick.Parse(correctTarget) is { IsCountry: true } target && MapPick.Parse(response) is { IsCountry: true } pick
                 ? string.Equals(target.CountryCode, pick.CountryCode, StringComparison.Ordinal)
                 : null,
+            // A players question has no correct choice to compare against — CorrectIndex is only
+            // ever the 0 validation pins it to, and treating that as an answer to match would mark
+            // whoever picked the first participant "right" for no reason at all.
+            3 => null,
             _ => choiceIndex is null ? null : choiceIndex == correctIndex
         };
 

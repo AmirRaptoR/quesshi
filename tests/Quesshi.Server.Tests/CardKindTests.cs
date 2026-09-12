@@ -49,15 +49,19 @@ public class CardKindTests
         explanation: "because", status: QuestionStatus.Approved, kind: QuestionKind.Map,
         target: MapTarget.City(52.37, 4.9, 100), baseLayer: MapBaseLayer.Blank);
 
-    private static QuestionCardDto Async(Question question, int slot)
-        => GameEndpoints.BuildCard(MatchId, new ServedSlot(slot, question.Id, 20, MatchRules.QuestionsPerMatch), question, Geography);
+    private static QuestionCardDto Async(Question question, int slot, IReadOnlyList<string>? participantNames = null)
+        => GameEndpoints.BuildCard(MatchId, new ServedSlot(slot, question.Id, 20, MatchRules.QuestionsPerMatch), question, Geography, participantNames);
 
-    private static LiveRoundCardDto LiveView(Question question, int slot)
-        => Mappers.BuildLiveCard(MatchId, slot, MatchRules.QuestionsPerMatch, question, Geography, Language.En, T0);
+    private static LiveRoundCardDto LiveView(Question question, int slot, IReadOnlyList<string>? participantNames = null)
+        => Mappers.BuildLiveCard(MatchId, slot, MatchRules.QuestionsPerMatch, question, Geography, Language.En, T0, participantNames);
 
-    private static LiveRoundCardDto LivePush(Question question, int slot)
+    private static LiveRoundCardDto LivePush(Question question, int slot, IReadOnlyList<string>? participantNames = null)
         => LiveMatchGrain.BuildRoundCard(MatchId, new LiveRound(slot, question.Id, T0), question, Geography,
-            MatchRules.QuestionsPerMatch).ToDto();
+            MatchRules.QuestionsPerMatch, participantNames).ToDto();
+
+    private static Question PlayersQuestion() => Question.Create("players-q", Language.En, "geography", Difficulty.Easy,
+        "Who does the most work at home?", [], 0, T0,
+        explanation: "because", status: QuestionStatus.Approved, kind: QuestionKind.Players);
 
     // ---- One shuffle, three builders ----
 
@@ -217,6 +221,31 @@ public class CardKindTests
             Assert.Empty(LiveView(question, 0).Choices);
             Assert.Empty(LivePush(question, 0).Choices);
         }
+    }
+
+    /// <summary>A players question has nothing of its own to serve — the roster is substituted in,
+    /// identically, at all three builders.</summary>
+    [Fact]
+    public void A_players_card_serves_the_roster_as_choices_from_all_three()
+    {
+        var question = PlayersQuestion();
+        List<string> roster = ["Amir", "Sara"];
+
+        Assert.Equal(roster, Async(question, 0, roster).Choices);
+        Assert.Equal(roster, LiveView(question, 0, roster).Choices);
+        Assert.Equal(roster, LivePush(question, 0, roster).Choices);
+    }
+
+    /// <summary>Without a roster to substitute, a players card serves nothing rather than guessing —
+    /// the question itself has no choices of its own to fall back to.</summary>
+    [Fact]
+    public void A_players_card_with_no_roster_supplied_serves_no_choices()
+    {
+        var question = PlayersQuestion();
+
+        Assert.Empty(Async(question, 0).Choices);
+        Assert.Empty(LiveView(question, 0).Choices);
+        Assert.Empty(LivePush(question, 0).Choices);
     }
 
     /// <summary>No card of any kind has ever carried the correct index, and none has grown a way to.</summary>
