@@ -314,6 +314,8 @@
   "live.end.abandonedByYou": "Je bent weggegaan.",
   "live.end.noContest": "Niemand scoorde. Het telt niet mee.",
   "live.opponentAway": "De verbinding van je tegenstander viel weg.",
+  "live.players.agreed": "Jullie waren het allemaal eens!",
+  "live.players.disagreed": "Jullie antwoordden verschillend.",
   "live.question.locked": "Antwoord vastgelegd",
   "live.question.theyAnswered": "De ander heeft geantwoord",
   "live.question.waitingForThem": "Wachten tot de ander antwoordt…",
