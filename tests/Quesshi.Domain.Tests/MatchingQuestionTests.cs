@@ -149,4 +149,16 @@ public class MatchingQuestionTests
 
         Assert.Null(q.Topic);
     }
+
+    [Theory]
+    [InlineData(QuestionStatus.Approved, true)]
+    [InlineData(QuestionStatus.Pending, false)]
+    [InlineData(QuestionStatus.Rejected, false)]
+    public void IsPlayable_is_true_only_when_approved(QuestionStatus status, bool expected)
+    {
+        var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
+            MatchingAnswerSource.Participants, null, QuestionSource.Admin, status, T0);
+
+        Assert.Equal(expected, q.IsPlayable);
+    }
 }
