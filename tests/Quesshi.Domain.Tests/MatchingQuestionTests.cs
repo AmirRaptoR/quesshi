@@ -67,4 +67,21 @@ public class MatchingQuestionTests
 
         Assert.Throws<ArgumentException>(() => NewFixed(choices));
     }
+
+    [Fact]
+    public void Null_FixedChoices_is_valid_for_Participants()
+    {
+        var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
+            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0);
+
+        Assert.Empty(q.FixedChoices);
+    }
+
+    [Fact]
+    public void Null_FixedChoices_is_rejected_as_too_few_for_Fixed()
+    {
+        Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies",
+            "Match each actor to their role.", MatchingAnswerSource.Fixed, null,
+            QuestionSource.Admin, QuestionStatus.Pending, T0));
+    }
 }
