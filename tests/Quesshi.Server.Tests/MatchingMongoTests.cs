@@ -84,12 +84,12 @@ public sealed class MatchingMongoTests
             Assert.Empty(await repository.ExistingTopicsAsync(Language.Fa));
             Assert.Single(await repository.SampleApprovedAsync(Language.En, "m-friends", 10, ["m1"]),
                 q => q.Id == "m2");
-            Assert.Equal(1, await repository.CountAsync(new MatchingQuestionFilter(CategoryId: "m-friends")));
+            Assert.Equal(2, await repository.CountAsync(new MatchingQuestionFilter(CategoryId: "m-friends")));
             Assert.Single(await repository.FindAsync(new MatchingQuestionFilter(Lang: Language.En, Text: "friend")),
                 q => q.Id == "m1");
 
             var trivia = Question.Create("same-topic-trivia", Language.En, "general", Difficulty.Easy,
-                "Trivia", ["a", "b"], 0, now, topic: "people/trivia");
+                "Trivia", ["a", "b", "c", "d"], 0, now, topic: "people/trivia");
             await new MongoQuestionRepository(context).UpsertAsync(trivia);
             Assert.DoesNotContain("people/trivia", await repository.ExistingTopicsAsync(Language.En));
         }
