@@ -446,6 +446,20 @@ public class AsyncSubmissionKindTests(ClusterFixture fixture) : IAsyncDisposable
         Assert.Equal((-1, (string?)null), await StoredAsync(duel, ChoiceSlot));
     }
 
+    [Fact]
+    public async Task A_choice_answer_outside_the_four_options_is_refused()
+    {
+        // The endpoint's own sanity check now bounds by the widest a Players question can ever be
+        // (MatchRules.MaxParticipants, 8), so index 4 clears that coarse gate. A Choice question
+        // still has only four options, and must refuse it rather than silently grade it wrong.
+        var duel = await NewDuelAsync();
+        await ReachAsync(duel, ChoiceSlot);
+
+        var refused = await PostAnswerAsync(duel, ChoiceSlot, 4, null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+    }
+
     // ---- Players: no correct answer, and the range is the seat count ----
 
     [Fact]
