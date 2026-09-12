@@ -521,6 +521,7 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
     [InlineData("jigsaw", "csv")]
     [InlineData("", "csv")]
     [InlineData("99", "csv")] // a numeric string Enum.TryParse would otherwise accept as an undefined value
+    [InlineData("players", "csv")] // a real kind, but one with no column shape to import
     public async Task An_unrecognised_or_missing_kind_fails_the_whole_request(string kind, string format)
     {
         using var client = AdminClient();

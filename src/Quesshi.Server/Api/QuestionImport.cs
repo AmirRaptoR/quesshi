@@ -48,7 +48,9 @@ public static class QuestionImport
         string? kind, string? format, Stream? content, long contentLength, bool dryRun,
         IQuestionRepository questions, IClock clock, IIdFactory ids, CancellationToken ct = default)
     {
-        if (!TryParseKind(kind, out var parsedKind)) return ("bad_kind", null);
+        // A real kind, but one this importer has no column shape for: its options are the match's
+        // own participants, not something a row could ever hold.
+        if (!TryParseKind(kind, out var parsedKind) || parsedKind == QuestionKind.Players) return ("bad_kind", null);
         if (format?.Trim().ToLowerInvariant() is not ("csv" or "json")) return ("bad_format", null);
         if (content is null || contentLength == 0) return ("empty_file", null);
         if (contentLength > MaxImportBytes) return ("file_too_large", null);
