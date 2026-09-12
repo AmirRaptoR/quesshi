@@ -103,6 +103,19 @@ public static class AnswerReveal
         };
 
     /// <summary>
+    /// Whether a reveal should mark this option as <i>the</i> correct one — the gold dot beside a
+    /// choice list, distinct from <see cref="IsRight"/>, which grades one player's particular pick.
+    /// <para>
+    /// A <c>Players</c> question has no correct option at all: <c>correctIndex</c> is only ever the
+    /// zero validation pins it to, and comparing against it would light up whoever happens to sit
+    /// first in the roster as though the question had an answer. This is false for every index when
+    /// <paramref name="kind"/> is <c>Players</c>, whatever <paramref name="correctIndex"/> says.
+    /// </para>
+    /// </summary>
+    public static bool IsCorrectOption(int kind, int index, int correctIndex)
+        => kind != 3 && index == correctIndex;
+
+    /// <summary>
     /// Reads <c>"2,0,3,1"</c> into indices, and only accepts a genuine permutation of
     /// <c>0..count-1</c>. The mirror of the server's <c>SortOrder.TryParseOrder</c>, and invariant
     /// for the same reason: a Persian browser must not be able to produce — or here, to accept —
