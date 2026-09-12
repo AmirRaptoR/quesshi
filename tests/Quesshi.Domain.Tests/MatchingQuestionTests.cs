@@ -118,4 +118,17 @@ public class MatchingQuestionTests
         Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies", "   ",
             MatchingAnswerSource.Fixed, ["Hero", "Villain"], QuestionSource.Admin, QuestionStatus.Pending, T0));
     }
+
+    [Fact]
+    public void RecordServed_increments_TimesServed_by_one_per_call()
+    {
+        var q = NewParticipants();
+
+        q.RecordServed();
+        Assert.Equal(1, q.TimesServed);
+
+        q.RecordServed();
+        q.RecordServed();
+        Assert.Equal(3, q.TimesServed);
+    }
 }
