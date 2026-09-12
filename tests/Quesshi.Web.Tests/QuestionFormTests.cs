@@ -83,6 +83,38 @@ public class QuestionFormTests
         Assert.Equal(["Tokyo", "Delhi", "Cairo", "Lima"], form.ToDto().Choices);
     }
 
+    /// <summary>A players question has nothing of its own to carry — its options are whoever is in
+    /// the match — so it sends no choices and no index, exactly as a map question does, but with no
+    /// target or base layer either.</summary>
+    [Fact]
+    public void A_players_question_sends_no_choices_no_index_and_no_map_fields_even_when_some_were_typed()
+    {
+        var form = Filled();
+        form.Kind = "players";
+        form.CountryCode = "NL"; // left over from trying it as a map question
+
+        var dto = form.ToDto();
+
+        Assert.Equal("players", dto.Kind);
+        Assert.Empty(dto.Choices);
+        Assert.Equal(0, dto.CorrectIndex);
+        Assert.Null(dto.Target);
+        Assert.Null(dto.BaseLayer);
+    }
+
+    [Fact]
+    public void Switching_to_players_and_back_does_not_lose_what_was_typed()
+    {
+        var form = Filled();
+
+        form.Kind = "players";
+        _ = form.ToDto();
+        form.Kind = "choice";
+
+        Assert.Equal(["Tokyo", "Delhi", "Cairo", "Lima"], form.ToDto().Choices);
+        Assert.Equal(2, form.ToDto().CorrectIndex);
+    }
+
     [Fact]
     public void A_city_target_carries_its_point_and_its_radius()
     {

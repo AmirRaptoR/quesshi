@@ -51,6 +51,7 @@ public sealed class QuestionForm
 
     public bool IsMap => Kind == "map";
     public bool IsSort => Kind == "sort";
+    public bool IsPlayers => Kind == "players";
     public bool IsCity => IsMap && TargetShape == "city";
 
     /// <summary>
@@ -101,8 +102,8 @@ public sealed class QuestionForm
     /// the admin to fix something they never typed.
     /// </summary>
     public SaveQuestionDto ToDto() => new(Id, Lang, CategoryId, Level, Prompt.Trim(),
-        IsMap ? [] : [.. Choices.Select(c => c.Trim())],
-        IsMap || IsSort ? 0 : CorrectIndex,
+        IsMap || IsPlayers ? [] : [.. Choices.Select(c => c.Trim())],
+        IsMap || IsSort || IsPlayers ? 0 : CorrectIndex,
         Explanation, MediaKind, MediaUrl, Status,
         Kind,
         IsMap ? new MapTargetDto(TargetShape, CountryCode, Latitude, Longitude, RadiusKm) : null,

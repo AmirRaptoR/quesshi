@@ -289,6 +289,12 @@
                         </div>
                     }
                 }
+                else if (_editing.IsPlayers)
+                {
+                    @* Nothing to author here: the options are whoever is actually in the match, filled
+                       in when the question is served — a prompt is the whole question. *@
+                    <p class="faint" style="margin:0">@L["admin.playersHint"]</p>
+                }
                 else
                 {
                     <div class="field">
@@ -450,8 +456,8 @@
 @code {
     private static readonly int[] Levels = [1, 2, 3, 4, 5];
 
-    /// <summary>The three shapes a question can be, in the order the enum defines them.</summary>
-    private static readonly string[] Kinds = ["choice", "sort", "map"];
+    /// <summary>The four shapes a question can be, in the order the enum defines them.</summary>
+    private static readonly string[] Kinds = ["choice", "sort", "map", "players"];
 
     /// <summary>What a map question's answer can be. Two, and never both at once.</summary>
     private static readonly string[] Shapes = ["country", "city"];
