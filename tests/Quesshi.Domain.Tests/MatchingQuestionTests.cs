@@ -96,4 +96,12 @@ public class MatchingQuestionTests
     {
         Assert.Throws<ArgumentException>(() => NewFixed(["Hero", " hero ", "Villain"]));
     }
+
+    [Fact]
+    public void Choices_are_stored_trimmed_and_in_the_order_supplied_with_nothing_appended()
+    {
+        var q = NewFixed(["  Hero ", "Sidekick", " Villain  "]);
+
+        Assert.Equal(["Hero", "Sidekick", "Villain"], q.FixedChoices);
+    }
 }
