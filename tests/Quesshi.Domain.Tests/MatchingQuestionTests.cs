@@ -131,4 +131,22 @@ public class MatchingQuestionTests
         q.RecordServed();
         Assert.Equal(3, q.TimesServed);
     }
+
+    [Fact]
+    public void Topic_is_whatever_the_caller_supplies()
+    {
+        var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
+            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0,
+            topic: "actor|role");
+
+        Assert.Equal("actor|role", q.Topic);
+    }
+
+    [Fact]
+    public void A_null_topic_is_valid_and_means_not_deduplicated()
+    {
+        var q = NewParticipants();
+
+        Assert.Null(q.Topic);
+    }
 }
