@@ -27,4 +27,32 @@ public class MatchingQuestionEditTests
         Assert.Equal(MediaRef.None, q.Media);
         Assert.Equal(T0, q.UpdatedAt);
     }
+
+    [Fact]
+    public void Editing_Fixed_to_Participants_empties_FixedChoices()
+    {
+        var q = New();
+
+        q.Edit(Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Participants,
+            null, null, T1);
+
+        Assert.Equal(MatchingAnswerSource.Participants, q.AnswerSource);
+        Assert.Empty(q.FixedChoices);
+    }
+
+    [Fact]
+    public void Editing_Participants_to_Fixed_requires_a_valid_choice_list()
+    {
+        var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
+            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0);
+
+        Assert.Throws<ArgumentException>(() => q.Edit(Language.En, "movies", "Match each actor to their role.",
+            MatchingAnswerSource.Fixed, null, null, T1));
+
+        q.Edit(Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Fixed,
+            ["Hero", "Villain"], null, T1);
+
+        Assert.Equal(MatchingAnswerSource.Fixed, q.AnswerSource);
+        Assert.Equal(["Hero", "Villain"], q.FixedChoices);
+    }
 }
