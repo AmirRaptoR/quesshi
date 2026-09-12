@@ -21,4 +21,22 @@ public class MatchingQuestionTests
 
         Assert.Equal(0, q.TimesServed);
     }
+
+    [Fact]
+    public void Participants_with_choices_is_rejected()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies",
+            "Match each actor to their role.", MatchingAnswerSource.Participants, ["a", "b"],
+            QuestionSource.Admin, QuestionStatus.Pending, T0));
+
+        Assert.Equal("choices", ex.ParamName);
+    }
+
+    [Fact]
+    public void Participants_with_no_choices_succeeds_with_empty_FixedChoices()
+    {
+        var q = NewParticipants();
+
+        Assert.Empty(q.FixedChoices);
+    }
 }
