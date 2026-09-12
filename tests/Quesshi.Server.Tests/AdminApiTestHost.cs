@@ -53,6 +53,12 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton(cluster.GrainFactory);
                 services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
                 services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
+                // Matching content has its own persistence boundary and fake store, just like the
+                // production server registers separate Mongo repositories. Keeping both here lets
+                // admin endpoint tests resolve the complete admin dependency graph without mixing
+                // matching rows into the trivia fakes.
+                services.AddSingleton<IMatchingQuestionRepository, FakeMatchingQuestions>();
+                services.AddSingleton<IMatchingCategoryRepository, FakeMatchingCategories>();
                 services.AddSingleton<IMatchArchive>(LiveShared.Archive);
                 services.AddSingleton<IPlayerRepository>(LiveShared.Players);
                 services.AddSingleton<ILiveDirectory>(LiveShared.Directory);

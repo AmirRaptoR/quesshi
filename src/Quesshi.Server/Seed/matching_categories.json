@@ -1,0 +1,8 @@
+[
+  { "id": "m-partners", "nameFa": "همسران", "nameEn": "Partners", "nameNl": "Partners", "icon": "💞", "color": "#E86FA8", "sortOrder": 1 },
+  { "id": "m-partners-living-together", "nameFa": "همخانه‌ها", "nameEn": "Partners living together", "nameNl": "Samenwonende partners", "icon": "🏠", "color": "#C77DFF", "sortOrder": 2 },
+  { "id": "m-families-with-children", "nameFa": "خانواده‌های دارای فرزند", "nameEn": "Families with children", "nameNl": "Gezinnen met kinderen", "icon": "👨‍👩‍👧", "color": "#5FBF6A", "sortOrder": 3 },
+  { "id": "m-friends", "nameFa": "دوستان", "nameEn": "Friends", "nameNl": "Vrienden", "icon": "🤝", "color": "#2EC4B6", "sortOrder": 4 },
+  { "id": "m-colleagues", "nameFa": "همکاران", "nameEn": "Colleagues", "nameNl": "Collega's", "icon": "💼", "color": "#F2B441", "sortOrder": 5 },
+  { "id": "m-teammates", "nameFa": "هم‌تیمی‌ها", "nameEn": "Teammates", "nameNl": "Teamgenoten", "icon": "⚽", "color": "#48BB78", "sortOrder": 6 }
+]

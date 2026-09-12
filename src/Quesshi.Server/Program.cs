@@ -88,6 +88,8 @@ builder.Services.AddSingleton<IIdFactory, IdFactory>();
 builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
+builder.Services.AddSingleton<IMatchingQuestionRepository, MongoMatchingQuestionRepository>();
+builder.Services.AddSingleton<IMatchingCategoryRepository, MongoMatchingCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
 builder.Services.AddSingleton<IAdminUserRepository, MongoAdminUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();

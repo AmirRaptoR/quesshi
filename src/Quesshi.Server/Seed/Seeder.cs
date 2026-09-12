@@ -10,8 +10,16 @@ namespace Quesshi.Server.Seed;
 /// from their content, so re-running updates rather than duplicates. No translated text lives in
 /// this file — it all comes from the JSON beside it.
 /// </summary>
-public sealed class Seeder(IQuestionRepository questions, ICategoryRepository categories, IClock clock, ILogger<Seeder> logger)
+public sealed class Seeder(IQuestionRepository questions, ICategoryRepository categories, IClock clock,
+    ILogger<Seeder> logger, IMatchingCategoryRepository? matchingCategories = null)
 {
+    // Keep the dependency order intuitive for callers that construct the seeder directly: matching
+    // categories sit beside trivia categories, while the four-argument legacy constructor above
+    // remains source-compatible with focused tests that only seed trivia.
+    public Seeder(IQuestionRepository questions, ICategoryRepository categories,
+        IMatchingCategoryRepository matchingCategories, IClock clock, ILogger<Seeder> logger)
+        : this(questions, categories, clock, logger, matchingCategories) { }
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task RunAsync(string contentRoot, CancellationToken ct = default)
@@ -21,6 +29,16 @@ public sealed class Seeder(IQuestionRepository questions, ICategoryRepository ca
         foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "categories.json"), ct))
             if (await categories.GetAsync(row.Id, ct) is null)
                 await categories.UpsertAsync(new Category(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
+
+        // Matching categories live in their own collection and are insert-only by design. An admin
+        // may rename one after installation; unlike seeded questions, a redeploy must not overwrite
+        // that edit. The optional dependency keeps the seeder usable by older focused tests while
+        // the server always supplies the registered repository.
+        if (matchingCategories is not null)
+            foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "matching_categories.json"), ct))
+                if (await matchingCategories.GetAsync(row.Id, ct) is null)
+                    await matchingCategories.UpsertAsync(
+                        new MatchingCategory(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
 
         var inserted = 0;
 
