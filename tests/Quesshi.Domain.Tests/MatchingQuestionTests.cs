@@ -104,4 +104,18 @@ public class MatchingQuestionTests
 
         Assert.Equal(["Hero", "Sidekick", "Villain"], q.FixedChoices);
     }
+
+    [Fact]
+    public void A_blank_prompt_is_rejected_for_Participants()
+    {
+        Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies", "   ",
+            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0));
+    }
+
+    [Fact]
+    public void A_blank_prompt_is_rejected_for_Fixed()
+    {
+        Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies", "   ",
+            MatchingAnswerSource.Fixed, ["Hero", "Villain"], QuestionSource.Admin, QuestionStatus.Pending, T0));
+    }
 }
