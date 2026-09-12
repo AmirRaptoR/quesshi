@@ -95,8 +95,25 @@ public static class AnswerReveal
             2 => MapPick.Parse(correctTarget) is { IsCountry: true } target && MapPick.Parse(response) is { IsCountry: true } pick
                 ? string.Equals(target.CountryCode, pick.CountryCode, StringComparison.Ordinal)
                 : null,
+            // A players question has no correct choice to compare against — CorrectIndex is only
+            // ever the 0 validation pins it to, and treating that as an answer to match would mark
+            // whoever picked the first participant "right" for no reason at all.
+            3 => null,
             _ => choiceIndex is null ? null : choiceIndex == correctIndex
         };
+
+    /// <summary>
+    /// Whether a reveal should mark this option as <i>the</i> correct one — the gold dot beside a
+    /// choice list, distinct from <see cref="IsRight"/>, which grades one player's particular pick.
+    /// <para>
+    /// A <c>Players</c> question has no correct option at all: <c>correctIndex</c> is only ever the
+    /// zero validation pins it to, and comparing against it would light up whoever happens to sit
+    /// first in the roster as though the question had an answer. This is false for every index when
+    /// <paramref name="kind"/> is <c>Players</c>, whatever <paramref name="correctIndex"/> says.
+    /// </para>
+    /// </summary>
+    public static bool IsCorrectOption(int kind, int index, int correctIndex)
+        => kind != 3 && index == correctIndex;
 
     /// <summary>
     /// Reads <c>"2,0,3,1"</c> into indices, and only accepts a genuine permutation of

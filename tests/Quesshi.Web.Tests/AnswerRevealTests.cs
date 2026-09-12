@@ -100,6 +100,33 @@ public class AnswerRevealTests
     }
 
     [Fact]
+    public void A_players_answer_is_never_marked_right_or_wrong()
+    {
+        // Every field a Choice reveal would call "correct" — index 0, from Question.CorrectIndex
+        // being pinned there — must not be read as one for this kind.
+        Assert.Null(AnswerReveal.IsRight(kind: 3, correctIndex: 0, correctTarget: null, choiceIndex: 0, response: null));
+        Assert.Null(AnswerReveal.IsRight(kind: 3, correctIndex: 0, correctTarget: null, choiceIndex: 1, response: null));
+        Assert.Null(AnswerReveal.IsRight(kind: 3, correctIndex: 0, correctTarget: null, choiceIndex: null, response: null));
+    }
+
+    [Fact]
+    public void A_choice_option_is_marked_correct_only_at_the_correct_index()
+    {
+        Assert.True(AnswerReveal.IsCorrectOption(kind: 0, index: 2, correctIndex: 2));
+        Assert.False(AnswerReveal.IsCorrectOption(kind: 0, index: 1, correctIndex: 2));
+    }
+
+    [Fact]
+    public void A_players_option_is_never_marked_correct_even_at_the_pinned_zero()
+    {
+        // CorrectIndex is only ever the 0 validation pins it to for this kind — comparing an option's
+        // index against it would light up whoever sits first in the roster as though they were the
+        // answer, which is exactly what this must not do.
+        Assert.False(AnswerReveal.IsCorrectOption(kind: 3, index: 0, correctIndex: 0));
+        Assert.False(AnswerReveal.IsCorrectOption(kind: 3, index: 1, correctIndex: 0));
+    }
+
+    [Fact]
     public void A_sorting_answer_is_right_when_its_stored_order_is_the_identity()
     {
         Assert.True(AnswerReveal.IsRight(1, 0, null, -1, "0,1,2,3"));

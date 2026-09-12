@@ -177,7 +177,7 @@ public class RevealContractKindTests
             new RunView(Amir, 280, 2, 2, true, [-1, -1], ["0,1,2,3", "DE"]),
             new RunView(Sara, 0, 0, 2, true, [-1, -1], ["3,2,1,0", "FR"]));
 
-        var reveal = await GameEndpoints.BuildRevealAsync(view, Amir, questions, categories);
+        var reveal = await GameEndpoints.BuildRevealAsync(view, Amir, questions, categories, new FakePlayers());
 
         var sort = reveal[0];
         Assert.Equal((int)QuestionKind.Sort, sort.Kind);
@@ -215,7 +215,7 @@ public class RevealContractKindTests
             new RunView(Amir, 140, 1, 1, true, [-1], ["0,1,2,3"]),
             new RunView(Sara, 0, 0, 0, false, [], []));
 
-        var reveal = await GameEndpoints.BuildRevealAsync(view, Amir, questions, categories);
+        var reveal = await GameEndpoints.BuildRevealAsync(view, Amir, questions, categories, new FakePlayers());
 
         Assert.Equal("0,1,2,3", reveal[0].MyResponse);
         Assert.Null(reveal[0].TheirResponse);
@@ -243,4 +243,30 @@ public class RevealContractKindTests
     private static MatchView MatchViewWith(List<string> questionIds, params RunView[] runs) => new(
         "async-1", "CODE01", (int)Language.En, [Amir, Sara], (int)MatchState.Resolved, Amir, false, T0,
         questionIds, [.. runs]);
+
+    // ---- RevealedQuestionDto: a players slot shows the roster, not the (empty) stored choices ----
+
+    [Fact]
+    public async Task A_players_reveal_shows_participant_names_as_its_choices()
+    {
+        var questions = new FakeQuestions();
+        var categories = new FakeCategories();
+        var players = new FakePlayers();
+        categories.Items.Add(new Category("geography", "جغرافیا", "Geography", "globe", "#336699"));
+        questions.Items.Add(Question.Create("players-q", Language.En, "geography", Difficulty.Medium,
+            "Who does the most work at home?", [], 0, T0,
+            explanation: "because", status: QuestionStatus.Approved, kind: QuestionKind.Players));
+        players.Items.Add(Player.Register(Amir, $"{Amir}@example.com", "Amir", Language.En, T0));
+        players.Items.Add(Player.Register(Sara, $"{Sara}@example.com", "Sara", Language.En, T0));
+
+        var view = MatchViewWith(["players-q"],
+            new RunView(Amir, 0, 0, 1, true, [1], [null]),
+            new RunView(Sara, 0, 0, 1, true, [0], [null]));
+
+        var reveal = await GameEndpoints.BuildRevealAsync(view, Amir, questions, categories, players);
+
+        Assert.Equal(["Amir", "Sara"], reveal[0].Choices);
+        Assert.Equal(1, reveal[0].MyChoice);
+        Assert.Equal(0, reveal[0].TheirChoice);
+    }
 }

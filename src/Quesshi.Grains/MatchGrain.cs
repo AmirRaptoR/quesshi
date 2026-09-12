@@ -281,6 +281,16 @@ public sealed class MatchGrain(
         var question = await questions.GetAsync(_match.QuestionIds[slot])
             ?? throw new InvalidOperationException("That question has disappeared.");
 
+        // The HTTP layer's own check is only a coarse sanity bound (see GameEndpoints): it widened to
+        // the most seats a duel can ever have so a Players question's roster-sized range would clear
+        // it, which also means it no longer stops an ordinary Choice answer at four. The precise,
+        // per-kind range belongs here, where the actual bound for this question is known — a players
+        // question by its seat count, a choice question by the fixed four it has always had.
+        if (question.Kind == QuestionKind.Players && choiceIndex is not -1 && choiceIndex >= _match.Participants.Count)
+            throw new InvalidOperationException("bad_response");
+        if (question.Kind == QuestionKind.Choice && choiceIndex is not -1 && choiceIndex >= MatchRules.ChoicesPerQuestion)
+            throw new InvalidOperationException("bad_response");
+
         if (!SubmittedAnswer.TryGrade(question, _match.Id, slot, choiceIndex, response, out var graded))
             throw new InvalidOperationException("bad_response");
 

@@ -53,6 +53,9 @@ public class AdminQuestionKindEndpointTests(LiveClusterFixture fixture) : IAsync
         new(null, "en", "geography", 2, prompt, [], 0, null, null, null, "approved",
             Kind: "map", Target: new MapTargetDto("city", null, 52.37, 4.90, 150), BaseLayer: "blank");
 
+    private static SaveQuestionDto Players(string prompt = "Who does the most work at home?") =>
+        new(null, "en", "geography", 2, prompt, [], 0, null, null, null, "approved", Kind: "players");
+
     private static async Task<AdminQuestionDto> SavedAsync(HttpClient client, SaveQuestionDto body)
     {
         var response = await client.PostAsJsonAsync("/api/admin/questions", body);
@@ -178,6 +181,34 @@ public class AdminQuestionKindEndpointTests(LiveClusterFixture fixture) : IAsync
         Assert.Null(backToChoice.Target);
         Assert.Null(backToChoice.BaseLayer);
         Assert.Equal(4, backToChoice.Choices.Count);
+    }
+
+    /// <summary>An admin authors a players question with nothing but a prompt — no choices, no
+    /// correct index, no map fields, ever asked for or accepted.</summary>
+    [Fact]
+    public async Task A_players_question_is_written_with_just_a_prompt()
+    {
+        using var client = AdminClient();
+
+        var created = await SavedAsync(client, Players($"Players {Guid.NewGuid():N}?"));
+
+        Assert.Equal("players", created.Kind);
+        Assert.Empty(created.Choices);
+        Assert.Equal(0, created.CorrectIndex);
+        Assert.Null(created.Target);
+        Assert.Null(created.BaseLayer);
+
+        var stored = LiveShared.Questions.Items.Single(q => q.Id == created.Id);
+        Assert.Equal(QuestionKind.Players, stored.Kind);
+    }
+
+    [Fact]
+    public async Task A_players_question_with_choices_left_on_it_is_refused()
+    {
+        using var client = AdminClient();
+
+        Assert.Equal("players_has_choices", await RejectionAsync(client,
+            Players($"Leftover choices {Guid.NewGuid():N}?") with { Choices = ["a", "b", "c", "d"] }));
     }
 
     // --- the validation table, one row at a time ------------------------------------

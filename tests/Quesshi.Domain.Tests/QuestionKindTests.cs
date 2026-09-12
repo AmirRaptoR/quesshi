@@ -22,6 +22,9 @@ public class QuestionKindTests
         Question.Create("q3", Language.En, "geography", Difficulty.Easy, "Where is it?", [], 0, T0,
             kind: QuestionKind.Map, target: target ?? MapTarget.Country("DE"), baseLayer: layer);
 
+    private static Question Players() => Question.Create("q5", Language.En, "relationships", Difficulty.Easy,
+        "Who does the most work at home?", [], 0, T0, kind: QuestionKind.Players);
+
     // ---- the discriminator itself ----
 
     [Fact]
@@ -179,6 +182,40 @@ public class QuestionKindTests
         Assert.Equal("ZZ", q.Target!.CountryCode);
         Assert.Throws<ArgumentException>(() => MapTarget.Country("ZZZ"));
     }
+
+    // ---- Players column ----
+
+    [Fact]
+    public void A_players_question_has_no_choices_and_no_correct_index()
+    {
+        var q = Players();
+
+        Assert.Equal(QuestionKind.Players, q.Kind);
+        Assert.Empty(q.Choices);
+        Assert.Equal(0, q.CorrectIndex);
+        Assert.Null(q.Target);
+        Assert.Null(q.BaseLayer);
+    }
+
+    [Fact]
+    public void A_players_question_cannot_carry_choices()
+        => Assert.Throws<ArgumentException>(() => Question.Create("q", Language.En, "g", Difficulty.Easy, "?",
+            Four, 0, T0, kind: QuestionKind.Players));
+
+    [Fact]
+    public void A_players_question_pins_its_correct_index_to_zero()
+        => Assert.Throws<ArgumentOutOfRangeException>(() => Question.Create("q", Language.En, "g", Difficulty.Easy, "?",
+            [], 1, T0, kind: QuestionKind.Players));
+
+    [Fact]
+    public void A_players_question_cannot_carry_a_map_target()
+        => Assert.Throws<ArgumentException>(() => Question.Create("q", Language.En, "g", Difficulty.Easy, "?",
+            [], 0, T0, kind: QuestionKind.Players, target: MapTarget.Country("DE")));
+
+    [Fact]
+    public void A_players_question_cannot_carry_a_base_layer()
+        => Assert.Throws<ArgumentException>(() => Question.Create("q", Language.En, "g", Difficulty.Easy, "?",
+            [], 0, T0, kind: QuestionKind.Players, baseLayer: MapBaseLayer.Blank));
 
     // ---- editing ----
 

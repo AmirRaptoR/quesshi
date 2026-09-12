@@ -16,5 +16,10 @@ public enum QuestionKind
     Sort = 1,
 
     /// <summary>Find a place on the world map: a country, or a city within a tolerance radius.</summary>
-    Map = 2
+    Map = 2,
+
+    /// <summary>No fixed choices and no correct answer: the options are the match's own
+    /// participants, substituted in when the question is served, and the point is comparing who
+    /// picked whom rather than grading anyone right or wrong.</summary>
+    Players = 3
 }

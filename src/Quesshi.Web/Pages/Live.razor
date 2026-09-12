@@ -197,15 +197,24 @@
                     }
                     else
                     {
+                    @if (card.Kind == 3)
+                    {
+                        // No correct answer to reveal for this kind — the one thing worth saying is
+                        // whether everyone who answered agreed.
+                        var agreed = PlayersAgreement.AllAgreed(round.Answers.Select(a => a.ChoiceIndex ?? -1));
+                        <p class="chip @(agreed ? "chip--win" : null)" style="margin:0 0 .6rem">
+                            @L[agreed ? "live.players.agreed" : "live.players.disagreed"]
+                        </p>
+                    }
                     <div class="answers">
                         @for (var i = 0; i < card.Choices.Count; i++)
                         {
                             var index = i;
                             <div class="stack" style="gap:.3rem">
-                                <button class="answer @RevealClassFor(index, round.CorrectIndex, mine?.ChoiceIndex)" disabled>
+                                <button class="answer @RevealClassFor(index, round.CorrectIndex, mine?.ChoiceIndex, card.Kind)" disabled>
                                     <span class="answer__key" aria-hidden="true">@Keys[index]</span>
                                     <span class="grow" dir="auto">@card.Choices[index]</span>
-                                    @if (index == round.CorrectIndex) { <span aria-hidden="true">✓</span> }
+                                    @if (index == round.CorrectIndex && card.Kind != 3) { <span aria-hidden="true">✓</span> }
                                 </button>
                                 <div class="row" style="gap:.35rem;flex-wrap:wrap">
                                     @if (mine?.ChoiceIndex == index) { <span class="chip chip--live">@L["result.you"]</span> }
@@ -530,9 +539,12 @@
         _view = _view with { Phase = "reveal", PhaseEndsAt = reveal.EndsAt, CurrentExplanation = reveal.Explanation, Rounds = rounds, Players = players };
 
         // The local player's own answer, and only that one — never a cue for how anyone else did.
-        // A player with no entry here (already eliminated, no seat at all) gets neither cue.
+        // A player with no entry here (already eliminated, no seat at all) gets neither cue. A
+        // players question has no correct answer, so it earns neither cue either — Correct is
+        // always false for it, and playing the wrong-answer sound on every single round would be a
+        // regression dressed up as a feature.
         var mine = reveal.Players.FirstOrDefault(p => p.PlayerId == MeId);
-        if (mine is not null) _ = mine.Correct ? Sounds.Correct() : Sounds.Wrong();
+        if (mine is not null && card.Kind != 3) _ = mine.Correct ? Sounds.Correct() : Sounds.Wrong();
 
         InvokeAsync(StateHasChanged);
     }
@@ -793,16 +805,22 @@
 
     private LiveOutcome Outcome => LiveOutcomeText.Resolve(_view!.State, _view.WinnerId, _view.IsDraw, _view.AbandonedBy, MeId);
 
-    private static string? RevealClassFor(int index, int? correctIndex, int? myChoice)
+    private static string? RevealClassFor(int index, int? correctIndex, int? myChoice, int kind = 0)
     {
+        // A players question has no correct answer, so nothing here is "right" or "wrong" — the
+        // player's own pick is simply marked, and every option otherwise reads the same.
+        if (kind == 3) return index == myChoice ? "answer--locked" : "answer--dim";
         if (index == correctIndex) return "answer--right";
         if (index == myChoice) return "answer--wrong";
         return "answer--dim";
     }
 
+    // A players round has no right or wrong to show, so it reads as "no cue" here — the same as an
+    // unanswered round — rather than as a wrong answer nobody actually got wrong.
     private IReadOnlyList<bool?> RaysFor(string? playerId) => playerId is null || _view is null
         ? []
-        : [.. _view.Rounds.Select(r => r.Answers.FirstOrDefault(a => a.PlayerId == playerId) is { Answered: true } a ? a.Correct : (bool?)null)];
+        : [.. _view.Rounds.Select(r => r.Kind == 3 ? (bool?)null
+            : r.Answers.FirstOrDefault(a => a.PlayerId == playerId) is { Answered: true } a ? a.Correct : (bool?)null)];
 
     /// <summary>The rosette's second ring only ever made sense for exactly one other player — see
     /// <c>Shamseh</c>'s own remarks. A capacity&gt;2 duel hides it (<c>HideTheirs</c> above) rather

@@ -566,7 +566,11 @@ public sealed class LiveMatchGrain(
                 }
 
                 var category = await categories.GetAsync(question.CategoryId);
-                await SafeNotifyAsync(() => notifier.RoundStartedAsync(m.Id, BuildRoundCard(m.Id, round, question, category, m.QuestionIds.Count)));
+                var participantNames = question.Kind == QuestionKind.Players
+                    ? await ParticipantNamesAsync(Participants(m))
+                    : null;
+                await SafeNotifyAsync(() => notifier.RoundStartedAsync(m.Id,
+                    BuildRoundCard(m.Id, round, question, category, m.QuestionIds.Count, participantNames)));
                 _startedThrough = i + 1;
             }
 
@@ -761,6 +765,14 @@ public sealed class LiveMatchGrain(
     /// </summary>
     private static IReadOnlyList<string> Participants(LiveMatch m) => m.Participants;
 
+    /// <summary>Display names for a roster, in the same order, falling back to "—" for a player
+    /// record that cannot be resolved.</summary>
+    private async Task<List<string>> ParticipantNamesAsync(IReadOnlyList<string> participantIds)
+    {
+        var found = (await players.GetManyAsync(participantIds)).ToDictionary(p => p.Id, p => p.DisplayName);
+        return [.. participantIds.Select(id => found.GetValueOrDefault(id, "—"))];
+    }
+
     private static LiveCountdown BuildCountdown(LiveMatch m) => new(m.PhaseEndsAt!.Value, [.. Participants(m)], m.QuestionIds.Count);
 
     /// <summary>
@@ -781,8 +793,10 @@ public sealed class LiveMatchGrain(
     /// (matchId, slot) pair the silo happened to pick, which is not the property that matters.
     /// </para>
     /// </summary>
-    internal static LiveRoundCard BuildRoundCard(string matchId, LiveRound round, Question question, Category? category, int totalRounds) => new(
-        round.Slot, totalRounds, question.Id, question.Prompt, [.. question.ServedChoices(matchId, round.Slot)],
+    internal static LiveRoundCard BuildRoundCard(string matchId, LiveRound round, Question question, Category? category,
+        int totalRounds, IReadOnlyList<string>? participantNames = null) => new(
+        round.Slot, totalRounds, question.Id, question.Prompt,
+        [.. question.Kind == QuestionKind.Players && participantNames is not null ? participantNames : question.ServedChoices(matchId, round.Slot)],
         question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
         category?.Icon ?? "", category?.Color ?? "", question.Level, question.Media,
         round.StartedAt, round.StartedAt + MatchRules.QuestionTime,

@@ -236,7 +236,7 @@ public static class GameEndpoints
 
             var summary = await ToSummaryAsync(view, meId, players);
             var reveal = summary.CanReveal
-                ? await BuildRevealAsync(view, meId, questions, categories)
+                ? await BuildRevealAsync(view, meId, questions, categories, players)
                 : [];
             var standings = await BuildStandingsAsync(view, players);
 
@@ -244,10 +244,11 @@ public static class GameEndpoints
         }).WithMetadata(new AllowGuest());
 
         api.MapPost("/matches/{id}/next", async (string id, HttpContext ctx, IGrainFactory grains,
-            IQuestionRepository questions, ICategoryRepository categories) =>
+            IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
-            var served = await grains.GetGrain<IMatchGrain>(id).ServeNextAsync(meId);
+            var grain = grains.GetGrain<IMatchGrain>(id);
+            var served = await grain.ServeNextAsync(meId);
             if (served is null) return Results.NoContent();
 
             var question = await questions.GetAsync(served.QuestionId);
@@ -255,7 +256,15 @@ public static class GameEndpoints
 
             var category = await categories.GetAsync(question.CategoryId);
 
-            return Results.Ok(BuildCard(id, served, question, category));
+            // Only a players question ever needs the roster, so only it pays for fetching it.
+            List<string>? participantNames = null;
+            if (question.Kind == QuestionKind.Players)
+            {
+                var view = await grain.GetAsync(meId);
+                participantNames = await ParticipantNamesAsync(view!.Participants, players);
+            }
+
+            return Results.Ok(BuildCard(id, served, question, category, participantNames));
         }).WithMetadata(new AllowGuest());
 
         api.MapPost("/matches/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
@@ -266,7 +275,11 @@ public static class GameEndpoints
             // check on the *index* alone and says nothing about the response beside it. The response
             // cannot be validated here at all: a sorting answer is only meaningful against the
             // round's own shuffle, and that seed is reconstructible only in the grain.
-            if (body.ChoiceIndex is < -1 or >= MatchRules.ChoicesPerQuestion)
+            // The bound is the most seats a duel can ever have, not the four a choice question has:
+            // a players question can serve up to that many options, and this endpoint does not know
+            // which kind slot holds without a query it would rather not pay for on every answer. The
+            // precise, per-question bound is enforced in the grain, which already loads the question.
+            if (body.ChoiceIndex is < -1 or >= MatchRules.MaxParticipants)
                 return Results.BadRequest(new { error = "bad_choice" });
 
             try
@@ -553,19 +566,45 @@ public static class GameEndpoints
     /// target's <i>shape</i> go out.
     /// </para>
     /// </summary>
-    internal static QuestionCardDto BuildCard(string matchId, ServedSlot served, Question question, Category? category)
-        => new(served.Slot, question.Id, question.Prompt, [.. question.ServedChoices(matchId, served.Slot)],
+    internal static QuestionCardDto BuildCard(string matchId, ServedSlot served, Question question, Category? category,
+        IReadOnlyList<string>? participantNames = null)
+        => new(served.Slot, question.Id, question.Prompt, [.. ChoicesFor(matchId, served.Slot, question, participantNames)],
             question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
             category?.Icon ?? "◆", category?.Color ?? "#2EC4B6", (int)question.Level,
             ToMediaDto(question.Media),
             served.SecondsLimit, served.Total,
             (int)question.Kind, (int?)question.BaseLayer, (int?)question.Target?.Shape);
 
+    /// <summary>
+    /// A <see cref="QuestionKind.Players"/> question has nothing in <see cref="Question.ServedChoices"/>
+    /// to serve — its options are whoever is actually in the match — so every card builder substitutes
+    /// the roster here instead, at the one point each already has (or can cheaply get) it. Every other
+    /// kind is untouched.
+    /// </summary>
+    internal static IReadOnlyList<string> ChoicesFor(string matchId, int slot, Question question,
+        IReadOnlyList<string>? participantNames)
+        => question.Kind == QuestionKind.Players && participantNames is not null
+            ? participantNames
+            : question.ServedChoices(matchId, slot);
+
+    /// <summary>Display names for a roster, in the same order, falling back to "—" for a player record
+    /// that cannot be resolved — the same fallback <see cref="ToSummaryAsync"/> already uses.</summary>
+    internal static async Task<List<string>> ParticipantNamesAsync(IReadOnlyList<string> participantIds, IPlayerRepository players)
+    {
+        var found = (await players.GetManyAsync(participantIds)).ToDictionary(p => p.Id, p => p.DisplayName);
+        return [.. participantIds.Select(id => found.GetValueOrDefault(id, "—"))];
+    }
+
     internal static async Task<List<RevealedQuestionDto>> BuildRevealAsync(MatchView view, string meId,
-        IQuestionRepository questions, ICategoryRepository categories)
+        IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players)
     {
         var all = await questions.GetManyAsync(view.QuestionIds);
         var cats = (await categories.AllAsync()).ToDictionary(c => c.Id);
+
+        // Only fetched if the duel actually has one — the common case pays nothing for this.
+        var participantNames = all.Any(q => q.Kind == QuestionKind.Players)
+            ? await ParticipantNamesAsync(view.Participants, players)
+            : null;
 
         var mineRun = view.Runs.FirstOrDefault(r => r.PlayerId == meId);
         var mine = mineRun?.Choices ?? [];
@@ -586,7 +625,8 @@ public static class GameEndpoints
         // Choices in stored order, so "2,0,3,1" indexes straight into them. Anything here that
         // reached for SortOrder would mean the stored answer was in the wrong space — a bug to
         // report, not to compensate for.
-        return [.. all.Select((q, slot) => new RevealedQuestionDto(slot, q.Id, q.Prompt, [.. q.Choices], q.CorrectIndex,
+        return [.. all.Select((q, slot) => new RevealedQuestionDto(slot, q.Id, q.Prompt,
+            [.. (q.Kind == QuestionKind.Players ? participantNames ?? [] : q.Choices)], q.CorrectIndex,
             slot < mine.Count ? mine[slot] : null,
             slot < theirs.Count ? theirs[slot] : null,
             cats.GetValueOrDefault(q.CategoryId)?.NameFor(q.Lang) ?? q.CategoryId,

@@ -54,6 +54,9 @@ public sealed class TopUpOptions
     {
         QuestionKind.Sort => SortTargetPerBucket,
         QuestionKind.Map => MapTargetPerBucket,
+        // Nothing generates a players question — its answers are the match's own participants, which
+        // do not exist until a duel does — so it has no stock target and never reports as thin.
+        QuestionKind.Players => 0,
         _ => TargetPerBucket
     };
 

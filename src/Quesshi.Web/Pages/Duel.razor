@@ -98,11 +98,12 @@
                                 @for (var i = 0; i < row.Choices.Count; i++)
                                 {
                                     var index = i;
+                                    var isCorrectOption = AnswerReveal.IsCorrectOption(row.Kind, index, row.CorrectIndex);
                                     <div class="row" dir="auto" style="gap:.5rem;font-size:var(--step--1)">
-                                        <span style="color:@(index == row.CorrectIndex ? "var(--zaferan)" : "var(--sadaf-3)")">
-                                            @(index == row.CorrectIndex ? "●" : "○")
+                                        <span style="color:@(isCorrectOption ? "var(--zaferan)" : "var(--sadaf-3)")">
+                                            @(isCorrectOption ? "●" : "○")
                                         </span>
-                                        <span class="grow @(index == row.CorrectIndex ? null : "faint")">@row.Choices[index]</span>
+                                        <span class="grow @(isCorrectOption ? null : "faint")">@row.Choices[index]</span>
                                         @if (row.MyChoice == index) { <span class="chip chip--live">@L["result.you"]</span> }
                                         @if (row.TheirChoice == index) { <span class="chip">@L["result.them"]</span> }
                                     </div>

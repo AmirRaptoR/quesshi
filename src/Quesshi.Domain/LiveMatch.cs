@@ -263,7 +263,8 @@ public sealed class LiveMatch
     /// only, lobby phase only, 2 to 8, and never below however many are already seated.
     /// </summary>
     public bool CanSetCapacity(string playerId, int capacity) =>
-        playerId == OwnerId && Phase == LivePhase.Lobby && capacity is >= 2 and <= 8 && capacity >= _participants.Count;
+        playerId == OwnerId && Phase == LivePhase.Lobby
+        && capacity >= 2 && capacity <= MatchRules.MaxParticipants && capacity >= _participants.Count;
 
     /// <summary>
     /// The owner widens or narrows how many seats this lobby has, for as long as it is still open.
@@ -403,6 +404,11 @@ public sealed class LiveMatch
         // permutation and a map answer that does not parse are refused there and never reach here,
         // which is also where the -1 comes from, so nothing else in this method has to guess.
         if (kind == QuestionKind.Choice && (choiceIndex < 0 || choiceIndex >= MatchRules.ChoicesPerQuestion))
+            throw new InvalidOperationException($"Choice {choiceIndex} is out of range.");
+
+        // A players question has as many options as the duel has seats, not four — the range check
+        // is the same rule, against the count that actually applies.
+        if (kind == QuestionKind.Players && (choiceIndex < 0 || choiceIndex >= Participants.Count))
             throw new InvalidOperationException($"Choice {choiceIndex} is out of range.");
 
         var taken = now - round.StartedAt;

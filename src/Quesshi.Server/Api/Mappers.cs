@@ -248,8 +248,13 @@ public static class Mappers
             if (question is not null)
             {
                 var category = await categories.GetAsync(question.CategoryId);
+                // Already have both the roster and its names here — no extra fetch needed for the
+                // one kind that serves them as its choices.
+                var participantNames = question.Kind == QuestionKind.Players
+                    ? v.Participants.Select(id => lookup(id).Name).ToList()
+                    : null;
                 card = BuildLiveCard(v.Id, round.Slot, v.TotalRounds, question, category, (Language)v.Lang,
-                    round.StartedAt);
+                    round.StartedAt, participantNames);
 
                 if (phase == LivePhase.Reveal) explanation = question.Explanation;
             }
@@ -302,8 +307,8 @@ public static class Mappers
     /// </para>
     /// </summary>
     public static LiveRoundCardDto BuildLiveCard(string matchId, int slot, int totalRounds, Question question,
-        Category? category, Language lang, DateTimeOffset startedAt)
-        => new(slot, totalRounds, question.Id, question.Prompt, [.. question.ServedChoices(matchId, slot)],
+        Category? category, Language lang, DateTimeOffset startedAt, IReadOnlyList<string>? participantNames = null)
+        => new(slot, totalRounds, question.Id, question.Prompt, [.. GameEndpoints.ChoicesFor(matchId, slot, question, participantNames)],
             question.CategoryId, category?.NameFor(lang) ?? question.CategoryId,
             category?.Icon ?? "", category?.Color ?? "", (int)question.Level,
             question.Media.Kind == MediaKind.None ? null : new MediaDto(question.Media.Kind.ToString().ToLowerInvariant(), question.Media.Url, question.Media.Attribution),

@@ -173,6 +173,23 @@ public sealed class Question
             return;
         }
 
+        if (kind == QuestionKind.Players)
+        {
+            // A players question's options are the match's own participants, filled in when it is
+            // served — there is nothing here for choices or a correct index to mean, so both are
+            // empty rather than "ignored", exactly as Map's are.
+            if (choices.Count != 0)
+                throw new ArgumentException("A players question has no fixed choices.", nameof(choices));
+            if (correctIndex != 0)
+                throw new ArgumentOutOfRangeException(nameof(correctIndex), correctIndex, "A players question has no correct choice; leave it at 0.");
+            if (target is not null)
+                throw new ArgumentException("A players question cannot have a map target.", nameof(target));
+            if (baseLayer is not null)
+                throw new ArgumentException("A players question cannot have a map base layer.", nameof(baseLayer));
+
+            return;
+        }
+
         // Choice and Sort share the shape of the list — four distinct, non-blank strings — and
         // differ only in what CorrectIndex means. A sort's answer is the order the items are stored
         // in, so there is no index to point at and it is pinned to 0.
@@ -223,7 +240,9 @@ public sealed class Question
         ? SortOrder.For(matchId, slot, Choices.Count).Shuffle(Choices)
         : Choices;
 
-    public bool IsCorrect(int choiceIndex) => choiceIndex == CorrectIndex;
+    /// <summary>A <see cref="QuestionKind.Players"/> question has no correct choice — its point is
+    /// comparing who picked whom, not grading anyone right or wrong — so no index is ever correct.</summary>
+    public bool IsCorrect(int choiceIndex) => Kind != QuestionKind.Players && choiceIndex == CorrectIndex;
 
     /// <summary>
     /// Grades an answer that arrives as a string — a sorting order or a map answer. Wrong rather

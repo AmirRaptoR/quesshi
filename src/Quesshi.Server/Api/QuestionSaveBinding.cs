@@ -41,9 +41,12 @@ public static class QuestionSaveBinding
 
         if (!TryParseKind(body.Kind, out kind)) return "bad_kind";
 
-        var error = kind == QuestionKind.Map
-            ? BindMap(body, out target, out baseLayer)
-            : BindChoiceOrSort(body);
+        var error = kind switch
+        {
+            QuestionKind.Map => BindMap(body, out target, out baseLayer),
+            QuestionKind.Players => BindPlayers(body),
+            _ => BindChoiceOrSort(body)
+        };
 
         if (error is not null) return error;
 
@@ -79,6 +82,17 @@ public static class QuestionSaveBinding
     /// </summary>
     private static string? BindChoiceOrSort(SaveQuestionDto body)
     {
+        if (body.Target is not null) return "stray_target";
+        if (!string.IsNullOrWhiteSpace(body.BaseLayer)) return "stray_base_layer";
+
+        return null;
+    }
+
+    /// <summary>A players question's options are the match's own participants, so choices or a map
+    /// target left over from trying it as another kind would be a stray answer nothing reads.</summary>
+    private static string? BindPlayers(SaveQuestionDto body)
+    {
+        if (body.Choices.Count != 0) return "players_has_choices";
         if (body.Target is not null) return "stray_target";
         if (!string.IsNullOrWhiteSpace(body.BaseLayer)) return "stray_base_layer";
 

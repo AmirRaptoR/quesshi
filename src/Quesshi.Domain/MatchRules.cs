@@ -8,6 +8,10 @@ public static class MatchRules
     public const int CategoriesPerMatch = 3;
     public const int ChoicesPerQuestion = 4;
 
+    /// <summary>The most seats a duel lobby can ever have (see <c>Match.Create</c>/<c>LiveMatch.Create</c>),
+    /// and therefore the most options a <see cref="QuestionKind.Players"/> question can ever serve.</summary>
+    public const int MaxParticipants = 8;
+
     /// <summary>
     /// What a challenger may pick. A free number would let someone start a 200-question duel and
     /// drain a bucket; a short list keeps every length one we have content for.
