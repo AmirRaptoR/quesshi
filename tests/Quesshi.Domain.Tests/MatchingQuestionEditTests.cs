@@ -55,4 +55,37 @@ public class MatchingQuestionEditTests
         Assert.Equal(MatchingAnswerSource.Fixed, q.AnswerSource);
         Assert.Equal(["Hero", "Villain"], q.FixedChoices);
     }
+
+    [Fact]
+    public void Create_sets_CreatedAt_and_UpdatedAt_to_the_supplied_now()
+    {
+        var q = New();
+
+        Assert.Equal(T0, q.CreatedAt);
+        Assert.Equal(T0, q.UpdatedAt);
+    }
+
+    [Fact]
+    public void Edit_sets_UpdatedAt_and_never_touches_CreatedAt()
+    {
+        var q = New();
+
+        q.Edit(Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Fixed,
+            ["Hero", "Villain"], null, T1);
+
+        Assert.Equal(T0, q.CreatedAt);
+        Assert.Equal(T1, q.UpdatedAt);
+    }
+
+    [Fact]
+    public void SetStatus_and_RecordServed_change_neither_timestamp()
+    {
+        var q = New();
+
+        q.SetStatus(QuestionStatus.Approved);
+        q.RecordServed();
+
+        Assert.Equal(T0, q.CreatedAt);
+        Assert.Equal(T0, q.UpdatedAt);
+    }
 }
