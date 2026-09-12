@@ -84,4 +84,16 @@ public class MatchingQuestionTests
             "Match each actor to their role.", MatchingAnswerSource.Fixed, null,
             QuestionSource.Admin, QuestionStatus.Pending, T0));
     }
+
+    [Fact]
+    public void Fixed_rejects_a_blank_choice()
+    {
+        Assert.Throws<ArgumentException>(() => NewFixed(["Hero", "  ", "Villain"]));
+    }
+
+    [Fact]
+    public void Fixed_rejects_choices_that_are_not_distinct_after_trim_and_lowercase()
+    {
+        Assert.Throws<ArgumentException>(() => NewFixed(["Hero", " hero ", "Villain"]));
+    }
 }
