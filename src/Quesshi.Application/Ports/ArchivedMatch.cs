@@ -20,4 +20,6 @@ public sealed record ArchivedMatch(
     /// Last and defaulted, so every existing caller keeps compiling and an async duel archived
     /// before live duels existed reads back as what it always was: not one.
     /// </summary>
-    bool IsLive = false);
+    bool IsLive = false,
+    /// <summary>Content family; absent on old archive records and therefore trivia.</summary>
+    GameMode Mode = GameMode.Trivia);

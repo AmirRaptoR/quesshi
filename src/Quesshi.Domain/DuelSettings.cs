@@ -16,7 +16,8 @@ public sealed record DuelSettings(
     Language Language,
     int QuestionCount,
     IReadOnlyList<string> CategoryIds,
-    IReadOnlyList<Difficulty> Levels)
+    IReadOnlyList<Difficulty> Levels,
+    GameMode Mode = GameMode.Trivia)
 {
     /// <summary>
     /// The validated way to build settings. <see cref="MatchRules.IsValidCount"/> used to guard
@@ -25,13 +26,17 @@ public sealed record DuelSettings(
     /// at that instant, an invalid count has to be rejected here, as it is typed, rather than
     /// discovered when the duel begins.
     /// </summary>
-    public static DuelSettings Create(Language language, int questionCount, IReadOnlyList<string> categoryIds, IReadOnlyList<Difficulty> levels)
+    public static DuelSettings Create(Language language, int questionCount, IReadOnlyList<string> categoryIds,
+        IReadOnlyList<Difficulty> levels, GameMode mode = GameMode.Trivia)
     {
         if (!MatchRules.IsValidCount(questionCount))
             throw new ArgumentException(
                 $"A duel needs one of {string.Join(", ", MatchRules.QuestionCountChoices)} questions, got {questionCount}.", nameof(questionCount));
 
-        return new DuelSettings(language, questionCount, categoryIds, levels);
+        if (mode == GameMode.Matching && levels.Count > 0)
+            throw new ArgumentException("Matching duels do not support difficulty levels.", nameof(levels));
+
+        return new DuelSettings(language, questionCount, categoryIds, levels, mode);
     }
 
     /// <summary>
@@ -44,7 +49,7 @@ public sealed record DuelSettings(
     /// capacity-only change through once the question set is drawn (issue #104).
     /// </summary>
     public bool Equals(DuelSettings? other) =>
-        other is not null && Language == other.Language && QuestionCount == other.QuestionCount
+        other is not null && Language == other.Language && QuestionCount == other.QuestionCount && Mode == other.Mode
         && CategoryIds.SequenceEqual(other.CategoryIds) && Levels.SequenceEqual(other.Levels);
 
     public override int GetHashCode()
@@ -52,6 +57,7 @@ public sealed record DuelSettings(
         var hash = new HashCode();
         hash.Add(Language);
         hash.Add(QuestionCount);
+        hash.Add(Mode);
         foreach (var id in CategoryIds) hash.Add(id);
         foreach (var level in Levels) hash.Add(level);
         return hash.ToHashCode();

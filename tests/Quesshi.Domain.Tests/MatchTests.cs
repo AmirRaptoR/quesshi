@@ -445,6 +445,16 @@ public class MatchTests
     }
 
     [Fact]
+    public void UpdateSettings_cannot_change_the_game_mode()
+    {
+        var m = Match.Create("m", "C", Challenger, NewSettings(), 3, T0);
+        var matching = DuelSettings.Create(Language.En, 10, [], [], GameMode.Matching);
+
+        Assert.False(m.UpdateSettings(Challenger, matching));
+        Assert.Equal(GameMode.Trivia, m.Settings.Mode);
+    }
+
+    [Fact]
     public void UpdateSettings_is_refused_once_the_question_set_is_drawn()
     {
         var m = NewMatchN(3); // NewMatchN already draws

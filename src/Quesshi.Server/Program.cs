@@ -142,6 +142,7 @@ switch (smtpOptions.Delivery(builder.Environment.IsDevelopment()))
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<AdminAuthService>();
 builder.Services.AddSingleton<QuestionSetBuilder>();
+builder.Services.AddSingleton<MatchingQuestionSetBuilder>();
 // LiveMatchGrain's one settlement call site — see LiveMatchSettlement's own remarks for why it is a
 // plain injected class rather than a method on the grain, the way MatchGrain's own settlement is.
 builder.Services.AddSingleton<LiveMatchSettlement>();

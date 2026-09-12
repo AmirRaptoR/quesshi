@@ -28,6 +28,18 @@ public class MatchDocBackfillTests
         Assert.Equal(["u-challenger", "u-opponent"], doc.Participants);
     }
 
+    [Fact]
+    public void Mode_is_persisted_and_a_legacy_document_defaults_to_trivia()
+    {
+        var matching = new ArchivedMatch("m-mode", "MODE01", Language.En, "u-a", "u-b", null, false,
+            [new ParticipantResult("u-a", 0, 0, MatchOutcome.Loss)], MatchState.InProgress, T0, null, ["q1"],
+            Mode: GameMode.Matching);
+
+        Assert.Equal((int)GameMode.Matching, MatchDoc.From(matching).Mode);
+        Assert.Equal(GameMode.Matching, MatchDoc.From(matching).ToDomain().Mode);
+        Assert.Equal(GameMode.Trivia, new MatchDoc().ToDomain().Mode);
+    }
+
     /// <summary>
     /// The case the spec calls out by name: a lobby nobody has joined has a null opponent, and
     /// backfilling has to produce a one-seat list, never a phantom second participant that would

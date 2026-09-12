@@ -1,7 +1,9 @@
 namespace Quesshi.Shared;
 
 public sealed record MatchSummaryDto(string Id, string Code, string Lang, string State, PlayerSideDto Me, PlayerSideDto? Opponent,
-    string? WinnerId, bool IsDraw, DateTimeOffset CreatedAt, bool CanPlay, bool CanReveal, string Outcome,
+    string? WinnerId, [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] bool? IsDraw,
+    DateTimeOffset CreatedAt, bool CanPlay, bool CanReveal,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Outcome,
     /// <summary>How many questions this duel holds; not every duel is six.</summary>
     int Questions = 6,
     /// <summary>A live duel is never CanPlay — it advances on its own clock, so the row offers Rejoin instead.</summary>
@@ -23,4 +25,6 @@ public sealed record MatchSummaryDto(string Id, string Code, string Lang, string
     DuelSettingsDto? Settings = null,
     /// <summary>Settings stop being editable once the question set is drawn — <see cref="Questions"/>
     /// itself is that drawn count, so this is simply <see cref="Questions"/> &gt; 0.</summary>
-    bool SettingsLocked = false);
+    bool SettingsLocked = false,
+    /// <summary>Matching is sent explicitly; null retains the byte shape of legacy trivia rows.</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Mode = null);

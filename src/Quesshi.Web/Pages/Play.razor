@@ -239,7 +239,7 @@
         var detail = await Api.MatchAsync(MatchId);
         if (detail is null) return;
 
-        _ = SoundOutcomeMapping.ForOutcome(detail.Summary.Outcome) switch
+        _ = SoundOutcomeMapping.ForOutcome(detail.Summary.Outcome ?? "pending") switch
         {
             SoundOutcome.Win => Sounds.Win(),
             SoundOutcome.Loss => Sounds.Loss(),
