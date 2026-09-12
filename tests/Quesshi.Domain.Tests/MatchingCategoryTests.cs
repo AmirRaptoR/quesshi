@@ -1,3 +1,4 @@
+using System.Reflection;
 using Quesshi.Domain;
 
 namespace Quesshi.Domain.Tests;
@@ -32,5 +33,24 @@ public class MatchingCategoryTests
         var c = New(nameEn: "");
 
         Assert.Equal("فارسی", c.NameFor(Language.En));
+    }
+
+    [Fact]
+    public void MatchingCategory_is_a_distinct_type_from_Category_with_no_conversion()
+    {
+        var matchingCategoryType = typeof(MatchingCategory);
+        var categoryType = typeof(Category);
+
+        Assert.False(categoryType.IsAssignableFrom(matchingCategoryType));
+        Assert.False(matchingCategoryType.IsAssignableFrom(categoryType));
+
+        bool ConvertsBetween(Type type) => type
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Where(m => m.Name is "op_Implicit" or "op_Explicit")
+            .Any(m => (m.ReturnType == categoryType && m.GetParameters()[0].ParameterType == matchingCategoryType)
+                   || (m.ReturnType == matchingCategoryType && m.GetParameters()[0].ParameterType == categoryType));
+
+        Assert.False(ConvertsBetween(matchingCategoryType));
+        Assert.False(ConvertsBetween(categoryType));
     }
 }
