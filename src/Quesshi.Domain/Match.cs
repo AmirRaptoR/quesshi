@@ -236,7 +236,8 @@ public sealed class Match
     /// only, still awaiting an opponent, 2 to 8, and never below however many are already seated.
     /// </summary>
     public bool CanSetCapacity(string playerId, int capacity) =>
-        playerId == OwnerId && State == MatchState.AwaitingOpponent && capacity is >= 2 and <= 8 && capacity >= _participants.Count;
+        playerId == OwnerId && State == MatchState.AwaitingOpponent
+        && capacity >= 2 && capacity <= MatchRules.MaxParticipants && capacity >= _participants.Count;
 
     /// <summary>
     /// The owner widens or narrows how many seats this lobby has, for as long as it is still open.
