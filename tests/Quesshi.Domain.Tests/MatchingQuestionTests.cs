@@ -39,4 +39,32 @@ public class MatchingQuestionTests
 
         Assert.Empty(q.FixedChoices);
     }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    public void Fixed_succeeds_for_two_through_eight_choices(int count)
+    {
+        var choices = Enumerable.Range(1, count).Select(i => $"choice{i}").ToArray();
+
+        var q = NewFixed(choices);
+
+        Assert.Equal(count, q.FixedChoices.Count);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void Fixed_rejects_out_of_range_choice_counts(int count)
+    {
+        var choices = Enumerable.Range(1, count).Select(i => $"choice{i}").ToArray();
+
+        Assert.Throws<ArgumentException>(() => NewFixed(choices));
+    }
 }
