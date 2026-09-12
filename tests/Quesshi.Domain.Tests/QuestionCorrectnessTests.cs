@@ -22,6 +22,9 @@ public class QuestionCorrectnessTests
         "Where is Amsterdam?", [], 0, T0, kind: QuestionKind.Map,
         target: MapTarget.City(52.37, 4.9, 50), baseLayer: MapBaseLayer.Blank);
 
+    private static Question Players() => Question.Create("q5", Language.En, "relationships", Difficulty.Easy,
+        "Who does the most work at home?", [], 0, T0, kind: QuestionKind.Players);
+
     // ---- Choice: unchanged ----
 
     [Fact]
@@ -139,4 +142,22 @@ public class QuestionCorrectnessTests
     [Fact]
     public void A_map_answer_does_not_grade_a_sorting_question()
         => Assert.False(Sorting().IsCorrect("52.37,4.9"));
+
+    // ---- Players: no answer is ever correct ----
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(-1)]
+    public void A_players_question_is_never_correct_by_index(int choiceIndex)
+        => Assert.False(Players().IsCorrect(choiceIndex));
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void A_players_question_is_never_correct_by_response(string? response)
+        => Assert.False(Players().IsCorrect(response));
 }
