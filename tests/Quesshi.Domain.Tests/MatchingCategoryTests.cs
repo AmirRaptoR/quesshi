@@ -36,6 +36,29 @@ public class MatchingCategoryTests
     }
 
     [Fact]
+    public void NameFor_treats_whitespace_as_a_present_name_and_unknown_language_as_English()
+    {
+        var c = new MatchingCategory("movies", " ", "en", "icon", "#fff", NameNl: " ");
+
+        Assert.Equal(" ", c.NameFor(Language.Fa));
+        Assert.Equal(" ", c.NameFor(Language.Nl));
+
+        var fallback = new MatchingCategory("movies", "فارسی", "", "icon", "#fff");
+        Assert.Equal("فارسی", fallback.NameFor((Language)42));
+    }
+
+    [Fact]
+    public void MatchingCategory_defaults_match_Category()
+    {
+        var matching = new MatchingCategory("movies", "fa", "en", "icon", "#fff");
+        var trivia = new Category("movies", "fa", "en", "icon", "#fff");
+
+        Assert.Equal(trivia.IsActive, matching.IsActive);
+        Assert.Equal(trivia.SortOrder, matching.SortOrder);
+        Assert.Equal(trivia.NameNl, matching.NameNl);
+    }
+
+    [Fact]
     public void MatchingCategory_is_a_distinct_type_from_Category_with_no_conversion()
     {
         var matchingCategoryType = typeof(MatchingCategory);

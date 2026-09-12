@@ -8,11 +8,11 @@ public class MatchingQuestionTests
 
     private static MatchingQuestion NewParticipants() => MatchingQuestion.Create("mq1", Language.En, "movies",
         "Match each actor to their role.", MatchingAnswerSource.Participants, null,
-        QuestionSource.Admin, QuestionStatus.Pending, T0);
+        T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
 
     private static MatchingQuestion NewFixed(IReadOnlyList<string>? choices = null) => MatchingQuestion.Create(
         "mq1", Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Fixed,
-        choices ?? ["Hero", "Sidekick", "Villain"], QuestionSource.Admin, QuestionStatus.Pending, T0);
+        choices ?? ["Hero", "Sidekick", "Villain"], T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
 
     [Fact]
     public void Create_starts_TimesServed_at_zero_regardless_of_caller_input()
@@ -27,7 +27,7 @@ public class MatchingQuestionTests
     {
         var ex = Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies",
             "Match each actor to their role.", MatchingAnswerSource.Participants, ["a", "b"],
-            QuestionSource.Admin, QuestionStatus.Pending, T0));
+            T0, source: QuestionSource.Admin, status: QuestionStatus.Pending));
 
         Assert.Equal("choices", ex.ParamName);
     }
@@ -41,13 +41,13 @@ public class MatchingQuestionTests
     }
 
     [Theory]
-    [InlineData(2)]
+    [InlineData(MatchingRules.MinFixedChoices)]
     [InlineData(3)]
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
     [InlineData(7)]
-    [InlineData(8)]
+    [InlineData(MatchingRules.MaxFixedChoices)]
     public void Fixed_succeeds_for_two_through_eight_choices(int count)
     {
         var choices = Enumerable.Range(1, count).Select(i => $"choice{i}").ToArray();
@@ -58,9 +58,9 @@ public class MatchingQuestionTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(9)]
+    [InlineData(MatchingRules.MinFixedChoices - 2)]
+    [InlineData(MatchingRules.MinFixedChoices - 1)]
+    [InlineData(MatchingRules.MaxFixedChoices + 1)]
     public void Fixed_rejects_out_of_range_choice_counts(int count)
     {
         var choices = Enumerable.Range(1, count).Select(i => $"choice{i}").ToArray();
@@ -72,7 +72,7 @@ public class MatchingQuestionTests
     public void Null_FixedChoices_is_valid_for_Participants()
     {
         var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
-            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0);
+            MatchingAnswerSource.Participants, null, T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
 
         Assert.Empty(q.FixedChoices);
     }
@@ -82,7 +82,51 @@ public class MatchingQuestionTests
     {
         Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies",
             "Match each actor to their role.", MatchingAnswerSource.Fixed, null,
-            QuestionSource.Admin, QuestionStatus.Pending, T0));
+            T0, source: QuestionSource.Admin, status: QuestionStatus.Pending));
+    }
+
+    [Fact]
+    public void Unknown_answer_source_is_rejected_by_name()
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => MatchingQuestion.Create("mq1", Language.En, "movies",
+            "Match each actor to their role.", (MatchingAnswerSource)42, null, T0));
+
+        Assert.Equal("answerSource", ex.ParamName);
+    }
+
+    [Fact]
+    public void Create_copies_the_choices_list()
+    {
+        var choices = new List<string> { "Hero", "Villain" };
+        var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
+            MatchingAnswerSource.Fixed, choices, T0);
+
+        choices[0] = "Changed";
+        Assert.Equal(["Hero", "Villain"], q.FixedChoices);
+    }
+
+    [Fact]
+    public void Create_accepts_arbitrary_identity_values_trims_prompt_and_defaults_media()
+    {
+        var q = MatchingQuestion.Create("", Language.En, "not-m-prefixed", "  Prompt  ",
+            MatchingAnswerSource.Participants, null, T0);
+
+        Assert.Equal("", q.Id);
+        Assert.Equal("not-m-prefixed", q.MatchingCategoryId);
+        Assert.Equal("Prompt", q.Prompt);
+        Assert.Equal(MediaRef.None, q.Media);
+    }
+
+    [Fact]
+    public void Validate_reports_the_expected_parameter_for_prompt_and_choices()
+    {
+        var prompt = Assert.Throws<ArgumentException>(() => MatchingQuestion.Validate("  ",
+            MatchingAnswerSource.Participants, null));
+        Assert.Equal("prompt", prompt.ParamName);
+
+        var choices = Assert.Throws<ArgumentException>(() => MatchingQuestion.Validate("Prompt",
+            MatchingAnswerSource.Participants, ["a"]));
+        Assert.Equal("choices", choices.ParamName);
     }
 
     [Fact]
@@ -109,14 +153,14 @@ public class MatchingQuestionTests
     public void A_blank_prompt_is_rejected_for_Participants()
     {
         Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies", "   ",
-            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0));
+            MatchingAnswerSource.Participants, null, T0, source: QuestionSource.Admin, status: QuestionStatus.Pending));
     }
 
     [Fact]
     public void A_blank_prompt_is_rejected_for_Fixed()
     {
         Assert.Throws<ArgumentException>(() => MatchingQuestion.Create("mq1", Language.En, "movies", "   ",
-            MatchingAnswerSource.Fixed, ["Hero", "Villain"], QuestionSource.Admin, QuestionStatus.Pending, T0));
+            MatchingAnswerSource.Fixed, ["Hero", "Villain"], T0, source: QuestionSource.Admin, status: QuestionStatus.Pending));
     }
 
     [Fact]
@@ -136,7 +180,7 @@ public class MatchingQuestionTests
     public void Topic_is_whatever_the_caller_supplies()
     {
         var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
-            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0,
+            MatchingAnswerSource.Participants, null, T0, source: QuestionSource.Admin, status: QuestionStatus.Pending,
             topic: "actor|role");
 
         Assert.Equal("actor|role", q.Topic);
@@ -157,8 +201,23 @@ public class MatchingQuestionTests
     public void IsPlayable_is_true_only_when_approved(QuestionStatus status, bool expected)
     {
         var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
-            MatchingAnswerSource.Participants, null, QuestionSource.Admin, status, T0);
+            MatchingAnswerSource.Participants, null, T0, source: QuestionSource.Admin, status: status);
 
         Assert.Equal(expected, q.IsPlayable);
+    }
+
+    [Fact]
+    public void SetStatus_allows_reverse_and_undeclared_values_and_only_approved_is_playable()
+    {
+        var q = NewParticipants();
+
+        q.SetStatus(QuestionStatus.Approved);
+        Assert.True(q.IsPlayable);
+
+        q.SetStatus(QuestionStatus.Pending);
+        Assert.False(q.IsPlayable);
+
+        q.SetStatus((QuestionStatus)42);
+        Assert.False(q.IsPlayable);
     }
 }

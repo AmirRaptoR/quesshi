@@ -9,7 +9,7 @@ public class MatchingQuestionEditTests
 
     private static MatchingQuestion New() => MatchingQuestion.Create("mq1", Language.En, "movies",
         "Match each actor to their role.", MatchingAnswerSource.Fixed, ["Hero", "Sidekick", "Villain"],
-        QuestionSource.Admin, QuestionStatus.Pending, T0);
+        T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
 
     [Fact]
     public void A_rejected_edit_throws_and_leaves_every_property_unchanged()
@@ -17,7 +17,7 @@ public class MatchingQuestionEditTests
         var q = New();
 
         Assert.Throws<ArgumentException>(() => q.Edit(Language.Fa, "sports", "New prompt?",
-            MatchingAnswerSource.Fixed, ["only-one"], null, T1));
+            MatchingAnswerSource.Fixed, ["only-one"], null, "new-topic", T1));
 
         Assert.Equal(Language.En, q.Lang);
         Assert.Equal("movies", q.MatchingCategoryId);
@@ -25,6 +25,11 @@ public class MatchingQuestionEditTests
         Assert.Equal(MatchingAnswerSource.Fixed, q.AnswerSource);
         Assert.Equal(["Hero", "Sidekick", "Villain"], q.FixedChoices);
         Assert.Equal(MediaRef.None, q.Media);
+        Assert.Null(q.Topic);
+        Assert.Equal(QuestionStatus.Pending, q.Status);
+        Assert.Equal(QuestionSource.Admin, q.Source);
+        Assert.Equal(T0, q.CreatedAt);
+        Assert.Equal(0, q.TimesServed);
         Assert.Equal(T0, q.UpdatedAt);
     }
 
@@ -34,7 +39,7 @@ public class MatchingQuestionEditTests
         var q = New();
 
         q.Edit(Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Participants,
-            null, null, T1);
+            null, null, "actor|role", T1);
 
         Assert.Equal(MatchingAnswerSource.Participants, q.AnswerSource);
         Assert.Empty(q.FixedChoices);
@@ -44,13 +49,13 @@ public class MatchingQuestionEditTests
     public void Editing_Participants_to_Fixed_requires_a_valid_choice_list()
     {
         var q = MatchingQuestion.Create("mq1", Language.En, "movies", "Match each actor to their role.",
-            MatchingAnswerSource.Participants, null, QuestionSource.Admin, QuestionStatus.Pending, T0);
+            MatchingAnswerSource.Participants, null, T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
 
         Assert.Throws<ArgumentException>(() => q.Edit(Language.En, "movies", "Match each actor to their role.",
-            MatchingAnswerSource.Fixed, null, null, T1));
+            MatchingAnswerSource.Fixed, null, null, null, T1));
 
         q.Edit(Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Fixed,
-            ["Hero", "Villain"], null, T1);
+            ["Hero", "Villain"], null, null, T1);
 
         Assert.Equal(MatchingAnswerSource.Fixed, q.AnswerSource);
         Assert.Equal(["Hero", "Villain"], q.FixedChoices);
@@ -71,7 +76,7 @@ public class MatchingQuestionEditTests
         var q = New();
 
         q.Edit(Language.En, "movies", "Match each actor to their role.", MatchingAnswerSource.Fixed,
-            ["Hero", "Villain"], null, T1);
+            ["Hero", "Villain"], null, null, T1);
 
         Assert.Equal(T0, q.CreatedAt);
         Assert.Equal(T1, q.UpdatedAt);
@@ -87,5 +92,35 @@ public class MatchingQuestionEditTests
 
         Assert.Equal(T0, q.CreatedAt);
         Assert.Equal(T0, q.UpdatedAt);
+    }
+
+    [Fact]
+    public void Edit_updates_topic_and_accepts_an_earlier_timestamp()
+    {
+        var q = New();
+        var earlier = T0.AddHours(-1);
+
+        q.Edit(Language.Fa, "sports", "New prompt?", MatchingAnswerSource.Fixed,
+            ["One", "Two"], null, "new-topic", earlier);
+
+        Assert.Equal(Language.Fa, q.Lang);
+        Assert.Equal("sports", q.MatchingCategoryId);
+        Assert.Equal("New prompt?", q.Prompt);
+        Assert.Equal("new-topic", q.Topic);
+        Assert.Equal(earlier, q.UpdatedAt);
+        Assert.Equal(T0, q.CreatedAt);
+    }
+
+    [Fact]
+    public void Edit_copies_the_choices_list()
+    {
+        var q = New();
+        var choices = new List<string> { "One", "Two" };
+
+        q.Edit(Language.En, "movies", "Prompt", MatchingAnswerSource.Fixed,
+            choices, null, null, T1);
+
+        choices[0] = "Changed";
+        Assert.Equal(["One", "Two"], q.FixedChoices);
     }
 }

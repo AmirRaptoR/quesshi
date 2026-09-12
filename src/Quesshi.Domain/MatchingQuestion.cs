@@ -61,13 +61,14 @@ public sealed class MatchingQuestion
     /// storage.
     /// </summary>
     public static MatchingQuestion Create(string id, Language lang, string matchingCategoryId, string prompt,
-        MatchingAnswerSource answerSource, IReadOnlyList<string>? fixedChoices, QuestionSource source,
-        QuestionStatus status, DateTimeOffset now, MediaRef? media = null, string? topic = null)
+        MatchingAnswerSource answerSource, IReadOnlyList<string>? choices, DateTimeOffset now,
+        MediaRef? media = null, QuestionSource source = QuestionSource.Admin,
+        QuestionStatus status = QuestionStatus.Pending, string? topic = null)
     {
-        Validate(prompt, answerSource, fixedChoices);
-        var choices = fixedChoices ?? [];
+        Validate(prompt, answerSource, choices);
+        var fixedChoices = choices ?? [];
         return new MatchingQuestion(id, lang, matchingCategoryId, prompt.Trim(), answerSource,
-            [.. choices.Select(c => c.Trim())], media ?? MediaRef.None, now)
+            [.. fixedChoices.Select(c => c.Trim())], media ?? MediaRef.None, now)
         {
             Source = source,
             Status = status,
@@ -78,11 +79,12 @@ public sealed class MatchingQuestion
     /// <summary>Rehydrates a stored question. Storage is trusted; use <see cref="Create"/> for
     /// anything else.</summary>
     public static MatchingQuestion Restore(string id, Language lang, string matchingCategoryId, string prompt,
-        MatchingAnswerSource answerSource, IReadOnlyList<string> fixedChoices, MediaRef media, string? topic,
-        QuestionStatus status, QuestionSource source, DateTimeOffset createdAt, DateTimeOffset updatedAt,
+        MatchingAnswerSource answerSource, IReadOnlyList<string>? choices, MediaRef media,
+        QuestionStatus status, QuestionSource source, string? topic,
+        DateTimeOffset createdAt, DateTimeOffset updatedAt,
         int timesServed)
     {
-        return new MatchingQuestion(id, lang, matchingCategoryId, prompt, answerSource, fixedChoices, media,
+        return new MatchingQuestion(id, lang, matchingCategoryId, prompt, answerSource, choices ?? [], media,
             createdAt)
         {
             UpdatedAt = updatedAt,
@@ -100,6 +102,10 @@ public sealed class MatchingQuestion
     /// </summary>
     public static void Validate(string prompt, MatchingAnswerSource answerSource, IReadOnlyList<string>? choices)
     {
+        if (!Enum.IsDefined(answerSource))
+            throw new ArgumentOutOfRangeException(nameof(answerSource), answerSource,
+                "The matching answer source is not declared.");
+
         if (string.IsNullOrWhiteSpace(prompt))
             throw new ArgumentException("A matching question needs a prompt.", nameof(prompt));
 
@@ -131,17 +137,18 @@ public sealed class MatchingQuestion
     /// trivia does not.
     /// </summary>
     public void Edit(Language lang, string matchingCategoryId, string prompt, MatchingAnswerSource answerSource,
-        IReadOnlyList<string>? fixedChoices, MediaRef? media, DateTimeOffset now)
+        IReadOnlyList<string>? choices, MediaRef? media, string? topic, DateTimeOffset now)
     {
-        Validate(prompt, answerSource, fixedChoices);
-        var choices = fixedChoices ?? [];
+        Validate(prompt, answerSource, choices);
+        var fixedChoices = choices ?? [];
 
         Lang = lang;
         MatchingCategoryId = matchingCategoryId;
         Prompt = prompt.Trim();
         AnswerSource = answerSource;
-        FixedChoices = [.. choices.Select(c => c.Trim())];
+        FixedChoices = [.. fixedChoices.Select(c => c.Trim())];
         Media = media ?? MediaRef.None;
+        Topic = topic;
         UpdatedAt = now;
     }
 
