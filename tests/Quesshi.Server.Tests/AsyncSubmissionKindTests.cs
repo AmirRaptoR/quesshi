@@ -34,6 +34,7 @@ public class AsyncSubmissionKindTests(ClusterFixture fixture) : IAsyncDisposable
     private const int CountrySlot = 1;
     private const int CitySlot = 2;
     private const int ChoiceSlot = 3;
+    private const int PlayersSlot = 4;
 
     /// <summary>Amsterdam, and a radius generous enough that a pin a few kilometres out still counts.</summary>
     private const double CityLatitude = 52.37;
@@ -68,6 +69,9 @@ public class AsyncSubmissionKindTests(ClusterFixture fixture) : IAsyncDisposable
                     "Find Amsterdam.", [], 0, Shared.Clock.Now,
                     explanation: "because", status: QuestionStatus.Approved, kind: QuestionKind.Map,
                     target: MapTarget.City(CityLatitude, CityLongitude, CityRadiusKm), baseLayer: MapBaseLayer.Blank),
+                PlayersSlot => Question.Create(qid, Language.En, "geography", level,
+                    "Who does the most work at home?", [], 0, Shared.Clock.Now,
+                    explanation: "because", status: QuestionStatus.Approved, kind: QuestionKind.Players),
                 _ => Question.Create(qid, Language.En, "geography", level,
                     $"question {slot}", ["right", "wrong1", "wrong2", "wrong3"], 0, Shared.Clock.Now,
                     explanation: "because", status: QuestionStatus.Approved)
@@ -440,6 +444,37 @@ public class AsyncSubmissionKindTests(ClusterFixture fixture) : IAsyncDisposable
         Assert.False(result.Correct);
         Assert.Equal(0, result.Score);
         Assert.Equal((-1, (string?)null), await StoredAsync(duel, ChoiceSlot));
+    }
+
+    // ---- Players: no correct answer, and the range is the seat count ----
+
+    [Fact]
+    public async Task A_players_answer_never_scores_whatever_is_picked()
+    {
+        var duel = await NewDuelAsync();
+        await ReachAsync(duel, PlayersSlot);
+
+        var result = await AnswerAsync(duel, PlayersSlot, 0);
+
+        Assert.False(result.Correct);
+        Assert.Equal(0, result.Score);
+        Assert.Equal((0, (string?)null), await StoredAsync(duel, PlayersSlot));
+
+        var question = QuestionAt(duel, PlayersSlot);
+        Assert.Equal(1, question.TimesServed);
+        Assert.Equal(0, question.TimesCorrect);
+    }
+
+    [Fact]
+    public async Task A_players_answer_outside_the_seated_count_is_refused()
+    {
+        // NewDuelAsync seats exactly two, so index 2 points at nobody.
+        var duel = await NewDuelAsync();
+        await ReachAsync(duel, PlayersSlot);
+
+        var refused = await PostAnswerAsync(duel, PlayersSlot, 2, null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
     }
 
     private sealed record ErrorDto(string Error);

@@ -266,7 +266,11 @@ public static class GameEndpoints
             // check on the *index* alone and says nothing about the response beside it. The response
             // cannot be validated here at all: a sorting answer is only meaningful against the
             // round's own shuffle, and that seed is reconstructible only in the grain.
-            if (body.ChoiceIndex is < -1 or >= MatchRules.ChoicesPerQuestion)
+            // The bound is the most seats a duel can ever have, not the four a choice question has:
+            // a players question can serve up to that many options, and this endpoint does not know
+            // which kind slot holds without a query it would rather not pay for on every answer. The
+            // precise, per-question bound is enforced in the grain, which already loads the question.
+            if (body.ChoiceIndex is < -1 or >= MatchRules.MaxParticipants)
                 return Results.BadRequest(new { error = "bad_choice" });
 
             try

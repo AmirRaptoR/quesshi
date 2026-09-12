@@ -89,6 +89,13 @@ internal static class SubmittedAnswer
                 return true;
             }
 
+            case QuestionKind.Players:
+                // There is no correct participant, so this never grades true — but a chosen
+                // participant is still a real, stored answer, exactly as a choice index is, which is
+                // why it travels the same way rather than through Response.
+                graded = new GradedAnswer(choiceIndex, null, false);
+                return true;
+
             default:
                 // Byte-identical to what a choice answer always did, including the >= 0 that is the
                 // timeout check — it just no longer stands between the other two kinds and their own

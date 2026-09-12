@@ -405,6 +405,11 @@ public sealed class LiveMatch
         if (kind == QuestionKind.Choice && (choiceIndex < 0 || choiceIndex >= MatchRules.ChoicesPerQuestion))
             throw new InvalidOperationException($"Choice {choiceIndex} is out of range.");
 
+        // A players question has as many options as the duel has seats, not four — the range check
+        // is the same rule, against the count that actually applies.
+        if (kind == QuestionKind.Players && (choiceIndex < 0 || choiceIndex >= Participants.Count))
+            throw new InvalidOperationException($"Choice {choiceIndex} is out of range.");
+
         var taken = now - round.StartedAt;
         var answer = new LiveAnswer(choiceIndex, correct, Scoring.Score(correct, taken, MatchRules.QuestionTime, level), taken.TotalSeconds,
             response);

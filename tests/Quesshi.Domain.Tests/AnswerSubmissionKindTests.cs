@@ -128,4 +128,28 @@ public class AnswerSubmissionKindTests
         Assert.Equal(new AnswerRecord(0, 2, true, answer.Score, answer.SecondsTaken), answer);
         Assert.Null(answer.Response);
     }
+
+    // ---- Players: the range is however many are seated, not four ----
+
+    [Fact]
+    public void A_live_players_answer_may_pick_any_seated_participant()
+    {
+        var m = InRound0(); // two seated: Challenger, Opponent
+
+        var answer = m.Answer(Challenger, 0, 1, correct: false, m.CurrentRound!.StartedAt, Difficulty.Medium, QuestionKind.Players);
+
+        Assert.Equal(1, answer.ChoiceIndex);
+        Assert.False(answer.Correct);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)] // only two are seated: 0 and 1 are valid, 2 is not
+    public void A_live_players_answer_outside_the_seated_count_is_rejected(int choiceIndex)
+    {
+        var m = InRound0();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            m.Answer(Challenger, 0, choiceIndex, correct: false, m.CurrentRound!.StartedAt, Difficulty.Medium, QuestionKind.Players));
+    }
 }

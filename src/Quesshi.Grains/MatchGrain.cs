@@ -281,6 +281,12 @@ public sealed class MatchGrain(
         var question = await questions.GetAsync(_match.QuestionIds[slot])
             ?? throw new InvalidOperationException("That question has disappeared.");
 
+        // A players question has as many options as this duel has seats, not a fixed four — the
+        // HTTP layer's own check is only a coarse sanity bound (see GameEndpoints), so the precise
+        // range belongs here, where the match's actual participant count is known.
+        if (question.Kind == QuestionKind.Players && choiceIndex is not -1 && choiceIndex >= _match.Participants.Count)
+            throw new InvalidOperationException("bad_response");
+
         if (!SubmittedAnswer.TryGrade(question, _match.Id, slot, choiceIndex, response, out var graded))
             throw new InvalidOperationException("bad_response");
 
