@@ -221,6 +221,33 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Leave_that_closes_the_barrier_records_the_newly_served_slot_once()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var third = $"matching-leave-third-{prefix}";
+        var departed = $"matching-leave-departed-{prefix}";
+        var id = $"matching-leave-advance-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", Owner, (int)Language.En, 10, [category], 4);
+        await grain.JoinAsync(Other);
+        await grain.JoinAsync(third);
+        await grain.JoinAsync(departed);
+        Assert.True(await grain.StartAsync(Owner));
+
+        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(third, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        Assert.True(await grain.LeaveAsync(departed));
+
+        var view = await grain.GetAsync(Owner);
+        var nextQuestionId = view!.CurrentSlot!.QuestionId;
+        Assert.Equal(1, view.CurrentSlotIndex);
+        Assert.Equal(1, Shared.MatchingQuestions.Items.Single(q => q.Id == nextQuestionId).TimesServed);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[nextQuestionId]);
+    }
+
+    [Fact]
     public async Task Reminder_expires_idle_match_and_is_safe_to_run_again()
     {
         var prefix = Guid.NewGuid().ToString("N");

@@ -150,8 +150,10 @@ public sealed class MatchingMatchGrain(
             return true;
         }
 
+        var before = _match.ToSnapshot();
         var changed = _match.Leave(playerId, clock.Now);
         if (!changed) return false;
+        TrackNewlyServedQuestions(before.Slots, _match.ToSnapshot());
         await SaveAndArchiveAsync();
         if (_match.IsOver) await UnregisterReminderSafeAsync();
         await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
