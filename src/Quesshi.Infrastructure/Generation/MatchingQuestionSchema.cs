@@ -23,8 +23,8 @@ public static class MatchingQuestionSchema
                 properties = new
                 {
                     prompt = new { type = "string" },
-                    subject = new { type = "string" },
-                    aspect = new { type = "string" }
+                    subject = new { type = "string", description = "2-6 English words naming the specific situation; never a category, translation, or numbered ID" },
+                    aspect = new { type = "string", description = "1-4 English words naming the exact comparison dimension; never a numbered ID" }
                 }
             })
         }
@@ -52,8 +52,8 @@ public static class MatchingQuestionSchema
                         minItems = MatchingRules.MinFixedChoices,
                         maxItems = MatchingRules.MaxFixedChoices
                     },
-                    subject = new { type = "string" },
-                    aspect = new { type = "string" }
+                    subject = new { type = "string", description = "2-6 English words naming the specific situation; never a category, translation, or numbered ID" },
+                    aspect = new { type = "string", description = "1-4 English words naming the exact answer dimension; never a numbered ID" }
                 }
             })
         }

@@ -3,10 +3,7 @@
 
 <PageTitle>@L["admin.categories"] · @L["app.name"]</PageTitle>
 
-<div class="shell shell--wide">
-    <header class="topbar"><h1 class="topbar__title">@L["admin.categories"]</h1></header>
-    <AdminNav />
-
+<AdminShell Title="@L["admin.categories"]">
     @if (Unconfirmed)
     {
         <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
@@ -17,42 +14,16 @@
     }
     else
     {
-        <div class="grid-3">
-            @foreach (var category in _categories)
-            {
-                <article class="card" style="border-inline-start:3px solid @category.Color">
-                    <div class="row row--between">
-                        <span style="font-size:var(--step-2)" aria-hidden="true">@category.Icon</span>
-                        <span class="chip @(category.IsActive ? "chip--win" : "chip--loss")">
-                            @(category.IsActive ? L["admin.active"] : L["admin.inactive"])
-                        </span>
-                    </div>
+        <AdminToolbar Label="@L["admin.categories"]">
+            <Filters><span class="faint">@L.Num(_categories.Count) @L["admin.categories"]</span></Filters>
+            <Actions><button type="button" class="btn btn--sm" @onclick="StartNew">@L["admin.addCategory"]</button></Actions>
+        </AdminToolbar>
+        <AdminCategoryTable Rows="Rows" Edit="Edit" Toggle="ToggleAsync" Delete="DeleteAsync" />
+        @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.8rem">@_error</div> }
 
-                    <div style="margin-top:.6rem;font-weight:700">@category.NameFa</div>
-                    <div class="muted" dir="ltr">@category.NameEn</div>
-                    <div class="faint" dir="ltr" style="font-size:var(--step--1)">@category.Id</div>
-
-                    <div class="row" style="margin-top:.8rem;gap:.35rem">
-                        <button class="btn btn--ghost btn--sm" @onclick="() => Edit(category)">@L["admin.edit"]</button>
-
-                        @* An inactive category is hidden from players rather than paused, so it is an eye. *@
-                        <button class="btn btn--ghost btn--sm btn--icon" @onclick="() => ToggleAsync(category)"
-                                title="@ToggleLabel(category)" aria-label="@ToggleLabel(category)">
-                            <Icon Name="@(category.IsActive ? "eye" : "eye-off")" />
-                        </button>
-
-                        <button class="btn btn--sm btn--icon btn--icon-danger" @onclick="() => DeleteAsync(category.Id)"
-                                title="@L["admin.delete"]" aria-label="@L["admin.delete"]">
-                            <Icon Name="trash" />
-                        </button>
-                    </div>
-                </article>
-            }
-        </div>
-
-        <section class="card card--taq" style="margin-top:1.25rem">
-            <span class="eyebrow">@(_editing.Id.Length > 0 && _known ? L["admin.edit"] : L["admin.addCategory"])</span>
-
+        @if (_editorOpen)
+        {
+        <AdminModal Title="@(_known ? L["admin.edit"] : L["admin.addCategory"])" OnClose="Reset">
             <div class="stack" style="margin-top:.9rem">
                 <div class="grid-2">
                     <div class="field"><label>@L["admin.name"] (@L["lang.fa"])</label><input class="input" @bind="_editing.NameFa" /></div>
@@ -75,31 +46,37 @@
                     <button class="btn btn--ghost" @onclick="Reset">@L["admin.cancel"]</button>
                 </div>
             </div>
-        </section>
+        </AdminModal>
+        }
     }
-</div>
+</AdminShell>
 
 @code {
     private List<CategoryDto> _categories = [];
 
-    private string ToggleLabel(CategoryDto category)
-        => category.IsActive ? L["admin.deactivate"] : L["admin.activate"];
     private CategoryForm _editing = new();
-    private bool _known;
+    private bool _known, _editorOpen;
     private string? _error;
+    private IReadOnlyList<AdminCategoryRow> Rows => [.. _categories.Select(c =>
+        new AdminCategoryRow(c.Id, c.NameFa, c.NameEn, c.NameNl, c.Icon, c.Color, c.IsActive))];
 
     protected override async Task LoadAsync() => _categories = await Api.AdminCategoriesAsync() ?? [];
 
-    private void Edit(CategoryDto category)
+    private void StartNew() { Reset(); _editorOpen = true; }
+
+    private void Edit(string id)
     {
+        var category = _categories.Single(c => c.Id == id);
         _editing = CategoryForm.From(category);
         _known = true;
+        _editorOpen = true;
     }
 
     private void Reset()
     {
         _editing = new CategoryForm();
         _known = false;
+        _editorOpen = false;
         _error = null;
     }
 
@@ -120,8 +97,9 @@
         await LoadAsync();
     }
 
-    private async Task ToggleAsync(CategoryDto category)
+    private async Task ToggleAsync(string id)
     {
+        var category = _categories.Single(c => c.Id == id);
         await Api.SaveCategoryAsync(category with { IsActive = !category.IsActive });
         await LoadAsync();
     }

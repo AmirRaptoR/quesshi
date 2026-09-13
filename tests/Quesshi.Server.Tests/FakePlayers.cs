@@ -51,7 +51,16 @@ public sealed class FakePlayers : IPlayerRepository
         lock (_lock) return [.. Items.Where(p => ids.Contains(p.Id))];
     }
     public Task<Player?> GetByEmailAsync(string e, CancellationToken ct = default) { lock (_lock) return Task.FromResult(Items.FirstOrDefault(p => p.Email == e)); }
-    public Task<IReadOnlyList<Player>> SearchAsync(string? t, int s, int k, CancellationToken ct = default) { lock (_lock) return Task.FromResult<IReadOnlyList<Player>>([.. Items]); }
+    public Task<IReadOnlyList<Player>> SearchAsync(string? t, int s, int k, CancellationToken ct = default)
+    {
+        var text = t?.Trim() ?? "";
+        lock (_lock)
+            return Task.FromResult<IReadOnlyList<Player>>([.. Items
+                .Where(p => text.Length == 0
+                    || p.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase)
+                    || p.Email.Contains(text, StringComparison.OrdinalIgnoreCase))
+                .Skip(s).Take(k)]);
+    }
     public Task<long> CountAsync(CancellationToken ct = default) { lock (_lock) return Task.FromResult((long)Items.Count); }
 
     public Task UpsertAsync(Player p, CancellationToken ct = default)

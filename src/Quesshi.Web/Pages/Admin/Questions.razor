@@ -4,15 +4,10 @@
 
 <PageTitle>@L["admin.questions"] · @L["app.name"]</PageTitle>
 
-<div class="shell shell--wide">
-    <header class="topbar"><h1 class="topbar__title">@L["admin.questions"]</h1></header>
-    <AdminNav />
-
-    <section class="card card--taq">
-        <div class="row row--between" style="flex-wrap:wrap;gap:.5rem">
-            <span class="eyebrow">@L["admin.askAi"]</span>
-            <a class="btn btn--ghost btn--sm" href="/admin">@L["admin.dashboard"]</a>
-        </div>
+<AdminShell Title="@L["admin.questions"]">
+    @if (_dialog == "generate")
+    {
+    <AdminModal Title="@L["admin.askAi"]" OnClose="CloseDialog">
 
         <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.9rem">
             <select class="select" style="width:auto" @bind="_ask.Lang">
@@ -86,10 +81,12 @@
                 }
             </div>
         }
-    </section>
+    </AdminModal>
+    }
 
-    <section class="card card--flat">
-        <span class="eyebrow">@L["admin.import"]</span>
+    @if (_dialog == "import")
+    {
+    <AdminModal Title="@L["admin.import"]" OnClose="CloseDialog">
 
         <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.6rem">
             <select class="select" style="width:auto" @bind="_import.Kind">
@@ -141,10 +138,11 @@
                 </table>
             }
         }
-    </section>
+    </AdminModal>
+    }
 
-    <section class="card card--flat">
-        <div class="row" style="flex-wrap:wrap;gap:.5rem">
+    <AdminToolbar Label="@L["admin.filters"]">
+        <Filters>
             <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
                 <option value="">@L["admin.language"]: @L["admin.all"]</option>
                 <option value="fa">@L["lang.fa"]</option>
@@ -178,22 +176,17 @@
             <input class="input grow" style="min-width:10rem" placeholder="@L["admin.search"]"
                    @bind="_text" @bind:event="oninput" @onkeydown="OnSearchKey" />
 
-            <button class="btn btn--sm" @onclick="StartNew">@L["admin.new"]</button>
-        </div>
-    </section>
+        </Filters>
+        <Actions>
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="OpenGenerate">@L["admin.askAi"]</button>
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="OpenImport">@L["admin.import"]</button>
+            <button type="button" class="btn btn--sm" @onclick="StartNew">@L["admin.new"]</button>
+        </Actions>
+    </AdminToolbar>
 
     @if (_editing is not null)
     {
-        <div class="modal" role="dialog" aria-modal="true" aria-label="@(_editing.Id is null ? L["admin.new"] : L["admin.edit"])"
-             @onclick="CloseEditor">
-        @* Clicks inside the panel must not reach the backdrop, or typing would close the form. *@
-        <section class="card card--taq modal__panel" @onclick:stopPropagation="true">
-            <span class="eyebrow">@(_editing.Id is null ? L["admin.new"] : L["admin.edit"])</span>
-            <button class="btn btn--ghost btn--sm btn--icon modal__close" @onclick="CloseEditor"
-                    title="@L["common.close"]" aria-label="@L["common.close"]">
-                <Icon Name="close" />
-            </button>
-
+        <AdminModal Title="@(_editing.Id is null ? L["admin.new"] : L["admin.edit"])" OnClose="CloseEditor">
             <div class="stack" style="margin-top:.9rem">
                 <div class="row" style="flex-wrap:wrap;gap:.5rem">
                     <select class="select" style="width:auto" @bind="_editing.Lang">
@@ -358,8 +351,7 @@
                     <button class="btn btn--ghost" @onclick="CloseEditor">@L["admin.cancel"]</button>
                 </div>
             </div>
-        </section>
-        </div>
+        </AdminModal>
     }
 
     @if (Unconfirmed)
@@ -372,9 +364,6 @@
     }
     else
     {
-        <Pager Total="_results?.Total ?? 0" Page="_pageNumber" PageSize="_pageSize"
-               PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
-
         @if (_results is { Items.Count: 0 })
         {
             <p class="empty">@L["admin.noResults"]</p>
@@ -383,75 +372,15 @@
         <div class="stack" style="margin-top:.75rem">
             @foreach (var question in _results?.Items ?? [])
             {
-                <article class="card card--flat @(question.Source == "ai" ? "card--ai" : null)">
-                    <div class="row row--between" style="gap:.5rem;flex-wrap:wrap">
-                        <div class="row" style="gap:.4rem;flex-wrap:wrap">
-                            @if (question.Source == "ai")
-                            {
-                                <span class="chip chip--ai">@L["admin.aiWritten"]</span>
-                            }
-                            <span class="chip" dir="ltr">@question.Lang</span>
-                            <span class="chip">@CategoryName(question.CategoryId)</span>
-                            <span class="chip">@L["level." + question.Level]</span>
-                            <span class="chip @StatusClass(question.Status)">@L["admin." + question.Status]</span>
-                            @if (question.Kind != "choice")
-                            {
-                                <span class="chip chip--kind">@L["admin.kind." + question.Kind]</span>
-                            }
-                            @if (question.TimesServed > 0)
-                            {
-                                <span class="chip faint">@L.Num(question.TimesCorrect)/@L.Num(question.TimesServed)</span>
-                            }
-                        </div>
-
-                        <div class="row" style="gap:.35rem">
-                            @if (question.Status != "approved")
-                            {
-                                <button class="btn btn--sm" @onclick="() => ApproveAsync(question.Id)">@L["admin.approve"]</button>
-                            }
-                            @if (question.Status != "rejected")
-                            {
-                                <button class="btn btn--ghost btn--sm" @onclick="() => RejectAsync(question.Id)">@L["admin.reject"]</button>
-                            }
-                            <button class="btn btn--ghost btn--sm" @onclick="() => Edit(question)">@L["admin.edit"]</button>
-                            <button class="btn btn--sm btn--icon btn--icon-danger" title="@L["admin.delete"]"
-                                    aria-label="@L["admin.delete"]" @onclick="() => DeleteAsync(question.Id)">
-                                <Icon Name="trash" />
-                            </button>
-                        </div>
-                    </div>
-
-                    <p dir="auto" style="margin:.6rem 0 .4rem;font-weight:600">@question.Prompt</p>
-
-                    <MediaBlock Media="question.Media" Compact="true" Autoplay="false" Loop="false" />
-
-                    <div class="row" dir="auto" style="gap:.4rem;flex-wrap:wrap;font-size:var(--step--1);margin-top:.4rem">
-                        @if (question.Kind == "map")
-                        {
-                            @* A map question's answer is its target, so the row shows that rather
-                               than four empty chips. *@
-                            <span class="chip chip--win" dir="ltr">@TargetLabel(question)</span>
-                        }
-                        else
-                        {
-                            @for (var i = 0; i < question.Choices.Count; i++)
-                            {
-                                @* A sorting question is stored in its correct order, so the row is
-                                   numbered and nothing is marked "the" right one: the order is. *@
-                                <span class="chip @(question.Kind == "choice" && i == question.CorrectIndex ? "chip--win" : null)">
-                                    @(question.Kind == "sort" ? $"{L.Num((i + 1).ToString())}. " : "")@question.Choices[i]
-                                </span>
-                            }
-                        }
-                    </div>
-                </article>
+                <AdminTriviaQuestionCard Question="question" CategoryName="@CategoryName(question.CategoryId)"
+                    Approve="ApproveAsync" Reject="RejectAsync" Edit="Edit" Delete="DeleteAsync" />
             }
         </div>
 
         <Pager Total="_results?.Total ?? 0" Page="_pageNumber" PageSize="_pageSize"
                PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
     }
-</div>
+</AdminShell>
 
 @code {
     private static readonly int[] Levels = [1, 2, 3, 4, 5];
@@ -461,19 +390,6 @@
 
     /// <summary>What a map question's answer can be. Two, and never both at once.</summary>
     private static readonly string[] Shapes = ["country", "city"];
-
-    /// <summary>
-    /// A map question's answer, for the listing: a country code, or the coordinates and how close a
-    /// pin has to land. Written left-to-right whatever the panel's language, because a coordinate
-    /// pair and an ISO code are both read that way.
-    /// </summary>
-    private string TargetLabel(AdminQuestionDto question) => question.Target switch
-    {
-        { Shape: "city", Latitude: { } lat, Longitude: { } lon, RadiusKm: { } radius }
-            => $"{WorldMapProjection.FormatPoint(lat, lon)} · {(int)radius} {L["admin.km"]}",
-        { CountryCode: { } code } => code,
-        _ => "—"
-    };
 
     /// <summary>A category's display name, falling back to the slug for one that has since been deleted.</summary>
     private string CategoryName(string id)
@@ -501,6 +417,11 @@
     private int _pageSize = 25;
     private bool _busy;
     private string? _error;
+    private string? _dialog;
+
+    private void OpenGenerate() => _dialog = "generate";
+    private void OpenImport() => _dialog = "import";
+    private void CloseDialog() { _dialog = null; _error = null; }
 
     protected override async Task LoadAsync()
     {
@@ -564,6 +485,7 @@
         _status = "pending";
         _lang = _ask.Lang;
         _category = _ask.CategoryId;
+        _dialog = null;
         await ReloadAsync();
     }
 
@@ -634,8 +556,10 @@
         _editing = new QuestionForm { CategoryId = _categories.FirstOrDefault()?.Id ?? "geography" };
     }
 
-    private void Edit(AdminQuestionDto q)
+    private void Edit(string id)
     {
+        var q = _results?.Items.FirstOrDefault(q => q.Id == id);
+        if (q is null) return;
         _error = null;
         _editing = QuestionForm.From(q);
     }
@@ -721,10 +645,4 @@
     private async Task RejectAsync(string id) { await Api.RejectAsync(id); await FetchAsync(); }
     private async Task DeleteAsync(string id) { await Api.DeleteQuestionAsync(id); await FetchAsync(); }
 
-    private static string? StatusClass(string status) => status switch
-    {
-        "approved" => "chip--win",
-        "rejected" => "chip--loss",
-        _ => null
-    };
 }

@@ -13,7 +13,9 @@ public sealed class InMemoryPlayers : IPlayerRepository
     public Task<Player?> GetByEmailAsync(string email, CancellationToken ct = default)
         => Task.FromResult(Items.FirstOrDefault(p => p.Email == email.Trim().ToLowerInvariant()));
     public Task<IReadOnlyList<Player>> SearchAsync(string? text, int skip, int take, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<Player>>([.. Items.Where(p => text is null || p.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase)).Skip(skip).Take(take)]);
+        => Task.FromResult<IReadOnlyList<Player>>([.. Items.Where(p => text is null
+            || p.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || p.Email.Contains(text, StringComparison.OrdinalIgnoreCase)).Skip(skip).Take(take)]);
     public Task<long> CountAsync(CancellationToken ct = default) => Task.FromResult((long)Items.Count);
     public Task UpsertAsync(Player p, CancellationToken ct = default) { Items.RemoveAll(x => x.Id == p.Id); Items.Add(p); return Task.CompletedTask; }
 }

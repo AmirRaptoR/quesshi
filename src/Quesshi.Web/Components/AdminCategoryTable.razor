@@ -1,0 +1,51 @@
+<div class="scroll-x admin-table-wrap">
+    <table class="table admin-table">
+        <thead>
+            <tr>
+                <th>@L["admin.name"]</th>
+                <th>@L["admin.matching.categoryId"]</th>
+                <th>@L["admin.status"]</th>
+                <th class="admin-table__actions-head"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Rows)
+            {
+                <tr @key="row.Id">
+                    <td>
+                        <div class="admin-category-name">
+                            <span class="admin-category-icon" style="--category-colour:@row.Color" aria-hidden="true">@row.Icon</span>
+                            <span><strong dir="auto">@row.NameFa</strong><small dir="ltr">@row.NameEn</small></span>
+                        </div>
+                    </td>
+                    <td><code class="admin-code">@row.Id</code></td>
+                    <td><span class="admin-status @(row.IsActive ? "is-active" : "is-inactive")">@(row.IsActive ? L["admin.active"] : L["admin.inactive"])</span></td>
+                    <td>
+                        <div class="admin-row-actions">
+                            <button type="button" class="btn btn--ghost btn--sm" @onclick="() => Edit.InvokeAsync(row.Id)">@L["admin.edit"]</button>
+                            @if (CanToggle)
+                            {
+                                <button type="button" class="icon-hit" @onclick="() => Toggle.InvokeAsync(row.Id)"
+                                        title="@(row.IsActive ? L["admin.deactivate"] : L["admin.activate"])"
+                                        aria-label="@(row.IsActive ? L["admin.deactivate"] : L["admin.activate"])">
+                                    <Icon Name="@(row.IsActive ? "eye" : "eye-off")" />
+                                </button>
+                            }
+                            <button type="button" class="icon-hit admin-danger" @onclick="() => Delete.InvokeAsync(row.Id)"
+                                    title="@L["admin.delete"]" aria-label="@L["admin.delete"]"><Icon Name="trash" /></button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Inject] private Translator L { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<AdminCategoryRow> Rows { get; set; } = [];
+    [Parameter] public bool CanToggle { get; set; } = true;
+    [Parameter] public EventCallback<string> Edit { get; set; }
+    [Parameter] public EventCallback<string> Toggle { get; set; }
+    [Parameter] public EventCallback<string> Delete { get; set; }
+}

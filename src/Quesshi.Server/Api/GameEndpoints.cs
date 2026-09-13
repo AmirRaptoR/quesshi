@@ -114,8 +114,21 @@ public static class GameEndpoints
         });
 
         // Search results are candidates to add, not yet friends — online status has no meaning here.
-        api.MapGet("/players/search", async (string? q, IPlayerRepository players) =>
-            (await players.SearchAsync(q, 0, 20)).Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore, false, p.IsGuest)).ToList());
+        // Email is searchable too (the repository does the matching) because it is the only stable
+        // handle two people necessarily know about each other; it is never returned in this DTO.
+        api.MapGet("/players/search", async (string? q, HttpContext ctx, IPlayerRepository players) =>
+        {
+            var text = q?.Trim() ?? "";
+            if (text.Length < 2) return [];
+
+            var me = await players.GetAsync(ctx.User.PlayerId()!);
+            if (me is null) return [];
+
+            return (await players.SearchAsync(text, 0, 20))
+                .Where(p => p.Id != me.Id && !p.IsGuest && !me.Friends.Contains(p.Id))
+                .Select(p => new FriendDto(p.Id, p.DisplayName, p.AvatarSeed, p.Stats.TotalScore))
+                .ToList();
+        });
 
         // --- leaderboards ------------------------------------------------------------
         api.MapGet("/leaderboard", async (ILeaderboard board, IPlayerRepository players) =>

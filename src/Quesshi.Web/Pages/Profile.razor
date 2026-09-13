@@ -40,7 +40,28 @@
            is exactly "unranked" — this renders the points alone rather than inventing a position. ---- *@
         <div class="profile-id enter">
             <span class="avatar profile-id__avatar" style="background:@Ranks.Tint(me.AvatarSeed)">@Initial(me.DisplayName)</span>
-            <h1 class="profile-id__name" dir="auto">@me.DisplayName</h1>
+            @if (_editingName)
+            {
+                <div class="profile-name-editor">
+                    <input class="input" maxlength="24" dir="auto" aria-label="@L["profile.name"]"
+                           @bind="_profileName" @bind:event="oninput" @onkeydown="OnNameKeyAsync" />
+                    <div class="row" style="justify-content:center;gap:.45rem">
+                        <button type="button" class="btn btn--sm" disabled="@(_savingName || _profileName.Trim().Length is < 2 or > 24)"
+                                @onclick="SaveNameAsync">@L["profile.save"]</button>
+                        <button type="button" class="btn btn--ghost btn--sm" disabled="@_savingName" @onclick="CancelNameEdit">@L["admin.cancel"]</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="profile-name-line">
+                    <h1 class="profile-id__name" dir="auto">@me.DisplayName</h1>
+                    <button type="button" class="icon-hit" @onclick="StartNameEdit"
+                            title="@L["profile.editName"]" aria-label="@L["profile.editName"]">
+                        <Icon Name="edit" />
+                    </button>
+                </div>
+            }
             <div class="profile-id__meta">
                 <span class="numeral profile-id__points">@L.Num(points)</span>
                 <span class="faint">
@@ -103,6 +124,10 @@
                         }
                     </div>
                 }
+                else if (_searched)
+                {
+                    <p class="faint" style="margin:.65rem 0 0">@L["profile.searchEmpty"]</p>
+                }
             }
 
             <div class="stack friend-list" style="margin-top:.9rem;gap:.5rem">
@@ -161,6 +186,39 @@
             @if (_toast is not null) { <div class="notice notice--good enter" style="margin-top:.8rem">@_toast</div> }
             @if (_error is not null) { <div class="notice notice--bad enter" style="margin-top:.8rem">@_error</div> }
         </section>
+
+        <section class="enter profile-history" style="margin-top:1.75rem">
+            <div class="row row--between">
+                <h2 class="friends-title">@L["profile.history"]</h2>
+                @if (_history.Count > 0)
+                {
+                    <span class="faint">@L.Num(_history.Count)</span>
+                }
+            </div>
+
+            @if (_history.Count == 0)
+            {
+                <p class="friends-empty">@L["profile.historyEmpty"]</p>
+            }
+            else
+            {
+                <div class="profile-history__list">
+                    @foreach (var match in _history)
+                    {
+                        <a class="profile-history__row" href="@ProfileHistory.Route(match)" @key="match.Id">
+                            <span class="avatar profile-history__avatar" style="background:@Ranks.Tint(match.Opponent?.AvatarSeed ?? match.Code)">
+                                @Initial(match.Opponent?.DisplayName ?? "?")
+                            </span>
+                            <span class="grow">
+                                <strong dir="auto">@(match.Opponent?.DisplayName ?? match.Code)</strong>
+                                <small>@L[ProfileHistory.ModeKey(match)] · @match.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</small>
+                            </span>
+                            <span class="admin-status @OutcomeClass(match)">@L[ProfileHistory.OutcomeKey(match)]</span>
+                        </a>
+                    }
+                </div>
+            }
+        </section>
     }
 </div>
 
@@ -169,9 +227,13 @@
     private List<FriendDto> _found = [];
     private int? _rank;
     private bool _adding;
+    private bool _searched;
     private string? _duelingId;
     private string? _toast;
     private string? _error;
+    private List<MatchSummaryDto> _history = [];
+    private bool _editingName, _savingName;
+    private string _profileName = "";
 
     /// <summary>The one friend row currently showing "Remove?" instead of the × — never more than one
     /// at a time, since tapping a second row's × is as much a change of mind as pressing anything
@@ -181,8 +243,13 @@
 
     protected override async Task LoadAsync()
     {
-        var board = await Api.LeaderboardAsync() ?? [];
+        var boardTask = Api.LeaderboardAsync();
+        var matchesTask = Api.MatchesAsync();
+        await Task.WhenAll(boardTask, matchesTask);
+        var board = await boardTask ?? [];
         _rank = State.Me is null ? null : RankOrdinal.Rank(board, State.Me.Id);
+        _history = ProfileHistory.Completed(await matchesTask ?? []);
+        _profileName = State.Me?.DisplayName ?? "";
     }
 
     private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
@@ -190,7 +257,7 @@
     private void ToggleAdd()
     {
         _adding = !_adding;
-        if (!_adding) { _query = ""; _found = []; }
+        if (!_adding) { _query = ""; _found = []; _searched = false; }
     }
 
     private async Task OnSearchKey(KeyboardEventArgs e)
@@ -200,13 +267,56 @@
 
     private async Task SearchAsync()
     {
-        if (_query.Trim().Length < 2) { _found = []; return; }
+        if (_query.Trim().Length < 2) { _found = []; _searched = false; return; }
         _found = await Api.SearchPlayersAsync(_query.Trim()) ?? [];
+        _searched = true;
     }
 
     private async Task AddAsync(string id)
     {
-        if (await Api.AddFriendAsync(id)) await RefreshMeAsync();
+        _error = null;
+        if (await Api.AddFriendAsync(id))
+        {
+            await RefreshMeAsync();
+            _toast = L["profile.friendAdded"];
+        }
+        else _error = L["profile.friendAddFailed"];
+    }
+
+    private void StartNameEdit()
+    {
+        _profileName = State.Me?.DisplayName ?? "";
+        _editingName = true;
+        _error = null;
+    }
+
+    private void CancelNameEdit()
+    {
+        _editingName = false;
+        _profileName = State.Me?.DisplayName ?? "";
+    }
+
+    private async Task OnNameKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveNameAsync();
+        else if (e.Key == "Escape") CancelNameEdit();
+    }
+
+    private async Task SaveNameAsync()
+    {
+        var name = _profileName.Trim();
+        if (_savingName || name.Length is < 2 or > 24 || State.Me is null) return;
+
+        _savingName = true;
+        _error = null;
+        var updated = await Api.SaveProfileAsync(name, State.Me.Lang, avatarSeed: null);
+        _savingName = false;
+        if (updated is null) { _error = L["common.error"]; return; }
+
+        State.SetMe(updated);
+        _profileName = updated.DisplayName;
+        _editingName = false;
+        _toast = L["profile.saved"];
     }
 
     /// <summary>
@@ -250,7 +360,15 @@
     {
         if (await Api.MeAsync() is { } me) State.SetMe(me);
         _found = [];
+        _searched = false;
     }
+
+    private static string OutcomeClass(MatchSummaryDto match) => match.Outcome switch
+    {
+        "win" => "is-active",
+        "loss" => "is-inactive",
+        _ => ""
+    };
 
     /// <summary>
     /// The pill's whole decision is <see cref="FriendDuelPlan.Choose"/>: a live challenge — the same

@@ -52,7 +52,7 @@ public sealed class GenerateMatchingQuestions(
             foreach (var candidate in candidates.Take(wanted))
             {
                 var prompt = candidate.Prompt?.Trim() ?? string.Empty;
-                var topic = TopicKey.From(candidate.Subject, candidate.Aspect);
+                var topic = TopicKey.FromGenerated(candidate.Subject, candidate.Aspect);
 
                 // Generated rows must be identifiable. Unlike a hand-authored question, an AI row
                 // without a topic cannot be protected from a differently-worded duplicate later.
