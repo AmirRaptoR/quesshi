@@ -30,4 +30,6 @@ public sealed record MatchView(
     /// stays zero until Start draws the set; the two agree only once that has happened.</summary>
     [property: Id(11)] int QuestionCount = 0,
     [property: Id(12)] List<string>? CategoryIds = null,
-    [property: Id(13)] List<int>? Levels = null);
+    [property: Id(13)] List<int>? Levels = null,
+    /// <summary>Content family; missing values from older grain callers deserialize as trivia.</summary>
+    [property: Id(14)] int Mode = 0);

@@ -422,7 +422,7 @@ public sealed class MatchGrain(
         // Participants[1], read directly now that Match no longer offers them as a shortcut.
         var opponentId = m.Participants.Count > 1 ? m.Participants[1] : null;
         return archive.SaveAsync(new ArchivedMatch(m.Id, m.Code, m.Lang, m.Participants[0], opponentId, m.WinnerId, m.IsDraw,
-            BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds]));
+            BuildResults(m), m.State, m.CreatedAt, m.EndedAt, [.. m.QuestionIds], Mode: m.Settings.Mode));
     }
 
     /// <summary>
@@ -512,6 +512,6 @@ public sealed class MatchGrain(
 
         return new MatchView(m.Id, m.Code, (int)m.Lang, [.. m.Participants], (int)m.State, m.WinnerId, m.IsDraw,
             m.CreatedAt, [.. m.QuestionIds], runs, m.Capacity, m.Settings.QuestionCount,
-            [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)]);
+            [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)], (int)m.Settings.Mode);
     }
 }

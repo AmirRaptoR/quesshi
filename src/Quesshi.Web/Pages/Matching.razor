@@ -1,0 +1,255 @@
+@page "/matching/{MatchId}"
+@inherits PageBase
+@implements IAsyncDisposable
+@inject Func<string, LiveClient> ClientFactory
+
+<PageTitle>@L["matching.play.title"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_view is null)
+    {
+        <div class="empty"><p>@L["common.error"]</p><a class="btn btn--ghost" href="/play">@L["common.back"]</a></div>
+    }
+    else if (_view.State is "awaitingopponent" or "awaiting_opponent")
+    {
+        <div class="empty"><p>@L["matching.play.waitingForStart"]</p><a class="btn btn--block" href="/matching/lobby/@_view.Code">@L["matching.play.openLobby"]</a></div>
+    }
+    else
+    {
+        <header class="topbar enter">
+            <a class="lobby-back" href="/play" aria-label="@L["common.back"]"><Icon Name="chevron-back" Size="1.4rem" /></a>
+            <h1 class="topbar__title">@L["matching.play.title"]</h1>
+            <div class="topbar__spacer"></div>
+            <span class="muted numeral">@L.Num((_view.CurrentSlotIndex ?? _view.TotalSlots - 1) + 1) / @L.Num(_view.TotalSlots)</span>
+        </header>
+
+        <section class="matching-players enter" aria-label="@L["matching.play.players"]">
+            @foreach (var participant in _view.Participants)
+            {
+                <div class="matching-player @(participant.Active ? null : "is-left")" @key="participant.Id">
+                    <span class="avatar avatar--sm" style="background:@Ranks.Tint(participant.AvatarSeed ?? participant.Id)">@Initial(participant.DisplayName)</span>
+                    <span class="matching-player__name" dir="auto">@(participant.Id == MeId ? L["result.you"] : participant.DisplayName)</span>
+                    @if (!participant.Active) { <span class="faint">@L["matching.play.left"]</span> }
+                </div>
+            }
+        </section>
+
+        @if (_view.CurrentSlot is { } slot)
+        {
+            <section class="card card--taq enter" @key="slot.Slot">
+                <p class="faint" style="margin:0 0 .7rem">@L["matching.play.choose"]</p>
+                <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@slot.Prompt</h1>
+                @if (slot.Media is { } media)
+                {
+                    <MediaBlock Media="media" Loop="false" Autoplay="false" />
+                }
+                <div class="stack" style="margin-top:1rem;gap:.5rem">
+                    @foreach (var option in slot.Options)
+                    {
+                        var selected = IsOwnOption(option);
+                        <button type="button" class="answer @(selected ? "answer--selected" : null)"
+                                aria-pressed="@selected.ToString().ToLowerInvariant()"
+                                disabled="@_answering" @onclick="() => AnswerAsync(option)">
+                            <span class="answer__key" aria-hidden="true">@(option.IsNotApplicable ? "—" : "")</span>
+                            @if (option.ParticipantId is not null && option.DisplayName is { } optionName)
+                            {
+                                <span class="avatar avatar--sm" style="background:@Ranks.Tint(option.AvatarSeed ?? option.ParticipantId)">@Initial(optionName)</span>
+                            }
+                            <span class="grow" dir="auto">@OptionText(option)</span>
+                        </button>
+                    }
+                </div>
+            </section>
+
+            @if (_view.OwnAnswer is not null)
+            {
+                var unanswered = _view.Participants.Where(p => p.Active && !slot.AnsweredParticipantIds.Contains(p.Id)).ToList();
+                <section class="notice enter" style="margin-top:.8rem;text-align:center">
+                    @L["matching.play.waiting"]
+                    <span class="faint" style="display:block;margin-top:.25rem">@L.Format("matching.play.answered", L.Num(slot.AnsweredParticipantIds.Count), L.Num(_view.Participants.Count))</span>
+                    @if (unanswered.Count > 0)
+                    {
+                        <span class="faint" style="display:block;margin-top:.25rem">@L.Format("matching.play.waitingFor", string.Join(", ", unanswered.Select(p => p.Id == MeId ? L["result.you"] : p.DisplayName)))</span>
+                    }
+                </section>
+            }
+            else
+            {
+                <p class="faint enter" style="text-align:center;margin-top:.8rem">@L["matching.play.answerHint"]</p>
+            }
+        }
+
+        @foreach (var closed in ClosedSlots)
+        {
+            <section class="card card--flat enter" style="margin-top:1rem" @key="closed.Slot">
+                <div class="row row--between"><strong>@L["matching.play.previous"]</strong><span class="muted">@L.Num(closed.Slot + 1)</span></div>
+                <p dir="auto" style="margin:.5rem 0 .7rem">@closed.Prompt</p>
+                @if (closed.Media is { } media)
+                {
+                    <MediaBlock Media="media" Loop="false" Autoplay="false" />
+                }
+                <div class="stack" style="gap:.35rem">
+                    @foreach (var participant in _view.Participants)
+                    {
+                        var answer = closed.Answers.FirstOrDefault(a => a.PlayerId == participant.Id);
+                        <div class="row" style="gap:.5rem;font-size:var(--step--1)">
+                            <span class="avatar avatar--sm" style="background:@Ranks.Tint(participant.AvatarSeed ?? participant.Id)">@Initial(participant.DisplayName)</span>
+                            <span class="grow" dir="auto">@(participant.Id == MeId ? L["result.you"] : participant.DisplayName)</span>
+                            <span>@AnswerText(closed, answer)</span>
+                        </div>
+                    }
+                </div>
+                @if (_results?.Slots.FirstOrDefault(s => s?.Slot == closed.Slot) is { } result)
+                {
+                    var ownNotApplicable = closed.Answers.FirstOrDefault(a => a.PlayerId == MeId)?.Kind == "na";
+                    var naIndex = closed.Options.FindIndex(o => o.IsNotApplicable);
+                    <p class="muted" style="margin:.8rem 0 0">@L[MatchingAgreementText.Key(result, naIndex, ownNotApplicable)]</p>
+                    <div class="matching-distribution" aria-label="@L["matching.play.distribution"]">
+                        @for (var index = 0; index < closed.Options.Count; index++)
+                        {
+                            var option = closed.Options[index];
+                            var count = index < result.Counts.Count ? result.Counts[index] : 0;
+                            <div class="row row--between matching-distribution__row">
+                                <span class="row" style="gap:.4rem" dir="auto">
+                                    @if (option.ParticipantId is not null && option.DisplayName is { } optionName)
+                                    {
+                                        <span class="avatar avatar--sm" style="background:@Ranks.Tint(option.AvatarSeed ?? option.ParticipantId)">@Initial(optionName)</span>
+                                    }
+                                    <span>@OptionText(option)</span>
+                                </span>
+                                <span class="numeral">@L.Num(count)</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        }
+
+        @if (_view.CurrentSlot is null || _view.State is "resolved" or "nocontest" or "no_contest")
+        {
+            <section class="card card--taq enter" style="margin-top:1rem;text-align:center">
+                @if (_view.State is "nocontest" or "no_contest")
+                {
+                    <h2>@MatchingResultsText.NoContest(L)</h2>
+                }
+                else
+                {
+                    <h2>@L["matching.results.title"]</h2>
+                    @if (_results?.PairStats is { Count: > 0 } pairs)
+                    {
+                        <div class="stack" style="margin-top:.8rem;gap:.45rem">
+                            @foreach (var pair in pairs)
+                            {
+                                <div class="row row--between"><span>@Name(pair.FirstParticipantId) · @Name(pair.SecondParticipantId)</span><span>@MatchingResultsText.PairAgreement(pair, L)</span></div>
+                            }
+                        </div>
+                    }
+                    else if (_results?.AllAgreedCount is { } agreed)
+                    {
+                        <p class="muted">@L.Format("matching.results.allAgreed", L.Num(agreed), L.Num(_view.TotalSlots))</p>
+                    }
+                }
+                <a class="btn btn--ghost btn--block" style="margin-top:1rem" href="/play">@L["result.again"]</a>
+            </section>
+        }
+
+        @if (_error is not null) { <div class="notice notice--bad enter">@_error</div> }
+    }
+</div>
+
+@code {
+    [Parameter] public string MatchId { get; set; } = "";
+    protected override bool AllowsGuest => true;
+
+    private MatchingViewDto? _view;
+    private MatchingResultsDto? _results;
+    private LiveClient? _client;
+    private bool _answering;
+    private string? _error;
+    private string MeId => State.Me!.Id;
+
+    private IEnumerable<MatchingSlotDto> ClosedSlots
+        => _view?.ClosedSlots is { Count: > 0 } slots
+            ? slots
+            : _view?.LastClosedSlot is { } last ? [last] : [];
+
+    protected override async Task LoadAsync()
+    {
+        await RefreshAsync();
+        if (_view is null || _view.State is "awaitingopponent" or "awaiting_opponent") return;
+        _client = ClientFactory("hub/live");
+        _client.MatchingSlotClosed += OnSlotClosed;
+        _client.MatchingRosterChanged += OnRosterChanged;
+        await _client.StartAndJoinMatchingAsync(MatchId);
+    }
+
+    private async Task RefreshAsync()
+    {
+        _view = await Api.MatchingAsync(MatchId);
+        _results = _view?.Results;
+        if (State.IsGuest && _view?.State is ("resolved" or "nocontest" or "no_contest"))
+            await State.ForgetFinishedGuestMatchAsync(MatchId);
+    }
+
+    private void OnSlotClosed(MatchingSlotClosedDto push) => _ = InvokeAsync(async () =>
+    {
+        await RefreshAsync();
+        StateHasChanged();
+    });
+
+    private void OnRosterChanged() => _ = InvokeAsync(async () =>
+    {
+        await RefreshAsync();
+        StateHasChanged();
+    });
+
+    private async Task AnswerAsync(MatchingOptionDto option)
+    {
+        if (_view?.CurrentSlot is not { } slot || _answering) return;
+        _answering = true;
+        _error = null;
+        var updated = await Api.AnswerMatchingAsync(MatchId, slot.Slot, option.Kind,
+            option.ParticipantId, option.ChoiceIndex);
+        _answering = false;
+        if (updated is null) { _error = L["common.error"]; return; }
+        _view = updated;
+        _results = updated.Results;
+    }
+
+    private bool IsOwnOption(MatchingOptionDto option)
+        => _view?.OwnAnswer is { } answer && option.Kind == answer.Kind
+           && option.ParticipantId == answer.ParticipantId && option.ChoiceIndex == answer.ChoiceIndex;
+
+    private string OptionText(MatchingOptionDto option)
+        => option.IsNotApplicable ? L["matching.answer.notApplicable"]
+            : option.Text ?? option.DisplayName ?? L["matching.answer.noAnswer"];
+
+    private string AnswerText(MatchingSlotDto slot, MatchingAnswerDto? answer)
+    {
+        if (answer is null) return L["matching.answer.noAnswer"];
+        if (answer.Kind == "na") return L["matching.answer.notApplicable"];
+        var option = slot.Options.FirstOrDefault(o => answer.Kind == o.Kind
+            && answer.ParticipantId == o.ParticipantId && answer.ChoiceIndex == o.ChoiceIndex);
+        return option is null ? L["matching.answer.noAnswer"] : OptionText(option);
+    }
+
+    private string Name(string id) => _view?.Participants.FirstOrDefault(p => p.Id == id)?.DisplayName ?? id;
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_client is null) return;
+        _client.MatchingSlotClosed -= OnSlotClosed;
+        _client.MatchingRosterChanged -= OnRosterChanged;
+        try { await _client.LeaveAsync(); } catch { }
+        await _client.DisposeAsync();
+    }
+}

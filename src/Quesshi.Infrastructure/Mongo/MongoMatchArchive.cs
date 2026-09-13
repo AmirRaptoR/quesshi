@@ -5,8 +5,18 @@ namespace Quesshi.Infrastructure.Mongo;
 
 public sealed class MongoMatchArchive(MongoContext db) : IMatchArchive
 {
-    public Task SaveAsync(ArchivedMatch match, CancellationToken ct = default)
-        => db.Matches.ReplaceOneAsync(m => m.Id == match.Id, MatchDoc.From(match), new ReplaceOptions { IsUpsert = true }, ct);
+    public async Task SaveAsync(ArchivedMatch match, CancellationToken ct = default)
+    {
+        try
+        {
+            await db.Matches.ReplaceOneAsync(m => m.Id == match.Id, MatchDoc.From(match),
+                new ReplaceOptions { IsUpsert = true }, ct);
+        }
+        catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        {
+            throw new MatchCodeCollisionException(match.Code, ex);
+        }
+    }
 
     public async Task<ArchivedMatch?> ByCodeAsync(string code, CancellationToken ct = default)
     {

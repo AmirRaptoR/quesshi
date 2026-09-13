@@ -13,9 +13,10 @@ public sealed record HomeDuelSplit(List<MatchSummaryDto> YourTurn, List<MatchSum
 public static class HomeDuels
 {
     /// <summary>
-    /// Async duels only, split by whose move it is. A live duel is never <c>CanPlay</c> — it advances
-    /// on its own clock and belongs to the Live tab — so it is dropped here entirely rather than
-    /// filed under "waiting on them", where it would read as something this player could wait out.
+    /// Archived non-live summaries, including matching rooms, split by whether this player can act.
+    /// A live duel is never <c>CanPlay</c> — it advances on its own clock and belongs to the Live tab
+    /// — so it is dropped here rather than filed under "waiting on them", where it would read as
+    /// something this player could wait out.
     /// Newest first within each list, which is the order the old Duels page already used.
     /// </summary>
     public static HomeDuelSplit Split(IEnumerable<MatchSummaryDto> matches)
@@ -35,5 +36,8 @@ public static class HomeDuels
     /// still worth opening to see where it stands, which is what stops "Waiting on them" being the dead
     /// end the audit called out.
     /// </summary>
-    public static string Route(MatchSummaryDto match) => match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}";
+    public static string Route(MatchSummaryDto match)
+        => string.Equals(match.Mode, "matching", StringComparison.OrdinalIgnoreCase)
+            ? $"/matching/{match.Id}"
+            : match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}";
 }

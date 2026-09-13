@@ -251,7 +251,7 @@ public sealed class LiveMatch
     /// </summary>
     public bool UpdateSettings(string playerId, DuelSettings settings)
     {
-        if (playerId != OwnerId || _questionIds.Count > 0) return false;
+        if (playerId != OwnerId || _questionIds.Count > 0 || settings.Mode != Settings.Mode) return false;
 
         Settings = settings;
         return true;

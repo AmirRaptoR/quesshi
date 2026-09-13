@@ -60,6 +60,17 @@ public static class Mappers
         [.. q.Reports.Select(r => new QuestionReportDto(r.PlayerId, "", r.Reason.ToString().ToLowerInvariant(), r.At))],
         q.Kind.ToString().ToLowerInvariant(), q.Target.ToDto(), q.BaseLayer?.ToString().ToLowerInvariant());
 
+    public static MatchingQuestionDto ToAdminDto(this MatchingQuestion q) => new(
+        q.Id, q.Lang.Code(), q.MatchingCategoryId, q.Prompt,
+        q.AnswerSource.ToString().ToLowerInvariant(), [.. q.FixedChoices],
+        q.Status.ToString().ToLowerInvariant(), q.Source.ToString().ToLowerInvariant(),
+        q.Media.Kind == MediaKind.None ? null : new MediaDto(
+            q.Media.Kind.ToString().ToLowerInvariant(), q.Media.Url, q.Media.Attribution),
+        q.Topic, q.CreatedAt, q.UpdatedAt, q.TimesServed);
+
+    public static MatchingCategoryDto ToDto(this MatchingCategory c, Language lang) => new(
+        c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl);
+
     /// <summary>
     /// A map target on its way to the admin form. Unlike every play-facing mapper, this one is
     /// <i>allowed</i> to send the answer: the admin panel is where the answer is authored and an
@@ -99,20 +110,23 @@ public static class Mappers
         var theirRun = otherId is null ? null : v.Runs.FirstOrDefault(r => r.PlayerId == otherId);
 
         var (myName, myAvatar, _) = lookup(me);
-        var mine = new PlayerSideDto(me, myName, myAvatar, myRun?.Score ?? 0, myRun?.Correct ?? 0, myRun?.Answered ?? 0, myRun?.Finished ?? false);
+        var matching = (GameMode)v.Mode == GameMode.Matching;
+        var mine = new PlayerSideDto(me, myName, myAvatar, matching ? null : myRun?.Score ?? 0,
+            matching ? 0 : myRun?.Correct ?? 0, matching ? 0 : myRun?.Answered ?? 0, myRun?.Finished ?? false);
 
         PlayerSideDto? theirs = null;
         if (otherId is not null)
         {
             var (name, avatar, _) = lookup(otherId);
-            theirs = new PlayerSideDto(otherId, name, avatar, theirRun?.Score ?? 0, theirRun?.Correct ?? 0, theirRun?.Answered ?? 0, theirRun?.Finished ?? false);
+            theirs = new PlayerSideDto(otherId, name, avatar, matching ? null : theirRun?.Score ?? 0,
+                matching ? 0 : theirRun?.Correct ?? 0, matching ? 0 : theirRun?.Answered ?? 0, theirRun?.Finished ?? false);
         }
 
         var state = (MatchState)v.State;
         var over = state is MatchState.Resolved or MatchState.Forfeited;
         var canReveal = mine.Finished || over;
 
-        var outcome = !over ? "pending" : OutcomeFor(me, v.Runs);
+        var outcome = matching ? null : !over ? "pending" : OutcomeFor(me, v.Runs);
 
         // Issue #53's lobby page addition: the whole roster, in join order, plus the settings the
         // owner picked (or, for a legacy pre-drawn record, reconstructed with empty categories/levels
@@ -126,9 +140,10 @@ public static class Mappers
         var settings = new DuelSettingsDto(((Language)v.Lang).Code(), v.QuestionCount, v.CategoryIds ?? [], v.Levels ?? []);
 
         return new MatchSummaryDto(v.Id, v.Code, ((Language)v.Lang).Code(), state.ToString().ToLowerInvariant(),
-            mine, theirs, v.WinnerId, v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
+            mine, theirs, v.WinnerId, matching ? null : v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
             v.QuestionIds.Count, IsLive: false, Participants: participants, Capacity: v.Capacity,
-            Settings: settings, SettingsLocked: v.QuestionIds.Count > 0);
+            Settings: settings, SettingsLocked: v.QuestionIds.Count > 0,
+            Mode: matching ? "matching" : null);
     }
 
     /// <summary>
@@ -170,6 +185,7 @@ public static class Mappers
         // still names only a single "opponent" — this DTO's two-sided shape is issue #53's rework, not
         // this one's — but it is now picked from Results, the one place that lists every real seat, so
         // it can never coincide with `me`.
+        var matching = m.Mode == GameMode.Matching;
         var myScore = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Score ?? 0;
         var otherId = m.Results.Select(r => r.PlayerId).FirstOrDefault(id => id != me);
         var otherScore = otherId is null ? 0 : m.Results.FirstOrDefault(r => r.PlayerId == otherId)?.Score ?? 0;
@@ -177,13 +193,13 @@ public static class Mappers
         var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
 
         var (myName, myAvatar, _) = lookup(me);
-        var mine = new PlayerSideDto(me, myName, myAvatar, myScore, 0, 0, over);
+        var mine = new PlayerSideDto(me, myName, myAvatar, matching ? null : myScore, matching ? 0 : 0, 0, over);
 
         PlayerSideDto? theirs = null;
         if (otherId is not null)
         {
             var (name, avatar, _) = lookup(otherId);
-            theirs = new PlayerSideDto(otherId, name, avatar, otherScore, 0, 0, over);
+            theirs = new PlayerSideDto(otherId, name, avatar, matching ? null : otherScore, 0, 0, over);
         }
 
         // Every per-player outcome reads Results — the real per-participant Standing this archive row
@@ -194,8 +210,9 @@ public static class Mappers
         // NoContest is its own case, kept exactly as before: it credits nobody, so Results carries
         // only the unranked Loss placeholder (see ParticipantResult's own remarks) rather than a real
         // Standing, and "draw" — nobody won, not "everybody lost" — is the honest reading of that.
-        string outcome;
-        if (!over) outcome = "pending";
+        string? outcome;
+        if (matching) outcome = null;
+        else if (!over) outcome = "pending";
         else if (m.State == MatchState.NoContest) outcome = "draw";
         else outcome = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Outcome switch
         {
@@ -205,8 +222,32 @@ public static class Mappers
         };
 
         return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), m.State.ToString().ToLowerInvariant(),
-            mine, theirs, m.WinnerId, m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
-            m.QuestionIds.Count, IsLive: true);
+            mine, theirs, m.WinnerId, matching ? null : m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
+            m.QuestionIds.Count, IsLive: true, Mode: matching ? "matching" : null);
+    }
+
+    /// <summary>Matching rows are intentionally scoreless and are already complete enough for the
+    /// match list; activating a matching grain here would turn a cheap archive read into one grain
+    /// call per row. The detail/play routes use the matching grain for the full redacted view.</summary>
+    public static MatchSummaryDto ToMatchingSummary(this ArchivedMatch m, string me,
+        Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
+    {
+        var state = m.State.ToString().ToLowerInvariant();
+        var participants = m.Results.Select(r =>
+        {
+            var (name, avatar, guest) = lookup(r.PlayerId);
+            return new LiveParticipantDto(r.PlayerId, name, avatar, guest);
+        }).ToList();
+        var mineInfo = participants.FirstOrDefault(p => p.PlayerId == me) ?? new LiveParticipantDto(me, me, me, false);
+        var other = participants.FirstOrDefault(p => p.PlayerId != me);
+        var mine = new PlayerSideDto(me, mineInfo.Name, mineInfo.Avatar, null, 0, 0,
+            m.State is MatchState.Resolved or MatchState.NoContest);
+        var theirs = other is null ? null : new PlayerSideDto(other.PlayerId, other.Name, other.Avatar,
+            null, 0, 0, m.State is MatchState.Resolved or MatchState.NoContest);
+        var over = m.State is MatchState.Resolved or MatchState.NoContest;
+        return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), state, mine, theirs, null, null,
+            m.CreatedAt, !over, false, null, m.QuestionIds.Count, false, participants, participants.Count,
+            new DuelSettingsDto(m.Lang.Code(), m.QuestionIds.Count, [], []), m.QuestionIds.Count > 0, "matching");
     }
 
     /// <summary>

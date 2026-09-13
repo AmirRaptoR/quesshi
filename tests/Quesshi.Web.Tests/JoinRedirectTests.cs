@@ -8,6 +8,9 @@ public class JoinRedirectTests
     private static InviteDto Invite(string matchId, bool live = false) =>
         new("CODE", matchId, "Challenger", "avatar", 10, true, live);
 
+    private static InviteDto MatchingInvite(string matchId) =>
+        new("CODE", matchId, "Challenger", "avatar", 10, true, false, "matching");
+
     [Fact]
     public void A_pinned_guest_reopening_their_own_async_code_goes_straight_to_duel()
         => Assert.Equal("/duel/match-a", JoinRedirect.TargetFor(isGuest: true, guestMatchId: "match-a", invite: Invite("match-a")));
@@ -15,6 +18,10 @@ public class JoinRedirectTests
     [Fact]
     public void A_pinned_guest_reopening_their_own_live_code_goes_straight_to_live()
         => Assert.Equal("/live/match-a", JoinRedirect.TargetFor(isGuest: true, guestMatchId: "match-a", invite: Invite("match-a", live: true)));
+
+    [Fact]
+    public void A_pinned_guest_reopening_their_own_matching_code_goes_to_matching_play()
+        => Assert.Equal("/matching/match-a", JoinRedirect.TargetFor(isGuest: true, guestMatchId: "match-a", invite: MatchingInvite("match-a")));
 
     [Fact]
     public void A_pinned_guest_opening_a_different_matchs_code_is_not_redirected()

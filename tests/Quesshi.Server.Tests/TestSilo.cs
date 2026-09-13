@@ -21,11 +21,15 @@ public sealed class TestSilo : ISiloConfigurator
             services.AddSingleton<ILeaderboard>(Shared.Leaderboard);
             services.AddSingleton<IPlayerRepository>(Shared.Players);
             services.AddSingleton<ILiveNotifier>(Shared.Notifier);
+            services.AddSingleton<IMatchingNotifier>(Shared.MatchingNotifier);
+            services.AddSingleton<IMatchingQuestionRepository>(Shared.MatchingQuestions);
+            services.AddSingleton<IMatchingCategoryRepository>(Shared.MatchingCategories);
 
             // MatchGrain now draws its own question set at Start/auto-start, the way LiveMatchGrain
             // already does — needed for DI to construct the grain at all, even in tests that only ever
             // exercise the legacy pre-drawn Create overload and never actually call BuildAsync.
             services.AddSingleton<QuestionSetBuilder>();
+            services.AddSingleton<MatchingQuestionSetBuilder>();
         });
     }
 }

@@ -1,0 +1,239 @@
+@page "/admin/matching/questions"
+@inherits AdminPageBase
+@inject IJSRuntime Js
+
+<PageTitle>@L["admin.matching.questions"] · @L["app.name"]</PageTitle>
+
+<div class="shell shell--wide">
+    <header class="topbar"><h1 class="topbar__title">@L["admin.matching.questions"]</h1></header>
+    <AdminNav />
+
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <section class="card card--flat">
+            <div class="row" style="flex-wrap:wrap;gap:.5rem">
+                <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.language"]: @L["admin.all"]</option>
+                    <option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option>
+                </select>
+                <select class="select" style="width:auto" @bind="_category" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.category"]: @L["admin.all"]</option>
+                    @foreach (var category in _categories) { <option value="@category.Id">@CategoryName(category)</option> }
+                </select>
+                <select class="select" style="width:auto" @bind="_status" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.status"]: @L["admin.all"]</option>
+                    <option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option>
+                </select>
+                <input class="input grow" style="min-width:12rem" placeholder="@L["admin.search"]" @bind="_text" @bind:event="oninput" @onkeydown="OnSearchKey" />
+                <button class="btn" @onclick="StartNew">@L["admin.new"]</button>
+            </div>
+        </section>
+
+        <section class="card card--flat" style="margin-top:1rem">
+            <span class="eyebrow">@L["admin.import"] · @L["admin.matching.questions"]</span>
+            <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.6rem">
+                <select class="select" style="width:auto" @bind="_import.Format">
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                </select>
+                <button class="btn btn--ghost btn--sm" @onclick="DownloadMatchingTemplateAsync">@L["admin.import.template"]</button>
+                <InputFile OnChange="PickMatchingImportFileAsync" />
+                <button class="btn btn--sm" disabled="@(_import.File is null || _importing)" @onclick="DryRunMatchingImportAsync">
+                    @(_importing ? L["admin.import.working"] : L["admin.import.dryRun"])
+                </button>
+                @if (_importReport is { DryRun: true, Accepted: > 0 })
+                {
+                    <button class="btn btn--gold btn--sm" disabled="@_importing" @onclick="CommitMatchingImportAsync">@L["admin.import.commit"]</button>
+                }
+            </div>
+            <p class="faint" style="margin:.5rem 0 0;font-size:var(--step--1)">@L["admin.import.hint"]</p>
+            @if (_importReport is { } report)
+            {
+                <div class="notice @(report is { DryRun: false, Rejected: 0 } ? "notice--good" : null)" style="margin-top:.7rem">
+                    @L.Format("admin.import.summary", L.Num(report.Total), L.Num(report.Accepted), L.Num(report.Rejected))
+                    @(report.DryRun ? "" : " · " + L["admin.import.committed"])
+                </div>
+                @if (report.Rows.Any(r => !r.Accepted))
+                {
+                    <table class="table" style="margin-top:.5rem">
+                        <thead><tr><th>#</th><th>@L["admin.prompt"]</th><th>@L["admin.import.error"]</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in report.Rows.Where(r => !r.Accepted))
+                            {
+                                <tr><td>@row.Row</td><td>@(row.Prompt ?? "—")</td><td dir="ltr">@row.Error</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            }
+        </section>
+
+        @if (_editing is not null)
+        {
+            <section class="card card--taq" style="margin-top:1rem">
+                <div class="row row--between"><span class="eyebrow">@(_editing.IsEditing ? L["admin.edit"] : L["admin.new"])</span><button class="btn btn--ghost btn--sm" @onclick="CloseEditor">@L["admin.cancel"]</button></div>
+                <div class="stack" style="margin-top:.9rem">
+                    <div class="row" style="flex-wrap:wrap;gap:.5rem">
+                        <select class="select" style="width:auto" @bind="_editing.Lang"><option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option></select>
+                        <select class="select" style="width:auto" @bind="_editing.MatchingCategoryId">
+                            <option value="">@L["admin.matching.chooseCategory"]</option>
+                            @foreach (var category in EditableCategories) { <option value="@category.Id">@CategoryName(category)@(category.IsActive ? "" : " · " + L["admin.inactive"])</option> }
+                        </select>
+                        <select class="select" style="width:auto" @bind="_editing.Status"><option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option></select>
+                    </div>
+                    <div class="field"><label>@L["admin.prompt"]</label><textarea class="textarea" rows="3" @bind="_editing.Prompt"></textarea></div>
+                    <div class="grid-2">
+                        <div class="field"><label>@L["admin.matching.subject"]</label><input class="input" @bind="_editing.Subject" /></div>
+                        <div class="field"><label>@L["admin.matching.aspect"]</label><input class="input" @bind="_editing.Aspect" /></div>
+                    </div>
+                    <label class="row" style="gap:.5rem"><input type="checkbox" @bind="_editing.UseParticipants" /> @L["admin.matching.participantAnswers"]</label>
+
+                    @if (!_editing.UseParticipants)
+                    {
+                        <div class="field">
+                            <label>@L["admin.matching.choices"]</label>
+                            @for (var i = 0; i < _editing.Choices.Count; i++)
+                            {
+                                var index = i;
+                                <div class="row" style="gap:.4rem;margin-bottom:.4rem">
+                                    <input class="input grow" @bind="_editing.Choices[index]" aria-label="@L.Format("admin.matching.choiceNumber", index + 1)" />
+                                    <button type="button" class="btn btn--ghost btn--sm btn--icon" disabled="@(_editing.Choices.Count <= MatchingQuestionForm.MinChoices)" aria-label="@L["admin.matching.removeChoice"]" title="@L["admin.matching.removeChoice"]" @onclick="() => _editing.RemoveChoice(index)">−</button>
+                                </div>
+                            }
+                            <button type="button" class="btn btn--ghost btn--sm" disabled="@(_editing.Choices.Count >= MatchingQuestionForm.MaxChoices)" @onclick="_editing.AddChoice">+ @L["admin.matching.addChoice"]</button>
+                        </div>
+                    }
+                    <div class="field"><label>@L["admin.media"]</label><InputFile OnChange="UploadAsync" accept="image/*,audio/*,video/*" /></div>
+                    @if (!string.IsNullOrWhiteSpace(_editing.MediaUrl)) { <div class="row"><span class="chip">@_editing.MediaKind</span><button class="btn btn--ghost btn--sm" @onclick="ClearMedia">@L["admin.removeMedia"]</button></div> }
+                    @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
+                    <div class="row"><button class="btn" disabled="@_busy" @onclick="SaveAsync">@L["admin.save"]</button><button class="btn btn--ghost" @onclick="CloseEditor">@L["admin.cancel"]</button></div>
+                </div>
+            </section>
+        }
+
+        @if (_results is { Items.Count: 0 }) { <p class="empty">@L["admin.noResults"]</p> }
+        else
+        {
+            <Pager Total="_results?.Total ?? 0" Page="_page" PageSize="_size" PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
+            <div class="stack" style="margin-top:.75rem">
+                @foreach (var question in _results?.Items ?? [])
+                {
+                    <article class="card card--flat">
+                        <div class="row row--between" style="gap:.5rem;flex-wrap:wrap"><div class="row" style="gap:.4rem;flex-wrap:wrap"><span class="chip" dir="ltr">@question.Lang</span><span class="chip">@CategoryName(question.MatchingCategoryId)</span><span class="chip @StatusClass(question.Status)">@L["admin." + question.Status]</span><span class="chip chip--kind">@(question.AnswerSource == "participants" ? L["admin.matching.participants"] : L["admin.matching.fixed"])</span></div><div class="row" style="gap:.35rem"><button class="btn btn--sm" disabled="@(question.Status == "approved")" @onclick="() => ApproveAsync(question.Id)">@L["admin.approve"]</button><button class="btn btn--ghost btn--sm" disabled="@(question.Status == "rejected")" @onclick="() => RejectAsync(question.Id)">@L["admin.reject"]</button><button class="btn btn--ghost btn--sm" @onclick="() => Edit(question)">@L["admin.edit"]</button><button class="btn btn--sm btn--icon btn--icon-danger" aria-label="@L["admin.delete"]" title="@L["admin.delete"]" @onclick="() => DeleteAsync(question.Id)"><Icon Name="trash" /></button></div></div>
+                        <p dir="auto" style="margin:.6rem 0 .4rem;font-weight:600">@question.Prompt</p>
+                        @if (!string.IsNullOrWhiteSpace(question.Topic)) { <p class="faint" style="margin:.2rem 0">@question.Topic</p> }
+                        <div class="row" dir="auto" style="gap:.4rem;flex-wrap:wrap;font-size:var(--step--1)">@foreach (var choice in question.Choices) { <span class="chip">@choice</span> }</div>
+                    </article>
+                }
+            </div>
+            <Pager Total="_results?.Total ?? 0" Page="_page" PageSize="_size" PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
+        }
+    }
+</div>
+
+@code {
+    private AdminMatchingQuestionPageDto? _results;
+    private List<MatchingCategoryDto> _categories = [];
+    private MatchingQuestionForm? _editing;
+    private string _lang = "", _category = "", _status = "", _text = "";
+    private int _page = 1, _size = 25;
+    private bool _busy;
+    private string? _error;
+    private readonly ImportForm _import = new() { Kind = "matching" };
+    private ImportReportDto? _importReport;
+    private bool _importing;
+
+    private IEnumerable<MatchingCategoryDto> EditableCategories => _editing is { } form && _categories.Any(c => c.Id == form.MatchingCategoryId && !c.IsActive)
+        ? _categories.Where(c => c.IsActive || c.Id == form.MatchingCategoryId) : _categories.Where(c => c.IsActive);
+
+    private string CategoryName(MatchingCategoryDto c) => L.Lang switch { "fa" => Pick(c.NameFa, c.NameEn), "nl" => Pick(c.NameNl, c.NameEn), _ => Pick(c.NameEn, c.NameFa) };
+    private string CategoryName(string id) => _categories.FirstOrDefault(c => c.Id == id) is { } c ? CategoryName(c) : id;
+    private static string Pick(string first, string second) => string.IsNullOrWhiteSpace(first) ? second : first;
+    private static string? StatusClass(string status) => status == "approved" ? "chip--win" : status == "rejected" ? "chip--loss" : null;
+
+    protected override async Task LoadAsync()
+    {
+        _categories = await Api.AdminMatchingCategoriesAsync() ?? [];
+        _lang = QueryState.Read(Nav, "lang"); _category = QueryState.Read(Nav, "category"); _status = QueryState.Read(Nav, "status"); _text = QueryState.Read(Nav, "q");
+        _page = Math.Max(1, QueryState.ReadInt(Nav, "page", 1)); _size = QueryState.ReadInt(Nav, "size", 25) is var size && size is 25 or 50 or 100 ? size : 25;
+        await FetchAsync();
+    }
+
+    private string Query() { var p = new List<string> { $"skip={(_page - 1) * _size}", $"take={_size}" }; if (_lang.Length > 0) p.Add($"lang={_lang}"); if (_category.Length > 0) p.Add($"category={_category}"); if (_status.Length > 0) p.Add($"status={_status}"); if (_text.Trim().Length > 0) p.Add($"text={Uri.EscapeDataString(_text.Trim())}"); return string.Join('&', p); }
+    private async Task FetchAsync() { QueryState.Write(Nav, new Dictionary<string, string?> { ["lang"] = _lang, ["category"] = _category, ["status"] = _status, ["q"] = _text.Trim(), ["page"] = _page == 1 ? null : _page.ToString(), ["size"] = _size == 25 ? null : _size.ToString() }); _results = await Api.AdminMatchingQuestionsAsync(Query()); }
+    private async Task ReloadAsync() { _page = 1; await FetchAsync(); }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await ReloadAsync(); }
+    private async Task GoToPageAsync(int page) { _page = page; await FetchAsync(); }
+    private async Task SetPageSizeAsync(int size) { _size = size; _page = 1; await FetchAsync(); }
+    private void StartNew() { _error = null; _editing = new MatchingQuestionForm { MatchingCategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "" }; }
+    private void Edit(MatchingQuestionDto q) { _error = null; _editing = MatchingQuestionForm.From(q); }
+    private void CloseEditor() { _editing = null; _error = null; }
+    private void ClearMedia() { if (_editing is not null) { _editing.MediaKind = null; _editing.MediaUrl = null; _editing.MediaAttribution = null; } }
+
+    private void PickMatchingImportFileAsync(InputFileChangeEventArgs e)
+    {
+        _import.File = e.File;
+        _importReport = null;
+    }
+
+    private async Task DownloadMatchingTemplateAsync()
+    {
+        if (await Api.DownloadMatchingImportTemplateAsync(_import.Format) is not { } file)
+        {
+            _error = L["common.error"];
+            return;
+        }
+
+        var contentType = _import.Format == "json" ? "application/json" : "text/csv";
+        await Js.InvokeVoidAsync("quesshi.download", file.FileName, contentType, Convert.ToBase64String(file.Bytes));
+    }
+
+    private Task DryRunMatchingImportAsync() => RunMatchingImportAsync(dryRun: true);
+    private Task CommitMatchingImportAsync() => RunMatchingImportAsync(dryRun: false);
+
+    private async Task RunMatchingImportAsync(bool dryRun)
+    {
+        if (_import.File is not { } file) return;
+
+        _importing = true;
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
+        _importReport = await Api.ImportMatchingQuestionsAsync(_import.Format, dryRun, content);
+        _importing = false;
+
+        if (_importReport is null)
+        {
+            _error = L["common.error"];
+            return;
+        }
+
+        if (!dryRun) await FetchAsync();
+    }
+    private async Task SaveAsync()
+    {
+        if (_editing is null) return;
+        _error = null;
+        if (!_editing.TryToDto(out var dto, out var errors)) { _error = L.Or("admin.err." + errors[0], L["common.error"]); return; }
+        _busy = true; var result = await Api.TrySaveMatchingQuestionAsync(dto); _busy = false;
+        if (result.Saved is null) { _error = L.Or("admin.err." + (result.Error ?? "common.error"), L["common.error"]); return; }
+        CloseEditor(); await FetchAsync();
+    }
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        if (_editing is null) return;
+        using var content = new MultipartFormDataContent(); content.Add(new StreamContent(e.File.OpenReadStream(20 * 1024 * 1024)), "file", e.File.Name);
+        var media = await Api.UploadAsync(content); if (media is null) { _error = L["common.error"]; return; }
+        _editing.MediaKind = media.Kind; _editing.MediaUrl = media.Url;
+    }
+    private async Task ApproveAsync(string id) { await Api.ApproveMatchingAsync(id); await FetchAsync(); }
+    private async Task RejectAsync(string id) { await Api.RejectMatchingAsync(id); await FetchAsync(); }
+    private async Task DeleteAsync(string id) { await Api.DeleteMatchingQuestionAsync(id); await FetchAsync(); }
+}

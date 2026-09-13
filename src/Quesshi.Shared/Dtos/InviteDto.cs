@@ -5,4 +5,4 @@ namespace Quesshi.Shared;
 /// challenging, how long the duel is, and whether the seat is still open.
 /// </summary>
 public sealed record InviteDto(string Code, string MatchId, string ChallengerName, string ChallengerAvatar, int Questions, bool Open,
-    bool Live = false);
+    bool Live = false, string Mode = "trivia");

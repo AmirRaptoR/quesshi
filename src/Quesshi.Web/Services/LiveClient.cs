@@ -58,6 +58,11 @@ public sealed class LiveClient : IAsyncDisposable
     /// </summary>
     public event Action? LobbyUpdated;
 
+    /// <summary>Matching uses the same per-match SignalR group as live duels, but its payload is
+    /// deliberately only a slot-close marker. The page refetches the redacted REST snapshot.</summary>
+    public event Action<MatchingSlotClosedDto>? MatchingSlotClosed;
+    public event Action? MatchingRosterChanged;
+
     /// <summary>
     /// Fires after a reconnect's automatic rejoin completes, with the fresh catch-up view. Whatever
     /// pushes were missed while the socket was down (a reveal, a new round, even the duel ending)
@@ -95,6 +100,8 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<RematchCreatedDto>("RematchCreated", r => RematchCreated?.Invoke(r));
         _connection.On("RematchFailed", () => RematchFailed?.Invoke());
         _connection.On("LobbyUpdated", () => LobbyUpdated?.Invoke());
+        _connection.On<MatchingSlotClosedDto>("MatchingSlotClosed", push => MatchingSlotClosed?.Invoke(push));
+        _connection.On("MatchingRosterChanged", () => MatchingRosterChanged?.Invoke());
     }
 
     internal HubConnection Connection => _connection;
@@ -146,6 +153,21 @@ public sealed class LiveClient : IAsyncDisposable
         }
     }
 
+    /// <summary>Matching has no live-duel catch-up payload: REST owns the snapshot and this
+    /// connection only subscribes to redaction-safe roster/slot-close notifications.</summary>
+    public async Task<bool> StartAndJoinMatchingAsync(string matchId, CancellationToken ct = default)
+    {
+        try
+        {
+            await StartAsync(ct);
+            return await JoinAsyncLobbyAsync(matchId, ct);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Leaves whichever group this connection last joined — <see cref="JoinAsync"/>'s live
     /// duel or <see cref="JoinAsyncLobbyAsync"/>'s async lobby — and clears the state a reconnect
     /// would otherwise rejoin against.</summary>
@@ -178,7 +200,15 @@ public sealed class LiveClient : IAsyncDisposable
     /// <see cref="LobbyUpdated"/> push (or a manual refresh) brings it current.</summary>
     internal Task OnReconnectedAsync(string? connectionId) => _matchId is not { } id
         ? Task.CompletedTask
-        : _asyncLobby ? _connection.InvokeAsync("JoinAsyncLobby", id) : RejoinAsync(id);
+        : _asyncLobby ? RejoinAsyncLobby(id) : RejoinAsync(id);
+
+    private async Task RejoinAsyncLobby(string matchId)
+    {
+        await _connection.InvokeAsync("JoinAsyncLobby", matchId);
+        // Matching has no hub catch-up payload. A reconnect therefore invalidates the page's
+        // redacted REST snapshot so it immediately refetches anything missed while offline.
+        MatchingRosterChanged?.Invoke();
+    }
 
     private async Task RejoinAsync(string matchId)
     {

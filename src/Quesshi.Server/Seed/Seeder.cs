@@ -10,7 +10,12 @@ namespace Quesshi.Server.Seed;
 /// from their content, so re-running updates rather than duplicates. No translated text lives in
 /// this file — it all comes from the JSON beside it.
 /// </summary>
-public sealed class Seeder(IQuestionRepository questions, ICategoryRepository categories, IClock clock, ILogger<Seeder> logger)
+public sealed class Seeder(
+    IQuestionRepository questions,
+    ICategoryRepository categories,
+    IMatchingCategoryRepository matchingCategories,
+    IClock clock,
+    ILogger<Seeder> logger)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -21,6 +26,14 @@ public sealed class Seeder(IQuestionRepository questions, ICategoryRepository ca
         foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "categories.json"), ct))
             if (await categories.GetAsync(row.Id, ct) is null)
                 await categories.UpsertAsync(new Category(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
+
+        // Matching categories live in their own collection and are insert-only by design. An admin
+        // may rename one after installation; unlike seeded questions, a redeploy must not overwrite
+        // that edit.
+        foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "matching_categories.json"), ct))
+            if (await matchingCategories.GetAsync(row.Id, ct) is null)
+                await matchingCategories.UpsertAsync(
+                    new MatchingCategory(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
 
         var inserted = 0;
 

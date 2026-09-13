@@ -21,6 +21,9 @@ public sealed class Api(HttpClient http)
     public Task<GuestLiveResultDto?> JoinAsGuestLiveAsync(string code, string name, string lang)
         => PostAsync<GuestLiveResultDto>($"api/auth/guest/live/{Uri.EscapeDataString(Code(code))}", new GuestJoinDto(name, lang));
 
+    public Task<GuestMatchingResultDto?> JoinAsGuestMatchingAsync(string code, string name, string lang)
+        => PostAsync<GuestMatchingResultDto>($"api/auth/guest/matching/{Uri.EscapeDataString(Code(code))}", new GuestJoinDto(name, lang));
+
     private static string Code(string code) => code.Trim().ToUpperInvariant();
 
     // --- profile ---
@@ -104,6 +107,43 @@ public sealed class Api(HttpClient http)
 
     /// <summary>The async twin of <see cref="LiveByCodeAsync"/>.</summary>
     public Task<MatchSummaryDto?> MatchByCodeAsync(string code) => GetAsync<MatchSummaryDto>($"api/matches/by-code/{Uri.EscapeDataString(Code(code))}");
+
+    // --- matching ---------------------------------------------------------------
+    // Matching is a separate bounded context from trivia.  Keep these calls here (rather than
+    // teaching the trivia DTOs about matching answers) so a reload always gets the server's
+    // redacted snapshot and never has to reconstruct a round from browser state.
+    public Task<MatchingViewDto?> CreateMatchingLobbyAsync(int capacity, string? lang,
+        List<string>? categories = null, int? questions = null)
+        => PostAsync<MatchingViewDto>("api/matching/lobby",
+            new CreateMatchingLobbyDto(lang, questions, categories, [], capacity, "matching"));
+
+    public Task<MatchingViewDto?> JoinMatchingAsync(string code)
+        => PostAsync<MatchingViewDto>($"api/matching/join/{Uri.EscapeDataString(Code(code))}", new { });
+
+    public Task<MatchingViewDto?> MatchingByCodeAsync(string code)
+        => GetAsync<MatchingViewDto>($"api/matching/by-code/{Uri.EscapeDataString(Code(code))}");
+
+    public Task<List<MatchingCategoryDto>?> MatchingCategoriesAsync(string? lang = null)
+        => GetAsync<List<MatchingCategoryDto>>($"api/matching/categories?lang={Uri.EscapeDataString(lang ?? "")}");
+
+    public Task<MatchingViewDto?> MatchingAsync(string id)
+        => GetAsync<MatchingViewDto>($"api/matching/{Uri.EscapeDataString(id)}");
+
+    public Task<bool> StartMatchingAsync(string id)
+        => SendAsync(HttpMethod.Post, $"api/matching/{Uri.EscapeDataString(id)}/start");
+
+    public Task<bool> LeaveMatchingAsync(string id)
+        => SendAsync(HttpMethod.Post, $"api/matching/{Uri.EscapeDataString(id)}/leave");
+
+    public Task<bool> UpdateMatchingSettingsAsync(string id, int capacity, string? lang,
+        List<string>? categories = null, int? questions = null)
+        => PutJsonAsync($"api/matching/{Uri.EscapeDataString(id)}/settings",
+            new UpdateMatchingSettingsDto(lang, questions, categories, [], capacity, "matching"));
+
+    public Task<MatchingViewDto?> AnswerMatchingAsync(string id, int slot, string kind,
+        string? participantId = null, int? choiceIndex = null)
+        => PostAsync<MatchingViewDto>($"api/matching/{Uri.EscapeDataString(id)}/answer",
+            new SubmitMatchingAnswerDto(slot, kind, participantId, choiceIndex));
 
     public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
     public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");

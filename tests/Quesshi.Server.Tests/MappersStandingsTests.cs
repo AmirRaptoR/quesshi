@@ -1,6 +1,8 @@
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
+using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Api;
+using System.Text.Json;
 
 namespace Quesshi.Server.Tests;
 
@@ -17,6 +19,24 @@ namespace Quesshi.Server.Tests;
 public class MappersStandingsTests
 {
     private static (string Name, string Avatar, bool IsGuest) Lookup(string id) => (id, id, false);
+
+    [Fact]
+    public void Matching_summary_suppresses_score_verdict_and_exposes_mode()
+    {
+        var view = new MatchView("m", "CODE", (int)Language.En, ["p-a", "p-b"],
+            (int)MatchState.Resolved, null, false, DateTimeOffset.UtcNow, ["q1"],
+            [new RunView("p-a", 100, 10, 1, true, [], [])], Mode: (int)GameMode.Matching);
+
+        var summary = view.ToSummary("p-a", Lookup);
+        var json = JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Equal("matching", summary.Mode);
+        Assert.Null(summary.Me.Score);
+        Assert.Null(summary.IsDraw);
+        Assert.Null(summary.Outcome);
+        Assert.DoesNotContain("score", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outcome", json, StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public void ToLiveSummary_100_100_50_reads_two_draws_and_a_loss_from_Results_not_the_scalars()

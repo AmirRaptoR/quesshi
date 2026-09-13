@@ -92,4 +92,12 @@ public class HomeDuelsTests
         Assert.Equal("/play/a", HomeDuels.Route(Duel("a", canPlay: true)));
         Assert.Equal("/duel/b", HomeDuels.Route(Duel("b", canPlay: false)));
     }
+
+    [Fact]
+    public void A_matching_summary_opens_the_matching_player_even_when_it_is_playable()
+    {
+        var matching = Duel("matching", canPlay: true) with { Mode = "matching" };
+
+        Assert.Equal("/matching/matching", HomeDuels.Route(matching));
+    }
 }

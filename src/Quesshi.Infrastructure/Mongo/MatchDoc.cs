@@ -50,6 +50,9 @@ public sealed class MatchDoc
     /// old row, which BSON leaves as the default false — an existing row still reads as async.</summary>
     public bool IsLive { get; set; }
 
+    /// <summary>Absent on old rows, where the enum's zero value keeps the trivia meaning.</summary>
+    public int Mode { get; set; }
+
     public static MatchDoc From(ArchivedMatch m) => new()
     {
         Id = m.Id, Code = m.Code, Lang = (int)m.Lang, ChallengerId = m.ChallengerId, OpponentId = m.OpponentId,
@@ -68,7 +71,7 @@ public sealed class MatchDoc
             PlayerId = r.PlayerId, Score = r.Score, Place = r.Place, Outcome = (int)r.Outcome
         })],
         State = (int)m.State, CreatedAt = m.CreatedAt.UtcDateTime, EndedAt = m.EndedAt?.UtcDateTime,
-        QuestionIds = m.QuestionIds, IsLive = m.IsLive
+        QuestionIds = m.QuestionIds, IsLive = m.IsLive, Mode = (int)m.Mode
     };
 
     public ArchivedMatch ToDomain()
@@ -83,7 +86,8 @@ public sealed class MatchDoc
 
         return new ArchivedMatch(Id, Code, (Language)Lang, ChallengerId, OpponentId, WinnerId, IsDraw,
             results, (MatchState)State, new DateTimeOffset(CreatedAt, TimeSpan.Zero),
-            EndedAt is null ? null : new DateTimeOffset(EndedAt.Value, TimeSpan.Zero), QuestionIds, IsLive);
+            EndedAt is null ? null : new DateTimeOffset(EndedAt.Value, TimeSpan.Zero), QuestionIds, IsLive,
+            (GameMode)Mode);
     }
 
     /// <summary>Only for participants that actually exist: a null <paramref name="opponentId"/> means

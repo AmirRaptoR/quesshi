@@ -9,6 +9,8 @@ public sealed class MongoContext
         var db = new MongoClient(options.ConnectionString).GetDatabase(options.Database);
         Questions = db.GetCollection<QuestionDoc>("questions");
         Categories = db.GetCollection<CategoryDoc>("categories");
+        MatchingQuestions = db.GetCollection<MatchingQuestionDoc>("matching_questions");
+        MatchingCategories = db.GetCollection<MatchingCategoryDoc>("matching_categories");
         Players = db.GetCollection<PlayerDoc>("players");
         Matches = db.GetCollection<MatchDoc>("matches");
         GenerationRuns = db.GetCollection<GenerationRunDoc>("generation_runs");
@@ -18,6 +20,8 @@ public sealed class MongoContext
 
     public IMongoCollection<QuestionDoc> Questions { get; }
     public IMongoCollection<CategoryDoc> Categories { get; }
+    public IMongoCollection<MatchingQuestionDoc> MatchingQuestions { get; }
+    public IMongoCollection<MatchingCategoryDoc> MatchingCategories { get; }
     public IMongoCollection<PlayerDoc> Players { get; }
     public IMongoCollection<MatchDoc> Matches { get; }
     public IMongoCollection<GenerationRunDoc> GenerationRuns { get; }
@@ -44,6 +48,23 @@ public sealed class MongoContext
                 {
                     Unique = true,
                     PartialFilterExpression = Builders<QuestionDoc>.Filter.Type(q => q.Topic, MongoDB.Bson.BsonType.String)
+                })
+        ], ct);
+
+        await MatchingQuestions.Indexes.CreateManyAsync(
+        [
+            new CreateIndexModel<MatchingQuestionDoc>(Builders<MatchingQuestionDoc>.IndexKeys
+                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.MatchingCategoryId)),
+            new CreateIndexModel<MatchingQuestionDoc>(Builders<MatchingQuestionDoc>.IndexKeys
+                .Ascending(q => q.MatchingCategoryId)),
+            // A topic is unique only within a language. Null topics are intentionally left out so
+            // questions without a deduplication key can coexist.
+            new CreateIndexModel<MatchingQuestionDoc>(Builders<MatchingQuestionDoc>.IndexKeys
+                    .Ascending(q => q.Lang).Ascending(q => q.Topic),
+                new CreateIndexOptions<MatchingQuestionDoc>
+                {
+                    Unique = true,
+                    PartialFilterExpression = Builders<MatchingQuestionDoc>.Filter.Type(q => q.Topic, MongoDB.Bson.BsonType.String)
                 })
         ], ct);
 

@@ -9,6 +9,13 @@ namespace Quesshi.Web.Services;
 /// </summary>
 public sealed class AdminApi(AdminHttpClient http)
 {
+    public static readonly string[] MatchingAdminErrorCodes =
+    [
+        "bad_answer_source", "blank_prompt", "choices_not_allowed", "too_few_choices", "too_many_choices",
+        "blank_choice", "duplicate_choice", "unknown_category", "inactive_category", "bad_status", "bad_lang",
+        "bad_media", "duplicate_topic", "category_in_use", "bad_category_id", "blank_name", "bad_color"
+    ];
+
     private HttpClient Client => http.Client;
 
     // --- sign in -------------------------------------------------------------------
@@ -62,6 +69,50 @@ public sealed class AdminApi(AdminHttpClient http)
 
     public Task<AdminQuestionPageDto?> AdminQuestionsAsync(string query) => GetAsync<AdminQuestionPageDto>($"api/admin/questions?{query}");
     public Task<AdminQuestionDto?> SaveQuestionAsync(SaveQuestionDto body) => PostAsync<AdminQuestionDto>("api/admin/questions", body);
+
+    public Task<AdminMatchingQuestionPageDto?> AdminMatchingQuestionsAsync(string query)
+        => GetAsync<AdminMatchingQuestionPageDto>($"api/admin/matching/questions?{query}");
+
+    public async Task<(MatchingQuestionDto? Saved, string? Error)> TrySaveMatchingQuestionAsync(SaveMatchingQuestionDto body)
+    {
+        try
+        {
+            var response = await Client.PostAsJsonAsync("api/admin/matching/questions", body);
+            return response.IsSuccessStatusCode
+                ? (await response.Content.ReadFromJsonAsync<MatchingQuestionDto>(), null)
+                : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
+        }
+        catch { return (null, null); }
+    }
+
+    public Task<bool> ApproveMatchingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/matching/questions/{id}/approve");
+    public Task<bool> RejectMatchingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/matching/questions/{id}/reject");
+    public Task<bool> DeleteMatchingQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/matching/questions/{id}");
+
+    public Task<List<MatchingCategoryDto>?> AdminMatchingCategoriesAsync()
+        => GetAsync<List<MatchingCategoryDto>>("api/admin/matching/categories");
+
+    public async Task<(MatchingCategoryDto? Saved, string? Error)> TrySaveMatchingCategoryAsync(MatchingCategoryDto body)
+    {
+        try
+        {
+            var response = await Client.PostAsJsonAsync("api/admin/matching/categories", body);
+            return response.IsSuccessStatusCode
+                ? (await response.Content.ReadFromJsonAsync<MatchingCategoryDto>(), null)
+                : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
+        }
+        catch { return (null, null); }
+    }
+
+    public async Task<string?> TryDeleteMatchingCategoryAsync(string id)
+    {
+        try
+        {
+            var response = await Client.DeleteAsync($"api/admin/matching/categories/{id}");
+            return response.IsSuccessStatusCode ? null : (await response.Content.ReadFromJsonAsync<SaveError>())?.Error;
+        }
+        catch { return "common.error"; }
+    }
 
     /// <summary>
     /// Save, and on a refusal say which rule was broken. The endpoint answers with a stable code —
@@ -119,6 +170,29 @@ public sealed class AdminApi(AdminHttpClient http)
             if (!response.IsSuccessStatusCode) return null;
 
             return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"{kind}-template.{format}");
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Dry run or commit a matching-only import in the matching bounded context.</summary>
+    public async Task<ImportReportDto?> ImportMatchingQuestionsAsync(string format, bool dryRun, MultipartFormDataContent content)
+    {
+        try
+        {
+            var response = await Client.PostAsync($"api/admin/matching/questions/import?format={format}&dryRun={dryRun}", content);
+            return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ImportReportDto>() : null;
+        }
+        catch { return null; }
+    }
+
+    public async Task<(byte[] Bytes, string FileName)?> DownloadMatchingImportTemplateAsync(string format)
+    {
+        try
+        {
+            var response = await Client.GetAsync($"api/admin/matching/questions/import/template?format={format}");
+            if (!response.IsSuccessStatusCode) return null;
+
+            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"matching-template.{format}");
         }
         catch { return null; }
     }

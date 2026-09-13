@@ -12,6 +12,32 @@ namespace Quesshi.Domain.Tests;
 public class DuelSettingsTests
 {
     [Fact]
+    public void Trivia_is_the_zero_value_and_legacy_json_without_mode_reads_as_trivia()
+    {
+        Assert.Equal(0, (int)GameMode.Trivia);
+        var settings = System.Text.Json.JsonSerializer.Deserialize<DuelSettings>(
+            "{\"Language\":0,\"QuestionCount\":10,\"CategoryIds\":[],\"Levels\":[]}");
+
+        Assert.NotNull(settings);
+        Assert.Equal(GameMode.Trivia, settings!.Mode);
+    }
+
+    [Fact]
+    public void Mode_participates_in_value_equality()
+    {
+        var trivia = DuelSettings.Create(Language.En, 10, [], []);
+        var matching = DuelSettings.Create(Language.En, 10, [], [], GameMode.Matching);
+
+        Assert.NotEqual(trivia, matching);
+        Assert.NotEqual(trivia.GetHashCode(), matching.GetHashCode());
+    }
+
+    [Fact]
+    public void Matching_rejects_difficulty_levels()
+        => Assert.Throws<ArgumentException>(() =>
+            DuelSettings.Create(Language.En, 10, [], [Difficulty.Easy], GameMode.Matching));
+
+    [Fact]
     public void Two_instances_with_the_same_content_but_different_list_references_are_equal()
     {
         var a = DuelSettings.Create(Language.En, 10, new List<string> { "geography" }, new List<Difficulty> { Difficulty.Easy });

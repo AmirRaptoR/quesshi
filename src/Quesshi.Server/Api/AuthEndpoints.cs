@@ -57,6 +57,10 @@ public static class AuthEndpoints
             TokenIssuer tokens, IIdFactory ids, IClock clock) =>
             await GuestJoinLiveAsync(code, body, archive, players, grains, questions, categories, tokens, ids, clock));
 
+        group.MapPost("/guest/matching/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
+            IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock) =>
+            await GuestJoinMatchingAsync(code, body, archive, players, grains, tokens, ids, clock));
+
         group.MapPost("/google", async (GoogleSignInDto body, AuthOptions auth, AuthService service,
             TokenIssuer tokens, IHttpClientFactory http, ILoggerFactory logs) =>
         {
@@ -84,7 +88,8 @@ public static class AuthEndpoints
         var challenger = await players.GetAsync(match.ChallengerId);
         return Results.Ok(new InviteDto(match.Code, match.Id, challenger?.DisplayName ?? "—",
             challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
-            match.State == MatchState.AwaitingOpponent, match.IsLive));
+            match.State == MatchState.AwaitingOpponent, match.IsLive,
+            match.Mode == GameMode.Matching ? "matching" : "trivia"));
     }
 
     /// <summary>
@@ -104,6 +109,24 @@ public static class AuthEndpoints
         if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
 
         var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
+
+        // Matching owns its lobby under its own grain interface. Join before persisting the guest so
+        // a full, started, or raced lobby never leaves a player record that cannot be used anywhere.
+        if (found.Mode == GameMode.Matching)
+        {
+            var matching = grains.GetGrain<IMatchingMatchGrain>(found.Id);
+            if ((MatchingJoinResult)await matching.JoinAsync(guest.Id) is not MatchingJoinResult.Joined)
+                return Results.BadRequest(new { error = "cannot_join" });
+
+            await players.UpsertAsync(guest);
+            var updated = await archive.ByCodeAsync(found.Code) ?? found;
+            var matchingChallenger = await players.GetAsync(updated.ChallengerId);
+            var matchingSummary = updated.ToMatchingSummary(guest.Id, id => id == guest.Id
+                ? (guest.DisplayName, guest.AvatarSeed, true)
+                : (matchingChallenger?.DisplayName ?? "—", matchingChallenger?.AvatarSeed ?? id, matchingChallenger?.IsGuest ?? false));
+            return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), matchingSummary));
+        }
+
         await players.UpsertAsync(guest);
 
         var grain = grains.GetGrain<IMatchGrain>(found.Id);
@@ -118,6 +141,31 @@ public static class AuthEndpoints
             : (challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? id, challenger?.IsGuest ?? false));
 
         return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), summary));
+    }
+
+    /// <summary>Matching's guest twin. The guest is created only after the matching grain accepts the
+    /// seat, so a full/started code never leaves an unusable guest account behind.</summary>
+    internal static async Task<IResult> GuestJoinMatchingAsync(string code, GuestJoinDto body, IMatchArchive archive,
+        IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock)
+    {
+        var name = body.Name?.Trim() ?? "";
+        if (name.Length is < 2 or > 24) return Results.BadRequest(new { error = "name_length" });
+
+        var found = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (found is null) return Results.NotFound(new { error = "no_such_code" });
+        if (found.Mode != GameMode.Matching) return Results.BadRequest(new { error = "not_a_matching_code" });
+        if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
+
+        var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
+        var grain = grains.GetGrain<IMatchingMatchGrain>(found.Id);
+        if ((MatchingJoinResult)await grain.JoinAsync(guest.Id) != MatchingJoinResult.Joined)
+            return Results.BadRequest(new { error = "cannot_join" });
+
+        await players.UpsertAsync(guest);
+        var view = await grain.GetAsync(guest.Id);
+        if (view is null) return Results.BadRequest(new { error = "cannot_join" });
+        var dto = await MatchingEndpoints.ToDtoAsync(view, guest.Id, players);
+        return Results.Ok(new GuestMatchingResultDto(tokens.Issue(guest), guest.ToMeDto([]), dto));
     }
 
     /// <summary>
@@ -193,4 +241,3 @@ public static class AuthEndpoints
     private static AuthResultDto SignIn(Player player, TokenIssuer tokens) => new(tokens.Issue(player), player.ToMeDto([]));
 
 }
-

@@ -79,6 +79,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 // nothing to add to the configuration table. LiveHub and its notifier are #13's.
 builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
 builder.Services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
+builder.Services.AddSingleton<IMatchingNotifier, SignalRMatchingNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
@@ -88,6 +89,8 @@ builder.Services.AddSingleton<IIdFactory, IdFactory>();
 builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
+builder.Services.AddSingleton<IMatchingQuestionRepository, MongoMatchingQuestionRepository>();
+builder.Services.AddSingleton<IMatchingCategoryRepository, MongoMatchingCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
 builder.Services.AddSingleton<IAdminUserRepository, MongoAdminUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
@@ -140,6 +143,7 @@ switch (smtpOptions.Delivery(builder.Environment.IsDevelopment()))
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<AdminAuthService>();
 builder.Services.AddSingleton<QuestionSetBuilder>();
+builder.Services.AddSingleton<MatchingQuestionSetBuilder>();
 // LiveMatchGrain's one settlement call site — see LiveMatchSettlement's own remarks for why it is a
 // plain injected class rather than a method on the grain, the way MatchGrain's own settlement is.
 builder.Services.AddSingleton<LiveMatchSettlement>();
@@ -199,6 +203,7 @@ app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
 app.MapLive();
+app.MapMatching();
 app.MapHub<LiveHub>("/hub/live");
 app.MapAdminAuth();
 app.MapAdminAccounts();
@@ -212,6 +217,18 @@ using (var scope = app.Services.CreateScope())
     try
     {
         await scope.ServiceProvider.GetRequiredService<MongoContext>().EnsureIndexesAsync();
+    }
+    catch (Exception ex)
+    {
+        // Required indexes include the unique matching code/topic constraints. Running without
+        // them changes correctness (not merely performance), so do not advertise a healthy app
+        // after an incomplete migration or an unavailable Mongo instance.
+        logger.LogCritical(ex, "Required Mongo indexes could not be created; stopping startup.");
+        throw;
+    }
+
+    try
+    {
         await scope.ServiceProvider.GetRequiredService<Seeder>().RunAsync(app.Environment.ContentRootPath);
 
         // Bootstrap: an install with no administrator has no way in, so make one and say so loudly.
@@ -240,7 +257,7 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Start-up seeding failed — is Mongo running? The app will keep going.");
+        logger.LogError(ex, "Start-up seeding/bootstrap failed; the app will keep going with diagnostics above.");
     }
 }
 

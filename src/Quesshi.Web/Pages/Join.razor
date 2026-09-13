@@ -121,6 +121,18 @@
             return;
         }
 
+        // Matching has its own read/join contract and deliberately does not leak its answer
+        // surface through the trivia invite DTO. A signed-in visitor can identify it without a
+        // second server-side mode flag on /api/invite/{code}.
+        if (State.SignedIn && !State.IsGuest && await Api.MatchingByCodeAsync(Code) is { Code: { Length: > 0 } } matching)
+        {
+            if (await Api.JoinMatchingAsync(matching.Code) is { } joined)
+            {
+                Nav.NavigateTo($"/matching/lobby/{joined.Code}");
+                return;
+            }
+        }
+
         // Somebody already signed in does not need the guest path at all — take the seat and play.
         if (State.SignedIn && !State.IsGuest && _invite is not null)
         {
@@ -146,6 +158,16 @@
     private async Task PlayAsGuestAsync()
     {
         _busy = true; _error = null;
+
+        // A matching invite is anonymous until the name is supplied, just like a trivia invite, but
+        // it receives the matching-scoped guest snapshot and token rather than a trivia summary.
+        var matching = await Api.JoinAsGuestMatchingAsync(Code, _name.Trim(), State.Lang);
+        if (matching is not null)
+        {
+            await State.SignInAsGuestMatchingAsync(matching);
+            Nav.NavigateTo($"/matching/lobby/{matching.Matching.Code}");
+            return;
+        }
 
         if (_invite is { Live: true })
         {
