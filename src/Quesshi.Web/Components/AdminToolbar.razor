@@ -1,0 +1,13 @@
+<section class="admin-toolbar" aria-label="@Label">
+    <div class="admin-toolbar__filters">@Filters</div>
+    @if (Actions is not null)
+    {
+        <div class="admin-toolbar__actions">@Actions</div>
+    }
+</section>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter, EditorRequired] public RenderFragment Filters { get; set; } = default!;
+    [Parameter] public RenderFragment? Actions { get; set; }
+}

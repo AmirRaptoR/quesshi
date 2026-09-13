@@ -1,0 +1,54 @@
+<article class="admin-question @(Question.Source == "ai" ? "card--ai" : null)">
+    <header class="admin-question__head">
+        <div class="admin-question__meta">
+            @if (Question.Source == "ai") { <span class="chip chip--ai">@L["admin.aiWritten"]</span> }
+            <span class="chip" dir="ltr">@Question.Lang</span>
+            <span class="chip">@CategoryName</span>
+            <span class="admin-status @StatusClass">@L["admin." + Question.Status]</span>
+            <span class="chip chip--kind">@(Question.AnswerSource == "participants" ? L["admin.matching.participants"] : L["admin.matching.fixed"])</span>
+        </div>
+        <div class="admin-question__actions">
+            @if (Question.Status != "approved") { <button type="button" class="btn btn--sm" @onclick="() => Approve.InvokeAsync(Question.Id)">@L["admin.approve"]</button> }
+            @if (Question.Status != "rejected") { <button type="button" class="btn btn--ghost btn--sm" @onclick="() => Reject.InvokeAsync(Question.Id)">@L["admin.reject"]</button> }
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="() => Edit.InvokeAsync(Question.Id)">@L["admin.edit"]</button>
+            <button type="button" class="icon-hit admin-danger" aria-label="@L["admin.delete"]" title="@L["admin.delete"]" @onclick="() => Delete.InvokeAsync(Question.Id)"><Icon Name="trash" /></button>
+        </div>
+    </header>
+    <div class="admin-question__body">
+        <p class="admin-question__prompt" dir="auto">@Question.Prompt</p>
+        @if (!string.IsNullOrWhiteSpace(Question.Topic))
+        {
+            <div class="admin-question__topic">
+                <strong>@L["admin.uniqueKey"]</strong>
+                @foreach (var part in TopicParts) { <code class="admin-code" dir="auto">@part</code> }
+            </div>
+        }
+        <MediaBlock Media="Question.Media" Compact="true" Autoplay="false" Loop="false" />
+        @if (Question.AnswerSource == "participants")
+        {
+            <div class="admin-options"><div class="admin-option"><span class="admin-option__key">↳</span><span>@L["admin.matching.participantAnswers"]</span></div></div>
+        }
+        else
+        {
+            <div class="admin-options" dir="auto">
+                @for (var i = 0; i < Question.Choices.Count; i++)
+                {
+                    <div class="admin-option"><span class="admin-option__key">@(i + 1)</span><span>@Question.Choices[i]</span></div>
+                }
+            </div>
+        }
+        @if (Question.TimesServed > 0) { <div class="admin-question__topic">@L["admin.timesServed"]: @L.Num(Question.TimesServed)</div> }
+    </div>
+</article>
+
+@code {
+    [Inject] private Translator L { get; set; } = default!;
+    [Parameter, EditorRequired] public MatchingQuestionDto Question { get; set; } = default!;
+    [Parameter, EditorRequired] public string CategoryName { get; set; } = "";
+    [Parameter] public EventCallback<string> Approve { get; set; }
+    [Parameter] public EventCallback<string> Reject { get; set; }
+    [Parameter] public EventCallback<string> Edit { get; set; }
+    [Parameter] public EventCallback<string> Delete { get; set; }
+    private string StatusClass => Question.Status == "approved" ? "is-active" : Question.Status == "rejected" ? "is-inactive" : "";
+    private IEnumerable<string> TopicParts => (Question.Topic ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}

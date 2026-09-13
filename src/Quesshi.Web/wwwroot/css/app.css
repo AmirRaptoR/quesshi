@@ -1929,3 +1929,84 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .matching-player__name { font-size:var(--step--1); font-weight:700; }
 .matching-distribution { margin-top:.8rem; border-top:1px solid var(--line); padding-top:.55rem; }
 .matching-distribution__row { padding:.25rem 0; font-size:var(--step--1); }
+
+/* ---- admin workspace ---------------------------------------------------- */
+.admin-shell { max-width: 78rem; }
+.admin-page-head { display:flex; align-items:end; justify-content:space-between; padding:.4rem 0 1rem; }
+.admin-page-head h1 { margin:.15rem 0 0; font-size:var(--step-2); }
+.admin-page-head__product { color:var(--firouzeh); font-size:var(--step--1); font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.admin-page-content { padding-top:1.25rem; }
+
+.admin-nav { position:relative; display:flex; align-items:center; gap:.85rem; border-block:1px solid var(--line); }
+.admin-nav__pages { display:flex; align-items:center; gap:.15rem; overflow-x:auto; scrollbar-width:thin; }
+.admin-nav__link { flex:none; padding:.8rem .75rem; border-bottom:2px solid transparent; color:var(--sadaf-2); font-size:var(--step--1); font-weight:700; }
+.admin-nav__link.is-active { color:var(--sadaf); border-bottom-color:var(--firouzeh); }
+.admin-account { position:relative; margin-inline-start:auto; flex:none; }
+.admin-account__summary { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.3rem .5rem; cursor:pointer; list-style:none; font-size:var(--step--1); font-weight:700; }
+.admin-account__summary::-webkit-details-marker { display:none; }
+.admin-account__avatar { display:grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; color:var(--shab); background:var(--zaferan); }
+.admin-account__menu { position:absolute; z-index:35; top:calc(100% + .35rem); inset-inline-end:0; display:grid; min-width:14rem; padding:.45rem; border:1px solid var(--line-2); border-radius:var(--r-md); background:var(--lajevard); box-shadow:0 18px 50px rgb(0 0 0 / .35); }
+.admin-account__label { padding:.55rem .65rem; color:var(--sadaf-3); font-size:var(--step--1); border-bottom:1px solid var(--line); }
+.admin-account__language { padding:.55rem .65rem; border-bottom:1px solid var(--line); }
+.admin-account__item { width:100%; padding:.65rem; border:0; border-radius:var(--r-sm); color:var(--sadaf-2); background:transparent; font:inherit; font-size:var(--step--1); text-align:start; cursor:pointer; }
+.admin-account__item--danger { color:var(--anaar); }
+@media (hover: hover) and (pointer: fine) {
+  .admin-account__item:hover { color:var(--sadaf); background:rgb(47 191 176 / .1); }
+}
+
+.admin-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.8rem; margin-bottom:1rem; padding:.8rem; border:1px solid var(--line); border-radius:var(--r-md); background:rgb(22 34 92 / .28); }
+.admin-toolbar__filters, .admin-toolbar__actions { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
+.admin-toolbar__filters { flex:1; }
+.admin-toolbar__actions { padding-inline-start:.75rem; border-inline-start:1px solid var(--line); }
+.admin-table-wrap { border:1px solid var(--line); border-radius:var(--r-md); background:rgb(22 34 92 / .24); }
+.admin-table th { padding:.75rem .8rem; background:rgb(22 34 92 / .55); font-size:.72rem; letter-spacing:.045em; text-transform:uppercase; }
+.admin-table td { padding:.75rem .8rem; vertical-align:middle; }
+.admin-table tbody tr:last-child td { border-bottom:0; }
+.admin-table__actions-head { width:1%; }
+.admin-row-actions { display:flex; align-items:center; justify-content:flex-end; gap:.35rem; white-space:nowrap; }
+.admin-category-name { display:flex; align-items:center; gap:.7rem; min-width:12rem; }
+.admin-category-name small { display:block; margin-top:.1rem; color:var(--sadaf-3); }
+.admin-category-icon { display:grid; place-items:center; width:2.35rem; height:2.35rem; border-radius:.65rem; background:color-mix(in srgb, var(--category-colour) 22%, transparent); border:1px solid color-mix(in srgb, var(--category-colour) 55%, transparent); }
+.admin-code { padding:.18rem .4rem; border-radius:.35rem; color:var(--sadaf-2); background:rgb(9 14 34 / .55); font-size:.75rem; }
+.admin-status { display:inline-flex; align-items:center; width:max-content; padding:.22rem .55rem; border:1px solid var(--line-2); border-radius:999px; color:var(--sadaf-2); font-size:.72rem; font-weight:750; }
+.admin-status.is-active { color:var(--firouzeh); border-color:rgb(47 191 176 / .4); background:rgb(47 191 176 / .08); }
+.admin-status.is-inactive { color:var(--anaar); border-color:rgb(212 66 92 / .4); background:rgb(212 66 92 / .08); }
+.admin-danger { color:var(--anaar); }
+
+.admin-modal { z-index:60; }
+.admin-modal__panel { position:relative; width:min(48rem, 100%); max-height:calc(100vh - 2rem); overflow:auto; padding:0; border:1px solid var(--line-2); border-radius:var(--r-lg); background:var(--lajevard); }
+.admin-modal__head { position:sticky; z-index:2; top:0; display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem 1.2rem; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--lajevard) 94%, transparent); backdrop-filter:blur(10px); }
+.admin-modal__head h2 { margin:0; font-size:var(--step-1); }
+.admin-modal__body { padding:1.15rem 1.2rem 1.35rem; }
+
+.admin-question { position:relative; padding:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--r-md); background:rgb(22 34 92 / .28); }
+.admin-question__head { display:flex; justify-content:space-between; gap:.75rem; padding:.65rem .8rem; border-bottom:1px solid var(--line); background:rgb(22 34 92 / .5); }
+.admin-question__meta, .admin-question__actions { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; }
+.admin-question__body { padding:.9rem; }
+.admin-question__prompt { margin:0; font-size:var(--step-0); font-weight:750; line-height:1.55; }
+.admin-question__topic { display:flex; align-items:center; flex-wrap:wrap; gap:.35rem; margin-top:.6rem; color:var(--sadaf-3); font-size:var(--step--1); }
+.admin-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem; margin-top:.75rem; }
+.admin-option { display:flex; align-items:center; gap:.55rem; min-height:2.6rem; padding:.55rem .65rem; border:1px solid var(--line); border-radius:var(--r-sm); background:rgb(9 14 34 / .35); }
+.admin-option__key { display:grid; place-items:center; flex:none; width:1.5rem; height:1.5rem; border-radius:.35rem; color:var(--sadaf-3); background:rgb(237 227 208 / .07); font-size:.7rem; font-weight:800; }
+.admin-option.is-correct { border-color:rgb(47 191 176 / .5); background:rgb(47 191 176 / .08); }
+.admin-option.is-correct .admin-option__key { color:var(--shab); background:var(--firouzeh); }
+
+.profile-name-line { display:flex; align-items:center; justify-content:center; gap:.65rem; }
+.profile-name-line .profile-id__name { margin-inline-start:34px; }
+.profile-name-editor { display:grid; gap:.55rem; width:min(22rem,100%); margin-top:.85rem; }
+.profile-name-editor .input { text-align:center; font-size:var(--step-1); font-weight:700; }
+.profile-history__list { display:grid; gap:.45rem; margin-top:.75rem; }
+.profile-history__row { display:flex; align-items:center; gap:.75rem; padding:.7rem .8rem; border:1px solid var(--line); border-radius:var(--r-md); color:var(--sadaf); background:rgb(22 34 92 / .38); }
+.profile-history__row small { display:block; margin-top:.12rem; color:var(--sadaf-3); font-size:var(--step--1); }
+.profile-history__avatar { width:2.4rem; height:2.4rem; font-size:.9rem; }
+
+@media (max-width: 720px) {
+  .admin-nav { align-items:stretch; }
+  .admin-nav__pages { padding-inline-end:.25rem; }
+  .admin-account__summary > span:last-child { display:none; }
+  .admin-toolbar { align-items:stretch; flex-direction:column; }
+  .admin-toolbar__actions { width:100%; padding:.7rem 0 0; border-inline-start:0; border-top:1px solid var(--line); }
+  .admin-options { grid-template-columns:1fr; }
+  .admin-question__head { flex-direction:column; }
+  .admin-question__actions { justify-content:flex-end; }
+}

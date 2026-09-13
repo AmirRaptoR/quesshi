@@ -1,0 +1,18 @@
+<div class="shell shell--wide admin-shell">
+    <header class="admin-page-head">
+        <div>
+            <span class="admin-page-head__product">@L["app.name"]</span>
+            <h1>@Title</h1>
+        </div>
+    </header>
+    <AdminNav />
+    <main class="admin-page-content">
+        @ChildContent
+    </main>
+</div>
+
+@code {
+    [Inject] private Translator L { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+}

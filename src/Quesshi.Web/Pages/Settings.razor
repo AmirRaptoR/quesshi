@@ -100,7 +100,9 @@
     {
         _name = State.Me?.DisplayName ?? "";
         _lang = State.Me?.Lang ?? "fa";
-        _avatarSeed = State.Me?.AvatarSeed ?? AvatarPalette.Seeds[0];
+        _avatarSeed = State.Me is { } me && AvatarPalette.IsValid(me.AvatarSeed)
+            ? me.AvatarSeed
+            : AvatarPalette.Seeds[0];
         _soundsOn = SoundsPreference.Parse(await Js.InvokeAsync<string?>("quesshi.get", SoundsPreference.Key));
     }
 

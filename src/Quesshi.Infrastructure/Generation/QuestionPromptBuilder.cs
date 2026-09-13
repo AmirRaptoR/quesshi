@@ -59,10 +59,16 @@ public sealed class QuestionPromptBuilder
           anything likely to shame, expose, or start a serious conflict.
         - Do not repeat the same idea within the batch.
 
-        Give each question a "subject" and an "aspect" in English. Together they identify the idea
-        even when it is reworded: subject is the concrete activity or situation ("planning a trip",
-        "choosing dinner"), and aspect is the trait being compared ("initiative", "preference").
-        Both must be specific and non-empty, and no two questions may share the same pair.{Avoid(avoid)}
+        Give each question a "subject" and an "aspect" in English. Together they are a stable unique
+        key for the actual idea even when the visible question is translated or reworded:
+        - subject is 2-6 English words naming the concrete activity or situation in the prompt
+          ("planning a surprise", "choosing a dinner venue").
+        - aspect is 1-4 English words naming the exact comparison or answer dimension
+          ("takes initiative", "cuisine preference").
+        - Derive both from this question's prompt and choices. Never use the category name, generic
+          labels such as "question", "answer", "topic" or "family decision", or translated text.
+        - Never append a number, counter, sequence, ID, or batch position to make a pair unique.
+        - Two questions in this batch must never share the same pair.{Avoid(avoid)}
         """;
     }
 

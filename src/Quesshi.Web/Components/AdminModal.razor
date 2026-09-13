@@ -1,0 +1,22 @@
+<div class="modal admin-modal" role="dialog" aria-modal="true" aria-labelledby="@_titleId" @onclick="CloseAsync">
+    <section class="modal__panel admin-modal__panel" @onclick:stopPropagation="true">
+        <header class="admin-modal__head">
+            <h2 id="@_titleId">@Title</h2>
+            <button type="button" class="icon-hit" @onclick="CloseAsync"
+                    title="@L["common.close"]" aria-label="@L["common.close"]">
+                <Icon Name="close" />
+            </button>
+        </header>
+        <div class="admin-modal__body">@ChildContent</div>
+    </section>
+</div>
+
+@code {
+    [Inject] private Translator L { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private readonly string _titleId = $"admin-modal-{Guid.NewGuid():N}";
+    private Task CloseAsync() => OnClose.InvokeAsync();
+}

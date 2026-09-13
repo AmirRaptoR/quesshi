@@ -29,8 +29,12 @@ public sealed class MongoPlayerRepository(MongoContext db) : IPlayerRepository
         // as a search result is offering something that does not work.
         var filter = Builders<PlayerDoc>.Filter.Ne(p => p.IsGuest, true);
         if (!string.IsNullOrWhiteSpace(text))
-            filter &= Builders<PlayerDoc>.Filter.Regex(p => p.DisplayName,
-                new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(text), "i"));
+        {
+            var query = new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(text.Trim()), "i");
+            filter &= Builders<PlayerDoc>.Filter.Or(
+                Builders<PlayerDoc>.Filter.Regex(p => p.DisplayName, query),
+                Builders<PlayerDoc>.Filter.Regex(p => p.Email, query));
+        }
 
         return [.. (await db.Players.Find(filter).SortByDescending(p => p.CreatedAt).Skip(skip).Limit(take).ToListAsync(ct)).Select(d => d.ToDomain())];
     }

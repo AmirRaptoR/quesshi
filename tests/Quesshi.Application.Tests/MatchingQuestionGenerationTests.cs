@@ -80,6 +80,24 @@ public sealed class MatchingQuestionGenerationTests
         Assert.Contains("Who usually picks the restaurant?", generator.LastAvoid);
     }
 
+    [Theory]
+    [InlineData("ارزش‌ها و تصمیم‌های خانوادگی", "تصمیم خانوادگی 011")]
+    [InlineData("family decision 11", "preference")]
+    [InlineData("choosing dinner", "choosing dinner")]
+    public async Task Generated_rows_reject_translated_numbered_or_repeated_identity_parts(
+        string subject, string aspect)
+    {
+        var generator = new ScriptedMatchingGenerator(
+            new GeneratedMatchingQuestion("Who would choose dinner?", [], subject, aspect));
+
+        var run = await Sut(generator).RunAsync(Language.Fa, "m-friends",
+            MatchingAnswerSource.Participants, 1);
+
+        Assert.Equal(0, run.Inserted);
+        Assert.Equal(1, run.Rejected);
+        Assert.Empty(_questions.Items);
+    }
+
     [Fact]
     public async Task Missing_inactive_and_unconfigured_inputs_finish_a_logged_noop()
     {

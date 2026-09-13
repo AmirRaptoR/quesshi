@@ -4,22 +4,10 @@
 
 <PageTitle>@L["admin.matching.questions"] · @L["app.name"]</PageTitle>
 
-<div class="shell shell--wide">
-    <header class="topbar"><h1 class="topbar__title">@L["admin.matching.questions"]</h1></header>
-    <AdminNav />
-
-    @if (Unconfirmed)
+<AdminShell Title="@L["admin.matching.questions"]">
+    @if (_dialog == "generate")
     {
-        <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
-    }
-    else if (Loading)
-    {
-        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
-    }
-    else
-    {
-        <section class="card card--taq">
-            <span class="eyebrow">@L["admin.askAi"] · @L["admin.matching.questions"]</span>
+        <AdminModal Title="@L["admin.askAi"]" OnClose="CloseDialog">
             <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.9rem">
                 <select class="select" style="width:auto" @bind="_generate.Lang">
                     <option value="fa">@L["lang.fa"]</option>
@@ -67,29 +55,12 @@
                     }
                 </div>
             }
-        </section>
+        </AdminModal>
+    }
 
-        <section class="card card--flat">
-            <div class="row" style="flex-wrap:wrap;gap:.5rem">
-                <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
-                    <option value="">@L["admin.language"]: @L["admin.all"]</option>
-                    <option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option>
-                </select>
-                <select class="select" style="width:auto" @bind="_category" @bind:after="ReloadAsync">
-                    <option value="">@L["admin.category"]: @L["admin.all"]</option>
-                    @foreach (var category in _categories) { <option value="@category.Id">@CategoryName(category)</option> }
-                </select>
-                <select class="select" style="width:auto" @bind="_status" @bind:after="ReloadAsync">
-                    <option value="">@L["admin.status"]: @L["admin.all"]</option>
-                    <option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option>
-                </select>
-                <input class="input grow" style="min-width:12rem" placeholder="@L["admin.search"]" @bind="_text" @bind:event="oninput" @onkeydown="OnSearchKey" />
-                <button class="btn" @onclick="StartNew">@L["admin.new"]</button>
-            </div>
-        </section>
-
-        <section class="card card--flat" style="margin-top:1rem">
-            <span class="eyebrow">@L["admin.import"] · @L["admin.matching.questions"]</span>
+    @if (_dialog == "import")
+    {
+        <AdminModal Title="@L["admin.import"]" OnClose="CloseDialog">
             <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.6rem">
                 <select class="select" style="width:auto" @bind="_import.Format">
                     <option value="csv">CSV</option>
@@ -125,12 +96,35 @@
                     </table>
                 }
             }
-        </section>
+        </AdminModal>
+    }
 
-        @if (_editing is not null)
-        {
-            <section class="card card--taq" style="margin-top:1rem">
-                <div class="row row--between"><span class="eyebrow">@(_editing.IsEditing ? L["admin.edit"] : L["admin.new"])</span><button class="btn btn--ghost btn--sm" @onclick="CloseEditor">@L["admin.cancel"]</button></div>
+    <AdminToolbar Label="@L["admin.filters"]">
+        <Filters>
+                <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.language"]: @L["admin.all"]</option>
+                    <option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option>
+                </select>
+                <select class="select" style="width:auto" @bind="_category" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.category"]: @L["admin.all"]</option>
+                    @foreach (var category in _categories) { <option value="@category.Id">@CategoryName(category)</option> }
+                </select>
+                <select class="select" style="width:auto" @bind="_status" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.status"]: @L["admin.all"]</option>
+                    <option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option>
+                </select>
+                <input class="input grow" style="min-width:12rem" placeholder="@L["admin.search"]" @bind="_text" @bind:event="oninput" @onkeydown="OnSearchKey" />
+        </Filters>
+        <Actions>
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="OpenGenerate">@L["admin.askAi"]</button>
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="OpenImport">@L["admin.import"]</button>
+            <button type="button" class="btn btn--sm" @onclick="StartNew">@L["admin.new"]</button>
+        </Actions>
+    </AdminToolbar>
+
+    @if (_editing is not null)
+    {
+        <AdminModal Title="@(_editing.IsEditing ? L["admin.edit"] : L["admin.new"])" OnClose="CloseEditor">
                 <div class="stack" style="margin-top:.9rem">
                     <div class="row" style="flex-wrap:wrap;gap:.5rem">
                         <select class="select" style="width:auto" @bind="_editing.Lang"><option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option></select>
@@ -167,28 +161,33 @@
                     @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
                     <div class="row"><button class="btn" disabled="@_busy" @onclick="SaveAsync">@L["admin.save"]</button><button class="btn btn--ghost" @onclick="CloseEditor">@L["admin.cancel"]</button></div>
                 </div>
-            </section>
-        }
+        </AdminModal>
+    }
 
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
         @if (_results is { Items.Count: 0 }) { <p class="empty">@L["admin.noResults"]</p> }
         else
         {
-            <Pager Total="_results?.Total ?? 0" Page="_page" PageSize="_size" PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
             <div class="stack" style="margin-top:.75rem">
                 @foreach (var question in _results?.Items ?? [])
                 {
-                    <article class="card card--flat">
-                        <div class="row row--between" style="gap:.5rem;flex-wrap:wrap"><div class="row" style="gap:.4rem;flex-wrap:wrap"><span class="chip" dir="ltr">@question.Lang</span><span class="chip">@CategoryName(question.MatchingCategoryId)</span><span class="chip @StatusClass(question.Status)">@L["admin." + question.Status]</span><span class="chip chip--kind">@(question.AnswerSource == "participants" ? L["admin.matching.participants"] : L["admin.matching.fixed"])</span></div><div class="row" style="gap:.35rem"><button class="btn btn--sm" disabled="@(question.Status == "approved")" @onclick="() => ApproveAsync(question.Id)">@L["admin.approve"]</button><button class="btn btn--ghost btn--sm" disabled="@(question.Status == "rejected")" @onclick="() => RejectAsync(question.Id)">@L["admin.reject"]</button><button class="btn btn--ghost btn--sm" @onclick="() => Edit(question)">@L["admin.edit"]</button><button class="btn btn--sm btn--icon btn--icon-danger" aria-label="@L["admin.delete"]" title="@L["admin.delete"]" @onclick="() => DeleteAsync(question.Id)"><Icon Name="trash" /></button></div></div>
-                        <p dir="auto" style="margin:.6rem 0 .4rem;font-weight:600">@question.Prompt</p>
-                        @if (!string.IsNullOrWhiteSpace(question.Topic)) { <p class="faint" style="margin:.2rem 0">@question.Topic</p> }
-                        <div class="row" dir="auto" style="gap:.4rem;flex-wrap:wrap;font-size:var(--step--1)">@foreach (var choice in question.Choices) { <span class="chip">@choice</span> }</div>
-                    </article>
+                    <AdminMatchingQuestionCard Question="question" CategoryName="@CategoryName(question.MatchingCategoryId)"
+                        Approve="ApproveAsync" Reject="RejectAsync" Edit="Edit" Delete="DeleteAsync" />
                 }
             </div>
             <Pager Total="_results?.Total ?? 0" Page="_page" PageSize="_size" PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
         }
     }
-</div>
+</AdminShell>
 
 @code {
     private AdminMatchingQuestionPageDto? _results;
@@ -205,6 +204,7 @@
     private bool _generating;
     private readonly MatchingGenerateForm _generate = new();
     private MatchingGenerationRunDto? _lastGeneration;
+    private string? _dialog;
 
     private IEnumerable<MatchingCategoryDto> EditableCategories => _editing is { } form && _categories.Any(c => c.Id == form.MatchingCategoryId && !c.IsActive)
         ? _categories.Where(c => c.IsActive || c.Id == form.MatchingCategoryId) : _categories.Where(c => c.IsActive);
@@ -212,7 +212,9 @@
     private string CategoryName(MatchingCategoryDto c) => L.Lang switch { "fa" => Pick(c.NameFa, c.NameEn), "nl" => Pick(c.NameNl, c.NameEn), _ => Pick(c.NameEn, c.NameFa) };
     private string CategoryName(string id) => _categories.FirstOrDefault(c => c.Id == id) is { } c ? CategoryName(c) : id;
     private static string Pick(string first, string second) => string.IsNullOrWhiteSpace(first) ? second : first;
-    private static string? StatusClass(string status) => status == "approved" ? "chip--win" : status == "rejected" ? "chip--loss" : null;
+    private void OpenGenerate() => _dialog = "generate";
+    private void OpenImport() => _dialog = "import";
+    private void CloseDialog() { _dialog = null; _error = null; }
 
     protected override async Task LoadAsync()
     {
@@ -247,13 +249,20 @@
         _lang = _generate.Lang;
         _category = _generate.CategoryId;
         _status = "pending";
+        _dialog = null;
         await ReloadAsync();
     }
     private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await ReloadAsync(); }
     private async Task GoToPageAsync(int page) { _page = page; await FetchAsync(); }
     private async Task SetPageSizeAsync(int size) { _size = size; _page = 1; await FetchAsync(); }
     private void StartNew() { _error = null; _editing = new MatchingQuestionForm { MatchingCategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "" }; }
-    private void Edit(MatchingQuestionDto q) { _error = null; _editing = MatchingQuestionForm.From(q); }
+    private void Edit(string id)
+    {
+        var question = _results?.Items.FirstOrDefault(q => q.Id == id);
+        if (question is null) return;
+        _error = null;
+        _editing = MatchingQuestionForm.From(question);
+    }
     private void CloseEditor() { _editing = null; _error = null; }
     private void ClearMedia() { if (_editing is not null) { _editing.MediaKind = null; _editing.MediaUrl = null; _editing.MediaAttribution = null; } }
 

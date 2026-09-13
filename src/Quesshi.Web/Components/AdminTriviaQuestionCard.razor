@@ -1,0 +1,67 @@
+<article class="admin-question @(Question.Source == "ai" ? "card--ai" : null)">
+    <header class="admin-question__head">
+        <div class="admin-question__meta">
+            @if (Question.Source == "ai") { <span class="chip chip--ai">@L["admin.aiWritten"]</span> }
+            <span class="chip" dir="ltr">@Question.Lang</span>
+            <span class="chip">@CategoryName</span>
+            <span class="chip">@L["level." + Question.Level]</span>
+            <span class="admin-status @StatusClass">@L["admin." + Question.Status]</span>
+            @if (Question.Kind != "choice") { <span class="chip chip--kind">@L["admin.kind." + Question.Kind]</span> }
+        </div>
+        <div class="admin-question__actions">
+            @if (Question.Status != "approved") { <button type="button" class="btn btn--sm" @onclick="() => Approve.InvokeAsync(Question.Id)">@L["admin.approve"]</button> }
+            @if (Question.Status != "rejected") { <button type="button" class="btn btn--ghost btn--sm" @onclick="() => Reject.InvokeAsync(Question.Id)">@L["admin.reject"]</button> }
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="() => Edit.InvokeAsync(Question.Id)">@L["admin.edit"]</button>
+            <button type="button" class="icon-hit admin-danger" title="@L["admin.delete"]" aria-label="@L["admin.delete"]" @onclick="() => Delete.InvokeAsync(Question.Id)"><Icon Name="trash" /></button>
+        </div>
+    </header>
+    <div class="admin-question__body">
+        <p class="admin-question__prompt" dir="auto">@Question.Prompt</p>
+        <MediaBlock Media="Question.Media" Compact="true" Autoplay="false" Loop="false" />
+        <div class="admin-options" dir="auto">
+            @if (Question.Kind == "map")
+            {
+                <div class="admin-option is-correct"><span class="admin-option__key">✓</span><span dir="ltr">@TargetLabel</span></div>
+            }
+            else
+            {
+                @for (var i = 0; i < Question.Choices.Count; i++)
+                {
+                    var correct = Question.Kind == "choice" && i == Question.CorrectIndex;
+                    <div class="admin-option @(correct ? "is-correct" : null)">
+                        <span class="admin-option__key">@(Question.Kind == "sort" ? L.Num(i + 1) : Keys[i])</span>
+                        <span>@Question.Choices[i]</span>
+                    </div>
+                }
+            }
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Question.Explanation))
+        {
+            <p class="muted" dir="auto" style="margin:.7rem 0 0">@Question.Explanation</p>
+        }
+        @if (Question.TimesServed > 0)
+        {
+            <div class="admin-question__topic">@L["admin.performance"]: @L.Num(Question.TimesCorrect) / @L.Num(Question.TimesServed)</div>
+        }
+    </div>
+</article>
+
+@code {
+    [Inject] private Translator L { get; set; } = default!;
+    [Parameter, EditorRequired] public AdminQuestionDto Question { get; set; } = default!;
+    [Parameter, EditorRequired] public string CategoryName { get; set; } = "";
+    [Parameter] public EventCallback<string> Approve { get; set; }
+    [Parameter] public EventCallback<string> Reject { get; set; }
+    [Parameter] public EventCallback<string> Edit { get; set; }
+    [Parameter] public EventCallback<string> Delete { get; set; }
+
+    private static readonly string[] Keys = ["A", "B", "C", "D"];
+    private string StatusClass => Question.Status == "approved" ? "is-active" : Question.Status == "rejected" ? "is-inactive" : "";
+    private string TargetLabel => Question.Target switch
+    {
+        { Shape: "city", Latitude: { } lat, Longitude: { } lon, RadiusKm: { } radius }
+            => $"{WorldMapProjection.FormatPoint(lat, lon)} · {(int)radius} {L["admin.km"]}",
+        { CountryCode: { } code } => code,
+        _ => "—"
+    };
+}

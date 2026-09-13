@@ -2,25 +2,20 @@
 @inherits AdminPageBase
 
 <PageTitle>@L["admin.matching.categories"] · @L["app.name"]</PageTitle>
-<div class="shell shell--wide">
-    <header class="topbar"><h1 class="topbar__title">@L["admin.matching.categories"]</h1></header>
-    <AdminNav />
+<AdminShell Title="@L["admin.matching.categories"]">
     @if (Unconfirmed) { <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" /> }
     else if (Loading) { <div class="spinner" role="status" aria-label="@L["common.loading"]"></div> }
     else
     {
-        <div class="grid-3">
-            @foreach (var category in _categories)
-            {
-                <article class="card" style="border-inline-start:3px solid @category.Color">
-                    <div class="row row--between"><span style="font-size:var(--step-2)" aria-hidden="true">@category.Icon</span><span class="chip @(category.IsActive ? "chip--win" : "chip--loss")">@(category.IsActive ? L["admin.active"] : L["admin.inactive"])</span></div>
-                    <div style="margin-top:.6rem;font-weight:700">@category.NameFa</div><div class="muted" dir="ltr">@category.NameEn</div><div class="faint" dir="ltr" style="font-size:var(--step--1)">@category.Id</div>
-                    <div class="row" style="margin-top:.8rem;gap:.35rem"><button class="btn btn--ghost btn--sm" @onclick="() => Edit(category)">@L["admin.edit"]</button><button class="btn btn--sm btn--icon btn--icon-danger" title="@L["admin.delete"]" aria-label="@L["admin.delete"]" @onclick="() => DeleteAsync(category.Id)"><Icon Name="trash" /></button></div>
-                </article>
-            }
-        </div>
-        <section class="card card--taq" style="margin-top:1.25rem">
-            <span class="eyebrow">@(_known ? L["admin.edit"] : L["admin.matching.addCategory"])</span>
+        <AdminToolbar Label="@L["admin.matching.categories"]">
+            <Filters><span class="faint">@L.Num(_categories.Count) @L["admin.matching.categories"]</span></Filters>
+            <Actions><button type="button" class="btn btn--sm" @onclick="StartNew">@L["admin.matching.addCategory"]</button></Actions>
+        </AdminToolbar>
+        <AdminCategoryTable Rows="Rows" CanToggle="false" Edit="Edit" Delete="DeleteAsync" />
+        @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.8rem">@_error</div> }
+        @if (_editorOpen)
+        {
+        <AdminModal Title="@(_known ? L["admin.edit"] : L["admin.matching.addCategory"])" OnClose="Reset">
             <div class="stack" style="margin-top:.9rem">
                 <div class="grid-2"><div class="field"><label>@L["admin.name"] (@L["lang.fa"])</label><input class="input" @bind="_editing.NameFa" /></div><div class="field"><label>@L["admin.name"] (@L["lang.en"])</label><input class="input" dir="ltr" @bind="_editing.NameEn" /></div><div class="field"><label>@L["admin.name"] (@L["lang.nl"])</label><input class="input" dir="ltr" @bind="_editing.NameNl" /></div><div class="field"><label>@L["admin.colour"]</label><input class="input" type="color" @bind="_editing.Color" /></div></div>
                 <div class="field"><label>@L["admin.matching.categoryId"]</label><input class="input" dir="ltr" @bind="_editing.Id" disabled="@_known" placeholder="@L["admin.matching.categoryIdHint"]" /></div>
@@ -28,20 +23,24 @@
                 @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
                 <div class="row"><button class="btn" @onclick="SaveAsync">@L["admin.save"]</button><button class="btn btn--ghost" @onclick="Reset">@L["admin.cancel"]</button></div>
             </div>
-        </section>
+        </AdminModal>
+        }
     }
-</div>
+</AdminShell>
 
 @code {
     private List<MatchingCategoryDto> _categories = [];
     private MatchingCategoryForm _editing = new();
-    private bool _known;
+    private bool _known, _editorOpen;
     private string? _error;
+    private IReadOnlyList<AdminCategoryRow> Rows => [.. _categories.Select(c =>
+        new AdminCategoryRow(c.Id, c.NameFa, c.NameEn, c.NameNl, c.Icon, c.Color, c.IsActive))];
 
     protected override async Task LoadAsync() => await ReloadAsync();
     private async Task ReloadAsync() { _categories = await Api.AdminMatchingCategoriesAsync() ?? []; }
-    private void Edit(MatchingCategoryDto c) { _editing = MatchingCategoryForm.From(c); _known = true; _error = null; }
-    private void Reset() { _editing = new MatchingCategoryForm(); _known = false; _error = null; }
+    private void StartNew() { Reset(); _editorOpen = true; }
+    private void Edit(string id) { var c = _categories.Single(c => c.Id == id); _editing = MatchingCategoryForm.From(c); _known = true; _editorOpen = true; _error = null; }
+    private void Reset() { _editing = new MatchingCategoryForm(); _known = false; _editorOpen = false; _error = null; }
     private async Task SaveAsync()
     {
         _error = null;

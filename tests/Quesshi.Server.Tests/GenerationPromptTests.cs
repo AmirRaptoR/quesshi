@@ -148,6 +148,17 @@ public class GenerationPromptTests
     }
 
     [Fact]
+    public void Matching_prompt_requires_specific_stable_keys_instead_of_numbered_placeholders()
+    {
+        var prompt = Matching(MatchingAnswerSource.Participants, Language.Fa);
+
+        Assert.Contains("stable unique", prompt);
+        Assert.Contains("Derive both from this question's prompt and choices", prompt);
+        Assert.Contains("Never append a number", prompt);
+        Assert.Contains("English words", prompt);
+    }
+
+    [Fact]
     public void Matching_schemas_keep_trivia_fields_out_and_apply_choice_bounds()
     {
         var participants = JsonSerializer.Serialize(
