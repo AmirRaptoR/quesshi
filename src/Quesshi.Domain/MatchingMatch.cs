@@ -124,14 +124,16 @@ public sealed class MatchingMatch
     }
 
     /// <summary>
-    /// Records or replaces the caller's answer for the current slot. The answer's timestamp is the
-    /// clock input for activity expiry. Once a barrier closes, the old slot is no longer current and
-    /// every later submission for it is rejected.
+    /// Records or replaces the caller's answer for the current slot. <paramref name="now"/> is the
+    /// trusted aggregate clock and is the only timestamp used for expiry, transitions and storage.
+    /// The timestamp supplied on the input answer is treated as untrusted transport data. Once a
+    /// barrier closes, the old slot is no longer current and every later submission for it is
+    /// rejected.
     /// </summary>
-    public MatchingAnswer Answer(string playerId, int slot, MatchingAnswer answer)
+    public MatchingAnswer Answer(string playerId, int slot, MatchingAnswer answer, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(answer);
-        Advance(answer.At);
+        Advance(now);
         RequireActiveParticipant(playerId);
 
         var current = CurrentSlot;
@@ -139,13 +141,15 @@ public sealed class MatchingMatch
             throw new InvalidOperationException("There is no matching slot open for that answer.");
 
         ValidateAnswer(current, answer);
-        current.Record(playerId, answer);
-        TryAdvance(answer.At);
-        return answer;
+        var trustedAnswer = new MatchingAnswer(answer.Kind, answer.ParticipantId, answer.ChoiceIndex, now);
+        current.Record(playerId, trustedAnswer);
+        TryAdvance(now);
+        return trustedAnswer;
     }
 
-    public MatchingAnswer Answer(string playerId, MatchingAnswer answer) =>
-        Answer(playerId, CurrentSlot?.Slot ?? throw new InvalidOperationException("There is no matching slot open."), answer);
+    /// <summary>Convenience form for callers that already resolved the current slot.</summary>
+    public MatchingAnswer Answer(string playerId, MatchingAnswer answer, DateTimeOffset now) =>
+        Answer(playerId, CurrentSlot?.Slot ?? throw new InvalidOperationException("There is no matching slot open."), answer, now);
 
     /// <summary>Reads only the caller's answer for the current slot; no pending answer can leak.</summary>
     public MatchingAnswer? AnswerFor(string playerId)
