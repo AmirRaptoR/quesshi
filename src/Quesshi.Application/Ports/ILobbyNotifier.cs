@@ -7,7 +7,8 @@ namespace Quesshi.Application.Ports;
 /// remarks). <see cref="LobbyCode"/> is the human-shareable one; <see cref="LobbyId"/> is what
 /// actually resolves the lobby's grain, which is what accepting joins.
 /// </summary>
-public sealed record LiveChallengeNotice(string ChallengeId, string ChallengerId, string LobbyId, string LobbyCode, DateTimeOffset ExpiresAt);
+public sealed record LiveChallengeNotice(string ChallengeId, string ChallengerId, string LobbyId,
+    string LobbyCode, DateTimeOffset ExpiresAt, bool Matching = false);
 
 /// <summary>
 /// The outbound port <c>ILiveMatchmakingGrain</c> pushes through for both of its doors — the lobby's
@@ -33,6 +34,10 @@ public interface ILobbyNotifier
 
     /// <summary>The duel exists; navigate to <c>/live/{matchId}</c>. Delivered to both players.</summary>
     Task DuelReadyAsync(string playerId, string matchId, CancellationToken ct = default);
+
+    /// <summary>A matching invitation was accepted; the browser navigates both players to its lobby.</summary>
+    Task MatchingReadyAsync(string playerId, string matchId, string lobbyCode,
+        CancellationToken ct = default);
 
     /// <summary>Accepted, but the duel could not be built. Delivered to both players.</summary>
     Task ChallengeFailedAsync(string playerId, string challengeId, CancellationToken ct = default);

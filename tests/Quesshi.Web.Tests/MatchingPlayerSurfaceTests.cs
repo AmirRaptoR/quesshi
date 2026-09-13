@@ -43,27 +43,39 @@ public sealed class MatchingPlayerSurfaceTests
     }
 
     [Fact]
-    public void Matching_lobby_exposes_mode_choice_and_owner_start_surface()
+    public void Matching_reuses_the_trivia_lobby_and_only_its_settings_are_mode_specific()
     {
         var home = File.ReadAllText(Source("Pages/Home.razor"));
-        var lobby = File.ReadAllText(Source("Pages/MatchingLobby.razor"));
+        var lobby = File.ReadAllText(Source("Pages/Lobby.razor"));
         var settings = File.ReadAllText(Source("Pages/MatchingSettings.razor"));
+        var layout = File.ReadAllText(Source("Layout/MainLayout.razor"));
 
         Assert.Contains("home.modeMatching", home);
         Assert.Contains("/play/matching", home);
         Assert.DoesNotContain("CreateMatchingLobbyAsync", home);
         Assert.Contains("/matching/lobby/", home);
+        Assert.Contains("@page \"/lobby/{Code}\"", lobby);
+        Assert.Contains("@page \"/matching/lobby/{Code}\"", lobby);
+        Assert.Contains("LobbyPresentation.Seats", lobby);
+        Assert.Contains("CopyAsync", lobby);
+        Assert.Contains("ShareAsync", lobby);
+        Assert.Contains("GuestIdentityForm", lobby);
+        Assert.Contains("_friends", lobby);
+        Assert.Contains("InviteToMatchingLobbyAsync", lobby);
         Assert.Contains("StartMatchingAsync", lobby);
         Assert.Contains("not_enough_questions", lobby);
         Assert.Contains("matching.lobby.notEnoughQuestions", lobby);
         Assert.Contains("UpdateMatchingSettingsAsync", File.ReadAllText(Source("Services/Api.cs")));
         Assert.Contains("MatchingCategoriesAsync", File.ReadAllText(Source("Services/Api.cs")));
-        Assert.Contains("ToggleCategory", lobby);
-        Assert.Contains("_categoryIds", lobby);
-        Assert.Contains("SelectedCategoryText", lobby);
-        Assert.Contains("participant.AvatarSeed", lobby);
+        Assert.DoesNotContain("ToggleCategory", lobby);
+        Assert.DoesNotContain("_categoryIds", lobby);
         Assert.Contains("CreateMatchingLobbyAsync", settings);
+        Assert.Contains("UpdateMatchingSettingsAsync", settings);
+        Assert.Contains("QuestionsDraft.Read", settings);
+        Assert.Contains("ToggleCategory", settings);
         Assert.Contains("MatchingCategoriesAsync", settings);
+        Assert.Contains("\"/play/matching\"", layout);
+        Assert.Contains("\"/matching/lobby/\"", layout);
         Assert.DoesNotContain("DifficultyRange", settings);
         Assert.DoesNotContain("LastDuelSettings", settings);
     }

@@ -74,7 +74,8 @@ else
     /// that wants the same treatment adds one more prefix here rather than a cascading parameter no
     /// other page would ever set.
     /// </summary>
-    private static readonly string[] TabBarHiddenPrefixes = ["/play/questions", "/play/topics", "/settings", "/lobby/"];
+    private static readonly string[] TabBarHiddenPrefixes =
+        ["/play/questions", "/play/topics", "/play/matching", "/settings", "/lobby/", "/matching/lobby/"];
 
     private bool HidesTabBar
     {
@@ -173,6 +174,7 @@ else
         Lobby.ChallengeDeclined += OnChallengeCleared;
         Lobby.ChallengeFailed += OnChallengeCleared;
         Lobby.DuelReady += OnDuelReady;
+        Lobby.MatchingReady += OnMatchingReady;
         Lobby.Closed += OnLobbyClosed;
     }
 
@@ -183,6 +185,7 @@ else
         Lobby.ChallengeDeclined -= OnChallengeCleared;
         Lobby.ChallengeFailed -= OnChallengeCleared;
         Lobby.DuelReady -= OnDuelReady;
+        Lobby.MatchingReady -= OnMatchingReady;
         Lobby.Closed -= OnLobbyClosed;
     }
 
@@ -202,6 +205,9 @@ else
     private void OnChallengeCleared(string challengeId) => Remove(challengeId);
 
     private void OnDuelReady(string matchId) => InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"));
+
+    private void OnMatchingReady(string _, string lobbyCode)
+        => InvokeAsync(() => Nav.NavigateTo($"/matching/lobby/{lobbyCode}"));
 
     private void Remove(string challengeId) => InvokeAsync(() =>
     {
@@ -234,8 +240,8 @@ else
     private async Task AcceptAsync(LiveChallengeDto challenge)
     {
         var result = await Lobby.AcceptAsync(challenge.ChallengeId);
-        // Navigation on a real Accepted still happens off the DuelReady push, delivered to both
-        // players alike, exactly as before — this only ever runs for every other outcome, where the
+        // Navigation on a real Accepted still happens off the mode-specific ready push, delivered to
+        // both players alike — this only ever runs for every other outcome, where the
         // lobby moved on (filled, started, or ran out its own clock) before this landed. The banner is
         // removed locally rather than waiting on the challenger-only ChallengeFailed push, which was
         // never wired to also reach the target: this player already knows, right now, from the

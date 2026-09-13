@@ -1,4 +1,5 @@
 @page "/lobby/{Code}"
+@page "/matching/lobby/{Code}"
 @inherits PageBase
 @implements IAsyncDisposable
 @inject IJSRuntime Js
@@ -369,8 +370,10 @@
     /// already used, so the room the owner is standing in actually changes when they press Done.
     /// </summary>
     private static string SettingsSheet(LobbySnapshot snapshot)
-        => QuestionsDraft.From(snapshot.Settings, $"/lobby/{snapshot.Code}", snapshot.MatchId, snapshot.IsLive)
-            .LinkTo("/play/questions");
+        => QuestionsDraft.From(snapshot.Settings,
+                snapshot.IsMatching ? $"/matching/lobby/{snapshot.Code}" : $"/lobby/{snapshot.Code}",
+                snapshot.MatchId, snapshot.IsLive)
+            .LinkTo(snapshot.IsMatching ? "/play/matching" : "/play/questions");
 
     private string SettingsLine => _snapshot is null ? ""
         : L.Format("lobby.settingsLine", L.Num(_snapshot.Settings.QuestionCount), L["lang." + _snapshot.Settings.Lang]);
@@ -406,7 +409,9 @@
         if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
         {
             var invite = await Api.InviteAsync(Code);
-            if (invite is null || invite.Live != State.GuestMatchIsLive || !await BelongsToMeAsync(mine))
+            var inviteIsMatching = invite?.Mode == "matching";
+            if (invite is null || invite.Live != State.GuestMatchIsLive
+                || inviteIsMatching != State.GuestMatchIsMatching || !await BelongsToMeAsync(mine))
             {
                 Nav.NavigateTo(State.GuestMatchRoute(mine), replace: true);
                 return;
@@ -450,7 +455,9 @@
             // LobbyClient.InviteToLobbyAsync's own remarks), so the one value this page acts on is
             // named here instead of shared as a type.
             const int sent = 0;
-            var result = await LobbyConnection.InviteToLobbyAsync(friendId, _snapshot.MatchId);
+            var result = _snapshot.IsMatching
+                ? await LobbyConnection.InviteToMatchingLobbyAsync(friendId, _snapshot.MatchId)
+                : await LobbyConnection.InviteToLobbyAsync(friendId, _snapshot.MatchId);
             if (result == sent) _invited.Add(friendId);
             else _inviteError = L["common.error"];
         }
@@ -465,6 +472,12 @@
     /// live in different namespaces.</summary>
     private async Task<bool> BelongsToMeAsync(string myMatchId)
     {
+        if (State.GuestMatchIsMatching)
+        {
+            var matching = await Api.MatchingAsync(myMatchId);
+            return matching?.Code == Code;
+        }
+
         if (State.GuestMatchIsLive)
         {
             var live = await Api.LiveAsync(myMatchId);
@@ -485,19 +498,27 @@
     /// </summary>
     private async Task<bool> ReadAsync()
     {
-        bool isLive;
+        bool isLive, isMatching;
         if (_snapshot is { } known)
         {
             isLive = known.IsLive;
+            isMatching = known.IsMatching;
         }
         else
         {
             var invite = await Api.InviteAsync(Code);
             if (invite is null) return false;
             isLive = invite.Live;
+            isMatching = invite.Mode == "matching";
         }
 
-        if (isLive)
+        if (isMatching)
+        {
+            var view = await Api.MatchingByCodeAsync(Code);
+            if (view is null) return false;
+            _snapshot = LobbyPresentation.From(view);
+        }
+        else if (isLive)
         {
             var view = await Api.LiveByCodeAsync(Code);
             if (view is null) return false;
@@ -537,7 +558,9 @@
         if (_snapshot is null || _busy) return;
 
         _busy = true;
-        if (_snapshot.IsLive) await Api.JoinLiveAsync(_snapshot.Code); else await Api.JoinAsync(_snapshot.Code);
+        if (_snapshot.IsMatching) await Api.JoinMatchingAsync(_snapshot.Code);
+        else if (_snapshot.IsLive) await Api.JoinLiveAsync(_snapshot.Code);
+        else await Api.JoinAsync(_snapshot.Code);
         await RefreshAsync();
         if (_snapshot is { Waiting: true } && LobbyPresentation.IsParticipant(_snapshot, MeId)) await ConnectAsync();
         _busy = false;
@@ -549,11 +572,13 @@
 
         _client = ClientFactory("/hub/live");
         _client.LobbyUpdated += OnLobbyUpdated;
+        _client.MatchingRosterChanged += OnLobbyUpdated;
 
         try
         {
             await _client.StartAsync();
-            if (_snapshot.IsLive) await _client.JoinAsync(_snapshot.MatchId);
+            if (_snapshot.IsMatching) await _client.JoinAsyncLobbyAsync(_snapshot.MatchId);
+            else if (_snapshot.IsLive) await _client.JoinAsync(_snapshot.MatchId);
             else await _client.JoinAsyncLobbyAsync(_snapshot.MatchId);
         }
         catch
@@ -577,8 +602,19 @@
         if (_snapshot is null || _busy) return;
 
         _busy = true; _error = null;
-        var ok = await Api.StartLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
-        if (ok) await RefreshAsync(); else _error = L["common.error"];
+        if (_snapshot.IsMatching)
+        {
+            var result = await Api.StartMatchingAsync(_snapshot.MatchId);
+            if (result.Started) await RefreshAsync();
+            else _error = result.Error == "not_enough_questions"
+                ? L["matching.lobby.notEnoughQuestions"]
+                : L["common.error"];
+        }
+        else
+        {
+            var ok = await Api.StartLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
+            if (ok) await RefreshAsync(); else _error = L["common.error"];
+        }
         _busy = false;
     }
 
@@ -587,7 +623,8 @@
         if (_snapshot is null || _busy) return;
 
         _busy = true;
-        await Api.LeaveLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
+        if (_snapshot.IsMatching) await Api.LeaveMatchingAsync(_snapshot.MatchId);
+        else await Api.LeaveLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
         Nav.NavigateTo("/");
     }
 
@@ -607,8 +644,11 @@
 
         _busy = true; _error = null;
         var settings = _snapshot.Settings;
-        var ok = await Api.UpdateLobbySettingsAsync(_snapshot.MatchId, _snapshot.IsLive,
-            new UpdateDuelSettingsDto(settings.Lang, settings.CategoryIds, settings.QuestionCount, settings.Levels, next));
+        var ok = _snapshot.IsMatching
+            ? await Api.UpdateMatchingSettingsAsync(_snapshot.MatchId, next, settings.Lang,
+                settings.CategoryIds, settings.QuestionCount)
+            : await Api.UpdateLobbySettingsAsync(_snapshot.MatchId, _snapshot.IsLive,
+                new UpdateDuelSettingsDto(settings.Lang, settings.CategoryIds, settings.QuestionCount, settings.Levels, next));
         if (ok) await RefreshAsync(); else _error = L["common.error"];
         _busy = false;
     }
@@ -697,6 +737,7 @@
         if (_client is null) return;
 
         _client.LobbyUpdated -= OnLobbyUpdated;
+        _client.MatchingRosterChanged -= OnLobbyUpdated;
         try { await _client.LeaveAsync(); } catch { /* the connection may already be gone */ }
         await _client.DisposeAsync();
     }

@@ -388,6 +388,38 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Accepting_a_matching_invitation_joins_its_lobby_and_routes_both_players_there()
+    {
+        var matchmaking = Matchmaking();
+        var challenger = NewPlayerId("matching-c");
+        var target = NewPlayerId("matching-t");
+        var lobbyId = $"matching-invite-{Guid.NewGuid():N}";
+        var lobbyCode = $"M{Interlocked.Increment(ref _n):D5}";
+        var lobby = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(lobbyId);
+        await lobby.CreateAsync(lobbyCode, challenger, (int)Language.En, 10, [], 3);
+        var challengeId = Guid.NewGuid().ToString("N");
+
+        var sent = (LiveChallengeResult)await matchmaking.ChallengeMatchingAsync(
+            challengeId, challenger, target, lobbyId);
+        var pending = await matchmaking.PendingForAsync(target);
+        var accept = await matchmaking.AcceptAsync(challengeId, target);
+
+        Assert.Equal(LiveChallengeResult.Sent, sent);
+        Assert.Single(pending);
+        Assert.True(pending[0].Matching);
+        Assert.Equal((int)LiveChallengeResult.Accepted, accept.Result);
+        Assert.Equal(lobbyId, accept.MatchId);
+        Assert.Contains(LiveShared.LobbyNotifier.EventsFor(challenger),
+            e => e.Kind == "MatchingReady" && Equals(e.Payload, (lobbyId, lobbyCode)));
+        Assert.Contains(LiveShared.LobbyNotifier.EventsFor(target),
+            e => e.Kind == "MatchingReady" && Equals(e.Payload, (lobbyId, lobbyCode)));
+
+        var view = await lobby.GetAsync(target);
+        Assert.NotNull(view);
+        Assert.Equal([challenger, target], view!.Participants.Select(p => p.Id));
+    }
+
+    [Fact]
     public async Task Declining_removes_the_challenge_and_tells_the_challenger()
     {
         var matchmaking = Matchmaking();

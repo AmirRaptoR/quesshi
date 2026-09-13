@@ -101,6 +101,16 @@ public class LobbyClientTests
     }
 
     [Fact]
+    public async Task Matching_lobby_invite_does_not_throw_when_the_connection_is_not_active()
+    {
+        await using var client = NewClient();
+
+        var result = await client.InviteToMatchingLobbyAsync("target", "matching-lobby");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task AcceptAsync_does_not_throw_when_the_connection_is_not_active()
     {
         await using var client = NewClient();
