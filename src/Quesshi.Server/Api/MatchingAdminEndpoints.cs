@@ -170,17 +170,7 @@ public static class MatchingAdminEndpoints
             return Results.Ok((await categories.GetAsync(id))!.ToDto(Language.Fa));
         });
 
-        admin.MapDelete("/matching/categories/{id}", async (string id,
-            IMatchingCategoryRepository categories, IMatchingQuestionRepository questions) =>
-        {
-            var categoryId = NormaliseCategoryReference(id);
-            if (await questions.CountAsync(new MatchingQuestionFilter(CategoryId: categoryId)) > 0)
-                return Results.BadRequest(new { error = "category_in_use" });
-
-            if (await categories.GetAsync(categoryId) is null) return Results.NotFound();
-            await categories.DeleteAsync(categoryId);
-            return Results.Ok();
-        });
+        admin.MapDelete("/matching/categories/{id}", DeleteCategoryAsync);
     }
 
     private static async Task<IResult> SetStatusAsync(string id, IMatchingQuestionRepository questions, bool approve)
@@ -189,6 +179,28 @@ public static class MatchingAdminEndpoints
         question.SetStatus(approve ? QuestionStatus.Approved : QuestionStatus.Rejected);
         await questions.UpsertAsync(question);
         return Results.Ok(question.ToAdminDto());
+    }
+
+    /// <summary>
+    /// Retires an empty category instead of physically deleting it. The question-count check and a
+    /// hard delete cannot be one atomic operation with the repository contract: a concurrent save
+    /// could observe the category as active after the check and then write a question whose category
+    /// no longer exists. Keeping the row and flipping <see cref="MatchingCategory.IsActive"/> makes
+    /// that interleaving safe — the save either sees inactive and refuses, or writes against a real
+    /// (now retired) category. Categories with content keep the existing category-in-use contract.
+    /// </summary>
+    internal static async Task<IResult> DeleteCategoryAsync(string id,
+        IMatchingCategoryRepository categories, IMatchingQuestionRepository questions)
+    {
+        var categoryId = NormaliseCategoryReference(id);
+        var category = await categories.GetAsync(categoryId);
+        if (category is null) return Results.NotFound();
+
+        if (await questions.CountAsync(new MatchingQuestionFilter(CategoryId: categoryId)) > 0)
+            return Results.BadRequest(new { error = "category_in_use" });
+
+        await categories.UpsertAsync(category with { IsActive = false });
+        return Results.Ok();
     }
 
     private static QuestionStatus? ParseStatus(string? value)
