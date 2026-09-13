@@ -482,7 +482,8 @@ public static class GameEndpoints
         // nothing and has no result to show, so it is left out entirely — it stays in the archive and
         // is still findable by code, just not in this list.
         var liveRows = rows.Where(r => r.IsLive && r.State != MatchState.NoContest).ToList();
-        var asyncRows = rows.Where(r => !r.IsLive).ToList();
+        var matchingRows = rows.Where(r => !r.IsLive && r.Mode == GameMode.Matching).ToList();
+        var asyncRows = rows.Where(r => !r.IsLive && r.Mode != GameMode.Matching).ToList();
 
         // Asked all at once, so the wait is the slowest single activation rather than the sum of
         // forty. Redaction still happens inside each grain, per player, exactly as it did before.
@@ -508,7 +509,9 @@ public static class GameEndpoints
 
         (string, string, bool) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id, false);
 
+        var matchingSummaries = matchingRows.Select(r => r.ToMatchingSummary(meId, Lookup));
         var summaries = asyncViews.Select(v => v.ToSummary(meId, Lookup))
+            .Concat(matchingSummaries)
             .Concat(liveRows.Select(r => r.ToLiveSummary(meId, Lookup)));
 
         // A caller that says how many it will show gets that many. Playable first and newest after,
@@ -712,4 +715,3 @@ public static class GameEndpoints
         return rows;
     }
 }
-

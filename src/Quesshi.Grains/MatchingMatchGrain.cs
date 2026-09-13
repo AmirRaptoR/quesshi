@@ -1,0 +1,325 @@
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Orleans;
+using Orleans.Runtime;
+using Quesshi.Application.Ports;
+using Quesshi.Application.UseCases;
+using Quesshi.Domain;
+using Quesshi.Grains.Abstractions;
+
+namespace Quesshi.Grains;
+
+/// <summary>
+/// Persistent Orleans adapter for <see cref="MatchingMatch"/>. Lobby metadata is kept separately
+/// until Start has resolved the question set; from that point on the complete matching snapshot is
+/// the durable source of truth. SignalR is deliberately best effort: persistence and archive writes
+/// complete before either push is attempted.
+/// </summary>
+public sealed class MatchingMatchGrain(
+    [PersistentState("matching-match", "hot")] IPersistentState<MatchingMatchStateRecord> state,
+    MatchingQuestionSetBuilder questionSetBuilder,
+    IMatchArchive archive,
+    IMatchingNotifier notifier,
+    IClock clock,
+    ILogger<MatchingMatchGrain> logger) : Grain, IMatchingMatchGrain, IRemindable
+{
+    private const string Reminder = "matching-idle";
+    private MatchingMatch? _match;
+
+    public override Task OnActivateAsync(CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(state.State.Json))
+            _match = MatchingMatch.FromSnapshot(JsonSerializer.Deserialize<MatchingMatchSnapshot>(state.State.Json)!);
+        return Task.CompletedTask;
+    }
+
+    public async Task<MatchingView> CreateAsync(string code, string ownerId, int lang, int questionCount,
+        List<string> categoryIds, int capacity)
+    {
+        if (!string.IsNullOrWhiteSpace(state.State.Code))
+            return ViewFor(ownerId);
+
+        state.State.Code = code;
+        state.State.OwnerId = ownerId;
+        state.State.Lang = lang;
+        state.State.QuestionCount = questionCount;
+        state.State.CategoryIds = [.. categoryIds.Distinct()];
+        state.State.Capacity = capacity;
+        state.State.Participants = [ownerId];
+        state.State.CreatedAt = clock.Now;
+        state.State.State = (int)MatchState.AwaitingOpponent;
+        await SaveAndArchiveAsync();
+        return ViewFor(ownerId);
+    }
+
+    public async Task<int> JoinAsync(string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(state.State.Code)) return (int)MatchingJoinResult.NotFound;
+        if (state.State.Participants.Contains(playerId)) return (int)MatchingJoinResult.AlreadyIn;
+        if ((MatchState)state.State.State != MatchState.AwaitingOpponent)
+            return (int)MatchingJoinResult.Started;
+        if (state.State.Participants.Count >= state.State.Capacity)
+            return (int)MatchingJoinResult.Full;
+
+        state.State.Participants.Add(playerId);
+        await SaveAndArchiveAsync();
+        await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
+        return (int)MatchingJoinResult.Joined;
+    }
+
+    public async Task<bool> StartAsync(string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(state.State.Code)
+            || (MatchState)state.State.State != MatchState.AwaitingOpponent
+            || playerId != state.State.OwnerId || state.State.Participants.Count < 2)
+            return false;
+
+        var questions = await questionSetBuilder.BuildAsync((Language)state.State.Lang,
+            state.State.CategoryIds, state.State.QuestionCount);
+        var match = MatchingMatch.Create(IdString(), state.State.Code, state.State.OwnerId,
+            state.State.Capacity, [.. questions], state.State.CreatedAt);
+        foreach (var participant in state.State.Participants.Skip(1))
+            match.Join(participant, state.State.CreatedAt);
+        if (!match.Start(playerId, clock.Now)) return false;
+
+        _match = match;
+        state.State.State = (int)match.State;
+        await SaveAndArchiveAsync();
+        await this.RegisterOrUpdateReminder(Reminder, MatchingRules.IdleAfter, TimeSpan.FromHours(6));
+        await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
+        return true;
+    }
+
+    public async Task<bool> LeaveAsync(string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(state.State.Code)) return false;
+
+        if (_match is null)
+        {
+            if ((MatchState)state.State.State != MatchState.AwaitingOpponent
+                || !state.State.Participants.Contains(playerId)) return false;
+
+            if (playerId == state.State.OwnerId)
+            {
+                state.State.State = (int)MatchState.NoContest;
+                state.State.EndedAt = clock.Now;
+            }
+            else
+            {
+                state.State.Participants.Remove(playerId);
+            }
+
+            await SaveAndArchiveAsync();
+            if ((MatchState)state.State.State == MatchState.NoContest)
+                await UnregisterReminderSafeAsync();
+            else
+                await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
+            return true;
+        }
+
+        var changed = _match.Leave(playerId, clock.Now);
+        if (!changed) return false;
+        await SaveAndArchiveAsync();
+        if (_match.IsOver) await UnregisterReminderSafeAsync();
+        await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
+        return true;
+    }
+
+    public async Task<bool> UpdateSettingsAsync(string playerId, int lang, int questionCount,
+        List<string> categoryIds, List<int> levels, int? capacity, int mode)
+    {
+        if (mode != (int)GameMode.Matching || levels.Count > 0) return false;
+        if (string.IsNullOrWhiteSpace(state.State.Code)
+            || (MatchState)state.State.State != MatchState.AwaitingOpponent
+            || playerId != state.State.OwnerId)
+            return false;
+        if (!MatchRules.IsValidCount(questionCount)) return false;
+        if (capacity is { } newCapacity && (newCapacity < 2 || newCapacity > MatchRules.MaxParticipants
+            || newCapacity < state.State.Participants.Count)) return false;
+
+        state.State.Lang = lang;
+        state.State.QuestionCount = questionCount;
+        state.State.CategoryIds = [.. categoryIds.Distinct()];
+        if (capacity is { } c) state.State.Capacity = c;
+        await SaveAndArchiveAsync();
+        await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
+        return true;
+    }
+
+    public async Task<MatchingView> AnswerAsync(string playerId, int slot, int kind,
+        string? participantId, int? choiceIndex)
+    {
+        if (_match is null)
+            throw new InvalidOperationException("match_not_started");
+        if (!_match.IsParticipant(playerId)) throw new InvalidOperationException("not_a_participant");
+        if (!_match.IsActiveParticipant(playerId)) throw new InvalidOperationException("participant_left");
+        if (_match.IsOver) throw new InvalidOperationException("match_over");
+        if (_match.CurrentSlot is null) throw new InvalidOperationException("match_not_started");
+        if (_match.CurrentSlot.Slot != slot)
+            throw new InvalidOperationException(slot < _match.CurrentSlot.Slot ? "answers_locked" : "stale_slot");
+        if (!Enum.IsDefined(typeof(MatchingAnswerKind), kind)) throw new InvalidOperationException("bad_answer_kind");
+
+        var answerKind = (MatchingAnswerKind)kind;
+        if (answerKind == MatchingAnswerKind.SelectedParticipant && participantId is null)
+            throw new InvalidOperationException("missing_field");
+        if (answerKind == MatchingAnswerKind.SelectedChoice && choiceIndex is null)
+            throw new InvalidOperationException("missing_field");
+        if (answerKind == MatchingAnswerKind.NotApplicable && (participantId is not null || choiceIndex is not null))
+            throw new InvalidOperationException("contradictory_fields");
+        if (answerKind == MatchingAnswerKind.SelectedParticipant && choiceIndex is not null)
+            throw new InvalidOperationException("contradictory_fields");
+        if (answerKind == MatchingAnswerKind.SelectedChoice && participantId is not null)
+            throw new InvalidOperationException("contradictory_fields");
+
+        var before = _match.ToSnapshot();
+        var source = before.Questions.FirstOrDefault(q => q.Id == _match.CurrentSlot.QuestionId)?.AnswerSource;
+        if (answerKind == MatchingAnswerKind.SelectedParticipant && source != MatchingAnswerSource.Participants)
+            throw new InvalidOperationException("wrong_answer_kind");
+        if (answerKind == MatchingAnswerKind.SelectedChoice && source != MatchingAnswerSource.Fixed)
+            throw new InvalidOperationException("wrong_answer_kind");
+        MatchingAnswer answer = answerKind switch
+        {
+            MatchingAnswerKind.SelectedParticipant => MatchingAnswer.SelectedParticipant(participantId!, clock.Now),
+            MatchingAnswerKind.SelectedChoice => MatchingAnswer.SelectedChoice(choiceIndex!.Value, clock.Now),
+            _ => MatchingAnswer.NotApplicable(clock.Now)
+        };
+
+        try
+        {
+            _match.Answer(playerId, slot, answer, clock.Now);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidOperationException(MapAnswerError(ex.Message), ex);
+        }
+
+        await SaveAndArchiveAsync();
+        var after = _match.ToSnapshot();
+        if (before.CurrentSlot is { } beforeSlot && after.CurrentSlot != before.CurrentSlot)
+        {
+            var closed = after.Slots.FirstOrDefault(s => s.Slot == beforeSlot);
+            if (closed is not null)
+                await SafeNotifyAsync(() => notifier.SlotClosedAsync(IdString(),
+                    new MatchingSlotClosedPush(closed.Slot,
+                        [.. closed.Answers.Select(kv => new MatchingAnswerPush(kv.Key, (int)kv.Value.Kind,
+                            kv.Value.ParticipantId, kv.Value.ChoiceIndex))])));
+        }
+        if (_match.IsOver) await UnregisterReminderSafeAsync();
+        return ViewFor(playerId);
+    }
+
+    public Task<MatchingView?> GetAsync(string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(state.State.Code)) return Task.FromResult<MatchingView?>(null);
+        var currentState = (MatchState)state.State.State;
+        if (currentState == MatchState.InProgress && (_match is null || !_match.IsParticipant(playerId)))
+            return Task.FromResult<MatchingView?>(null);
+        return Task.FromResult<MatchingView?>(ViewFor(playerId));
+    }
+
+    public async Task ReceiveReminder(string reminderName, TickStatus status)
+    {
+        if (_match is null || _match.IsOver) return;
+        var before = _match.ToSnapshot();
+        if (!_match.Advance(clock.Now)) return;
+
+        await SaveAndArchiveAsync();
+        var after = _match.ToSnapshot();
+        if (!before.InactiveParticipants.SetEquals(after.InactiveParticipants))
+            await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
+        if (before.CurrentSlot is { } oldSlot && after.CurrentSlot != oldSlot)
+        {
+            var closed = after.Slots.FirstOrDefault(s => s.Slot == oldSlot);
+            if (closed is not null)
+                await SafeNotifyAsync(() => notifier.SlotClosedAsync(IdString(),
+                    new MatchingSlotClosedPush(closed.Slot,
+                        [.. closed.Answers.Select(kv => new MatchingAnswerPush(kv.Key, (int)kv.Value.Kind,
+                            kv.Value.ParticipantId, kv.Value.ChoiceIndex))])));
+        }
+        if (_match.IsOver) await UnregisterReminderSafeAsync();
+    }
+
+    private async Task SaveAndArchiveAsync()
+    {
+        if (_match is not null)
+        {
+            state.State.Json = JsonSerializer.Serialize(_match.ToSnapshot());
+            state.State.Participants = [.. _match.Participants];
+            state.State.State = (int)_match.State;
+            state.State.EndedAt = _match.EndedAt;
+        }
+        await state.WriteStateAsync();
+        await archive.SaveAsync(ToArchive());
+    }
+
+    private ArchivedMatch ToArchive()
+    {
+        var participants = state.State.Participants;
+        var results = participants.Select(id => new ParticipantResult(id, 0, 0, MatchOutcome.Loss)).ToList();
+        return new ArchivedMatch(IdString(), state.State.Code, (Language)state.State.Lang,
+            participants.FirstOrDefault() ?? state.State.OwnerId, participants.Skip(1).FirstOrDefault(),
+            null, false, results, (MatchState)state.State.State, state.State.CreatedAt, state.State.EndedAt,
+            _match?.ToSnapshot().Questions.Select(q => q.Id).ToList() ?? [], false, GameMode.Matching);
+    }
+
+    private MatchingView ViewFor(string playerId)
+    {
+        var stateValue = (MatchState)state.State.State;
+        if (_match is null)
+            return new MatchingView(IdString(), state.State.Code, state.State.Lang, state.State.Capacity,
+                (int)stateValue, [.. state.State.Participants.Select(id => new MatchingParticipantView(id, true))],
+                null, state.State.QuestionCount, null, null, null, state.State.CreatedAt, state.State.EndedAt);
+
+        var snapshot = _match.ToSnapshot();
+        var current = snapshot.CurrentSlot is { } index ? snapshot.Slots.FirstOrDefault(s => s.Slot == index) : null;
+        var closed = current is null ? snapshot.Slots.LastOrDefault() : snapshot.Slots.FirstOrDefault(s => s.Slot == current.Slot - 1);
+        var own = current?.Answers?.GetValueOrDefault(playerId);
+        return new MatchingView(_match.Id, _match.Code, state.State.Lang, _match.Capacity, (int)_match.State,
+            [.. _match.Participants.Select(id => new MatchingParticipantView(id, _match.IsActiveParticipant(id)))],
+            _match.CurrentSlotIndex, snapshot.Questions.Count, SlotView(current, includeAnswers: false),
+            SlotView(closed, includeAnswers: true), AnswerView(own), _match.CreatedAt, _match.EndedAt);
+    }
+
+    private static MatchingSlotView? SlotView(MatchingSlotSnapshot? slot, bool includeAnswers)
+    {
+        if (slot is null) return null;
+        return new MatchingSlotView(slot.Slot, slot.QuestionId, slot.Prompt,
+            [.. slot.Options.Select(o => new MatchingOptionView((int)o.Kind, o.ParticipantId, o.ChoiceIndex, o.Text))],
+            slot.ServedAt, [.. slot.Answers.Keys], includeAnswers
+                ? [.. slot.Answers.Values.Select(answer => AnswerView(answer)!) ]
+                : []);
+    }
+
+    private static MatchingAnswerView? AnswerView(MatchingAnswer? answer)
+        => answer is null ? null : new MatchingAnswerView((int)answer.Kind, answer.ParticipantId,
+            answer.ChoiceIndex, answer.At);
+
+    private static string MapAnswerError(string message) => message switch
+    {
+        "You are not a participant in this match." => "not_a_participant",
+        "You are no longer active in this match." => "participant_left",
+        "That participant is not an option for this slot." => "unknown_participant",
+        "That choice is not an option for this slot." => "bad_choice_index",
+        "The matching answer kind is not declared." => "bad_answer_kind",
+        _ => message.Contains("no matching slot", StringComparison.OrdinalIgnoreCase)
+            ? "stale_slot" : "answers_locked"
+    };
+
+    private async Task SafeNotifyAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) { logger.LogWarning(ex, "Matching push failed for {MatchId}", IdString()); }
+    }
+
+    private async Task UnregisterReminderSafeAsync()
+    {
+        try
+        {
+            if (await this.GetReminder(Reminder) is { } registered)
+                await this.UnregisterReminder(registered);
+        }
+        catch (Exception ex) { logger.LogDebug(ex, "Matching reminder was already absent for {MatchId}", IdString()); }
+    }
+
+    private string IdString() => this.GetPrimaryKeyString();
+}

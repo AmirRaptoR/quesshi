@@ -226,6 +226,30 @@ public static class Mappers
             m.QuestionIds.Count, IsLive: true, Mode: matching ? "matching" : null);
     }
 
+    /// <summary>Matching rows are intentionally scoreless and are already complete enough for the
+    /// match list; activating a matching grain here would turn a cheap archive read into one grain
+    /// call per row. The detail/play routes use the matching grain for the full redacted view.</summary>
+    public static MatchSummaryDto ToMatchingSummary(this ArchivedMatch m, string me,
+        Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
+    {
+        var state = m.State.ToString().ToLowerInvariant();
+        var participants = m.Results.Select(r =>
+        {
+            var (name, avatar, guest) = lookup(r.PlayerId);
+            return new LiveParticipantDto(r.PlayerId, name, avatar, guest);
+        }).ToList();
+        var mineInfo = participants.FirstOrDefault(p => p.PlayerId == me) ?? new LiveParticipantDto(me, me, me, false);
+        var other = participants.FirstOrDefault(p => p.PlayerId != me);
+        var mine = new PlayerSideDto(me, mineInfo.Name, mineInfo.Avatar, null, 0, 0,
+            m.State is MatchState.Resolved or MatchState.NoContest);
+        var theirs = other is null ? null : new PlayerSideDto(other.PlayerId, other.Name, other.Avatar,
+            null, 0, 0, m.State is MatchState.Resolved or MatchState.NoContest);
+        var over = m.State is MatchState.Resolved or MatchState.NoContest;
+        return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), state, mine, theirs, null, null,
+            m.CreatedAt, !over, false, null, m.QuestionIds.Count, false, participants, participants.Count,
+            new DuelSettingsDto(m.Lang.Code(), m.QuestionIds.Count, [], []), m.QuestionIds.Count > 0, "matching");
+    }
+
     /// <summary>
     /// Every player id a <see cref="LiveView"/> mentions, resolved to (name, avatar) in one query —
     /// the live twin of the <c>Func&lt;string,(string,string)&gt;</c> <see cref="ToSummary"/> takes,

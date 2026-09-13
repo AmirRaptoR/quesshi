@@ -58,7 +58,11 @@ public sealed class LiveHub(
     {
         var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
         var view = await grains.GetGrain<IMatchGrain>(matchId).GetAsync(meId);
-        if (view is null) throw new HubException("not_a_participant");
+        if (view is null)
+        {
+            var matching = await grains.GetGrain<IMatchingMatchGrain>(matchId).GetAsync(meId);
+            if (matching is null) throw new HubException("not_a_participant");
+        }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId));
     }

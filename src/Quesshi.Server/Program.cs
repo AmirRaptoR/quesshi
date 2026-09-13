@@ -79,6 +79,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 // nothing to add to the configuration table. LiveHub and its notifier are #13's.
 builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
 builder.Services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
+builder.Services.AddSingleton<IMatchingNotifier, SignalRMatchingNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
@@ -202,6 +203,7 @@ app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
 app.MapLive();
+app.MapMatching();
 app.MapHub<LiveHub>("/hub/live");
 app.MapAdminAuth();
 app.MapAdminAccounts();
