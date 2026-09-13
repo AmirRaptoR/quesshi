@@ -503,6 +503,7 @@ public static class GameEndpoints
         // is the only source there is — so its ids come from the row instead. One query either way.
         var names = (await players.GetManyAsync([.. asyncViews
                 .SelectMany(ParticipantIds)
+                .Concat(matchingRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
                 .Concat(liveRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
                 .Distinct()]))
             .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed, p.IsGuest));

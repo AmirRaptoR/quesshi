@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Quesshi.Application.Ports;
 using Orleans.Core.Internal;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
@@ -88,6 +89,85 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         }
 
         Assert.NotNull((await grain.GetAsync(Owner))!.OwnAnswer);
+    }
+
+    [Fact]
+    public async Task Reminder_expires_idle_match_and_is_safe_to_run_again()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var id = $"matching-reminder-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", Owner, (int)Language.En, 10, [category], 2);
+        await grain.JoinAsync(Other);
+        Assert.True(await grain.StartAsync(Owner));
+
+        var before = Shared.Clock.Now;
+        try
+        {
+            Shared.Clock.Advance(MatchingRules.IdleAfter + TimeSpan.FromMinutes(1));
+            await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+                .AsReference<IRemindable>().ReceiveReminder("matching-idle", default);
+
+            var expired = await grain.GetAsync(Owner);
+            Assert.Equal((int)MatchState.NoContest, expired!.State);
+            Assert.All(expired.Participants, participant => Assert.False(participant.Active));
+
+            // A stale reminder after the terminal write must clean itself up and never mutate again.
+            await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+                .AsReference<IRemindable>().ReceiveReminder("matching-idle", default);
+            Assert.Equal((int)MatchState.NoContest, (await grain.GetAsync(Owner))!.State);
+        }
+        finally
+        {
+            Shared.Clock.Now = before;
+        }
+    }
+
+    [Fact]
+    public async Task Barrier_push_contains_closed_slot_and_all_answers_after_persistence()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var id = $"matching-push-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", Owner, (int)Language.En, 10, [category], 2);
+        await grain.JoinAsync(Other);
+        Assert.True(await grain.StartAsync(Owner));
+
+        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+
+        var push = Shared.MatchingNotifier.EventsFor(id).Last(e => e.Kind == "SlotClosed");
+        var payload = Assert.IsType<MatchingSlotClosedPush>(push.Payload);
+        Assert.Equal(0, payload.Slot);
+        Assert.Equal(2, payload.Answers.Count);
+        var view = await grain.GetAsync(Owner);
+        Assert.Equal(1, view!.CurrentSlotIndex);
+        Assert.Equal(0, view.LastClosedSlot!.Slot);
+    }
+
+    [Fact]
+    public async Task Matching_completion_does_not_touch_leaderboard_or_player_stats()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = Player.Register($"matching-owner-{prefix}", $"{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
+        var other = Player.Register($"matching-other-{prefix}", $"other-{prefix}@example.com", "Other", Language.En, Shared.Clock.Now);
+        await Shared.Players.UpsertAsync(owner);
+        await Shared.Players.UpsertAsync(other);
+        var ownerStats = owner.Stats;
+        var otherStats = other.Stats;
+        var id = $"matching-side-effects-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", owner.Id, (int)Language.En, 10, [category], 2);
+        await grain.JoinAsync(other.Id);
+        Assert.True(await grain.StartAsync(owner.Id));
+        await grain.LeaveAsync(other.Id);
+
+        Assert.DoesNotContain(Shared.Leaderboard.Scores, kv => kv.Key == owner.Id || kv.Key == other.Id);
+        Assert.Equal(ownerStats, (await Shared.Players.GetAsync(owner.Id))!.Stats);
+        Assert.Equal(otherStats, (await Shared.Players.GetAsync(other.Id))!.Stats);
     }
 
     private static string Seed(string prefix)

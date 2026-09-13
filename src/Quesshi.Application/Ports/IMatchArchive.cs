@@ -12,3 +12,14 @@ public interface IMatchArchive
     /// <see cref="CountAsync"/> keeps counting every row, live and async alike, as it always has.</summary>
     Task<long> CountLiveAsync(CancellationToken ct = default);
 }
+
+/// <summary>
+/// The shared match-code index rejected an archive write because another duel claimed the code
+/// between the caller's availability check and its insert. Callers may safely retry with a new code;
+/// this is deliberately distinct from all other archive failures.
+/// </summary>
+public sealed class MatchCodeCollisionException(string code, Exception? inner = null)
+    : Exception($"The match code '{code}' is already in use.", inner)
+{
+    public string Code { get; } = code;
+}

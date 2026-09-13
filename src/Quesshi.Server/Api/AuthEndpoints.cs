@@ -104,6 +104,24 @@ public static class AuthEndpoints
         if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
 
         var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
+
+        // Matching owns its lobby under its own grain interface. Join before persisting the guest so
+        // a full, started, or raced lobby never leaves a player record that cannot be used anywhere.
+        if (found.Mode == GameMode.Matching)
+        {
+            var matching = grains.GetGrain<IMatchingMatchGrain>(found.Id);
+            if ((MatchingJoinResult)await matching.JoinAsync(guest.Id) is not MatchingJoinResult.Joined)
+                return Results.BadRequest(new { error = "cannot_join" });
+
+            await players.UpsertAsync(guest);
+            var updated = await archive.ByCodeAsync(found.Code) ?? found;
+            var matchingChallenger = await players.GetAsync(updated.ChallengerId);
+            var matchingSummary = updated.ToMatchingSummary(guest.Id, id => id == guest.Id
+                ? (guest.DisplayName, guest.AvatarSeed, true)
+                : (matchingChallenger?.DisplayName ?? "—", matchingChallenger?.AvatarSeed ?? id, matchingChallenger?.IsGuest ?? false));
+            return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), matchingSummary));
+        }
+
         await players.UpsertAsync(guest);
 
         var grain = grains.GetGrain<IMatchGrain>(found.Id);
@@ -193,4 +211,3 @@ public static class AuthEndpoints
     private static AuthResultDto SignIn(Player player, TokenIssuer tokens) => new(tokens.Issue(player), player.ToMeDto([]));
 
 }
-

@@ -84,10 +84,19 @@ public static class MatchingEndpoints
             if (await archive.ByCodeAsync(code) is not null) continue;
             var id = ids.NewId();
             var grain = grains.GetGrain<IMatchingMatchGrain>(id);
-            var view = await grain.CreateAsync(code, meId, (int)lang, count, categoryIds, body.Capacity);
-            return Results.Ok(await ToDtoAsync(view, meId, players));
+            try
+            {
+                var view = await grain.CreateAsync(code, meId, (int)lang, count, categoryIds, body.Capacity);
+                return Results.Ok(await ToDtoAsync(view, meId, players));
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "matching_code_collision")
+            {
+                // The archive check above is only an optimization; a concurrent trivia/live create
+                // can win the unique code index after it. The grain clears its state on this exception,
+                // so retrying here cannot leave an orphan matching lobby.
+            }
         }
-        return Results.Problem("Could not allocate a share code.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        return Results.Json(new { error = "code_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     internal static async Task<IResult> JoinAsync(string code, string meId, IGrainFactory grains,
@@ -138,6 +147,11 @@ public static class MatchingEndpoints
         catch (NotEnoughQuestionsException ex)
         {
             return Results.Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("matching_not_enough_questions:", StringComparison.Ordinal))
+        {
+            return Results.Problem(ex.Message["matching_not_enough_questions:".Length..],
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
 

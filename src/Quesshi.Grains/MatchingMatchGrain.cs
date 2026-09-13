@@ -26,11 +26,12 @@ public sealed class MatchingMatchGrain(
     private const string Reminder = "matching-idle";
     private MatchingMatch? _match;
 
-    public override Task OnActivateAsync(CancellationToken cancellationToken)
+    public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(state.State.Json))
             _match = MatchingMatch.FromSnapshot(JsonSerializer.Deserialize<MatchingMatchSnapshot>(state.State.Json)!);
-        return Task.CompletedTask;
+        if (_match?.IsOver == true)
+            await UnregisterReminderSafeAsync();
     }
 
     public async Task<MatchingView> CreateAsync(string code, string ownerId, int lang, int questionCount,
@@ -48,7 +49,23 @@ public sealed class MatchingMatchGrain(
         state.State.Participants = [ownerId];
         state.State.CreatedAt = clock.Now;
         state.State.State = (int)MatchState.AwaitingOpponent;
-        await SaveAndArchiveAsync();
+        try
+        {
+            await SaveAndArchiveAsync();
+        }
+        catch (MatchCodeCollisionException)
+        {
+            // SaveAndArchiveAsync writes Orleans state before the shared archive. If the archive's
+            // unique code index loses a race, remove that state before allowing the endpoint to retry;
+            // otherwise the failed attempt leaves an unresolvable matching grain behind.
+            _match = null;
+            await state.ClearStateAsync();
+            state.State = new MatchingMatchStateRecord();
+            // Keep the grain boundary on Orleans' built-in exception types. The archive-specific
+            // exception is an application/infrastructure detail and Orleans cannot serialize it as a
+            // remoted exception without registering a codec for the infrastructure assembly.
+            throw new InvalidOperationException("matching_code_collision");
+        }
         return ViewFor(ownerId);
     }
 
@@ -74,8 +91,18 @@ public sealed class MatchingMatchGrain(
             || playerId != state.State.OwnerId || state.State.Participants.Count < 2)
             return false;
 
-        var questions = await questionSetBuilder.BuildAsync((Language)state.State.Lang,
-            state.State.CategoryIds, state.State.QuestionCount);
+        IReadOnlyList<MatchingQuestion> questions;
+        try
+        {
+            questions = await questionSetBuilder.BuildAsync((Language)state.State.Lang,
+                state.State.CategoryIds, state.State.QuestionCount);
+        }
+        catch (NotEnoughQuestionsException ex)
+        {
+            // Keep the Orleans boundary serializable while preserving the builder's actionable
+            // message for the HTTP 503 response.
+            throw new InvalidOperationException($"matching_not_enough_questions:{ex.Message}");
+        }
         var match = MatchingMatch.Create(IdString(), state.State.Code, state.State.OwnerId,
             state.State.Capacity, [.. questions], state.State.CreatedAt);
         foreach (var participant in state.State.Participants.Skip(1))
@@ -149,6 +176,8 @@ public sealed class MatchingMatchGrain(
     public async Task<MatchingView> AnswerAsync(string playerId, int slot, int kind,
         string? participantId, int? choiceIndex)
     {
+        if (string.IsNullOrWhiteSpace(state.State.Code))
+            throw new InvalidOperationException("match_not_found");
         if (_match is null)
             throw new InvalidOperationException("match_not_started");
         if (!_match.IsParticipant(playerId)) throw new InvalidOperationException("not_a_participant");
@@ -219,7 +248,12 @@ public sealed class MatchingMatchGrain(
 
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
-        if (_match is null || _match.IsOver) return;
+        if (_match is null) return;
+        if (_match.IsOver)
+        {
+            await UnregisterReminderSafeAsync();
+            return;
+        }
         var before = _match.ToSnapshot();
         if (!_match.Advance(clock.Now)) return;
 
