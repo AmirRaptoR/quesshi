@@ -485,6 +485,12 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
         public Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
             => Task.FromResult<IReadOnlySet<string>>(Items.Where(question => question.Lang == lang && question.Topic is not null)
                 .Select(question => question.Topic!).ToHashSet());
+
+        public Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyCollection<string>>([.. Items
+                .Where(question => question.Lang == lang && question.MatchingCategoryId == categoryId)
+                .Select(question => question.Prompt)]);
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();

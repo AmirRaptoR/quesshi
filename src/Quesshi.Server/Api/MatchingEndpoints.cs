@@ -155,14 +155,19 @@ public static class MatchingEndpoints
         }
         catch (NotEnoughQuestionsException ex)
         {
-            return Results.Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            return NotEnoughQuestions(ex.Message);
         }
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("matching_not_enough_questions:", StringComparison.Ordinal))
         {
-            return Results.Problem(ex.Message["matching_not_enough_questions:".Length..],
-                statusCode: StatusCodes.Status503ServiceUnavailable);
+            return NotEnoughQuestions(ex.Message["matching_not_enough_questions:".Length..]);
         }
     }
+
+    // Do not return ProblemDetails here. The player client needs a stable code it can translate,
+    // while the detail remains useful to operators inspecting the response or server traffic.
+    private static IResult NotEnoughQuestions(string detail)
+        => Results.Json(new { error = "not_enough_questions", detail },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
 
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateMatchingSettingsDto body,
         string meId, IGrainFactory grains, IPlayerRepository players, IMatchingCategoryRepository categories)

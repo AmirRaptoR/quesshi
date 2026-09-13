@@ -14,6 +14,7 @@ public sealed class MongoContext
         Players = db.GetCollection<PlayerDoc>("players");
         Matches = db.GetCollection<MatchDoc>("matches");
         GenerationRuns = db.GetCollection<GenerationRunDoc>("generation_runs");
+        MatchingGenerationRuns = db.GetCollection<MatchingGenerationRunDoc>("matching_generation_runs");
         AdminUsers = db.GetCollection<AdminUserDoc>("admin_users");
         AiCalls = db.GetCollection<AiCallDoc>("ai_calls");
     }
@@ -25,6 +26,7 @@ public sealed class MongoContext
     public IMongoCollection<PlayerDoc> Players { get; }
     public IMongoCollection<MatchDoc> Matches { get; }
     public IMongoCollection<GenerationRunDoc> GenerationRuns { get; }
+    public IMongoCollection<MatchingGenerationRunDoc> MatchingGenerationRuns { get; }
     public IMongoCollection<AdminUserDoc> AdminUsers { get; }
     public IMongoCollection<AiCallDoc> AiCalls { get; }
 
@@ -79,6 +81,10 @@ public sealed class MongoContext
         // The spend panel only ever asks "since when", so one index on the timestamp covers it.
         await AiCalls.Indexes.CreateOneAsync(
             new CreateIndexModel<AiCallDoc>(Builders<AiCallDoc>.IndexKeys.Descending(c => c.At)), cancellationToken: ct);
+
+        await MatchingGenerationRuns.Indexes.CreateOneAsync(
+            new CreateIndexModel<MatchingGenerationRunDoc>(
+                Builders<MatchingGenerationRunDoc>.IndexKeys.Descending(r => r.StartedAt)), cancellationToken: ct);
 
         // A one-time backfill for every row written before Participants/OwnerId existed. Unlike the
         // grain snapshots in Redis this migration also tolerates — which stay permanently dual-shaped

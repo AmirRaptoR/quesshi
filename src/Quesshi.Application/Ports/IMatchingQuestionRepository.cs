@@ -21,6 +21,9 @@ public interface IMatchingQuestionRepository
     Task<int> UpsertManyAsync(IReadOnlyList<MatchingQuestion> questions, CancellationToken ct = default);
     Task DeleteAsync(string id, CancellationToken ct = default);
     Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default);
+    /// <summary>Every prompt in one language/category, used to keep generated paraphrases out.</summary>
+    Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
+        CancellationToken ct = default);
 }
 
 public enum MatchingServeResult

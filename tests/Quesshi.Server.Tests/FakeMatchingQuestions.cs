@@ -78,6 +78,12 @@ public sealed class FakeMatchingQuestions : IMatchingQuestionRepository
         => Task.FromResult<IReadOnlySet<string>>(Items.Where(q => q.Lang == lang && q.Topic is not null)
             .Select(q => q.Topic!).ToHashSet());
 
+    public Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyCollection<string>>([.. Items
+            .Where(q => q.Lang == lang && q.MatchingCategoryId == categoryId)
+            .Select(q => q.Prompt)]);
+
     private static MatchingQuestion Clone(MatchingQuestion q, int? timesServed = null)
         => MatchingQuestion.Restore(q.Id, q.Lang, q.MatchingCategoryId, q.Prompt, q.AnswerSource,
             q.FixedChoices, q.Media, q.Status, q.Source, q.Topic, q.CreatedAt, q.UpdatedAt,

@@ -125,6 +125,38 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
         Assert.NotNull(await LiveShared.Questions.GetAsync(id));
     }
 
+    [Fact]
+    public async Task Matching_generation_has_its_own_validated_admin_route()
+    {
+        using var client = AdminClient();
+        await SeedCategoryAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/admin/matching/generate",
+            new GenerateMatchingRequestDto("en", "friends", "participants", 5));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var run = (await response.Content.ReadFromJsonAsync<MatchingGenerationRunDto>())!;
+        Assert.Equal("m-friends", run.CategoryId);
+        Assert.Equal("participants", run.AnswerSource);
+        Assert.Equal("generator_not_configured", run.Error);
+        Assert.Equal(0, run.Requested);
+
+        var badLang = await client.PostAsJsonAsync("/api/admin/matching/generate",
+            new GenerateMatchingRequestDto("de", "friends", "participants", 5));
+        Assert.Equal("bad_lang", await ErrorAsync(badLang));
+
+        var badSource = await client.PostAsJsonAsync("/api/admin/matching/generate",
+            new GenerateMatchingRequestDto("en", "friends", "correct", 5));
+        Assert.Equal("bad_answer_source", await ErrorAsync(badSource));
+
+        var badCount = await client.PostAsJsonAsync("/api/admin/matching/generate",
+            new GenerateMatchingRequestDto("en", "friends", "fixed", 21));
+        Assert.Equal("bad_count", await ErrorAsync(badCount));
+
+        var missingCategory = await client.PostAsJsonAsync("/api/admin/matching/generate",
+            new GenerateMatchingRequestDto("en", "missing", "fixed", 5));
+        Assert.Equal("unknown_category", await ErrorAsync(missingCategory));
+    }
+
     [Theory]
     [InlineData("/api/admin/matching/questions")]
     [InlineData("/api/admin/matching/categories")]
@@ -132,6 +164,15 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
     {
         using var client = _host.NewClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Matching_generation_requires_admin_authorization()
+    {
+        using var client = _host.NewClient();
+        var response = await client.PostAsJsonAsync("/api/admin/matching/generate",
+            new GenerateMatchingRequestDto("en", "m-friends", "participants", 5));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();

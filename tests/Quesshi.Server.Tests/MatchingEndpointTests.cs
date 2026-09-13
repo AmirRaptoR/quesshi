@@ -548,6 +548,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         var start = await ownerClient.PostAsync($"/api/matching/{lobby.Id}/start", null);
         Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, start.StatusCode);
         var problem = await start.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("not_enough_questions", problem.GetProperty("error").GetString());
         Assert.Contains("Not enough", problem.GetProperty("detail").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 

@@ -13,7 +13,8 @@ public sealed class AdminApi(AdminHttpClient http)
     [
         "bad_answer_source", "blank_prompt", "choices_not_allowed", "too_few_choices", "too_many_choices",
         "blank_choice", "duplicate_choice", "unknown_category", "inactive_category", "bad_status", "bad_lang",
-        "bad_media", "duplicate_topic", "category_in_use", "bad_category_id", "blank_name", "bad_color"
+        "bad_media", "duplicate_topic", "category_in_use", "bad_category_id", "blank_name", "bad_color",
+        "bad_count", "generator_not_configured", "generation_failed"
     ];
 
     private HttpClient Client => http.Client;
@@ -146,6 +147,18 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<GenerationRunDto?> GenerateNowAsync() => PostAsync<GenerationRunDto>("api/admin/generate", new { });
     public Task<GenerationRunDto?> GenerateBucketAsync(GenerateRequestDto body) => PostAsync<GenerationRunDto>("api/admin/generate/bucket", body);
     public Task<GenerationRunDto?> GenerateIllustratedAsync(GenerateRequestDto body) => PostAsync<GenerationRunDto>("api/admin/generate/illustrated", body);
+    public async Task<(MatchingGenerationRunDto? Run, string? Error)> GenerateMatchingAsync(
+        GenerateMatchingRequestDto body)
+    {
+        try
+        {
+            var response = await Client.PostAsJsonAsync("api/admin/matching/generate", body);
+            return response.IsSuccessStatusCode
+                ? (await response.Content.ReadFromJsonAsync<MatchingGenerationRunDto>(), null)
+                : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
+        }
+        catch { return (null, null); }
+    }
     public Task<MediaDto?> UploadAsync(MultipartFormDataContent content) => PostContentAsync<MediaDto>("api/admin/media", content);
 
     /// <summary>Dry run or commit — same endpoint, `dryRun` decides whether anything is written.</summary>

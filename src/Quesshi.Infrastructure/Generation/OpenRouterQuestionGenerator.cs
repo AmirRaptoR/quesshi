@@ -19,7 +19,7 @@ public sealed class OpenRouterQuestionGenerator(
     IAiSpendLog spend,
     IIdFactory ids,
     IClock clock,
-    ILogger<OpenRouterQuestionGenerator> logger) : IQuestionGenerator
+    ILogger<OpenRouterQuestionGenerator> logger) : IQuestionGenerator, IMatchingQuestionGenerator
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -46,10 +46,47 @@ public sealed class OpenRouterQuestionGenerator(
         int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
         => AskAsync(prompts.Map(lang, category, level, count, avoid), MapSchema.ResponseFormat, "map", lang, category, level, QuestionKind.Map, ct);
 
+    Task<IReadOnlyList<GeneratedMatchingQuestion>> IMatchingQuestionGenerator.GenerateAsync(Language lang,
+        MatchingCategory category, MatchingAnswerSource answerSource, int count,
+        IReadOnlyCollection<string> avoid, CancellationToken ct)
+        => AskMatchingAsync(prompts.Matching(lang, category, answerSource, count, avoid),
+            MatchingQuestionSchema.ResponseFormat(answerSource), lang, category, answerSource, ct);
+
     private async Task<IReadOnlyList<GeneratedQuestion>> AskAsync(string userPrompt, object schema, string purpose,
         Language lang, Category category, Difficulty level, QuestionKind kind, CancellationToken ct)
     {
-        if (!IsConfigured) return [];
+        var content = await RequestAsync(prompts.System(), userPrompt, schema, purpose, ct);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            logger.LogWarning("OpenRouter returned no content for {Lang}/{Category}/{Level}", lang, category.Id, level);
+            return [];
+        }
+
+        return Parse(content, lang, category, level, kind);
+    }
+
+    private async Task<IReadOnlyList<GeneratedMatchingQuestion>> AskMatchingAsync(string userPrompt,
+        object schema, Language lang, MatchingCategory category, MatchingAnswerSource answerSource,
+        CancellationToken ct)
+    {
+        var purpose = answerSource == MatchingAnswerSource.Fixed
+            ? "matching-fixed"
+            : "matching-participants";
+        var content = await RequestAsync(prompts.MatchingSystem(), userPrompt, schema, purpose, ct);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            logger.LogWarning("OpenRouter returned no matching content for {Lang}/{Category}/{AnswerSource}",
+                lang, category.Id, answerSource);
+            return [];
+        }
+
+        return ParseMatching(content, lang, category, answerSource);
+    }
+
+    private async Task<string?> RequestAsync(string systemPrompt, string userPrompt, object schema,
+        string purpose, CancellationToken ct)
+    {
+        if (!IsConfigured) return null;
 
         using var client = http.CreateClient();
         client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
@@ -64,7 +101,7 @@ public sealed class OpenRouterQuestionGenerator(
             max_tokens = options.MaxTokens,
             messages = new[]
             {
-                new { role = "system", content = prompts.System() },
+                new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             },
             response_format = schema,
@@ -83,14 +120,7 @@ public sealed class OpenRouterQuestionGenerator(
         if (UsageReader.Read(payload, ids.NewId(), clock.Now, options.Model, purpose) is { } call)
             await spend.RecordAsync(call, ct);
 
-        var content = ExtractContent(payload);
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            logger.LogWarning("OpenRouter returned no content for {Lang}/{Category}/{Level}", lang, category.Id, level);
-            return [];
-        }
-
-        return Parse(content, lang, category, level, kind);
+        return ExtractContent(payload);
     }
 
     /// <summary>
@@ -112,6 +142,28 @@ public sealed class OpenRouterQuestionGenerator(
         catch (JsonException ex)
         {
             logger.LogError(ex, "OpenRouter returned malformed JSON for {Lang}/{Category}/{Level}", lang, category.Id, level);
+            return [];
+        }
+    }
+
+    private IReadOnlyList<GeneratedMatchingQuestion> ParseMatching(string content, Language lang,
+        MatchingCategory category, MatchingAnswerSource answerSource)
+    {
+        try
+        {
+            var batch = JsonSerializer.Deserialize<Batch>(Unwrap(content), Json);
+            return batch?.Questions is null
+                ? []
+                : [.. batch.Questions.Select(q => new GeneratedMatchingQuestion(
+                    q.Prompt ?? "",
+                    answerSource == MatchingAnswerSource.Fixed ? q.Choices ?? [] : [],
+                    q.Subject,
+                    q.Aspect))];
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "OpenRouter returned malformed matching JSON for {Lang}/{Category}/{AnswerSource}",
+                lang, category.Id, answerSource);
             return [];
         }
     }

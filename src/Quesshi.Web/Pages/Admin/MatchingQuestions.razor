@@ -18,6 +18,57 @@
     }
     else
     {
+        <section class="card card--taq">
+            <span class="eyebrow">@L["admin.askAi"] · @L["admin.matching.questions"]</span>
+            <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.9rem">
+                <select class="select" style="width:auto" @bind="_generate.Lang">
+                    <option value="fa">@L["lang.fa"]</option>
+                    <option value="en">@L["lang.en"]</option>
+                    <option value="nl">@L["lang.nl"]</option>
+                </select>
+                <select class="select" style="width:auto" @bind="_generate.CategoryId">
+                    @foreach (var category in _categories.Where(c => c.IsActive))
+                    {
+                        <option value="@category.Id">@CategoryName(category)</option>
+                    }
+                </select>
+                <select class="select" style="width:auto" @bind="_generate.AnswerSource">
+                    <option value="participants">@L["admin.matching.participants"]</option>
+                    <option value="fixed">@L["admin.matching.fixed"]</option>
+                </select>
+                <input class="input" style="width:5.5rem" type="number" min="1" max="20"
+                       @bind="_generate.Count" aria-label="@L["admin.count"]" />
+                <button class="btn" disabled="@(_generating || !_generatorReady || string.IsNullOrWhiteSpace(_generate.CategoryId))"
+                        @onclick="GenerateMatchingAsync">
+                    @(_generating ? L["admin.generating"] : L["admin.askAi"])
+                </button>
+            </div>
+            <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["admin.matching.generateHint"]</p>
+            @if (!_generatorReady)
+            {
+                <div class="notice" style="margin-top:.7rem">@L["admin.noKey"]</div>
+            }
+            @if (_lastGeneration is { } run)
+            {
+                <div class="notice @(run.Error is null && run.Inserted > 0 ? "notice--good" : "notice--bad")" style="margin-top:.7rem">
+                    @if (run.Error is not null)
+                    {
+                        @L.Or("admin.err." + run.Error, L["common.error"])
+                    }
+                    else if (run.Inserted == 0)
+                    {
+                        @L["admin.generatedNone"]
+                    }
+                    else
+                    {
+                        @L.Format("admin.generated", L.Num(run.Inserted), L.Num(run.Rejected))
+                        <button class="btn btn--ghost btn--sm" style="margin-inline-start:.6rem"
+                                @onclick="ShowGeneratedAsync">@L["admin.reviewPending"]</button>
+                    }
+                </div>
+            }
+        </section>
+
         <section class="card card--flat">
             <div class="row" style="flex-wrap:wrap;gap:.5rem">
                 <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
@@ -150,6 +201,10 @@
     private readonly ImportForm _import = new() { Kind = "matching" };
     private ImportReportDto? _importReport;
     private bool _importing;
+    private bool _generatorReady;
+    private bool _generating;
+    private readonly MatchingGenerateForm _generate = new();
+    private MatchingGenerationRunDto? _lastGeneration;
 
     private IEnumerable<MatchingCategoryDto> EditableCategories => _editing is { } form && _categories.Any(c => c.Id == form.MatchingCategoryId && !c.IsActive)
         ? _categories.Where(c => c.IsActive || c.Id == form.MatchingCategoryId) : _categories.Where(c => c.IsActive);
@@ -162,6 +217,8 @@
     protected override async Task LoadAsync()
     {
         _categories = await Api.AdminMatchingCategoriesAsync() ?? [];
+        _generate.CategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "";
+        _generatorReady = (await Api.DashboardAsync())?.GeneratorConfigured ?? false;
         _lang = QueryState.Read(Nav, "lang"); _category = QueryState.Read(Nav, "category"); _status = QueryState.Read(Nav, "status"); _text = QueryState.Read(Nav, "q");
         _page = Math.Max(1, QueryState.ReadInt(Nav, "page", 1)); _size = QueryState.ReadInt(Nav, "size", 25) is var size && size is 25 or 50 or 100 ? size : 25;
         await FetchAsync();
@@ -170,6 +227,28 @@
     private string Query() { var p = new List<string> { $"skip={(_page - 1) * _size}", $"take={_size}" }; if (_lang.Length > 0) p.Add($"lang={_lang}"); if (_category.Length > 0) p.Add($"category={_category}"); if (_status.Length > 0) p.Add($"status={_status}"); if (_text.Trim().Length > 0) p.Add($"text={Uri.EscapeDataString(_text.Trim())}"); return string.Join('&', p); }
     private async Task FetchAsync() { QueryState.Write(Nav, new Dictionary<string, string?> { ["lang"] = _lang, ["category"] = _category, ["status"] = _status, ["q"] = _text.Trim(), ["page"] = _page == 1 ? null : _page.ToString(), ["size"] = _size == 25 ? null : _size.ToString() }); _results = await Api.AdminMatchingQuestionsAsync(Query()); }
     private async Task ReloadAsync() { _page = 1; await FetchAsync(); }
+
+    private async Task GenerateMatchingAsync()
+    {
+        _generating = true;
+        _lastGeneration = null;
+        var result = await Api.GenerateMatchingAsync(new GenerateMatchingRequestDto(
+            _generate.Lang, _generate.CategoryId, _generate.AnswerSource, _generate.Count));
+        _lastGeneration = result.Run
+            ?? new MatchingGenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now,
+                _generate.Lang, _generate.CategoryId, _generate.AnswerSource, 0, 0, 0,
+                result.Error ?? "generation_failed");
+        _generating = false;
+        await FetchAsync();
+    }
+
+    private async Task ShowGeneratedAsync()
+    {
+        _lang = _generate.Lang;
+        _category = _generate.CategoryId;
+        _status = "pending";
+        await ReloadAsync();
+    }
     private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await ReloadAsync(); }
     private async Task GoToPageAsync(int page) { _page = page; await FetchAsync(); }
     private async Task SetPageSizeAsync(int size) { _size = size; _page = 1; await FetchAsync(); }
@@ -236,4 +315,12 @@
     private async Task ApproveAsync(string id) { await Api.ApproveMatchingAsync(id); await FetchAsync(); }
     private async Task RejectAsync(string id) { await Api.RejectMatchingAsync(id); await FetchAsync(); }
     private async Task DeleteAsync(string id) { await Api.DeleteMatchingQuestionAsync(id); await FetchAsync(); }
+
+    private sealed class MatchingGenerateForm
+    {
+        public string Lang { get; set; } = "fa";
+        public string CategoryId { get; set; } = "";
+        public string AnswerSource { get; set; } = "participants";
+        public int Count { get; set; } = 10;
+    }
 }

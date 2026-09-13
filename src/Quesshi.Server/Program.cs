@@ -62,6 +62,8 @@ var adminAuthOptions = builder.Configuration.GetSection("AdminAuth").Get<AdminAu
 var smtpOptions = builder.Configuration.GetSection("Smtp").Get<SmtpOptions>() ?? new SmtpOptions();
 var openRouterOptions = builder.Configuration.GetSection("OpenRouter").Get<OpenRouterOptions>() ?? new OpenRouterOptions();
 var topUpOptions = builder.Configuration.GetSection("Generation").Get<TopUpOptions>() ?? new TopUpOptions();
+var matchingGenerationOptions = builder.Configuration.GetSection("MatchingGeneration")
+    .Get<MatchingGenerationOptions>() ?? new MatchingGenerationOptions();
 
 builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddSingleton(authOptions);
@@ -69,6 +71,7 @@ builder.Services.AddSingleton(adminAuthOptions);
 builder.Services.AddSingleton(smtpOptions);
 builder.Services.AddSingleton(openRouterOptions);
 builder.Services.AddSingleton(topUpOptions);
+builder.Services.AddSingleton(matchingGenerationOptions);
 builder.Services.AddSingleton(mongoOptions);
 
 // --- infrastructure ------------------------------------------------------------------
@@ -97,13 +100,16 @@ builder.Services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
 builder.Services.AddSingleton<IResetTokenStore, RedisResetTokenStore>();
 builder.Services.AddSingleton<IMatchArchive, MongoMatchArchive>();
 builder.Services.AddSingleton<IGenerationLog, MongoGenerationLog>();
+builder.Services.AddSingleton<IMatchingGenerationLog, MongoMatchingGenerationLog>();
 builder.Services.AddSingleton<IAiSpendLog, MongoAiSpendLog>();
 builder.Services.AddSingleton<ILeaderboard, RedisLeaderboard>();
 builder.Services.AddSingleton<ILiveDirectory, RedisLiveDirectory>();
 builder.Services.AddSingleton<IOtpStore, RedisOtpStore>();
 builder.Services.AddSingleton<IPresence, RedisPresence>();
 builder.Services.AddSingleton<QuestionPromptBuilder>();
-builder.Services.AddSingleton<IQuestionGenerator, OpenRouterQuestionGenerator>();
+builder.Services.AddSingleton<OpenRouterQuestionGenerator>();
+builder.Services.AddSingleton<IQuestionGenerator>(sp => sp.GetRequiredService<OpenRouterQuestionGenerator>());
+builder.Services.AddSingleton<IMatchingQuestionGenerator>(sp => sp.GetRequiredService<OpenRouterQuestionGenerator>());
 
 var imageOptions = builder.Configuration.GetSection("Images").Get<WikipediaImageOptions>() ?? new WikipediaImageOptions();
 // Pictures are written under the web root so they are served like any other static file.
@@ -148,6 +154,7 @@ builder.Services.AddSingleton<MatchingQuestionSetBuilder>();
 // plain injected class rather than a method on the grain, the way MatchGrain's own settlement is.
 builder.Services.AddSingleton<LiveMatchSettlement>();
 builder.Services.AddSingleton<TopUpQuestionBank>();
+builder.Services.AddSingleton<GenerateMatchingQuestions>();
 builder.Services.AddSingleton<Seeder>();
 builder.Services.AddSingleton<TokenIssuer>();
 
