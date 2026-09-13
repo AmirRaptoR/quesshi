@@ -85,6 +85,13 @@ public sealed class MongoMatchingQuestionRepository(MongoContext db) : IMatching
         return topics.Where(t => t is not null).Select(t => t!).ToHashSet();
     }
 
+    public async Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
+        CancellationToken ct = default)
+        => await db.MatchingQuestions
+            .Find(F.Eq(q => q.Lang, (int)lang) & F.Eq(q => q.MatchingCategoryId, categoryId))
+            .Project(q => q.Prompt)
+            .ToListAsync(ct);
+
     private static FilterDefinition<MatchingQuestionDoc> Build(MatchingQuestionFilter f)
     {
         var filter = F.Empty;

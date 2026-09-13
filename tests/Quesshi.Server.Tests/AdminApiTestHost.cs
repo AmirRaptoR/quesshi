@@ -65,12 +65,16 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<IClock>(new TimeProviderClock(LiveShared.TimeProvider));
                 services.AddSingleton<IIdFactory>(new FakeIdFactory(Interlocked.Add(ref _idSeed, 100_000)));
                 services.AddSingleton<IGenerationLog, FakeGenerationLog>();
+                services.AddSingleton<IMatchingGenerationLog, FakeMatchingGenerationLog>();
                 services.AddSingleton<IAiSpendLog, FakeAiSpendLog>();
                 services.AddSingleton<IQuestionGenerator, FakeQuestionGenerator>();
+                services.AddSingleton<IMatchingQuestionGenerator, FakeMatchingQuestionGenerator>();
                 services.AddSingleton(new TopUpOptions());
+                services.AddSingleton(new MatchingGenerationOptions());
                 services.AddSingleton(new OpenRouterOptions());
                 services.AddSingleton<QuestionSetBuilder>();
                 services.AddSingleton<TopUpQuestionBank>();
+                services.AddSingleton<GenerateMatchingQuestions>();
                 services.AddLogging();
             });
             web.Configure(app =>

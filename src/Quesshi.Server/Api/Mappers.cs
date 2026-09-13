@@ -88,6 +88,10 @@ public static class Mappers
     public static GenerationRunDto ToDto(this GenerationRun r)
         => new(r.Id, r.StartedAt, r.FinishedAt, r.Requested, r.Inserted, r.Rejected, r.Error);
 
+    public static MatchingGenerationRunDto ToDto(this MatchingGenerationRun r)
+        => new(r.Id, r.StartedAt, r.FinishedAt, r.Lang.Code(), r.CategoryId,
+            r.AnswerSource.ToString().ToLowerInvariant(), r.Requested, r.Inserted, r.Rejected, r.Error);
+
     public static AiSpendDto ToDto(this AiSpend s)
         => new(s.Calls, s.PromptTokens, s.CompletionTokens, s.Cost);
 

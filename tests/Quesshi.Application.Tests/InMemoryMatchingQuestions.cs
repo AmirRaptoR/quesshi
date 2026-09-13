@@ -70,4 +70,10 @@ public sealed class InMemoryMatchingQuestions : IMatchingQuestionRepository
     public Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
         => Task.FromResult<IReadOnlySet<string>>(Items.Where(q => q.Lang == lang && q.Topic is not null)
             .Select(q => q.Topic!).ToHashSet());
+
+    public Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyCollection<string>>([.. Items
+            .Where(q => q.Lang == lang && q.MatchingCategoryId == categoryId)
+            .Select(q => q.Prompt)]);
 }

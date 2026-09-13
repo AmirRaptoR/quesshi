@@ -29,3 +29,23 @@ public sealed class FakeQuestionGenerator : IQuestionGenerator
     public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
 }
+
+public sealed class FakeMatchingQuestionGenerator : IMatchingQuestionGenerator
+{
+    public bool IsConfigured => false;
+
+    public Task<IReadOnlyList<GeneratedMatchingQuestion>> GenerateAsync(Language lang,
+        MatchingCategory category, MatchingAnswerSource answerSource, int count,
+        IReadOnlyCollection<string> avoid, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<GeneratedMatchingQuestion>>([]);
+}
+
+public sealed class FakeMatchingGenerationLog : IMatchingGenerationLog
+{
+    public Task SaveAsync(MatchingGenerationRun run, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task<IReadOnlyList<MatchingGenerationRun>> RecentAsync(int take,
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<MatchingGenerationRun>>([]);
+}

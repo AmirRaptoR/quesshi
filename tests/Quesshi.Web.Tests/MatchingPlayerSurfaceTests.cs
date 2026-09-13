@@ -54,6 +54,8 @@ public sealed class MatchingPlayerSurfaceTests
         Assert.DoesNotContain("CreateMatchingLobbyAsync", home);
         Assert.Contains("/matching/lobby/", home);
         Assert.Contains("StartMatchingAsync", lobby);
+        Assert.Contains("not_enough_questions", lobby);
+        Assert.Contains("matching.lobby.notEnoughQuestions", lobby);
         Assert.Contains("UpdateMatchingSettingsAsync", File.ReadAllText(Source("Services/Api.cs")));
         Assert.Contains("MatchingCategoriesAsync", File.ReadAllText(Source("Services/Api.cs")));
         Assert.Contains("ToggleCategory", lobby);

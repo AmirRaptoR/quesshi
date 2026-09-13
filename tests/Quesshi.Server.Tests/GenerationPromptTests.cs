@@ -29,9 +29,12 @@ public class GenerationPromptTests
 {
     private static readonly QuestionPromptBuilder Prompts = new();
     private static readonly Category Geography = new("geography", "جغرافیا", "Geography", "*", "#fff");
+    private static readonly MatchingCategory Friends = new("m-friends", "دوستان", "Friends", "*", "#fff");
 
     private static string Sort(Language lang = Language.En) => Prompts.Sort(lang, Geography, Difficulty.Medium, 5, []);
     private static string Map(Language lang = Language.En) => Prompts.Map(lang, Geography, Difficulty.Medium, 5, []);
+    private static string Matching(MatchingAnswerSource source, Language lang = Language.En)
+        => Prompts.Matching(lang, Friends, source, 5, []);
 
     [Theory]
     [InlineData("MEASURABLE")]
@@ -121,5 +124,43 @@ public class GenerationPromptTests
         // this", so a country question sends explicit nulls for the city's three fields.
         Assert.Contains("latitude", required);
         Assert.Contains("\"null\"", schema);
+    }
+
+    [Theory]
+    [InlineData(Language.Fa, "Persian")]
+    [InlineData(Language.Nl, "Dutch")]
+    [InlineData(Language.En, "English")]
+    public void Matching_prompt_names_the_language_and_forbids_grading(Language lang, string expected)
+    {
+        var prompt = Matching(MatchingAnswerSource.Fixed, lang);
+        Assert.Contains(expected, prompt);
+        Assert.Contains("no correct answer", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not add \"not applicable\"", prompt);
+    }
+
+    [Fact]
+    public void Matching_participant_prompt_forbids_names_and_sensitive_questions()
+    {
+        var prompt = Matching(MatchingAnswerSource.Participants);
+        Assert.Contains("Do not write participant names or choices", prompt);
+        Assert.Contains("medical or mental-health", prompt);
+        Assert.Contains("protected traits", prompt);
+    }
+
+    [Fact]
+    public void Matching_schemas_keep_trivia_fields_out_and_apply_choice_bounds()
+    {
+        var participants = JsonSerializer.Serialize(
+            MatchingQuestionSchema.ResponseFormat(MatchingAnswerSource.Participants));
+        var fixedChoices = JsonSerializer.Serialize(
+            MatchingQuestionSchema.ResponseFormat(MatchingAnswerSource.Fixed));
+
+        Assert.Contains("quesshi_matching_participant_questions", participants);
+        Assert.DoesNotContain("choices", participants);
+        Assert.Contains("quesshi_matching_fixed_questions", fixedChoices);
+        Assert.Contains($"\"minItems\":{MatchingRules.MinFixedChoices}", fixedChoices);
+        Assert.Contains($"\"maxItems\":{MatchingRules.MaxFixedChoices}", fixedChoices);
+        Assert.DoesNotContain("correctIndex", fixedChoices);
+        Assert.DoesNotContain("difficulty", fixedChoices, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using MongoDB.Driver;
 using Quesshi.Application.Ports;
+using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Shared;
 
@@ -49,6 +50,30 @@ public static class MatchingAdminEndpoints
             var (error, template) = MatchingQuestionImportTemplates.Build(format);
             if (error is not null) return Results.BadRequest(new { error });
             return Results.File(template!.Content, template.ContentType, template.FileName);
+        });
+
+        admin.MapPost("/matching/generate", async (GenerateMatchingRequestDto body,
+            GenerateMatchingQuestions generation) =>
+        {
+            var langValue = body.Lang?.Trim().ToLowerInvariant();
+            if (langValue is not ("fa" or "en" or "nl"))
+                return Results.BadRequest(new { error = "bad_lang" });
+
+            var sourceValue = body.AnswerSource?.Trim().ToLowerInvariant();
+            if (sourceValue is not ("participants" or "fixed"))
+                return Results.BadRequest(new { error = "bad_answer_source" });
+
+            if (body.Count is < 1 or > 20)
+                return Results.BadRequest(new { error = "bad_count" });
+
+            var answerSource = sourceValue == "fixed"
+                ? MatchingAnswerSource.Fixed
+                : MatchingAnswerSource.Participants;
+            var run = await generation.RunAsync(langValue.ToLanguage(),
+                NormaliseCategoryReference(body.CategoryId), answerSource, body.Count);
+            if (run.Error is "unknown_category" or "inactive_category")
+                return Results.BadRequest(new { error = run.Error });
+            return Results.Ok(run.ToDto());
         });
 
         admin.MapPost("/matching/questions", async (SaveMatchingQuestionDto body,

@@ -18,6 +18,54 @@ public sealed class QuestionPromptBuilder
         "You write trivia questions for a two-player quiz game. " +
         "You answer only with JSON matching the requested schema, and never with commentary.";
 
+    public string MatchingSystem() =>
+        "You write respectful questions for a social matching game with no correct answers. " +
+        "You answer only with JSON matching the requested schema, and never with commentary.";
+
+    /// <summary>Questions whose value comes from comparing participants' answers, never grading them.</summary>
+    public string Matching(Language lang, MatchingCategory category, MatchingAnswerSource answerSource,
+        int count, IReadOnlyCollection<string> avoid)
+    {
+        var language = Name(lang);
+        var shape = answerSource == MatchingAnswerSource.Participants
+            ? """
+              Each question is answered by selecting one of the people in the match.
+              Do not write participant names or choices: the game inserts the current roster when
+              it serves the question. Ask something that can reasonably distinguish people, such as who is most
+              likely to do something or who best fits a light-hearted description.
+              """
+            : $"""
+              Each question has between {MatchingRules.MinFixedChoices} and
+              {MatchingRules.MaxFixedChoices} authored choices. There is no correct choice. Make the
+              choices mutually distinct, similarly specific, and collectively useful answers to the
+              prompt. Do not add "not applicable" or "no answer"; the game appends that option.
+              """;
+
+        return $"""
+        Write {count} questions for a social matching game.
+
+        Group/category: {category.NameFor(lang)}
+        Language: write the prompt and every authored choice in {language}
+
+        {shape}
+
+        Rules:
+        - There is no correct answer, score, factual solution, or explanation.
+        - Keep prompts under 120 characters and choices under 40 characters.
+        - Questions must work for the named kind of group without assuming gender, relationship
+          roles, culture, religion, ability, income, or family structure.
+        - Keep the tone warm and safe. Never ask about sex, bodies, medical or mental-health
+          conditions, protected traits, trauma, crimes, money problems, secrets, accusations, or
+          anything likely to shame, expose, or start a serious conflict.
+        - Do not repeat the same idea within the batch.
+
+        Give each question a "subject" and an "aspect" in English. Together they identify the idea
+        even when it is reworded: subject is the concrete activity or situation ("planning a trip",
+        "choosing dinner"), and aspect is the trait being compared ("initiative", "preference").
+        Both must be specific and non-empty, and no two questions may share the same pair.{Avoid(avoid)}
+        """;
+    }
+
     public string User(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid)
     {
         var language = Name(lang);

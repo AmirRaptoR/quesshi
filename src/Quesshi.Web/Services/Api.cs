@@ -129,8 +129,18 @@ public sealed class Api(HttpClient http)
     public Task<MatchingViewDto?> MatchingAsync(string id)
         => GetAsync<MatchingViewDto>($"api/matching/{Uri.EscapeDataString(id)}");
 
-    public Task<bool> StartMatchingAsync(string id)
-        => SendAsync(HttpMethod.Post, $"api/matching/{Uri.EscapeDataString(id)}/start");
+    /// <summary>Starts a matching game and preserves the stable refusal code for the lobby UI.</summary>
+    public async Task<(bool Started, string? Error)> StartMatchingAsync(string id)
+    {
+        try
+        {
+            var response = await http.PostAsync($"api/matching/{Uri.EscapeDataString(id)}/start", null);
+            return response.IsSuccessStatusCode
+                ? (true, null)
+                : (false, (await response.Content.ReadFromJsonAsync<ApiError>())?.Error);
+        }
+        catch { return (false, null); }
+    }
 
     public Task<bool> LeaveMatchingAsync(string id)
         => SendAsync(HttpMethod.Post, $"api/matching/{Uri.EscapeDataString(id)}/leave");
@@ -222,4 +232,6 @@ public sealed class Api(HttpClient http)
         try { return (await http.SendAsync(new HttpRequestMessage(method, url))).IsSuccessStatusCode; }
         catch { return false; }
     }
+
+    private sealed record ApiError(string? Error);
 }

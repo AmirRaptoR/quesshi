@@ -155,6 +155,8 @@ public sealed class MatchingMongoTests
             Assert.Equal(0, await repository.CountAsync(new MatchingQuestionFilter(Text: ".")));
             var textMatches = await repository.FindAsync(new MatchingQuestionFilter(Lang: Language.En, Text: "friend"));
             Assert.Equal(["m1", "m6", "m7"], textMatches.Select(q => q.Id).Order());
+            Assert.Equal(["Another", "Edited friend", "Empty topic", "Other", "Rejected friend"],
+                (await repository.ExistingPromptsAsync(Language.En, "m-friends")).Order());
 
             var batchInsert = MatchingQuestion.Create("m10", Language.En, "m-friends", "Batch row",
                 MatchingAnswerSource.Participants, null, now, topic: "batch-row");
@@ -165,6 +167,14 @@ public sealed class MatchingMongoTests
                 "Trivia", ["a", "b", "c", "d"], 0, now, topic: "people/trivia");
             await new MongoQuestionRepository(context).UpsertAsync(trivia);
             Assert.DoesNotContain("people/trivia", await repository.ExistingTopicsAsync(Language.En));
+
+            var generationLog = new MongoMatchingGenerationLog(context);
+            var generationNow = new DateTimeOffset(
+                now.Ticks - now.Ticks % TimeSpan.TicksPerMillisecond, TimeSpan.Zero);
+            var generation = new MatchingGenerationRun("matching-run", generationNow, generationNow.AddSeconds(1), Language.En,
+                "m-friends", MatchingAnswerSource.Participants, 5, 4, 1, null);
+            await generationLog.SaveAsync(generation);
+            Assert.Equal(generation, Assert.Single(await generationLog.RecentAsync(10)));
         }
         finally
         {

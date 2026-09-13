@@ -34,7 +34,13 @@ public sealed class MatchingAdminSurfaceTests
         Assert.DoesNotContain("Difficulty", page);
         Assert.Contains("c.Id == form.MatchingCategoryId && !c.IsActive", page);
         Assert.Contains("c.IsActive || c.Id == form.MatchingCategoryId", page);
-        Assert.Contains("/matching/questions/import", File.ReadAllText(Source("Services/AdminApi.cs")));
+        var api = File.ReadAllText(Source("Services/AdminApi.cs"));
+        Assert.Contains("/matching/questions/import", api);
+        Assert.Contains("api/admin/matching/generate", api);
+        Assert.Contains("GenerateMatchingRequestDto", page);
+        Assert.Contains("AnswerSource", page);
+        Assert.DoesNotContain("GenerateRequestDto", page);
+        Assert.Contains("ReadFromJsonAsync<SaveError>", api);
     }
 
     [Fact]

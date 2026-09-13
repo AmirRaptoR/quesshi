@@ -199,9 +199,14 @@
     {
         if (_view is null) return;
         _busy = true;
-        var ok = await Api.StartMatchingAsync(_view.Id);
+        var result = await Api.StartMatchingAsync(_view.Id);
         _busy = false;
-        if (ok) Nav.NavigateTo($"/matching/{_view.Id}"); else _error = L["common.error"];
+        if (result.Started)
+            Nav.NavigateTo($"/matching/{_view.Id}");
+        else
+            _error = result.Error == "not_enough_questions"
+                ? L["matching.lobby.notEnoughQuestions"]
+                : L["common.error"];
     }
 
     private async Task SaveSettingsAsync()
