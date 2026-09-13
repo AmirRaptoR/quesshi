@@ -63,7 +63,10 @@ public sealed class MongoMatchingQuestionRepository(MongoContext db) : IMatching
         {
             var result = await db.MatchingQuestions.BulkWriteAsync(writes,
                 new BulkWriteOptions { IsOrdered = false }, ct);
-            return (int)(result.Upserts.Count + result.ModifiedCount);
+            // UpdateOneModel reports a matched-but-unchanged row with MatchedCount rather than
+            // ModifiedCount. UpsertMany's contract is accepted rows, not only rows whose bytes
+            // changed, so count both existing matches and newly inserted upserts.
+            return (int)(result.MatchedCount + result.Upserts.Count);
         }
         catch (MongoBulkWriteException<MatchingQuestionDoc> ex)
         {

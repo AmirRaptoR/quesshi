@@ -9,6 +9,7 @@ public sealed class FakeMatchingQuestions : IMatchingQuestionRepository
     public readonly Dictionary<string, int> UpsertCounts = [];
     public readonly Dictionary<string, int> RecordServedQuestionCounts = [];
     private readonly HashSet<string> _servedTokens = [];
+    private readonly object _serveGate = new();
     public int RecordServedCalls { get; private set; }
     public int FailRecordServedCalls { get; set; }
 
@@ -44,19 +45,22 @@ public sealed class FakeMatchingQuestions : IMatchingQuestionRepository
     public Task<MatchingServeResult> RecordServedAsync(string id, string serveToken,
         CancellationToken ct = default)
     {
-        RecordServedCalls++;
-        if (FailRecordServedCalls > 0)
+        lock (_serveGate)
         {
-            FailRecordServedCalls--;
-            throw new InvalidOperationException("matching counter unavailable");
-        }
+            RecordServedCalls++;
+            if (FailRecordServedCalls > 0)
+            {
+                FailRecordServedCalls--;
+                throw new InvalidOperationException("matching counter unavailable");
+            }
 
-        var question = Items.FirstOrDefault(q => q.Id == id);
-        if (question is null) return Task.FromResult(MatchingServeResult.Missing);
-        if (!_servedTokens.Add(serveToken)) return Task.FromResult(MatchingServeResult.AlreadyRecorded);
-        RecordServedQuestionCounts[id] = RecordServedQuestionCounts.GetValueOrDefault(id) + 1;
-        question.RecordServed();
-        return Task.FromResult(MatchingServeResult.Recorded);
+            var question = Items.FirstOrDefault(q => q.Id == id);
+            if (question is null) return Task.FromResult(MatchingServeResult.Missing);
+            if (!_servedTokens.Add(serveToken)) return Task.FromResult(MatchingServeResult.AlreadyRecorded);
+            RecordServedQuestionCounts[id] = RecordServedQuestionCounts.GetValueOrDefault(id) + 1;
+            question.RecordServed();
+            return Task.FromResult(MatchingServeResult.Recorded);
+        }
     }
     public async Task<int> UpsertManyAsync(IReadOnlyList<MatchingQuestion> questions, CancellationToken ct = default)
     {

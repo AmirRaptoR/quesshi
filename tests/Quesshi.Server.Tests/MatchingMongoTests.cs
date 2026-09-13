@@ -113,7 +113,7 @@ public sealed class MatchingMongoTests
             Assert.Equal(MatchingServeResult.Recorded, await repository.RecordServedAsync("m1", "match-a:0"));
             Assert.Equal(MatchingServeResult.AlreadyRecorded,
                 await repository.RecordServedAsync("m1", "match-a:0"));
-            var staleAuthoringEdit = MatchingQuestion.Create("m1", Language.En, "m-friends", "Edited",
+            var staleAuthoringEdit = MatchingQuestion.Create("m1", Language.En, "m-friends", "Edited friend",
                 MatchingAnswerSource.Fixed, ["A", "B"], now, topic: "people/friends", status: QuestionStatus.Approved);
             await repository.UpsertAsync(staleAuthoringEdit);
             Assert.Equal(1, (await repository.GetAsync("m1"))!.TimesServed);
@@ -121,6 +121,15 @@ public sealed class MatchingMongoTests
                 await repository.RecordServedAsync("m1", "match-a:0"));
             Assert.Equal(MatchingServeResult.Recorded, await repository.RecordServedAsync("m1", "match-b:0"));
             Assert.Equal(2, (await repository.GetAsync("m1"))!.TimesServed);
+
+            var concurrent = await Task.WhenAll(
+                repository.RecordServedAsync("m1", "parallel:duplicate"),
+                repository.RecordServedAsync("m1", "parallel:duplicate"),
+                repository.RecordServedAsync("m1", "parallel:a"),
+                repository.RecordServedAsync("m1", "parallel:b"));
+            Assert.Equal(3, concurrent.Count(result => result == MatchingServeResult.Recorded));
+            Assert.Equal(1, concurrent.Count(result => result == MatchingServeResult.AlreadyRecorded));
+            Assert.Equal(5, (await repository.GetAsync("m1"))!.TimesServed);
 
             var duplicate = MatchingQuestion.Create("m9", Language.En, "m-friends", "Duplicate",
                 MatchingAnswerSource.Participants, null, now, topic: "people/friends");
@@ -146,6 +155,11 @@ public sealed class MatchingMongoTests
             Assert.Equal(0, await repository.CountAsync(new MatchingQuestionFilter(Text: ".")));
             var textMatches = await repository.FindAsync(new MatchingQuestionFilter(Lang: Language.En, Text: "friend"));
             Assert.Equal(["m1", "m6", "m7"], textMatches.Select(q => q.Id).Order());
+
+            var batchInsert = MatchingQuestion.Create("m10", Language.En, "m-friends", "Batch row",
+                MatchingAnswerSource.Participants, null, now, topic: "batch-row");
+            Assert.Equal(2, await repository.UpsertManyAsync([first, batchInsert]));
+            Assert.NotNull(await repository.GetAsync("m10"));
 
             var trivia = Question.Create("same-topic-trivia", Language.En, "general", Difficulty.Easy,
                 "Trivia", ["a", "b", "c", "d"], 0, now, topic: "people/trivia");
