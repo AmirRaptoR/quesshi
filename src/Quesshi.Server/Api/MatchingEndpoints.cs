@@ -99,9 +99,10 @@ public static class MatchingEndpoints
 
         var grain = grains.GetGrain<IMatchingMatchGrain>(found.Id);
         var result = (MatchingJoinResult)await grain.JoinAsync(meId);
-        if (result is not (MatchingJoinResult.Joined or MatchingJoinResult.AlreadyIn))
+        if (result is not MatchingJoinResult.Joined)
             return result switch
             {
+                MatchingJoinResult.AlreadyIn => Results.BadRequest(new { error = "duplicate_join" }),
                 MatchingJoinResult.Full => Results.BadRequest(new { error = "full_lobby" }),
                 MatchingJoinResult.Started => Results.BadRequest(new { error = "match_started" }),
                 _ => Results.NotFound(new { error = "no_such_code" })

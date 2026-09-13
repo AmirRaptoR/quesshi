@@ -55,9 +55,9 @@ public sealed class MatchingMatchGrain(
     public async Task<int> JoinAsync(string playerId)
     {
         if (string.IsNullOrWhiteSpace(state.State.Code)) return (int)MatchingJoinResult.NotFound;
-        if (state.State.Participants.Contains(playerId)) return (int)MatchingJoinResult.AlreadyIn;
         if ((MatchState)state.State.State != MatchState.AwaitingOpponent)
             return (int)MatchingJoinResult.Started;
+        if (state.State.Participants.Contains(playerId)) return (int)MatchingJoinResult.AlreadyIn;
         if (state.State.Participants.Count >= state.State.Capacity)
             return (int)MatchingJoinResult.Full;
 
