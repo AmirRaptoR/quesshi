@@ -10,4 +10,11 @@ public static class MatchingRules
     /// so a served question's fixed choices can never outnumber the participants that could be
     /// matched against them.</summary>
     public const int MaxFixedChoices = MatchRules.MaxParticipants;
+
+    /// <summary>
+    /// How long a participant may leave the current matching slot unanswered before the next
+    /// clock advance marks them inactive. Matching has no question timer; this is an activity
+    /// rule used only to prevent one abandoned participant from blocking the answer barrier.
+    /// </summary>
+    public static readonly TimeSpan IdleAfter = MatchRules.ForfeitAfter;
 }
