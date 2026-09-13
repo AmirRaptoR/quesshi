@@ -201,7 +201,9 @@ public sealed class MatchingMatchGrain(
             throw new InvalidOperationException("missing_field");
         if (answerKind == MatchingAnswerKind.SelectedChoice && choiceIndex is null)
             throw new InvalidOperationException("missing_field");
-        if (answerKind == MatchingAnswerKind.NotApplicable && (participantId is not null || choiceIndex is not null))
+        if ((answerKind is MatchingAnswerKind.NotApplicable or MatchingAnswerKind.MultipleParticipants
+                or MatchingAnswerKind.NoParticipant)
+            && (participantId is not null || choiceIndex is not null))
             throw new InvalidOperationException("contradictory_fields");
         if (answerKind == MatchingAnswerKind.SelectedParticipant && choiceIndex is not null)
             throw new InvalidOperationException("contradictory_fields");
@@ -218,7 +220,10 @@ public sealed class MatchingMatchGrain(
         {
             MatchingAnswerKind.SelectedParticipant => MatchingAnswer.SelectedParticipant(participantId!, clock.Now),
             MatchingAnswerKind.SelectedChoice => MatchingAnswer.SelectedChoice(choiceIndex!.Value, clock.Now),
-            _ => MatchingAnswer.NotApplicable(clock.Now)
+            MatchingAnswerKind.NotApplicable => MatchingAnswer.NotApplicable(clock.Now),
+            MatchingAnswerKind.MultipleParticipants => MatchingAnswer.MultipleParticipants(clock.Now),
+            MatchingAnswerKind.NoParticipant => MatchingAnswer.NoParticipant(clock.Now),
+            _ => throw new InvalidOperationException("bad_answer_kind")
         };
 
         try

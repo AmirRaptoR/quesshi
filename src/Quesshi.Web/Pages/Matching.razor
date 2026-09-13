@@ -229,8 +229,15 @@
            && option.ParticipantId == answer.ParticipantId && option.ChoiceIndex == answer.ChoiceIndex;
 
     private string OptionText(MatchingOptionDto option)
-        => option.IsNotApplicable ? L["matching.answer.notApplicable"]
-            : option.Text ?? option.DisplayName ?? L["matching.answer.noAnswer"];
+        => option.Kind switch
+        {
+            "na" => L["matching.answer.notApplicable"],
+            "multiple" => _view?.Participants.Count == 2
+                ? L["matching.answer.both"]
+                : L["matching.answer.multiplePeople"],
+            "none" => L["matching.answer.noOne"],
+            _ => option.Text ?? option.DisplayName ?? L["matching.answer.noAnswer"]
+        };
 
     private string AnswerText(MatchingSlotDto slot, MatchingAnswerDto? answer)
     {

@@ -238,7 +238,15 @@ public sealed class MatchingMatch
         var options = question.AnswerSource == MatchingAnswerSource.Participants
             ? _participants.Select(MatchingServedOption.ForParticipant).ToList()
             : question.FixedChoices.Select((choice, choiceIndex) => MatchingServedOption.ForChoice(choiceIndex, choice)).ToList();
-        options.Add(MatchingServedOption.NotApplicable());
+        if (question.AnswerSource == MatchingAnswerSource.Participants)
+        {
+            options.Add(MatchingServedOption.MultipleParticipants());
+            options.Add(MatchingServedOption.NoParticipant());
+        }
+        else
+        {
+            options.Add(MatchingServedOption.NotApplicable());
+        }
         _slots.Add(new MatchingSlot(index, question.Id, question.Prompt, options, question.Media, now));
         _currentSlot = index;
         question.RecordServed();
@@ -260,6 +268,11 @@ public sealed class MatchingMatch
                     throw new InvalidOperationException("That choice is not an option for this slot.");
                 break;
             case MatchingAnswerKind.NotApplicable:
+                break;
+            case MatchingAnswerKind.MultipleParticipants:
+            case MatchingAnswerKind.NoParticipant:
+                if (!slot.Options.Any(option => option.Kind == answer.Kind))
+                    throw new InvalidOperationException("That answer is not an option for this slot.");
                 break;
             default:
                 throw new InvalidOperationException("The matching answer kind is not declared.");

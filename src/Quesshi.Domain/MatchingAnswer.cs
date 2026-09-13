@@ -24,6 +24,10 @@ public sealed record MatchingAnswer
                 throw new ArgumentException("A choice answer needs a choice index and no participant id.");
             case MatchingAnswerKind.NotApplicable when participantId is not null || choiceIndex is not null:
                 throw new ArgumentException("A not-applicable answer has neither a participant nor a choice index.");
+            case MatchingAnswerKind.MultipleParticipants when participantId is not null || choiceIndex is not null:
+                throw new ArgumentException("A multiple-participants answer has neither a participant nor a choice index.");
+            case MatchingAnswerKind.NoParticipant when participantId is not null || choiceIndex is not null:
+                throw new ArgumentException("A no-participant answer has neither a participant nor a choice index.");
         }
 
         Kind = kind;
@@ -40,4 +44,10 @@ public sealed record MatchingAnswer
 
     public static MatchingAnswer NotApplicable(DateTimeOffset at) =>
         new(MatchingAnswerKind.NotApplicable, null, null, at);
+
+    public static MatchingAnswer MultipleParticipants(DateTimeOffset at) =>
+        new(MatchingAnswerKind.MultipleParticipants, null, null, at);
+
+    public static MatchingAnswer NoParticipant(DateTimeOffset at) =>
+        new(MatchingAnswerKind.NoParticipant, null, null, at);
 }

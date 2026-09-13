@@ -2,8 +2,8 @@ namespace Quesshi.Domain;
 
 /// <summary>
 /// An option as it was served by a matching slot. Participant options carry only the stable
-/// participant id; fixed options carry their authored text and its position. The final option is
-/// always <see cref="MatchingAnswerKind.NotApplicable"/> and has neither payload.
+/// participant id; fixed options carry their authored text and its position. Special options have
+/// neither payload.
 /// </summary>
 public sealed record MatchingServedOption
 {
@@ -28,6 +28,10 @@ public sealed record MatchingServedOption
                 throw new ArgumentException("A fixed choice option needs its index and text.");
             case MatchingAnswerKind.NotApplicable when participantId is not null || choiceIndex is not null || text is not null:
                 throw new ArgumentException("A not-applicable option has no payload.");
+            case MatchingAnswerKind.MultipleParticipants when participantId is not null || choiceIndex is not null || text is not null:
+                throw new ArgumentException("A multiple-participants option has no payload.");
+            case MatchingAnswerKind.NoParticipant when participantId is not null || choiceIndex is not null || text is not null:
+                throw new ArgumentException("A no-participant option has no payload.");
         }
 
         Kind = kind;
@@ -43,4 +47,8 @@ public sealed record MatchingServedOption
         new(MatchingAnswerKind.SelectedChoice, choiceIndex: choiceIndex, text: text);
 
     public static MatchingServedOption NotApplicable() => new(MatchingAnswerKind.NotApplicable);
+
+    public static MatchingServedOption MultipleParticipants() => new(MatchingAnswerKind.MultipleParticipants);
+
+    public static MatchingServedOption NoParticipant() => new(MatchingAnswerKind.NoParticipant);
 }

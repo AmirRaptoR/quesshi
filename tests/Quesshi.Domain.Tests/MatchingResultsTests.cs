@@ -42,6 +42,36 @@ public sealed class MatchingResultsTests
     }
 
     [Fact]
+    public void New_participant_fallbacks_are_distinct_meaningful_answers()
+    {
+        var options = new List<MatchingServedOption>
+        {
+            MatchingServedOption.ForParticipant("p1"),
+            MatchingServedOption.ForParticipant("p2"),
+            MatchingServedOption.ForParticipant("p3"),
+            MatchingServedOption.MultipleParticipants(),
+            MatchingServedOption.NoParticipant()
+        };
+        var same = new MatchingSlotSnapshot(0, "q-0", "Prompt", options, T0,
+            new Dictionary<string, MatchingAnswer>
+            {
+                ["p1"] = MatchingAnswer.MultipleParticipants(T0),
+                ["p2"] = MatchingAnswer.MultipleParticipants(T0),
+                ["p3"] = MatchingAnswer.NoParticipant(T0)
+            });
+
+        var results = MatchingResults.Compute(Snapshot([same], state: MatchState.Resolved));
+
+        var slot = Assert.IsType<MatchingSlotResult>(Assert.Single(results.Slots));
+        Assert.Equal([0, 0, 0, 2, 1], slot.Counts);
+        Assert.False(slot.AllAgreed);
+        Assert.Equal(100, Assert.Single(results.PairStats!, pair => pair.FirstParticipantId == "p1"
+            && pair.SecondParticipantId == "p2").AgreementPercent);
+        Assert.Equal(0, Assert.Single(results.PairStats!, pair => pair.FirstParticipantId == "p1"
+            && pair.SecondParticipantId == "p3").AgreementPercent);
+    }
+
+    [Fact]
     public void A_slot_with_one_real_answer_is_not_all_agreed()
     {
         var slot = ParticipantSlot(new Dictionary<string, MatchingAnswer>

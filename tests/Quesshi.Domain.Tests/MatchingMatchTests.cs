@@ -60,7 +60,8 @@ public class MatchingMatchTests
         Assert.Equal(0, slot.Slot);
         Assert.Equal("Prompt", slot.Prompt);
         Assert.Equal([Owner, Other], slot.Options.Take(2).Select(x => x.ParticipantId));
-        Assert.Equal(MatchingAnswerKind.NotApplicable, slot.Options[^1].Kind);
+        Assert.Equal(MatchingAnswerKind.MultipleParticipants, slot.Options[^2].Kind);
+        Assert.Equal(MatchingAnswerKind.NoParticipant, slot.Options[^1].Kind);
         Assert.All(slot.Options.Take(2), option => Assert.Null(option.Text));
     }
 
@@ -76,6 +77,20 @@ public class MatchingMatchTests
         Assert.Equal(MatchingAnswerKind.NotApplicable, options[^1].Kind);
         Assert.Throws<InvalidOperationException>(() => match.Answer(Owner, 0,
             MatchingAnswer.SelectedChoice(2, T0), T0));
+    }
+
+    [Fact]
+    public void Participant_fallback_answers_are_distinct_valid_options()
+    {
+        var match = NewMatch(ParticipantsQuestion());
+        Assert.True(match.Start(Owner, T0));
+
+        match.Answer(Owner, 0, MatchingAnswer.MultipleParticipants(T0), T0);
+        match.Answer(Other, 0, MatchingAnswer.NoParticipant(T0), T0);
+
+        var answers = match.ToSnapshot().Slots[0].Answers;
+        Assert.Equal(MatchingAnswerKind.MultipleParticipants, answers[Owner].Kind);
+        Assert.Equal(MatchingAnswerKind.NoParticipant, answers[Other].Kind);
     }
 
     [Fact]

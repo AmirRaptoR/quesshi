@@ -38,8 +38,12 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         joined.EnsureSuccessStatusCode();
         (await ownerClient.PostAsync($"/api/matching/{lobby.Id}/start", null)).EnsureSuccessStatusCode();
 
+        var started = await ownerClient.GetFromJsonAsync<MatchingViewDto>($"/api/matching/{lobby.Id}");
+        Assert.Equal(["participant", "participant", "multiple", "none"],
+            started!.CurrentSlot!.Options.Select(option => option.Kind));
+
         var submitted = await ownerClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
-            new SubmitMatchingAnswerDto(0, "na"));
+            new SubmitMatchingAnswerDto(0, "multiple"));
         submitted.EnsureSuccessStatusCode();
         var ownerView = await submitted.Content.ReadFromJsonAsync<MatchingViewDto>();
         Assert.NotNull(ownerView!.OwnAnswer);
@@ -57,7 +61,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Contains(otherView.CurrentSlot.AnsweredParticipantIds, id => id == owner.Id);
 
         var closed = await otherClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
-            new SubmitMatchingAnswerDto(0, "na"));
+            new SubmitMatchingAnswerDto(0, "none"));
         closed.EnsureSuccessStatusCode();
         var closedView = await closed.Content.ReadFromJsonAsync<MatchingViewDto>();
         Assert.Equal(1, closedView!.CurrentSlotIndex);
@@ -68,7 +72,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
             .Select(answer => answer.PlayerId).OrderBy(id => id).ToArray());
         Assert.NotNull(closedView.Results);
         Assert.Null(closedView.Results!.PairStats);
-        Assert.Equal([0, 0, 2], closedView.Results.Slots[0]!.Counts);
+        Assert.Equal([0, 0, 1, 1], closedView.Results.Slots[0]!.Counts);
         Assert.Null(closedView.Results.Slots[1]);
     }
 
@@ -231,9 +235,9 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         (await ownerClient.PostAsync($"/api/matching/{lobby.Id}/start", null)).EnsureSuccessStatusCode();
 
         (await ownerClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
-            new SubmitMatchingAnswerDto(0, "na"))).EnsureSuccessStatusCode();
+            new SubmitMatchingAnswerDto(0, "none"))).EnsureSuccessStatusCode();
         (await otherClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
-            new SubmitMatchingAnswerDto(0, "na"))).EnsureSuccessStatusCode();
+            new SubmitMatchingAnswerDto(0, "none"))).EnsureSuccessStatusCode();
         (await departedClient.PostAsync($"/api/matching/{lobby.Id}/leave", null)).EnsureSuccessStatusCode();
         (await ownerClient.PostAsync($"/api/matching/{lobby.Id}/leave", null)).EnsureSuccessStatusCode();
 
@@ -246,8 +250,8 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Equal(2, closedSlots.Answers.Count);
         Assert.NotNull(view.Results);
         var closed = Assert.IsType<MatchingSlotResultDto>(view.Results!.Slots[0]);
-        Assert.Equal([0, 0, 0, 2], closed.Counts);
-        Assert.False(closed.AllAgreed);
+        Assert.Equal([0, 0, 0, 0, 2], closed.Counts);
+        Assert.True(closed.AllAgreed);
         Assert.Null(view.Results.Slots[1]);
         Assert.Null(view.Results.PairStats);
         Assert.Null(view.Results.AllAgreedCount);
@@ -424,8 +428,8 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
             new SubmitMatchingAnswerDto(0, "choice", ChoiceIndex: 0)));
         Assert.Equal("not_a_participant", await ErrorAsync("outsider", new SubmitMatchingAnswerDto(0, "na")));
 
-        await grain.AnswerAsync(owner.Id, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
-        await grain.AnswerAsync(other.Id, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(owner.Id, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
+        await grain.AnswerAsync(other.Id, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         Assert.Equal("answers_locked", await ErrorAsync(owner.Id, new SubmitMatchingAnswerDto(0, "na")));
 
         var leftId = $"matching-left-{prefix}";

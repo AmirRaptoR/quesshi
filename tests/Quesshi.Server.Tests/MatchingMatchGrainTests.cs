@@ -33,7 +33,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Assert.Null(started.Results!.PairStats);
         Assert.Null(started.Results.Slots.Single());
 
-        var answered = await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        var answered = await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         Assert.Equal(0, answered.CurrentSlotIndex);
         Assert.Single(answered.CurrentSlot!.AnsweredParticipantIds);
         Assert.NotNull(answered.OwnAnswer);
@@ -50,12 +50,12 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Assert.Equal(GameMode.Matching, Shared.Archive.Items.Single(x => x.Id == id).Mode);
         Assert.False(Shared.Archive.Items.Single(x => x.Id == id).IsLive);
 
-        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         var afterBarrier = await grain.GetAsync(Other);
         Assert.Equal(1, afterBarrier!.CurrentSlotIndex);
         Assert.Equal(0, afterBarrier.LastClosedSlot!.Slot);
         Assert.NotNull(afterBarrier.Results);
-        Assert.Equal([0, 0, 2], afterBarrier.Results!.Slots[0]!.Counts);
+        Assert.Equal([0, 0, 0, 2], afterBarrier.Results!.Slots[0]!.Counts);
         Assert.Null(afterBarrier.Results.Slots[1]);
         Assert.Single(afterBarrier.ClosedSlots!);
     }
@@ -88,7 +88,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Shared.MatchingNotifier.ThrowOnEveryCall = true;
         try
         {
-            await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+            await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         }
         finally
         {
@@ -113,7 +113,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         try
         {
             await Assert.ThrowsAsync<InvalidOperationException>(() => grain.AnswerAsync(
-                Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null));
+                Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null));
         }
         finally
         {
@@ -156,8 +156,8 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Assert.Equal(firstQuestionId, restored!.CurrentSlot!.QuestionId);
         Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[firstQuestionId]);
 
-        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
-        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         var next = await grain.GetAsync(Owner);
         var secondQuestionId = next!.CurrentSlot!.QuestionId;
         Assert.NotEqual(firstQuestionId, secondQuestionId);
@@ -235,9 +235,9 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         await grain.JoinAsync(departed);
         Assert.True(await grain.StartAsync(Owner));
 
-        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
-        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
-        await grain.AnswerAsync(third, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
+        await grain.AnswerAsync(third, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         Assert.True(await grain.LeaveAsync(departed));
 
         var view = await grain.GetAsync(Owner);
@@ -291,8 +291,8 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         await grain.JoinAsync(Other);
         Assert.True(await grain.StartAsync(Owner));
 
-        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
-        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
 
         var push = Shared.MatchingNotifier.EventsFor(id).Last(e => e.Kind == "SlotClosed");
         var payload = Assert.IsType<MatchingSlotClosedPush>(push.Payload);
@@ -324,7 +324,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         var afterBarrier = await grain.AnswerAsync(other, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
 
         var result = Assert.IsType<MatchingSlotResultView>(afterBarrier.Results!.Slots[0]);
-        Assert.Equal([0, 2, 0, 0], result.Counts);
+        Assert.Equal([0, 2, 0, 0, 0], result.Counts);
         Assert.True(result.AllAgreed);
         Assert.Null(afterBarrier.Results.Slots[1]);
     }
@@ -356,7 +356,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
 
             var view = await grain.GetAsync(owner);
             var result = Assert.IsType<MatchingSlotResultView>(view!.Results!.Slots[0]);
-            Assert.Equal([0, 2, 0, 0], result.Counts);
+            Assert.Equal([0, 2, 0, 0, 0], result.Counts);
             Assert.True(result.AllAgreed);
             Assert.Null(view.Results.Slots[1]);
             Assert.False(view.Participants.Single(participant => participant.Id == expired).Active);

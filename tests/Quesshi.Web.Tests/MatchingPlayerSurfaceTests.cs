@@ -15,6 +15,9 @@ public sealed class MatchingPlayerSurfaceTests
         Assert.Contains("AnsweredParticipantIds", page);
         Assert.Contains("matching.answer.noAnswer", page);
         Assert.Contains("matching.answer.notApplicable", page);
+        Assert.Contains("matching.answer.multiplePeople", page);
+        Assert.Contains("matching.answer.both", page);
+        Assert.Contains("matching.answer.noOne", page);
         Assert.DoesNotContain("<Ring", page);
         Assert.DoesNotContain("Sounds", page);
         Assert.DoesNotContain("Score", page);

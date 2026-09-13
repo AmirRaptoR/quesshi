@@ -196,7 +196,9 @@ public static class MatchingEndpoints
             return Results.BadRequest(new { error = "missing_field" });
         if (kind == MatchingAnswerKind.SelectedChoice && body.ChoiceIndex is null)
             return Results.BadRequest(new { error = "missing_field" });
-        if (kind == MatchingAnswerKind.NotApplicable && (body.ParticipantId is not null || body.ChoiceIndex is not null))
+        if ((kind is MatchingAnswerKind.NotApplicable or MatchingAnswerKind.MultipleParticipants
+                or MatchingAnswerKind.NoParticipant)
+            && (body.ParticipantId is not null || body.ChoiceIndex is not null))
             return Results.BadRequest(new { error = "contradictory_fields" });
         if (kind == MatchingAnswerKind.SelectedParticipant && body.ChoiceIndex is not null
             || kind == MatchingAnswerKind.SelectedChoice && body.ParticipantId is not null)
@@ -232,6 +234,8 @@ public static class MatchingEndpoints
             "participant" => MatchingAnswerKind.SelectedParticipant,
             "choice" => MatchingAnswerKind.SelectedChoice,
             "na" => MatchingAnswerKind.NotApplicable,
+            "multiple" => MatchingAnswerKind.MultipleParticipants,
+            "none" => MatchingAnswerKind.NoParticipant,
             _ => (MatchingAnswerKind)(-1)
         };
         return Enum.IsDefined(kind);
@@ -278,7 +282,10 @@ public static class MatchingEndpoints
     {
         MatchingAnswerKind.SelectedParticipant => "participant",
         MatchingAnswerKind.SelectedChoice => "choice",
-        _ => "na"
+        MatchingAnswerKind.NotApplicable => "na",
+        MatchingAnswerKind.MultipleParticipants => "multiple",
+        MatchingAnswerKind.NoParticipant => "none",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "The matching answer kind is not declared.")
     };
 
     private static MediaDto? ToMediaDto(MatchingMediaView? media)

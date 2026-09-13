@@ -143,6 +143,12 @@ public sealed record MatchingResults(
             return index < 0 ? null : new Choice(index, true, null, null);
         }
 
+        if (answer.Kind is MatchingAnswerKind.MultipleParticipants or MatchingAnswerKind.NoParticipant)
+        {
+            var index = options.FindIndex(option => option.Kind == answer.Kind);
+            return index < 0 ? null : new Choice(index, false, null, null);
+        }
+
         if (answer.Kind == MatchingAnswerKind.SelectedParticipant && answer.ParticipantId is { } participantId)
         {
             var index = options.FindIndex(option => option.Kind == MatchingAnswerKind.SelectedParticipant
