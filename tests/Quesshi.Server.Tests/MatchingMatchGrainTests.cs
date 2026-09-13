@@ -154,6 +154,70 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Leaving_before_answering_keeps_the_departed_missing_from_closed_distribution()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = $"matching-leave-owner-{prefix}";
+        var other = $"matching-leave-other-{prefix}";
+        var departed = $"matching-leave-departed-{prefix}";
+        var id = $"matching-results-leave-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+
+        await grain.CreateAsync($"M{prefix[..5]}", owner, (int)Language.En, 10, [category], 3);
+        await grain.JoinAsync(other);
+        await grain.JoinAsync(departed);
+        Assert.True(await grain.StartAsync(owner));
+
+        Assert.True(await grain.LeaveAsync(departed));
+        await grain.AnswerAsync(owner, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
+        var afterBarrier = await grain.AnswerAsync(other, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
+
+        var result = Assert.IsType<MatchingSlotResultView>(afterBarrier.Results!.Slots[0]);
+        Assert.Equal([0, 2, 0, 0], result.Counts);
+        Assert.True(result.AllAgreed);
+        Assert.Null(afterBarrier.Results.Slots[1]);
+    }
+
+    [Fact]
+    public async Task Idle_expiry_keeps_the_expired_missing_from_closed_distribution()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = $"matching-idle-owner-{prefix}";
+        var other = $"matching-idle-other-{prefix}";
+        var expired = $"matching-idle-expired-{prefix}";
+        var id = $"matching-results-idle-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+
+        await grain.CreateAsync($"M{prefix[..5]}", owner, (int)Language.En, 10, [category], 3);
+        await grain.JoinAsync(other);
+        await grain.JoinAsync(expired);
+        Assert.True(await grain.StartAsync(owner));
+        await grain.AnswerAsync(owner, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
+        await grain.AnswerAsync(other, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
+
+        var before = Shared.Clock.Now;
+        try
+        {
+            Shared.Clock.Advance(MatchingRules.IdleAfter + TimeSpan.FromMinutes(1));
+            await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+                .AsReference<IRemindable>().ReceiveReminder("matching-idle", default);
+
+            var view = await grain.GetAsync(owner);
+            var result = Assert.IsType<MatchingSlotResultView>(view!.Results!.Slots[0]);
+            Assert.Equal([0, 2, 0, 0], result.Counts);
+            Assert.True(result.AllAgreed);
+            Assert.Null(view.Results.Slots[1]);
+            Assert.False(view.Participants.Single(participant => participant.Id == expired).Active);
+        }
+        finally
+        {
+            Shared.Clock.Now = before;
+        }
+    }
+
+    [Fact]
     public async Task Matching_completion_does_not_touch_leaderboard_or_player_stats()
     {
         var prefix = Guid.NewGuid().ToString("N");

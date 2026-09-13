@@ -145,6 +145,50 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task No_contest_api_exposes_prior_closed_distributions_without_overall_statistics()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = Player.Register($"owner-{prefix}", $"owner-{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
+        var other = Player.Register($"other-{prefix}", $"other-{prefix}@example.com", "Other", Language.En, Shared.Clock.Now);
+        var departed = Player.Register($"departed-{prefix}", $"departed-{prefix}@example.com", "Departed", Language.En, Shared.Clock.Now);
+        await Shared.Players.UpsertAsync(owner);
+        await Shared.Players.UpsertAsync(other);
+        await Shared.Players.UpsertAsync(departed);
+
+        await using var host = new MatchingApiTestHost(fixture.Cluster);
+        using var ownerClient = Authenticated(host, owner);
+        using var otherClient = Authenticated(host, other);
+        using var departedClient = Authenticated(host, departed);
+        var create = await ownerClient.PostAsJsonAsync("/api/matching/lobby",
+            new CreateMatchingLobbyDto("en", 10, [category], [], 3, "matching"));
+        var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
+        Assert.NotNull(lobby);
+        (await otherClient.PostAsync($"/api/matching/join/{lobby!.Code}", null)).EnsureSuccessStatusCode();
+        (await departedClient.PostAsync($"/api/matching/join/{lobby.Code}", null)).EnsureSuccessStatusCode();
+        (await ownerClient.PostAsync($"/api/matching/{lobby.Id}/start", null)).EnsureSuccessStatusCode();
+
+        (await ownerClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
+            new SubmitMatchingAnswerDto(0, "na"))).EnsureSuccessStatusCode();
+        (await otherClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
+            new SubmitMatchingAnswerDto(0, "na"))).EnsureSuccessStatusCode();
+        (await departedClient.PostAsync($"/api/matching/{lobby.Id}/leave", null)).EnsureSuccessStatusCode();
+        (await ownerClient.PostAsync($"/api/matching/{lobby.Id}/leave", null)).EnsureSuccessStatusCode();
+
+        var response = await ownerClient.GetAsync($"/api/matching/{lobby.Id}");
+        response.EnsureSuccessStatusCode();
+        var view = await response.Content.ReadFromJsonAsync<MatchingViewDto>();
+        Assert.Equal("nocontest", view!.State);
+        Assert.NotNull(view.Results);
+        var closed = Assert.IsType<MatchingSlotResultDto>(view.Results!.Slots[0]);
+        Assert.Equal([0, 0, 0, 2], closed.Counts);
+        Assert.False(closed.AllAgreed);
+        Assert.Null(view.Results.Slots[1]);
+        Assert.Null(view.Results.PairStats);
+        Assert.Null(view.Results.AllAgreedCount);
+    }
+
+    [Fact]
     public async Task Guest_can_join_read_and_answer_but_cannot_start()
     {
         var prefix = Guid.NewGuid().ToString("N");

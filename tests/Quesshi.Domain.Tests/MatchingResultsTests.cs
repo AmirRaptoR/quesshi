@@ -150,10 +150,14 @@ public sealed class MatchingResultsTests
 
         var results = MatchingResults.Compute(snapshot);
 
-        Assert.Equal([2, 0, 0, 0], Assert.IsType<MatchingSlotResult>(Assert.Single(results.Slots)).Counts);
+        var slotResult = Assert.IsType<MatchingSlotResult>(Assert.Single(results.Slots));
+        Assert.Equal([2, 0, 0, 0], slotResult.Counts);
+        Assert.True(slotResult.AllAgreed);
         var p1p2 = Assert.Single(results.PairStats!, pair => pair.FirstParticipantId == "p1" && pair.SecondParticipantId == "p2");
         Assert.Equal(1, p1p2.Same);
         Assert.Null(Assert.Single(results.PairStats!, pair => pair.FirstParticipantId == "p1"
+            && pair.SecondParticipantId == "p3").AgreementPercent);
+        Assert.Null(Assert.Single(results.PairStats!, pair => pair.FirstParticipantId == "p2"
             && pair.SecondParticipantId == "p3").AgreementPercent);
     }
 
