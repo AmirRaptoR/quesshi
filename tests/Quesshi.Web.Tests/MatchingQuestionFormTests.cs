@@ -106,8 +106,36 @@ public sealed class MatchingQuestionFormTests
     [Fact]
     public void Existing_participant_question_has_no_stale_choices()
     {
-        var loaded = MatchingQuestionForm.From(new MatchingQuestionDto("q", "en", "m-music", "Prompt", "participants", ["stale"], "approved", "admin", null, "music", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 0));
+        var loaded = MatchingQuestionForm.From(new MatchingQuestionDto("q", "en", "m-music", "Prompt", "participants", ["stale"], "approved", "admin", null, "music|jazz", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 0));
         Assert.True(loaded.UseParticipants);
         Assert.Empty(loaded.Choices);
+        Assert.Equal("music", loaded.Subject);
+        Assert.Equal("jazz", loaded.Aspect);
+    }
+
+    [Fact]
+    public void Existing_topic_and_media_attribution_round_trip_without_loss()
+    {
+        var loaded = MatchingQuestionForm.From(new MatchingQuestionDto(
+            "q", "en", "m-music", "Prompt", "fixed", ["one", "two"], "approved", "admin",
+            new MediaDto("image", "/media/q.jpg", "Photo by Ada"), "jazz|guitar", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 0));
+
+        var dto = loaded.ToDto();
+
+        Assert.Equal("jazz", dto.Subject);
+        Assert.Equal("guitar", dto.Aspect);
+        Assert.Equal("Photo by Ada", dto.MediaAttribution);
+    }
+
+    [Fact]
+    public void A_malformed_topic_does_not_invent_an_aspect()
+    {
+        var loaded = MatchingQuestionForm.From(new MatchingQuestionDto(
+            "q", "en", "m-music", "Prompt", "participants", [], "pending", "admin", null,
+            "subject-only", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 0));
+
+        Assert.Equal("subject-only", loaded.Subject);
+        Assert.Null(loaded.Aspect);
     }
 }

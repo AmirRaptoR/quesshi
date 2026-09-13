@@ -174,6 +174,29 @@ public sealed class AdminApi(AdminHttpClient http)
         catch { return null; }
     }
 
+    /// <summary>Dry run or commit a matching-only import in the matching bounded context.</summary>
+    public async Task<ImportReportDto?> ImportMatchingQuestionsAsync(string format, bool dryRun, MultipartFormDataContent content)
+    {
+        try
+        {
+            var response = await Client.PostAsync($"api/admin/matching/questions/import?format={format}&dryRun={dryRun}", content);
+            return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ImportReportDto>() : null;
+        }
+        catch { return null; }
+    }
+
+    public async Task<(byte[] Bytes, string FileName)?> DownloadMatchingImportTemplateAsync(string format)
+    {
+        try
+        {
+            var response = await Client.GetAsync($"api/admin/matching/questions/import/template?format={format}");
+            if (!response.IsSuccessStatusCode) return null;
+
+            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"matching-template.{format}");
+        }
+        catch { return null; }
+    }
+
     // --- live duels ------------------------------------------------------------------
     public Task<AdminLivePageDto?> AdminLiveAsync() => GetAsync<AdminLivePageDto>("api/admin/live");
     public Task<bool> EndLiveDuelAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/live/{id}/end");

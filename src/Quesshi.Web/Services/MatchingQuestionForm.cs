@@ -105,9 +105,23 @@ public sealed class MatchingQuestionForm
         _useParticipants = string.Equals(question.AnswerSource, "participants", StringComparison.OrdinalIgnoreCase),
         Choices = question.AnswerSource.Equals("participants", StringComparison.OrdinalIgnoreCase)
             ? [] : question.Choices.Count is >= MinChoices and <= MaxChoices ? [.. question.Choices] : ["", ""],
-        Subject = question.Topic,
+        // Topic is the normalized `subject|aspect` key produced by TopicKey.  Keep the two
+        // authoring fields round-trippable when an existing question is opened; assigning the
+        // combined key to Subject loses the aspect and causes the next save to change the key.
+        Subject = SplitTopic(question.Topic).Subject,
+        Aspect = SplitTopic(question.Topic).Aspect,
         MediaKind = question.Media?.Kind,
         MediaUrl = question.Media?.Url,
+        MediaAttribution = question.Media?.Attribution,
         Status = question.Status
     };
+
+    private static (string? Subject, string? Aspect) SplitTopic(string? topic)
+    {
+        if (string.IsNullOrWhiteSpace(topic)) return (null, null);
+
+        var separator = topic.IndexOf('|');
+        if (separator <= 0 || separator >= topic.Length - 1) return (topic, null);
+        return (topic[..separator], topic[(separator + 1)..]);
+    }
 }
