@@ -20,4 +20,7 @@ public sealed class MatchingMatchStateRecord
     /// marker: activation retries the idempotent archive write before clearing it.
     /// </summary>
     [Id(11)] public bool ArchivePending { get; set; }
+    /// <summary>Durable serve token to question id outbox. Tokens are match-id/slot-id pairs, so
+    /// replay is idempotent even when multiple matches serve one question concurrently.</summary>
+    [Id(12)] public Dictionary<string, string> ServedQuestionPending { get; set; } = [];
 }

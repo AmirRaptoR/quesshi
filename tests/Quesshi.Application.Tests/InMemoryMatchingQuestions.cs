@@ -6,6 +6,7 @@ namespace Quesshi.Application.Tests;
 public sealed class InMemoryMatchingQuestions : IMatchingQuestionRepository
 {
     public readonly List<MatchingQuestion> Items = [];
+    private readonly HashSet<string> _servedTokens = [];
     private readonly Random _rng = new(1234);
 
     public Task<MatchingQuestion?> GetAsync(string id, CancellationToken ct = default)
@@ -37,6 +38,16 @@ public sealed class InMemoryMatchingQuestions : IMatchingQuestionRepository
         Items.RemoveAll(x => x.Id == q.Id);
         Items.Add(q);
         return Task.CompletedTask;
+    }
+
+    public Task<MatchingServeResult> RecordServedAsync(string id, string serveToken,
+        CancellationToken ct = default)
+    {
+        var question = Items.FirstOrDefault(q => q.Id == id);
+        if (question is null) return Task.FromResult(MatchingServeResult.Missing);
+        if (!_servedTokens.Add(serveToken)) return Task.FromResult(MatchingServeResult.AlreadyRecorded);
+        question.RecordServed();
+        return Task.FromResult(MatchingServeResult.Recorded);
     }
 
     public async Task<int> UpsertManyAsync(IReadOnlyList<MatchingQuestion> questions, CancellationToken ct = default)

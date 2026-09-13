@@ -22,6 +22,7 @@ public sealed class MatchingQuestionDoc
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public int TimesServed { get; set; }
+    public List<string> ServedTokens { get; set; } = [];
 
     public static MatchingQuestionDoc From(MatchingQuestion q) => new()
     {
@@ -39,7 +40,8 @@ public sealed class MatchingQuestionDoc
         Source = (int)q.Source,
         CreatedAt = q.CreatedAt.UtcDateTime,
         UpdatedAt = q.UpdatedAt.UtcDateTime,
-        TimesServed = q.TimesServed
+        TimesServed = q.TimesServed,
+        ServedTokens = []
     };
 
     public MatchingQuestion ToDomain() => MatchingQuestion.Restore(

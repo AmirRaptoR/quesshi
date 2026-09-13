@@ -7,4 +7,5 @@ public sealed record MatchingSlotDto(
     List<MatchingOptionDto> Options,
     DateTimeOffset ServedAt,
     List<string> AnsweredParticipantIds,
-    List<MatchingAnswerDto> Answers);
+    List<MatchingAnswerDto> Answers,
+    MediaDto? Media = null);

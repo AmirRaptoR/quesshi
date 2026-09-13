@@ -474,6 +474,9 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
             return Task.CompletedTask;
         }
 
+        public Task<MatchingServeResult> RecordServedAsync(string id, string serveToken,
+            CancellationToken ct = default) => Task.FromResult(MatchingServeResult.Missing);
+
         public Task<int> UpsertManyAsync(IReadOnlyList<MatchingQuestion> questions,
             CancellationToken ct = default) => Task.FromResult(0);
 

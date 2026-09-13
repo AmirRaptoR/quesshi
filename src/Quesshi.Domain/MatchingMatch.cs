@@ -239,7 +239,7 @@ public sealed class MatchingMatch
             ? _participants.Select(MatchingServedOption.ForParticipant).ToList()
             : question.FixedChoices.Select((choice, choiceIndex) => MatchingServedOption.ForChoice(choiceIndex, choice)).ToList();
         options.Add(MatchingServedOption.NotApplicable());
-        _slots.Add(new MatchingSlot(index, question.Id, question.Prompt, options, now));
+        _slots.Add(new MatchingSlot(index, question.Id, question.Prompt, options, question.Media, now));
         _currentSlot = index;
         question.RecordServed();
     }

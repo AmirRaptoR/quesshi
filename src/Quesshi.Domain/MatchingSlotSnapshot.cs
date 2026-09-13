@@ -7,4 +7,5 @@ public sealed record MatchingSlotSnapshot(
     string Prompt,
     List<MatchingServedOption> Options,
     DateTimeOffset ServedAt,
-    Dictionary<string, MatchingAnswer> Answers);
+    Dictionary<string, MatchingAnswer> Answers,
+    MediaRef? Media = null);

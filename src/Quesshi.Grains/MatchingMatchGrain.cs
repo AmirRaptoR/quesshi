@@ -18,6 +18,7 @@ namespace Quesshi.Grains;
 public sealed class MatchingMatchGrain(
     [PersistentState("matching-match", "hot")] IPersistentState<MatchingMatchStateRecord> state,
     MatchingQuestionSetBuilder questionSetBuilder,
+    IMatchingQuestionRepository questions,
     IMatchArchive archive,
     IMatchingNotifier notifier,
     IClock clock,
@@ -28,10 +29,12 @@ public sealed class MatchingMatchGrain(
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
+        state.State.ServedQuestionPending ??= [];
         if (!string.IsNullOrWhiteSpace(state.State.Json))
             _match = MatchingMatch.FromSnapshot(JsonSerializer.Deserialize<MatchingMatchSnapshot>(state.State.Json)!);
         if (state.State.ArchivePending)
             await ReconcileArchiveAsync();
+        await ReconcileServedQuestionCountsAsync();
         if (_match?.IsOver == true)
             await UnregisterReminderSafeAsync();
     }
@@ -113,6 +116,7 @@ public sealed class MatchingMatchGrain(
 
         _match = match;
         state.State.State = (int)match.State;
+        TrackNewlyServedQuestions([], match.ToSnapshot());
         await SaveAndArchiveAsync();
         await this.RegisterOrUpdateReminder(Reminder, MatchingRules.IdleAfter, TimeSpan.FromHours(6));
         await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
@@ -223,6 +227,7 @@ public sealed class MatchingMatchGrain(
         {
             throw new InvalidOperationException(MapAnswerError(ex.Message), ex);
         }
+        TrackNewlyServedQuestions(before.Slots, _match.ToSnapshot());
 
         await SaveAndArchiveAsync();
         var after = _match.ToSnapshot();
@@ -261,9 +266,10 @@ public sealed class MatchingMatchGrain(
         }
         var before = _match.ToSnapshot();
         if (!_match.Advance(clock.Now)) return;
+        var after = _match.ToSnapshot();
+        TrackNewlyServedQuestions(before.Slots, after);
 
         await SaveAndArchiveAsync();
-        var after = _match.ToSnapshot();
         if (!before.InactiveParticipants.SetEquals(after.InactiveParticipants))
             await SafeNotifyAsync(() => notifier.RosterChangedAsync(IdString()));
         if (before.CurrentSlot is { } oldSlot && after.CurrentSlot != oldSlot)
@@ -299,6 +305,55 @@ public sealed class MatchingMatchGrain(
         // Clearing the marker is deliberately a second durable write. If this write is interrupted,
         // activation simply repeats the already-successful archive replacement.
         state.State.ArchivePending = false;
+        await state.WriteStateAsync();
+        await ReconcileServedQuestionCountsAsync();
+    }
+
+    private void TrackNewlyServedQuestions(IReadOnlyList<MatchingSlotSnapshot> before,
+        MatchingMatchSnapshot after)
+    {
+        state.State.ServedQuestionPending ??= [];
+        foreach (var slot in after.Slots.Skip(before.Count))
+        {
+            var question = after.Questions.FirstOrDefault(question => question.Id == slot.QuestionId);
+            if (question is null) continue;
+
+            // Slot numbers are stable for the lifetime of this match and the match id is globally
+            // unique. Never collapse two concurrent matches' serves into one question-level target.
+            state.State.ServedQuestionPending[$"{after.Id}:{slot.Slot}"] = question.Id;
+        }
+    }
+
+    /// <summary>
+    /// Applies the durable per-slot outbox to the content repository. The repository's atomic
+    /// add-token-plus-increment operation makes replay safe and prevents concurrent matches from
+    /// losing one of their increments.
+    /// </summary>
+    private async Task ReconcileServedQuestionCountsAsync()
+    {
+        state.State.ServedQuestionPending ??= [];
+        if (state.State.ServedQuestionPending.Count == 0) return;
+
+        var completed = new List<string>();
+        foreach (var (serveToken, questionId) in state.State.ServedQuestionPending.ToArray())
+        {
+            try
+            {
+                var result = await questions.RecordServedAsync(questionId, serveToken);
+                if (result is MatchingServeResult.Recorded or MatchingServeResult.AlreadyRecorded)
+                    completed.Add(serveToken);
+                else
+                    logger.LogWarning("Matching served-question {QuestionId} is missing", questionId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Matching served-question counter reconciliation failed for {QuestionId}", questionId);
+            }
+        }
+
+        if (completed.Count == 0) return;
+        foreach (var serveToken in completed)
+            state.State.ServedQuestionPending.Remove(serveToken);
         await state.WriteStateAsync();
     }
 
@@ -383,7 +438,9 @@ public sealed class MatchingMatchGrain(
             [.. slot.Options.Select(o => new MatchingOptionView((int)o.Kind, o.ParticipantId, o.ChoiceIndex, o.Text))],
             slot.ServedAt, [.. slot.Answers.Keys], includeAnswers
                 ? [.. slot.Answers.Select(answer => AnswerView(answer.Key, answer.Value)!) ]
-                : []);
+                : [], slot.Media is { Kind: not MediaKind.None } media
+                    ? new MatchingMediaView((int)media.Kind, media.Url, media.Attribution)
+                    : null);
     }
 
     private static MatchingAnswerView? AnswerView(string? playerId, MatchingAnswer? answer)

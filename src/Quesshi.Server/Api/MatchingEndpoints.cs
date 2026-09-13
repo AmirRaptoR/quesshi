@@ -251,7 +251,7 @@ public static class MatchingEndpoints
                     o.ParticipantId is null ? null : lookup.GetValueOrDefault(o.ParticipantId)?.AvatarSeed))],
                 slot.ServedAt, slot.AnsweredParticipantIds,
                 [.. slot.Answers.Select(a => new MatchingAnswerDto(KindName(a.Kind), a.ParticipantId,
-                    a.ChoiceIndex, a.At, a.PlayerId))]);
+                    a.ChoiceIndex, a.At, a.PlayerId))], ToMediaDto(slot.Media));
 
         var own = view.OwnAnswer is null ? null : new MatchingAnswerDto(KindName(view.OwnAnswer.Kind),
             view.OwnAnswer.ParticipantId, view.OwnAnswer.ChoiceIndex, view.OwnAnswer.At, meId);
@@ -275,4 +275,9 @@ public static class MatchingEndpoints
         MatchingAnswerKind.SelectedChoice => "choice",
         _ => "na"
     };
+
+    private static MediaDto? ToMediaDto(MatchingMediaView? media)
+        => media is null || (MediaKind)media.Kind == MediaKind.None
+            ? null
+            : new MediaDto(((MediaKind)media.Kind).ToString().ToLowerInvariant(), media.Url, media.Attribution);
 }

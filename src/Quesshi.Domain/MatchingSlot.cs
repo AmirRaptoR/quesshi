@@ -11,12 +11,13 @@ public sealed class MatchingSlot
     private readonly Dictionary<string, MatchingAnswer> _answers = [];
 
     internal MatchingSlot(int slot, string questionId, string prompt,
-        IReadOnlyList<MatchingServedOption> options, DateTimeOffset servedAt)
+        IReadOnlyList<MatchingServedOption> options, MediaRef media, DateTimeOffset servedAt)
     {
         Slot = slot;
         QuestionId = questionId;
         Prompt = prompt;
         Options = [.. options];
+        Media = media;
         ServedAt = servedAt;
     }
 
@@ -24,6 +25,7 @@ public sealed class MatchingSlot
     public string QuestionId { get; }
     public string Prompt { get; }
     public IReadOnlyList<MatchingServedOption> Options { get; }
+    public MediaRef Media { get; }
     public DateTimeOffset ServedAt { get; }
 
     internal IReadOnlyDictionary<string, MatchingAnswer> Answers => _answers;
@@ -35,12 +37,12 @@ public sealed class MatchingSlot
     internal void Record(string participantId, MatchingAnswer answer) => _answers[participantId] = answer;
 
     internal MatchingSlotSnapshot ToSnapshot() => new(
-        Slot, QuestionId, Prompt, [.. Options], ServedAt, new Dictionary<string, MatchingAnswer>(_answers));
+        Slot, QuestionId, Prompt, [.. Options], ServedAt, new Dictionary<string, MatchingAnswer>(_answers), Media);
 
     internal static MatchingSlot Restore(MatchingSlotSnapshot snapshot)
     {
         var slot = new MatchingSlot(snapshot.Slot, snapshot.QuestionId, snapshot.Prompt,
-            snapshot.Options ?? [], snapshot.ServedAt);
+            snapshot.Options ?? [], snapshot.Media ?? MediaRef.None, snapshot.ServedAt);
         if (snapshot.Answers is not null)
             foreach (var (participantId, answer) in snapshot.Answers)
                 slot._answers[participantId] = answer;

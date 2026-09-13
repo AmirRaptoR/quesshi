@@ -47,6 +47,10 @@
             <section class="card card--taq enter" @key="slot.Slot">
                 <p class="faint" style="margin:0 0 .7rem">@L["matching.play.choose"]</p>
                 <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@slot.Prompt</h1>
+                @if (slot.Media is { } media)
+                {
+                    <MediaBlock Media="media" Loop="false" Autoplay="false" />
+                }
                 <div class="stack" style="margin-top:1rem;gap:.5rem">
                     @foreach (var option in slot.Options)
                     {
@@ -88,6 +92,10 @@
             <section class="card card--flat enter" style="margin-top:1rem" @key="closed.Slot">
                 <div class="row row--between"><strong>@L["matching.play.previous"]</strong><span class="muted">@L.Num(closed.Slot + 1)</span></div>
                 <p dir="auto" style="margin:.5rem 0 .7rem">@closed.Prompt</p>
+                @if (closed.Media is { } media)
+                {
+                    <MediaBlock Media="media" Loop="false" Autoplay="false" />
+                }
                 <div class="stack" style="gap:.35rem">
                     @foreach (var participant in _view.Participants)
                     {

@@ -93,6 +93,24 @@ public class MatchingMatchTests
     }
 
     [Fact]
+    public void A_served_slot_keeps_authored_media_through_source_edits_and_snapshot_restore()
+    {
+        var media = new MediaRef(MediaKind.Image, "/media/original.jpg", "Original credit");
+        var question = MatchingQuestion.Create("mq-media", Language.En, "m-general", "Prompt",
+            MatchingAnswerSource.Participants, null, T0, media, status: QuestionStatus.Approved);
+        var match = NewMatch(question);
+        Assert.True(match.Start(Owner, T0));
+
+        question.Edit(Language.En, "m-general", "Changed", MatchingAnswerSource.Participants, null,
+            new MediaRef(MediaKind.Video, "/media/changed.mp4"), "topic", T0.AddHours(1));
+
+        Assert.Equal(media, match.CurrentSlot!.Media);
+        var restored = MatchingMatch.FromSnapshot(JsonSerializer.Deserialize<MatchingMatchSnapshot>(
+            JsonSerializer.Serialize(match.ToSnapshot()))!);
+        Assert.Equal(media, restored.CurrentSlot!.Media);
+    }
+
+    [Fact]
     public void Final_answer_closes_the_barrier_and_serves_the_next_slot_in_the_same_call()
     {
         var match = NewMatch(ParticipantsQuestion("mq-1"), ParticipantsQuestion("mq-2", "Second"));

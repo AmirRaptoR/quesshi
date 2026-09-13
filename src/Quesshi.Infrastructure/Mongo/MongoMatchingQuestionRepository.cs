@@ -34,15 +34,29 @@ public sealed class MongoMatchingQuestionRepository(MongoContext db) : IMatching
     }
 
     public Task UpsertAsync(MatchingQuestion question, CancellationToken ct = default)
-        => db.MatchingQuestions.ReplaceOneAsync(q => q.Id == question.Id, MatchingQuestionDoc.From(question),
-            new ReplaceOptions { IsUpsert = true }, ct);
+        => db.MatchingQuestions.UpdateOneAsync(q => q.Id == question.Id, AuthoringUpdate(question),
+            new UpdateOptions { IsUpsert = true }, ct);
+
+    public async Task<MatchingServeResult> RecordServedAsync(string id, string serveToken,
+        CancellationToken ct = default)
+    {
+        var filter = F.Eq(q => q.Id, id) & F.Not(F.AnyEq(q => q.ServedTokens, serveToken));
+        var update = Builders<MatchingQuestionDoc>.Update
+            .AddToSet(q => q.ServedTokens, serveToken)
+            .Inc(q => q.TimesServed, 1);
+        var result = await db.MatchingQuestions.UpdateOneAsync(filter, update, cancellationToken: ct);
+        if (result.ModifiedCount > 0) return MatchingServeResult.Recorded;
+        return await db.MatchingQuestions.Find(F.Eq(q => q.Id, id)).AnyAsync(ct)
+            ? MatchingServeResult.AlreadyRecorded
+            : MatchingServeResult.Missing;
+    }
 
     public async Task<int> UpsertManyAsync(IReadOnlyList<MatchingQuestion> questions, CancellationToken ct = default)
     {
         if (questions.Count == 0) return 0;
 
         var writes = questions.Select(q =>
-            new ReplaceOneModel<MatchingQuestionDoc>(F.Eq(d => d.Id, q.Id), MatchingQuestionDoc.From(q))
+            new UpdateOneModel<MatchingQuestionDoc>(F.Eq(d => d.Id, q.Id), AuthoringUpdate(q))
             { IsUpsert = true });
 
         try
@@ -78,5 +92,27 @@ public sealed class MongoMatchingQuestionRepository(MongoContext db) : IMatching
             filter &= F.Regex(q => q.Prompt,
                 new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(f.Text), "i"));
         return filter;
+    }
+
+    private static UpdateDefinition<MatchingQuestionDoc> AuthoringUpdate(MatchingQuestion q)
+    {
+        var update = Builders<MatchingQuestionDoc>.Update
+            .Set(d => d.Lang, (int)q.Lang)
+            .Set(d => d.MatchingCategoryId, q.MatchingCategoryId)
+            .Set(d => d.Prompt, q.Prompt)
+            .Set(d => d.AnswerSource, (int)q.AnswerSource)
+            .Set(d => d.FixedChoices, [.. q.FixedChoices])
+            .Set(d => d.MediaKind, (int)q.Media.Kind)
+            .Set(d => d.MediaUrl, q.Media.Url)
+            .Set(d => d.MediaAttribution, q.Media.Attribution)
+            .Set(d => d.Topic, q.Topic)
+            .Set(d => d.Status, (int)q.Status)
+            .Set(d => d.Source, (int)q.Source)
+            .Set(d => d.UpdatedAt, q.UpdatedAt.UtcDateTime);
+        return update
+            .SetOnInsert(d => d.Id, q.Id)
+            .SetOnInsert(d => d.CreatedAt, q.CreatedAt.UtcDateTime)
+            .SetOnInsert(d => d.TimesServed, q.TimesServed)
+            .SetOnInsert(d => d.ServedTokens, []);
     }
 }

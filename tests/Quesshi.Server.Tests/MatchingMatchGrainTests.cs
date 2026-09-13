@@ -134,6 +134,93 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Served_question_counts_are_persisted_once_per_slot_and_survive_reactivation()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var id = $"matching-served-count-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", Owner, (int)Language.En, 10, [category], 2);
+        await grain.JoinAsync(Other);
+        Assert.True(await grain.StartAsync(Owner));
+
+        var first = await grain.GetAsync(Owner);
+        var firstQuestionId = first!.CurrentSlot!.QuestionId;
+        Assert.Equal(1, Shared.MatchingQuestions.Items.Single(q => q.Id == firstQuestionId).TimesServed);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[firstQuestionId]);
+
+        await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+            .AsReference<IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+        var restored = await grain.GetAsync(Owner);
+        Assert.Equal(firstQuestionId, restored!.CurrentSlot!.QuestionId);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[firstQuestionId]);
+
+        await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
+        var next = await grain.GetAsync(Owner);
+        var secondQuestionId = next!.CurrentSlot!.QuestionId;
+        Assert.NotEqual(firstQuestionId, secondQuestionId);
+        Assert.Equal(1, Shared.MatchingQuestions.Items.Single(q => q.Id == secondQuestionId).TimesServed);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[secondQuestionId]);
+
+        await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+            .AsReference<IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[firstQuestionId]);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[secondQuestionId]);
+    }
+
+    [Fact]
+    public async Task A_counter_failure_replays_the_same_serve_token_after_reactivation()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var id = $"matching-counter-retry-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", Owner, (int)Language.En, 10, [category], 2);
+        await grain.JoinAsync(Other);
+
+        Shared.MatchingQuestions.FailRecordServedCalls = 1;
+        Assert.True(await grain.StartAsync(Owner));
+        var firstQuestionId = (await grain.GetAsync(Owner))!.CurrentSlot!.QuestionId;
+        Assert.Equal(0, Shared.MatchingQuestions.Items.Single(q => q.Id == firstQuestionId).TimesServed);
+
+        await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+            .AsReference<IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+
+        Assert.NotNull(await grain.GetAsync(Owner));
+        Assert.Equal(1, Shared.MatchingQuestions.Items.Single(q => q.Id == firstQuestionId).TimesServed);
+        Assert.Equal(1, Shared.MatchingQuestions.RecordServedQuestionCounts[firstQuestionId]);
+    }
+
+    [Fact]
+    public async Task Concurrent_matches_increment_the_same_question_once_per_match_slot()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var ownerA = $"matching-concurrent-owner-a-{prefix}";
+        var otherA = $"matching-concurrent-other-a-{prefix}";
+        var ownerB = $"matching-concurrent-owner-b-{prefix}";
+        var otherB = $"matching-concurrent-other-b-{prefix}";
+        var first = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>($"matching-concurrent-a-{prefix}");
+        var second = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>($"matching-concurrent-b-{prefix}");
+        await first.CreateAsync($"A{prefix[..5]}", ownerA, (int)Language.En, 10, [category], 2);
+        await first.JoinAsync(otherA);
+        await second.CreateAsync($"B{prefix[..5]}", ownerB, (int)Language.En, 10, [category], 2);
+        await second.JoinAsync(otherB);
+
+        await Task.WhenAll(first.StartAsync(ownerA), second.StartAsync(ownerB));
+
+        var firstQuestionId = (await first.GetAsync(ownerA))!.CurrentSlot!.QuestionId;
+        var secondQuestionId = (await second.GetAsync(ownerB))!.CurrentSlot!.QuestionId;
+        Assert.Equal(firstQuestionId, secondQuestionId);
+        Assert.Equal(2, Shared.MatchingQuestions.Items.Single(q => q.Id == firstQuestionId).TimesServed);
+        Assert.Equal(2, Shared.MatchingQuestions.RecordServedQuestionCounts[firstQuestionId]);
+    }
+
+    [Fact]
     public async Task Reminder_expires_idle_match_and_is_safe_to_run_again()
     {
         var prefix = Guid.NewGuid().ToString("N");

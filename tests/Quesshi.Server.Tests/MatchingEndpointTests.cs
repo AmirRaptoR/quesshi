@@ -46,6 +46,9 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Empty(ownerView.CurrentSlot!.Answers);
         Assert.Contains(ownerView.CurrentSlot.AnsweredParticipantIds, id => id == owner.Id);
         Assert.Equal(other.AvatarSeed, ownerView.CurrentSlot.Options.Single(o => o.ParticipantId == other.Id).AvatarSeed);
+        Assert.Equal("image", ownerView.CurrentSlot.Media!.Kind);
+        Assert.Equal("/matching-test.jpg", ownerView.CurrentSlot.Media.Url);
+        Assert.Equal("Matching credit", ownerView.CurrentSlot.Media.Attribution);
         Assert.Null(ownerView.Results!.PairStats);
         Assert.Null(ownerView.Results.Slots.Single());
 
@@ -562,6 +565,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         for (var i = 0; i < 10; i++)
             Shared.MatchingQuestions.Items.Add(MatchingQuestion.Create($"mq-{prefix}-{i}", Language.En,
                 categoryId, $"Prompt {i}", MatchingAnswerSource.Participants, null, Shared.Clock.Now,
+                new MediaRef(MediaKind.Image, "/matching-test.jpg", "Matching credit"),
                 status: QuestionStatus.Approved));
         return categoryId;
     }

@@ -110,6 +110,18 @@ public sealed class MatchingMongoTests
             await repository.UpsertAsync(pending);
             await repository.UpsertAsync(rejected);
 
+            Assert.Equal(MatchingServeResult.Recorded, await repository.RecordServedAsync("m1", "match-a:0"));
+            Assert.Equal(MatchingServeResult.AlreadyRecorded,
+                await repository.RecordServedAsync("m1", "match-a:0"));
+            var staleAuthoringEdit = MatchingQuestion.Create("m1", Language.En, "m-friends", "Edited",
+                MatchingAnswerSource.Fixed, ["A", "B"], now, topic: "people/friends", status: QuestionStatus.Approved);
+            await repository.UpsertAsync(staleAuthoringEdit);
+            Assert.Equal(1, (await repository.GetAsync("m1"))!.TimesServed);
+            Assert.Equal(MatchingServeResult.AlreadyRecorded,
+                await repository.RecordServedAsync("m1", "match-a:0"));
+            Assert.Equal(MatchingServeResult.Recorded, await repository.RecordServedAsync("m1", "match-b:0"));
+            Assert.Equal(2, (await repository.GetAsync("m1"))!.TimesServed);
+
             var duplicate = MatchingQuestion.Create("m9", Language.En, "m-friends", "Duplicate",
                 MatchingAnswerSource.Participants, null, now, topic: "people/friends");
             await Assert.ThrowsAsync<MongoWriteException>(() => repository.UpsertAsync(duplicate));
