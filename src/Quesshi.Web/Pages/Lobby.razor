@@ -408,7 +408,7 @@
             var invite = await Api.InviteAsync(Code);
             if (invite is null || invite.Live != State.GuestMatchIsLive || !await BelongsToMeAsync(mine))
             {
-                Nav.NavigateTo(State.GuestMatchIsLive ? $"/live/{mine}" : $"/duel/{mine}", replace: true);
+                Nav.NavigateTo(State.GuestMatchRoute(mine), replace: true);
                 return;
             }
         }

@@ -88,7 +88,8 @@ public static class AuthEndpoints
         var challenger = await players.GetAsync(match.ChallengerId);
         return Results.Ok(new InviteDto(match.Code, match.Id, challenger?.DisplayName ?? "—",
             challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
-            match.State == MatchState.AwaitingOpponent, match.IsLive));
+            match.State == MatchState.AwaitingOpponent, match.IsLive,
+            match.Mode == GameMode.Matching ? "matching" : "trivia"));
     }
 
     /// <summary>

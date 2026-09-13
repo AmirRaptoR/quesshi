@@ -344,17 +344,24 @@ public sealed class MatchingMatchGrain(
             return new MatchingView(IdString(), state.State.Code, state.State.Lang, state.State.Capacity,
                 (int)stateValue, [.. state.State.Participants.Select(id => new MatchingParticipantView(id, true))],
                 null, state.State.QuestionCount, null, null, null, state.State.CreatedAt, state.State.EndedAt,
-                null);
+                null, [.. state.State.CategoryIds], []);
 
         var snapshot = _match.ToSnapshot();
-        var current = snapshot.CurrentSlot is { } index ? snapshot.Slots.FirstOrDefault(s => s.Slot == index) : null;
-        var closed = current is null ? snapshot.Slots.LastOrDefault() : snapshot.Slots.FirstOrDefault(s => s.Slot == current.Slot - 1);
+        var computed = MatchingResults.Compute(snapshot);
+        var current = _match.CurrentSlot is { } active ? snapshot.Slots.FirstOrDefault(s => s.Slot == active.Slot) : null;
+        var closedSnapshots = snapshot.Slots
+            .Select((slot, index) => (slot, index))
+            .Where(item => item.index < computed.Slots.Count && computed.Slots[item.index] is not null)
+            .Select(item => item.slot)
+            .ToList();
+        var closed = closedSnapshots.LastOrDefault();
         var own = current?.Answers?.GetValueOrDefault(playerId);
         var results = _match.IsParticipant(playerId) ? ResultsView(snapshot) : null;
         return new MatchingView(_match.Id, _match.Code, state.State.Lang, _match.Capacity, (int)_match.State,
             [.. _match.Participants.Select(id => new MatchingParticipantView(id, _match.IsActiveParticipant(id)))],
             _match.CurrentSlotIndex, snapshot.Questions.Count, SlotView(current, includeAnswers: false),
-            SlotView(closed, includeAnswers: true), AnswerView(own), _match.CreatedAt, _match.EndedAt, results);
+            SlotView(closed, includeAnswers: true), AnswerView(playerId, own), _match.CreatedAt, _match.EndedAt,
+            results, null, [.. closedSnapshots.Select(slot => SlotView(slot, includeAnswers: true)!) ]);
     }
 
     private static MatchingResultsView ResultsView(MatchingMatchSnapshot snapshot)
@@ -375,13 +382,13 @@ public sealed class MatchingMatchGrain(
         return new MatchingSlotView(slot.Slot, slot.QuestionId, slot.Prompt,
             [.. slot.Options.Select(o => new MatchingOptionView((int)o.Kind, o.ParticipantId, o.ChoiceIndex, o.Text))],
             slot.ServedAt, [.. slot.Answers.Keys], includeAnswers
-                ? [.. slot.Answers.Values.Select(answer => AnswerView(answer)!) ]
+                ? [.. slot.Answers.Select(answer => AnswerView(answer.Key, answer.Value)!) ]
                 : []);
     }
 
-    private static MatchingAnswerView? AnswerView(MatchingAnswer? answer)
+    private static MatchingAnswerView? AnswerView(string? playerId, MatchingAnswer? answer)
         => answer is null ? null : new MatchingAnswerView((int)answer.Kind, answer.ParticipantId,
-            answer.ChoiceIndex, answer.At);
+            answer.ChoiceIndex, answer.At, playerId);
 
     private static string MapAnswerError(string message) => message switch
     {

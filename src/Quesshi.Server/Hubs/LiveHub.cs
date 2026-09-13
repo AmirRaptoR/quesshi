@@ -61,7 +61,8 @@ public sealed class LiveHub(
         if (view is null)
         {
             var matching = await grains.GetGrain<IMatchingMatchGrain>(matchId).GetAsync(meId);
-            if (matching is null) throw new HubException("not_a_participant");
+            if (matching is null || matching.Participants.All(participant => participant.Id != meId))
+                throw new HubException("not_a_participant");
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId));

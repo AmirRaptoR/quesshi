@@ -15,4 +15,6 @@ public sealed record MatchingViewDto(
     MatchingAnswerDto? OwnAnswer,
     DateTimeOffset CreatedAt,
     DateTimeOffset? EndedAt,
-    MatchingResultsDto? Results = null);
+    MatchingResultsDto? Results = null,
+    List<string>? CategoryIds = null,
+    List<MatchingSlotDto>? ClosedSlots = null);

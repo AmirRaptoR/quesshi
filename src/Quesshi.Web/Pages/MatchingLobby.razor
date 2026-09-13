@@ -43,7 +43,7 @@
                 @foreach (var participant in view.Participants)
                 {
                     <div class="lobby-tile" @key="participant.Id">
-                        <span class="avatar avatar--tile" style="background:@Ranks.Tint(participant.Id)">@Initial(participant.DisplayName)</span>
+                        <span class="avatar avatar--tile" style="background:@Ranks.Tint(participant.AvatarSeed ?? participant.Id)">@Initial(participant.DisplayName)</span>
                         <span dir="auto" style="font-weight:700;font-size:var(--step--1)">@participant.DisplayName</span>
                         <span class="muted" style="font-size:var(--step--1)">@(participant.Id == view.Participants[0].Id ? L["lobby.seatHost"] : L["lobby.seatReady"])</span>
                     </div>
@@ -72,6 +72,32 @@
                                 disabled="@_busy" @onclick="() => _lang = lang">@L["lang." + lang]</button>
                     }
                 </div>
+                <div class="row row--between" style="margin-top:.9rem;align-items:baseline">
+                    <span class="muted">@L["matching.lobby.categories"]</span>
+                    @if (_categoryIds.Count > 0)
+                    {
+                        <button type="button" class="any-pill" @onclick="ClearCategories">@L["matching.lobby.anyCategories"]</button>
+                    }
+                </div>
+                @if (_categories.Count > 0)
+                {
+                    <div class="topic-grid" style="margin-top:.55rem">
+                        @foreach (var category in _categories)
+                        {
+                            var selected = _categoryIds.Contains(category.Id);
+                            <button type="button" class="topic-tile @(selected ? "is-on" : null)"
+                                    aria-pressed="@selected.ToString().ToLowerInvariant()"
+                                    @onclick="() => ToggleCategory(category.Id)">
+                                <span class="topic-tile__icon" aria-hidden="true">@category.Icon</span>
+                                <span class="topic-tile__name" dir="auto">@CategoryName(category)</span>
+                                @if (selected)
+                                {
+                                    <span class="topic-tile__check" aria-hidden="true">✓</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                }
                 <div class="row row--between" style="margin-top:.7rem">
                     <span class="muted">@L["matching.lobby.players"]</span>
                     <span class="row" style="gap:.4rem">
@@ -81,6 +107,13 @@
                     </span>
                 </div>
                 <button type="button" class="btn btn--ghost btn--block" style="margin-top:.8rem" disabled="@_busy" @onclick="SaveSettingsAsync">@L["questions.done"]</button>
+            }
+            else
+            {
+                <div class="row row--between" style="margin-top:.8rem;align-items:baseline">
+                    <span class="muted">@L["matching.lobby.categories"]</span>
+                    <span dir="auto">@SelectedCategoryText()</span>
+                </div>
             }
         </section>
 
@@ -114,6 +147,8 @@
     private string? _error;
     private string _lang = "en";
     private int _questions = 10, _capacity = 2;
+    private List<MatchingCategoryDto> _categories = [];
+    private List<string> _categoryIds = [];
     private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
     private string MeId => State.Me!.Id;
 
@@ -124,6 +159,8 @@
         _lang = _view.Lang;
         _questions = _view.TotalSlots;
         _capacity = _view.Capacity;
+        _categoryIds = [.. _view.CategoryIds ?? []];
+        _categories = await Api.MatchingCategoriesAsync(_view.Lang) ?? [];
         if (_view.State is not "awaitingopponent" and not "awaiting_opponent")
         {
             Nav.NavigateTo($"/matching/{_view.Id}", replace: true);
@@ -171,10 +208,34 @@
     {
         if (_view is null) return;
         _busy = true;
-        var ok = await Api.UpdateMatchingSettingsAsync(_view.Id, _capacity, _lang, [], _questions);
+        var ok = await Api.UpdateMatchingSettingsAsync(_view.Id, _capacity, _lang, _categoryIds, _questions);
         _busy = false;
         if (!ok) { _error = L["common.error"]; return; }
         _view = await Api.MatchingAsync(_view.Id);
+        _categoryIds = [.. _view?.CategoryIds ?? _categoryIds];
+    }
+
+    private void ToggleCategory(string id)
+        => _categoryIds = _categoryIds.Contains(id)
+            ? [.. _categoryIds.Where(category => category != id)]
+            : [.. _categoryIds, id];
+
+    private void ClearCategories() => _categoryIds = [];
+
+    private string CategoryName(MatchingCategoryDto category) => _lang switch
+    {
+        "fa" => Pick(category.NameFa, category.NameEn),
+        "nl" => Pick(category.NameNl, category.NameEn),
+        _ => Pick(category.NameEn, category.NameFa)
+    };
+
+    private static string Pick(string first, string second) => first.Length > 0 ? first : second;
+
+    private string SelectedCategoryText()
+    {
+        if (_categoryIds.Count == 0) return L["matching.lobby.anyCategories"];
+        var names = _categories.Where(category => _categoryIds.Contains(category.Id)).Select(CategoryName).ToList();
+        return names.Count == 0 ? string.Join(", ", _categoryIds) : string.Join(", ", names);
     }
 
     private async Task LeaveAsync()

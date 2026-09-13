@@ -13,6 +13,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     private const string LangKey = "quesshi.lang";
     private const string GuestMatchKey = "quesshi.guestMatch";
     private const string GuestMatchLiveKey = "quesshi.guestMatchLive";
+    private const string GuestMatchMatchingKey = "quesshi.guestMatchMatching";
     private const string HomeTabKey = "quesshi.homeTab";
     private const string DuelSettingsKey = "quesshi.duelSettings";
 
@@ -38,9 +39,14 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// <summary>The one match a guest may look at. Null for everybody else.</summary>
     public string? GuestMatchId { get; private set; }
 
-    /// <summary>Which kind of duel <see cref="GuestMatchId"/> is — a live lobby routes to <c>/live/{id}</c>,
-    /// an async one to <c>/duel/{id}</c>. Meaningless while <see cref="GuestMatchId"/> is null.</summary>
+    /// <summary>Which kind of duel <see cref="GuestMatchId"/> is — matching routes to <c>/matching/{id}</c>,
+    /// live to <c>/live/{id}</c>, and async trivia to <c>/duel/{id}</c>. Meaningless while the pin is null.</summary>
     public bool GuestMatchIsLive { get; private set; }
+    public bool GuestMatchIsMatching { get; private set; }
+
+    public string GuestMatchRoute(string matchId)
+        => GuestMatchIsMatching ? $"/matching/{matchId}"
+            : GuestMatchIsLive ? $"/live/{matchId}" : $"/duel/{matchId}";
 
     /// <summary>
     /// Which of the home's two tabs was last open. Persisted (issue #88) because Live and Offline are
@@ -138,6 +144,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
 
         GuestMatchId = await js.InvokeAsync<string?>("quesshi.get", GuestMatchKey);
         GuestMatchIsLive = await js.InvokeAsync<string?>("quesshi.get", GuestMatchLiveKey) == "1";
+        GuestMatchIsMatching = await js.InvokeAsync<string?>("quesshi.get", GuestMatchMatchingKey) == "1";
 
         HomeTab = HomeTabs.Normalise(await js.InvokeAsync<string?>("quesshi.get", HomeTabKey));
         await RestoreDuelSettingsAsync();
@@ -217,18 +224,21 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     public async Task SignInAsGuestLiveAsync(GuestLiveResultDto result) => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Live.Id, isLive: true);
 
     public async Task SignInAsGuestMatchingAsync(GuestMatchingResultDto result)
-        => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Matching.Id, isLive: false);
+        => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Matching.Id, isLive: false, isMatching: true);
 
-    private async Task SignInAsGuestCoreAsync(string token, MeDto me, string matchId, bool isLive)
+    private async Task SignInAsGuestCoreAsync(string token, MeDto me, string matchId, bool isLive,
+        bool isMatching = false)
     {
         Apply(token);
         Me = me;
         GuestMatchId = matchId;
         GuestMatchIsLive = isLive;
+        GuestMatchIsMatching = isMatching;
 
         await js.InvokeVoidAsync("quesshi.set", TokenKey, token);
         await js.InvokeVoidAsync("quesshi.set", GuestMatchKey, matchId);
         await js.InvokeVoidAsync("quesshi.set", GuestMatchLiveKey, isLive ? "1" : "0");
+        await js.InvokeVoidAsync("quesshi.set", GuestMatchMatchingKey, isMatching ? "1" : "0");
         await SetLangAsync(me.Lang);
     }
 
@@ -247,8 +257,10 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     {
         GuestMatchId = null;
         GuestMatchIsLive = false;
+        GuestMatchIsMatching = false;
         await js.InvokeVoidAsync("quesshi.remove", GuestMatchKey);
         await js.InvokeVoidAsync("quesshi.remove", GuestMatchLiveKey);
+        await js.InvokeVoidAsync("quesshi.remove", GuestMatchMatchingKey);
     }
 
     /// <summary>

@@ -123,6 +123,9 @@ public sealed class Api(HttpClient http)
     public Task<MatchingViewDto?> MatchingByCodeAsync(string code)
         => GetAsync<MatchingViewDto>($"api/matching/by-code/{Uri.EscapeDataString(Code(code))}");
 
+    public Task<List<MatchingCategoryDto>?> MatchingCategoriesAsync(string? lang = null)
+        => GetAsync<List<MatchingCategoryDto>>($"api/matching/categories?lang={Uri.EscapeDataString(lang ?? "")}");
+
     public Task<MatchingViewDto?> MatchingAsync(string id)
         => GetAsync<MatchingViewDto>($"api/matching/{Uri.EscapeDataString(id)}");
 
@@ -141,11 +144,6 @@ public sealed class Api(HttpClient http)
         string? participantId = null, int? choiceIndex = null)
         => PostAsync<MatchingViewDto>($"api/matching/{Uri.EscapeDataString(id)}/answer",
             new SubmitMatchingAnswerDto(slot, kind, participantId, choiceIndex));
-
-    /// <summary>Stats are intentionally fetched separately from the live snapshot.  The stats worker
-    /// may move this route without changing the matching player page: only this method needs updating.</summary>
-    public Task<MatchingResultsDto?> MatchingResultsAsync(string id)
-        => GetAsync<MatchingResultsDto>($"api/matching/{Uri.EscapeDataString(id)}/results");
 
     public Task<bool> StartLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/start");
     public Task<bool> LeaveLobbyAsync(string id, bool isLive) => SendAsync(HttpMethod.Post, $"{LobbyBase(isLive)}/{id}/leave");

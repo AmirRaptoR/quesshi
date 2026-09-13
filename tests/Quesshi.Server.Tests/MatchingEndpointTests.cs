@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Client;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
@@ -30,6 +32,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         create.EnsureSuccessStatusCode();
         var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
         Assert.NotNull(lobby);
+        Assert.Equal(owner.AvatarSeed, lobby!.Participants.Single(p => p.Id == owner.Id).AvatarSeed);
 
         var joined = await otherClient.PostAsync($"/api/matching/join/{lobby!.Code}", null);
         joined.EnsureSuccessStatusCode();
@@ -42,6 +45,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.NotNull(ownerView!.OwnAnswer);
         Assert.Empty(ownerView.CurrentSlot!.Answers);
         Assert.Contains(ownerView.CurrentSlot.AnsweredParticipantIds, id => id == owner.Id);
+        Assert.Equal(other.AvatarSeed, ownerView.CurrentSlot.Options.Single(o => o.ParticipantId == other.Id).AvatarSeed);
         Assert.Null(ownerView.Results!.PairStats);
         Assert.Null(ownerView.Results.Slots.Single());
 
@@ -56,10 +60,64 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Equal(1, closedView!.CurrentSlotIndex);
         Assert.Equal(0, closedView.LastClosedSlot!.Slot);
         Assert.Equal(2, closedView.LastClosedSlot.Answers.Count);
+        Assert.Single(closedView.ClosedSlots!);
+        Assert.Equal(new[] { owner.Id, other.Id }.OrderBy(id => id), closedView.LastClosedSlot.Answers
+            .Select(answer => answer.PlayerId).OrderBy(id => id).ToArray());
         Assert.NotNull(closedView.Results);
         Assert.Null(closedView.Results!.PairStats);
         Assert.Equal([0, 0, 2], closedView.Results.Slots[0]!.Counts);
         Assert.Null(closedView.Results.Slots[1]);
+    }
+
+    [Fact]
+    public async Task Matching_categories_are_publicly_readable_and_lobby_preserves_selection()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = Player.Register($"owner-{prefix}", $"{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
+        await Shared.Players.UpsertAsync(owner);
+
+        await using var host = new MatchingApiTestHost(fixture.Cluster);
+        using var client = Authenticated(host, owner);
+        var create = await client.PostAsJsonAsync("/api/matching/lobby",
+            new CreateMatchingLobbyDto("en", 10, [category], [], 2, "matching"));
+        var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
+
+        Assert.Equal([category], lobby!.CategoryIds);
+        var categories = await client.GetFromJsonAsync<List<MatchingCategoryDto>>(
+            "/api/matching/categories?lang=en");
+        Assert.Contains(categories!, item => item.Id == category && item.IsActive);
+
+        var update = await client.PutAsJsonAsync($"/api/matching/{lobby.Id}/settings",
+            new UpdateMatchingSettingsDto("en", 10, [category], [], 2, "matching"));
+        update.EnsureSuccessStatusCode();
+        var updated = await client.GetFromJsonAsync<MatchingViewDto>($"/api/matching/{lobby.Id}");
+        Assert.Equal([category], updated!.CategoryIds);
+    }
+
+    [Fact]
+    public async Task Matching_hub_refuses_an_unseated_lobby_reader()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = Player.Register($"owner-{prefix}", $"{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
+        var stranger = Player.Register($"stranger-{prefix}", $"stranger-{prefix}@example.com", "Stranger", Language.En, Shared.Clock.Now);
+        await Shared.Players.UpsertAsync(owner);
+        await Shared.Players.UpsertAsync(stranger);
+
+        await using var host = new MatchingApiTestHost(fixture.Cluster);
+        using var client = Authenticated(host, owner);
+        var create = await client.PostAsJsonAsync("/api/matching/lobby",
+            new CreateMatchingLobbyDto("en", 10, [category], [], 2, "matching"));
+        var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
+
+        await using var connection = host.NewHubConnection(host.TokenIssuer.Issue(stranger));
+        await connection.StartAsync();
+        await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("JoinAsyncLobby", lobby!.Id));
+
+        await using var seated = host.NewHubConnection(host.TokenIssuer.Issue(owner));
+        await seated.StartAsync();
+        await seated.InvokeAsync("JoinAsyncLobby", lobby!.Id);
     }
 
     [Fact]
@@ -139,13 +197,14 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Equal(10, pair.Same);
         Assert.Equal(0, pair.Different);
         Assert.Equal(100, pair.AgreementPercent);
+        Assert.Equal(10, final.ClosedSlots!.Count);
 
         Assert.Equal(System.Net.HttpStatusCode.NotFound,
             (await strangerClient.GetAsync($"/api/matching/{lobby.Id}")).StatusCode);
     }
 
     [Fact]
-    public async Task No_contest_api_exposes_prior_closed_distributions_without_overall_statistics()
+    public async Task No_contest_returns_every_closed_slot_without_overall_statistics()
     {
         var prefix = Guid.NewGuid().ToString("N");
         var category = Seed(prefix);
@@ -179,6 +238,9 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         response.EnsureSuccessStatusCode();
         var view = await response.Content.ReadFromJsonAsync<MatchingViewDto>();
         Assert.Equal("nocontest", view!.State);
+        var closedSlots = Assert.Single(view.ClosedSlots!);
+        Assert.Equal(0, closedSlots.Slot);
+        Assert.Equal(2, closedSlots.Answers.Count);
         Assert.NotNull(view.Results);
         var closed = Assert.IsType<MatchingSlotResultDto>(view.Results!.Slots[0]);
         Assert.Equal([0, 0, 0, 2], closed.Counts);

@@ -6,4 +6,5 @@ public sealed record MatchingOptionDto(
     string? DisplayName,
     int? ChoiceIndex,
     string? Text,
-    bool IsNotApplicable);
+    bool IsNotApplicable,
+    string? AvatarSeed = null);

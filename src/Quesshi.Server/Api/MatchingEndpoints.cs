@@ -37,6 +37,15 @@ public static class MatchingEndpoints
             await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
 
+        api.MapGet("/categories", async (string? lang, IMatchingCategoryRepository categories) =>
+            (await categories.AllAsync())
+                .Where(category => category.IsActive)
+                .OrderBy(category => category.SortOrder)
+                .ThenBy(category => category.Id)
+                .Select(category => category.ToDto(lang.ToLanguage()))
+                .ToList())
+            .WithMetadata(new AllowGuest());
+
         api.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
             IPlayerRepository players) => await GetAsync(id, ctx.User.PlayerId()!, grains, players))
             .WithMetadata(new AllowGuest());
@@ -230,20 +239,22 @@ public static class MatchingEndpoints
         var participants = view.Participants.Select(p =>
         {
             var player = lookup.GetValueOrDefault(p.Id);
-            return new MatchingParticipantDto(p.Id, player?.DisplayName ?? p.Id, p.Active, player?.IsGuest ?? false);
+            return new MatchingParticipantDto(p.Id, player?.DisplayName ?? p.Id, p.Active,
+                player?.IsGuest ?? false, player?.AvatarSeed);
         }).ToList();
 
         MatchingSlotDto? Slot(MatchingSlotView? slot)
             => slot is null ? null : new MatchingSlotDto(slot.Slot, slot.QuestionId, slot.Prompt,
                 [.. slot.Options.Select(o => new MatchingOptionDto(KindName(o.Kind), o.ParticipantId,
                     o.ParticipantId is null ? null : lookup.GetValueOrDefault(o.ParticipantId)?.DisplayName ?? o.ParticipantId,
-                    o.ChoiceIndex, o.Text, o.Kind == (int)MatchingAnswerKind.NotApplicable))],
+                    o.ChoiceIndex, o.Text, o.Kind == (int)MatchingAnswerKind.NotApplicable,
+                    o.ParticipantId is null ? null : lookup.GetValueOrDefault(o.ParticipantId)?.AvatarSeed))],
                 slot.ServedAt, slot.AnsweredParticipantIds,
                 [.. slot.Answers.Select(a => new MatchingAnswerDto(KindName(a.Kind), a.ParticipantId,
-                    a.ChoiceIndex, a.At))]);
+                    a.ChoiceIndex, a.At, a.PlayerId))]);
 
         var own = view.OwnAnswer is null ? null : new MatchingAnswerDto(KindName(view.OwnAnswer.Kind),
-            view.OwnAnswer.ParticipantId, view.OwnAnswer.ChoiceIndex, view.OwnAnswer.At);
+            view.OwnAnswer.ParticipantId, view.OwnAnswer.ChoiceIndex, view.OwnAnswer.At, meId);
         var results = view.Results is null ? null : new MatchingResultsDto(
             [.. view.Results.Slots.Select(slot => slot is null ? null
                 : new MatchingSlotResultDto(slot.Slot, [.. slot.Counts], slot.AllAgreed))],
@@ -254,7 +265,8 @@ public static class MatchingEndpoints
         return new MatchingViewDto(view.Id, view.Code, "matching", ((Language)view.Lang).Code(), view.Capacity,
             ((MatchState)view.State).ToString().ToLowerInvariant(), participants, view.CurrentSlotIndex,
             view.TotalSlots, Slot(view.CurrentSlot), Slot(view.LastClosedSlot), own, view.CreatedAt,
-            view.EndedAt, results);
+            view.EndedAt, results, view.CategoryIds,
+            view.ClosedSlots is null ? null : [.. view.ClosedSlots.Select(Slot).OfType<MatchingSlotDto>()]);
     }
 
     private static string KindName(int kind) => (MatchingAnswerKind)kind switch

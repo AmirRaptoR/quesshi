@@ -57,6 +57,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Assert.NotNull(afterBarrier.Results);
         Assert.Equal([0, 0, 2], afterBarrier.Results!.Slots[0]!.Counts);
         Assert.Null(afterBarrier.Results.Slots[1]);
+        Assert.Single(afterBarrier.ClosedSlots!);
     }
 
     [Fact]

@@ -1,0 +1,142 @@
+@page "/play/matching"
+@inherits PageBase
+
+<PageTitle>@L["matching.settings.title"] · @L["app.name"]</PageTitle>
+
+<div class="shell">
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        <header class="topbar">
+            <a class="icon-hit icon-hit--back" href="/play" aria-label="@L["common.back"]">
+                <Icon Name="chevron-back" Size="1.4rem" />
+            </a>
+            <h1 class="topbar__title">@L["matching.settings.title"]</h1>
+        </header>
+
+        <section class="sheet enter">
+            <p class="muted" style="margin:0 0 1rem">@L["matching.settings.summary"]</p>
+
+            <div class="script-tiles" role="group" aria-label="@L["lang.pick"]">
+                @foreach (var lang in Translator.All)
+                {
+                    <button type="button" class="script-tile @(_lang == lang ? "is-on" : null)"
+                            aria-pressed="@(_lang == lang).ToString().ToLowerInvariant()"
+                            disabled="@_busy" @onclick="() => PickLangAsync(lang)">
+                        @L["lang." + lang]
+                    </button>
+                }
+            </div>
+
+            <div class="count-row" role="group" aria-label="@L["home.length"]" style="margin-top:1rem">
+                @foreach (var count in QuestionCounts)
+                {
+                    <button type="button" class="count-row__option @(_questions == count ? "is-on" : null)"
+                            aria-pressed="@(_questions == count).ToString().ToLowerInvariant()"
+                            disabled="@_busy" @onclick="() => _questions = count">
+                        @L.Num(count)
+                    </button>
+                }
+            </div>
+
+            <div class="row row--between" style="margin-top:1.1rem;align-items:baseline">
+                <span class="muted">@L["matching.lobby.categories"]</span>
+                @if (_categoryIds.Count > 0)
+                {
+                    <button type="button" class="any-pill" disabled="@_busy" @onclick="ClearCategories">
+                        @L["matching.lobby.anyCategories"]
+                    </button>
+                }
+            </div>
+            @if (_categories.Count > 0)
+            {
+                <div class="topic-grid" style="margin-top:.55rem">
+                    @foreach (var category in _categories)
+                    {
+                        var selected = _categoryIds.Contains(category.Id);
+                        <button type="button" class="topic-tile @(selected ? "is-on" : null)"
+                                aria-pressed="@selected.ToString().ToLowerInvariant()"
+                                disabled="@_busy" @onclick="() => ToggleCategory(category.Id)">
+                            <span class="topic-tile__icon" aria-hidden="true">@category.Icon</span>
+                            <span class="topic-tile__name" dir="auto">@CategoryName(category)</span>
+                            @if (selected)
+                            {
+                                <span class="topic-tile__check" aria-hidden="true">✓</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (_error is not null)
+            {
+                <div class="notice notice--bad" style="margin-top:1rem">@_error</div>
+            }
+            <button type="button" class="btn btn--done" disabled="@_busy" @onclick="CreateAsync">
+                @(_busy ? L["common.loading"] : L["matching.settings.create"])
+            </button>
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
+    private string _lang = "en";
+    private int _questions = 10;
+    private List<MatchingCategoryDto> _categories = [];
+    private List<string> _categoryIds = [];
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        _lang = State.Lang;
+        _categories = await Api.MatchingCategoriesAsync(_lang) ?? [];
+    }
+
+    private async Task PickLangAsync(string lang)
+    {
+        _lang = lang;
+        _categories = await Api.MatchingCategoriesAsync(lang) ?? [];
+        _categoryIds = [.. _categoryIds.Where(id => _categories.Any(category => category.Id == id))];
+    }
+
+    private void ToggleCategory(string id)
+        => _categoryIds = _categoryIds.Contains(id)
+            ? [.. _categoryIds.Where(category => category != id)]
+            : [.. _categoryIds, id];
+
+    private void ClearCategories() => _categoryIds = [];
+
+    private string CategoryName(MatchingCategoryDto category) => _lang switch
+    {
+        "fa" => Pick(category.NameFa, category.NameEn),
+        "nl" => Pick(category.NameNl, category.NameEn),
+        _ => Pick(category.NameEn, category.NameFa)
+    };
+
+    private static string Pick(string first, string second) => first.Length > 0 ? first : second;
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _error = null;
+        var matching = await Api.CreateMatchingLobbyAsync(HomeEntryPlan.DefaultCapacity, _lang,
+            _categoryIds.Count == 0 ? null : [.. _categoryIds], _questions);
+        _busy = false;
+        if (matching?.Code is { Length: > 0 } code)
+        {
+            Nav.NavigateTo($"/matching/lobby/{code}");
+            return;
+        }
+
+        _error = L["common.error"];
+    }
+}
