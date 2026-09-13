@@ -15,4 +15,5 @@ public sealed record MatchingView(
     [property: Id(9)] MatchingSlotView? LastClosedSlot,
     [property: Id(10)] MatchingAnswerView? OwnAnswer,
     [property: Id(11)] DateTimeOffset CreatedAt,
-    [property: Id(12)] DateTimeOffset? EndedAt);
+    [property: Id(12)] DateTimeOffset? EndedAt,
+    [property: Id(13)] MatchingResultsView? Results = null);

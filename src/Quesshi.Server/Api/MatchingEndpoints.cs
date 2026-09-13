@@ -244,9 +244,17 @@ public static class MatchingEndpoints
 
         var own = view.OwnAnswer is null ? null : new MatchingAnswerDto(KindName(view.OwnAnswer.Kind),
             view.OwnAnswer.ParticipantId, view.OwnAnswer.ChoiceIndex, view.OwnAnswer.At);
+        var results = view.Results is null ? null : new MatchingResultsDto(
+            [.. view.Results.Slots.Select(slot => slot is null ? null
+                : new MatchingSlotResultDto(slot.Slot, [.. slot.Counts], slot.AllAgreed))],
+            view.Results.PairStats is null ? null : [.. view.Results.PairStats.Select(pair =>
+                new MatchingPairStatDto(pair.FirstParticipantId, pair.SecondParticipantId, pair.Same,
+                    pair.Different, pair.AgreementPercent))],
+            view.Results.AllAgreedCount);
         return new MatchingViewDto(view.Id, view.Code, "matching", ((Language)view.Lang).Code(), view.Capacity,
             ((MatchState)view.State).ToString().ToLowerInvariant(), participants, view.CurrentSlotIndex,
-            view.TotalSlots, Slot(view.CurrentSlot), Slot(view.LastClosedSlot), own, view.CreatedAt, view.EndedAt);
+            view.TotalSlots, Slot(view.CurrentSlot), Slot(view.LastClosedSlot), own, view.CreatedAt,
+            view.EndedAt, results);
     }
 
     private static string KindName(int kind) => (MatchingAnswerKind)kind switch

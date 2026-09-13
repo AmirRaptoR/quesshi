@@ -42,6 +42,8 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.NotNull(ownerView!.OwnAnswer);
         Assert.Empty(ownerView.CurrentSlot!.Answers);
         Assert.Contains(ownerView.CurrentSlot.AnsweredParticipantIds, id => id == owner.Id);
+        Assert.Null(ownerView.Results!.PairStats);
+        Assert.Null(ownerView.Results.Slots.Single());
 
         var otherView = await otherClient.GetFromJsonAsync<MatchingViewDto>($"/api/matching/{lobby.Id}");
         Assert.Empty(otherView!.CurrentSlot!.Answers);
@@ -54,6 +56,92 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Equal(1, closedView!.CurrentSlotIndex);
         Assert.Equal(0, closedView.LastClosedSlot!.Slot);
         Assert.Equal(2, closedView.LastClosedSlot.Answers.Count);
+        Assert.NotNull(closedView.Results);
+        Assert.Null(closedView.Results!.PairStats);
+        Assert.Equal([0, 0, 2], closedView.Results.Slots[0]!.Counts);
+        Assert.Null(closedView.Results.Slots[1]);
+    }
+
+    [Fact]
+    public async Task One_answer_short_exposes_no_overall_stats_and_a_stranger_cannot_read_the_match()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = Player.Register($"owner-{prefix}", $"{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
+        var other = Player.Register($"other-{prefix}", $"other-{prefix}@example.com", "Other", Language.En, Shared.Clock.Now);
+        var stranger = Player.Register($"stranger-{prefix}", $"stranger-{prefix}@example.com", "Stranger", Language.En, Shared.Clock.Now);
+        await Shared.Players.UpsertAsync(owner);
+        await Shared.Players.UpsertAsync(other);
+        await Shared.Players.UpsertAsync(stranger);
+
+        await using var host = new MatchingApiTestHost(fixture.Cluster);
+        using var ownerClient = Authenticated(host, owner);
+        using var otherClient = Authenticated(host, other);
+        using var strangerClient = Authenticated(host, stranger);
+        var create = await ownerClient.PostAsJsonAsync("/api/matching/lobby",
+            new CreateMatchingLobbyDto("en", 10, [category], [], 2, "matching"));
+        var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
+        Assert.NotNull(lobby);
+        await otherClient.PostAsync($"/api/matching/join/{lobby!.Code}", null);
+        await ownerClient.PostAsync($"/api/matching/{lobby.Id}/start", null);
+
+        var submitted = await ownerClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
+            new SubmitMatchingAnswerDto(0, "participant", other.Id));
+        submitted.EnsureSuccessStatusCode();
+        var view = await submitted.Content.ReadFromJsonAsync<MatchingViewDto>();
+
+        Assert.NotNull(view!.Results);
+        Assert.Null(view.Results!.PairStats);
+        Assert.Null(view.Results.Slots.Single());
+        Assert.Equal(System.Net.HttpStatusCode.NotFound,
+            (await strangerClient.GetAsync($"/api/matching/{lobby.Id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Completed_match_exposes_pair_stats_only_to_participants()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var owner = Player.Register($"owner-{prefix}", $"{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
+        var other = Player.Register($"other-{prefix}", $"other-{prefix}@example.com", "Other", Language.En, Shared.Clock.Now);
+        var stranger = Player.Register($"stranger-{prefix}", $"stranger-{prefix}@example.com", "Stranger", Language.En, Shared.Clock.Now);
+        await Shared.Players.UpsertAsync(owner);
+        await Shared.Players.UpsertAsync(other);
+        await Shared.Players.UpsertAsync(stranger);
+
+        await using var host = new MatchingApiTestHost(fixture.Cluster);
+        using var ownerClient = Authenticated(host, owner);
+        using var otherClient = Authenticated(host, other);
+        using var strangerClient = Authenticated(host, stranger);
+        var create = await ownerClient.PostAsJsonAsync("/api/matching/lobby",
+            new CreateMatchingLobbyDto("en", 10, [category], [], 2, "matching"));
+        var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
+        Assert.NotNull(lobby);
+        await otherClient.PostAsync($"/api/matching/join/{lobby!.Code}", null);
+        await ownerClient.PostAsync($"/api/matching/{lobby.Id}/start", null);
+
+        MatchingViewDto? final = null;
+        for (var slot = 0; slot < 10; slot++)
+        {
+            var ownerAnswer = await ownerClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
+                new SubmitMatchingAnswerDto(slot, "participant", other.Id));
+            ownerAnswer.EnsureSuccessStatusCode();
+            var closed = await otherClient.PostAsJsonAsync($"/api/matching/{lobby.Id}/answer",
+                new SubmitMatchingAnswerDto(slot, "participant", other.Id));
+            closed.EnsureSuccessStatusCode();
+            final = await closed.Content.ReadFromJsonAsync<MatchingViewDto>();
+        }
+
+        Assert.Equal("resolved", final!.State);
+        Assert.NotNull(final.Results);
+        Assert.NotNull(final.Results!.PairStats);
+        var pair = Assert.Single(final.Results.PairStats!);
+        Assert.Equal(10, pair.Same);
+        Assert.Equal(0, pair.Different);
+        Assert.Equal(100, pair.AgreementPercent);
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound,
+            (await strangerClient.GetAsync($"/api/matching/{lobby.Id}")).StatusCode);
     }
 
     [Fact]

@@ -29,6 +29,9 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Assert.NotNull(started);
         Assert.Equal(0, started!.CurrentSlotIndex);
         Assert.Equal(2, started.CurrentSlot!.Options.Count(o => o.ParticipantId is not null));
+        Assert.NotNull(started.Results);
+        Assert.Null(started.Results!.PairStats);
+        Assert.Null(started.Results.Slots.Single());
 
         var answered = await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null);
         Assert.Equal(0, answered.CurrentSlotIndex);
@@ -51,6 +54,9 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         var afterBarrier = await grain.GetAsync(Other);
         Assert.Equal(1, afterBarrier!.CurrentSlotIndex);
         Assert.Equal(0, afterBarrier.LastClosedSlot!.Slot);
+        Assert.NotNull(afterBarrier.Results);
+        Assert.Equal([0, 0, 2], afterBarrier.Results!.Slots[0]!.Counts);
+        Assert.Null(afterBarrier.Results.Slots[1]);
     }
 
     [Fact]

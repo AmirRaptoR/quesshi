@@ -241,7 +241,10 @@ public sealed class MatchingMatchGrain(
     {
         if (string.IsNullOrWhiteSpace(state.State.Code)) return Task.FromResult<MatchingView?>(null);
         var currentState = (MatchState)state.State.State;
-        if (currentState == MatchState.InProgress && (_match is null || !_match.IsParticipant(playerId)))
+        // An open lobby is intentionally discoverable by code, but once questions have been served
+        // only a seated participant may read the match. This keeps closed answers and computed
+        // statistics private even after the match has resolved or ended no-contest.
+        if (_match is not null && !_match.IsParticipant(playerId))
             return Task.FromResult<MatchingView?>(null);
         return Task.FromResult<MatchingView?>(ViewFor(playerId));
     }
@@ -302,16 +305,30 @@ public sealed class MatchingMatchGrain(
         if (_match is null)
             return new MatchingView(IdString(), state.State.Code, state.State.Lang, state.State.Capacity,
                 (int)stateValue, [.. state.State.Participants.Select(id => new MatchingParticipantView(id, true))],
-                null, state.State.QuestionCount, null, null, null, state.State.CreatedAt, state.State.EndedAt);
+                null, state.State.QuestionCount, null, null, null, state.State.CreatedAt, state.State.EndedAt,
+                null);
 
         var snapshot = _match.ToSnapshot();
         var current = snapshot.CurrentSlot is { } index ? snapshot.Slots.FirstOrDefault(s => s.Slot == index) : null;
         var closed = current is null ? snapshot.Slots.LastOrDefault() : snapshot.Slots.FirstOrDefault(s => s.Slot == current.Slot - 1);
         var own = current?.Answers?.GetValueOrDefault(playerId);
+        var results = _match.IsParticipant(playerId) ? ResultsView(snapshot) : null;
         return new MatchingView(_match.Id, _match.Code, state.State.Lang, _match.Capacity, (int)_match.State,
             [.. _match.Participants.Select(id => new MatchingParticipantView(id, _match.IsActiveParticipant(id)))],
             _match.CurrentSlotIndex, snapshot.Questions.Count, SlotView(current, includeAnswers: false),
-            SlotView(closed, includeAnswers: true), AnswerView(own), _match.CreatedAt, _match.EndedAt);
+            SlotView(closed, includeAnswers: true), AnswerView(own), _match.CreatedAt, _match.EndedAt, results);
+    }
+
+    private static MatchingResultsView ResultsView(MatchingMatchSnapshot snapshot)
+    {
+        var results = MatchingResults.Compute(snapshot);
+        return new MatchingResultsView(
+            [.. results.Slots.Select(slot => slot is null ? null
+                : new MatchingSlotResultView(slot.Slot, [.. slot.Counts], slot.AllAgreed))],
+            results.PairStats is null ? null : [.. results.PairStats.Select(pair =>
+                new MatchingPairStatView(pair.FirstParticipantId, pair.SecondParticipantId, pair.Same,
+                    pair.Different, pair.AgreementPercent))],
+            results.AllAgreedCount);
     }
 
     private static MatchingSlotView? SlotView(MatchingSlotSnapshot? slot, bool includeAnswers)
