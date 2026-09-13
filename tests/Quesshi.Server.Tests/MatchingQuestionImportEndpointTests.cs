@@ -3,7 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Quesshi.Application.Ports;
 using Quesshi.Domain;
+using Quesshi.Server.Api;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
@@ -74,6 +76,9 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
         return (await response.Content.ReadFromJsonAsync<ImportReportDto>())!;
     }
 
+    private static async Task<string> RequestErrorAsync(HttpResponseMessage response)
+        => (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString()!;
+
     [Fact]
     public async Task Dry_run_is_default_and_accepts_participant_rows_without_writing()
     {
@@ -126,6 +131,22 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
     }
 
     [Fact]
+    public async Task Fixed_rows_require_two_choices_and_unknown_answer_sources_are_row_errors()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var tooFew = FixedRow(category, "too few", "only one");
+        var unknown = Row(category, "unknown source", "sometimes");
+        var good = FixedRow(category, "good", "one", "two");
+
+        var report = await ImportAsync(client, "csv", Csv(Header, tooFew, unknown, good));
+
+        Assert.Equal(["too_few_choices", "bad_answer_source", null], report.Rows.Select(r => r.Error));
+        Assert.Equal(1, report.Accepted);
+    }
+
+    [Fact]
     public async Task Topic_deduplication_is_per_language_and_applies_within_the_file()
     {
         using var client = AdminClient();
@@ -141,6 +162,44 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
 
         Assert.Equal(2, report.Accepted);
         Assert.Equal("duplicate_topic", report.Rows[1].Error);
+    }
+
+    [Theory]
+    [InlineData("subject-only", "")]
+    [InlineData("", "aspect-only")]
+    [InlineData("", "")]
+    public async Task Missing_either_topic_half_disables_deduplication(string subject, string aspect)
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var unique = Guid.NewGuid().ToString("N");
+
+        var report = await ImportAsync(client, "csv", Csv(Header,
+            Row(category, $"first-{unique}", subject: subject, aspect: aspect),
+            Row(category, $"second-{unique}", subject: subject, aspect: aspect)), dryRun: false);
+
+        Assert.Equal(2, report.Accepted);
+        Assert.All(report.Rows, row => Assert.Null(row.Error));
+    }
+
+    [Fact]
+    public async Task Dry_run_and_commit_have_the_same_row_outcomes_for_a_topicless_file()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var body = Csv(Header, Row(category, $"same-report-{Guid.NewGuid():N}"));
+
+        var dry = await ImportAsync(client, "csv", body);
+        var committed = await ImportAsync(client, "csv", body, dryRun: false);
+
+        Assert.True(dry.DryRun);
+        Assert.False(committed.DryRun);
+        Assert.Equal(dry.Total, committed.Total);
+        Assert.Equal(dry.Accepted, committed.Accepted);
+        Assert.Equal(dry.Rejected, committed.Rejected);
+        Assert.Equal(dry.Rows, committed.Rows);
     }
 
     [Fact]
@@ -186,6 +245,218 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
         var missingHeader = await PostAsync(client, "csv", "lang,prompt\nen,hello\n");
         Assert.Equal(HttpStatusCode.BadRequest, missingHeader.StatusCode);
         Assert.Equal("bad_row", (await missingHeader.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Malformed_row_numbers_are_data_row_ordinals()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var shortRow = string.Join(',', Row(category, "broken").Take(Header.Length - 1));
+        var good = Row(category, "after broken");
+
+        var report = await ImportAsync(client, "csv", Csv(Header) + shortRow + "\n" +
+            string.Join(',', good.Select(CsvField)) + "\n" +
+            string.Join(',', Row(category, "third").Select(CsvField)) + "\n");
+
+        Assert.Equal([1, 2, 3], report.Rows.Select(row => row.Row));
+        Assert.Equal("bad_row", report.Rows[0].Error);
+        Assert.True(report.Rows[1].Accepted);
+        Assert.True(report.Rows[2].Accepted);
+    }
+
+    [Theory]
+    [InlineData("xml", "bad_format")]
+    [InlineData("", "bad_format")]
+    public async Task Unsupported_formats_are_refused_before_reading_rows(string format, string expected)
+    {
+        using var client = AdminClient();
+
+        var response = await PostAsync(client, format, Csv(Header, Row("missing", "never read")));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(expected, await RequestErrorAsync(response));
+    }
+
+    [Fact]
+    public async Task An_empty_upload_is_a_request_error()
+    {
+        using var client = AdminClient();
+        using var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([]), "file", "matching.csv" }
+        };
+
+        var response = await client.PostAsync("/api/admin/matching/questions/import?format=csv", form);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("empty_file", await RequestErrorAsync(response));
+    }
+
+    [Fact]
+    public async Task An_upload_over_the_shared_twenty_megabyte_limit_is_refused_without_writing()
+    {
+        using var client = AdminClient();
+        var body = new string('x', checked((int)QuestionImport.MaxImportBytes + 1));
+
+        var response = await PostAsync(client, "csv", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("file_too_large", await RequestErrorAsync(response));
+    }
+
+    [Fact]
+    public async Task An_upload_over_the_shared_row_limit_is_refused_without_a_partial_report()
+    {
+        using var client = AdminClient();
+        var rows = Enumerable.Range(0, QuestionImport.MaxImportRows + 1)
+            .Select(i => Row("missing", $"row-{i}"));
+
+        var response = await PostAsync(client, "csv", Csv(Header, rows.ToArray()));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("too_many_rows", await RequestErrorAsync(response));
+    }
+
+    [Fact]
+    public async Task Unknown_extra_columns_are_ignored_but_a_short_data_row_is_reported_and_following_rows_continue()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var header = Header.Append("futureColumn").ToArray();
+        var shortRow = Row(category, "short row");
+        var good = Row(category, $"good row {Guid.NewGuid():N}");
+        var body = Csv(header, shortRow, good.Append("ignored"));
+
+        var report = await ImportAsync(client, "csv", body);
+
+        Assert.Equal(2, report.Total);
+        Assert.Equal("bad_row", report.Rows[0].Error);
+        Assert.Null(report.Rows[0].Prompt);
+        Assert.True(report.Rows[1].Accepted);
+    }
+
+    [Fact]
+    public async Task Inactive_and_trivia_categories_are_rejected_per_row_while_matching_rows_continue()
+    {
+        using var client = AdminClient();
+        var inactive = CategoryId;
+        var active = CategoryId;
+        await SeedCategoryAsync(client, inactive, active: false);
+        await SeedCategoryAsync(client, active);
+
+        var report = await ImportAsync(client, "csv", Csv(Header,
+            Row(inactive, "inactive"), Row("geography", "trivia"), Row(active, "valid")));
+
+        Assert.Equal(["inactive_category", "unknown_category", null], report.Rows.Select(r => r.Error));
+        Assert.Equal(1, report.Accepted);
+    }
+
+    [Fact]
+    public async Task Commit_persists_status_media_source_and_topic_with_normalized_values()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var row = FixedRow(category, "persisted");
+        row[4] = " one ";
+        row[5] = "two";
+        row[12] = " https://example.test/picture.png ";
+        row[13] = " IMAGE ";
+        row[14] = "Subject";
+        row[15] = "Aspect";
+        row[16] = "APPROVED";
+
+        var report = await ImportAsync(client, "csv", Csv(Header, row), dryRun: false);
+
+        Assert.True(report.Rows.Single().Accepted);
+        var saved = (await client.GetFromJsonAsync<AdminMatchingQuestionPageDto>(
+            "/api/admin/matching/questions?text=persisted"))!.Items.Single();
+        Assert.Equal("fixed", saved.AnswerSource);
+        Assert.Equal(["one", "two"], saved.Choices);
+        Assert.Equal("approved", saved.Status);
+        Assert.Equal("admin", saved.Source);
+        Assert.Equal("image", saved.Media!.Kind);
+        Assert.Equal("https://example.test/picture.png", saved.Media.Url);
+        Assert.Equal("subject|aspect", saved.Topic);
+    }
+
+    [Fact]
+    public async Task The_matching_import_requires_admin_authorization_but_does_not_require_an_antiforgery_token()
+    {
+        using var anonymous = _host.NewClient();
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent(Csv(Header, Row("missing", "unauthorized")), Encoding.UTF8), "file", "matching.csv" }
+        };
+
+        var response = await anonymous.PostAsync("/api/admin/matching/questions/import?format=csv", form);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_unique_index_race_marks_the_specific_losing_row_in_the_report()
+    {
+        var categories = new FakeMatchingCategories();
+        categories.Items.Add(new MatchingCategory("m-race", "واردات", "Import", "◆", "#123456", true, 1));
+        var questions = new RaceMatchingQuestions(rejectFirstWrite: true);
+        var body = Csv(Header,
+            Row("race", "first", subject: "first", aspect: "topic"),
+            Row("race", "second", subject: "second", aspect: "topic"));
+
+        var (error, report) = await MatchingQuestionImport.RunAsync("csv",
+            new MemoryStream(Encoding.UTF8.GetBytes(body)), Encoding.UTF8.GetByteCount(body), false,
+            questions, categories, new TimeProviderClock(TimeProvider.System), new FakeIdFactory());
+
+        Assert.Null(error);
+        Assert.NotNull(report);
+        Assert.Equal([false, true], report!.Rows.Select(row => row.Accepted));
+        Assert.Equal("duplicate_topic", report.Rows[0].Error);
+        Assert.Equal(1, report.Accepted);
+        Assert.Single(questions.Items, question => question.Prompt == "second");
+    }
+
+    private sealed class RaceMatchingQuestions(bool rejectFirstWrite) : IMatchingQuestionRepository
+    {
+        public readonly List<MatchingQuestion> Items = [];
+        private bool _rejectFirstWrite = rejectFirstWrite;
+
+        public Task<MatchingQuestion?> GetAsync(string id, CancellationToken ct = default)
+            => Task.FromResult(Items.FirstOrDefault(question => question.Id == id));
+
+        public Task<IReadOnlyList<MatchingQuestion>> FindAsync(MatchingQuestionFilter filter,
+            CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MatchingQuestion>>([]);
+
+        public Task<long> CountAsync(MatchingQuestionFilter filter, CancellationToken ct = default)
+            => Task.FromResult(0L);
+
+        public Task<IReadOnlyList<MatchingQuestion>> SampleApprovedAsync(Language lang, string categoryId,
+            int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<MatchingQuestion>>([]);
+
+        public Task UpsertAsync(MatchingQuestion question, CancellationToken ct = default)
+        {
+            if (_rejectFirstWrite)
+            {
+                _rejectFirstWrite = false;
+                throw new InvalidOperationException("duplicate topic race");
+            }
+
+            Items.Add(question);
+            return Task.CompletedTask;
+        }
+
+        public Task<int> UpsertManyAsync(IReadOnlyList<MatchingQuestion> questions,
+            CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task DeleteAsync(string id, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlySet<string>>(Items.Where(question => question.Lang == lang && question.Topic is not null)
+                .Select(question => question.Topic!).ToHashSet());
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
