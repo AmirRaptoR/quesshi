@@ -218,6 +218,31 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
     }
 
     [Fact]
+    public async Task CSV_rejects_unterminated_and_misplaced_quotes_as_row_errors()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+
+        var misplaced = Row(category, "bad\"quote");
+        var good = Row(category, "after misplaced quote");
+        var unterminated = Row(category, "\"unterminated");
+        // Keep the final row raw: CsvField would escape the opening quote and turn it into a valid
+        // quoted value, which is precisely what this case must not do.
+        var body = Csv(Header)
+            + string.Join(',', misplaced) + "\n"
+            + string.Join(',', good) + "\n"
+            + string.Join(',', unterminated) + "\n";
+
+        var report = await ImportAsync(client, "csv", body);
+
+        Assert.Equal(3, report.Total);
+        Assert.Equal(["bad_row", null, "bad_row"], report.Rows.Select(row => row.Error));
+        Assert.Equal("after misplaced quote", report.Rows[1].Prompt);
+        Assert.Equal(1, report.Accepted);
+    }
+
+    [Fact]
     public async Task Templates_use_the_seeded_matching_category_and_both_formats_are_importable()
     {
         using var client = AdminClient();

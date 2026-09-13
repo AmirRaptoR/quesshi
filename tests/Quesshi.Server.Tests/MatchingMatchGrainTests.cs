@@ -98,6 +98,41 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Archive_failure_is_replayed_from_the_durable_marker_after_reactivation()
+    {
+        var prefix = Guid.NewGuid().ToString("N");
+        var category = Seed(prefix);
+        var id = $"matching-archive-retry-{prefix}";
+        var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id);
+        await grain.CreateAsync($"M{prefix[..5]}", Owner, (int)Language.En, 10, [category], 2);
+        await grain.JoinAsync(Other);
+        Assert.True(await grain.StartAsync(Owner));
+
+        Shared.Archive.FailingWritesRemaining = 1;
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => grain.AnswerAsync(
+                Owner, 0, (int)MatchingAnswerKind.NotApplicable, null, null));
+        }
+        finally
+        {
+            Shared.Archive.FailingWritesRemaining = 0;
+        }
+
+        // The hot state was committed before the simulated archive outage. A fresh activation must
+        // notice the durable outbox marker and make the archive converge without another answer.
+        await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id)
+            .AsReference<IGrainManagementExtension>().DeactivateOnIdle();
+        await Task.Delay(300);
+
+        var restored = await fixture.Cluster.GrainFactory.GetGrain<IMatchingMatchGrain>(id).GetAsync(Owner);
+        Assert.NotNull(restored!.OwnAnswer);
+        var archived = Assert.Single(Shared.Archive.Items, item => item.Id == id);
+        Assert.Equal(MatchState.InProgress, archived.State);
+        Assert.Equal(10, archived.QuestionIds.Count);
+    }
+
+    [Fact]
     public async Task Reminder_expires_idle_match_and_is_safe_to_run_again()
     {
         var prefix = Guid.NewGuid().ToString("N");

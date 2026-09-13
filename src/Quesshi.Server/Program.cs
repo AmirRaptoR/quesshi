@@ -217,6 +217,18 @@ using (var scope = app.Services.CreateScope())
     try
     {
         await scope.ServiceProvider.GetRequiredService<MongoContext>().EnsureIndexesAsync();
+    }
+    catch (Exception ex)
+    {
+        // Required indexes include the unique matching code/topic constraints. Running without
+        // them changes correctness (not merely performance), so do not advertise a healthy app
+        // after an incomplete migration or an unavailable Mongo instance.
+        logger.LogCritical(ex, "Required Mongo indexes could not be created; stopping startup.");
+        throw;
+    }
+
+    try
+    {
         await scope.ServiceProvider.GetRequiredService<Seeder>().RunAsync(app.Environment.ContentRootPath);
 
         // Bootstrap: an install with no administrator has no way in, so make one and say so loudly.
@@ -245,7 +257,7 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Start-up seeding failed — is Mongo running? The app will keep going.");
+        logger.LogError(ex, "Start-up seeding/bootstrap failed; the app will keep going with diagnostics above.");
     }
 }
 

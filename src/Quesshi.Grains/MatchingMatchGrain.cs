@@ -30,6 +30,8 @@ public sealed class MatchingMatchGrain(
     {
         if (!string.IsNullOrWhiteSpace(state.State.Json))
             _match = MatchingMatch.FromSnapshot(JsonSerializer.Deserialize<MatchingMatchSnapshot>(state.State.Json)!);
+        if (state.State.ArchivePending)
+            await ReconcileArchiveAsync();
         if (_match?.IsOver == true)
             await UnregisterReminderSafeAsync();
     }
@@ -285,8 +287,44 @@ public sealed class MatchingMatchGrain(
             state.State.State = (int)_match.State;
             state.State.EndedAt = _match.EndedAt;
         }
+
+        // The marker is part of the same durable write as the hot state. If the process dies after
+        // this write, activation has enough information to replay the archive write. ReplaceOne
+        // makes that replay idempotent, and leaving the marker set on an archive exception keeps a
+        // later activation from silently losing the mirror update.
+        state.State.ArchivePending = true;
         await state.WriteStateAsync();
         await archive.SaveAsync(ToArchive());
+
+        // Clearing the marker is deliberately a second durable write. If this write is interrupted,
+        // activation simply repeats the already-successful archive replacement.
+        state.State.ArchivePending = false;
+        await state.WriteStateAsync();
+    }
+
+    private async Task ReconcileArchiveAsync()
+    {
+        try
+        {
+            await archive.SaveAsync(ToArchive());
+            state.State.ArchivePending = false;
+            await state.WriteStateAsync();
+        }
+        catch (MatchCodeCollisionException ex)
+        {
+            // A collision can only mean this grain was the losing create attempt. Preserve the
+            // create path's cleanup semantics if a process stopped between the collision and clear.
+            logger.LogWarning(ex, "Clearing orphaned matching grain {MatchId} after archive code collision", IdString());
+            _match = null;
+            await state.ClearStateAsync();
+            state.State = new MatchingMatchStateRecord();
+        }
+        catch (Exception ex)
+        {
+            // Activation remains usable even when the archive is temporarily unavailable. The
+            // durable marker stays true, so a later activation can retry without losing the state.
+            logger.LogWarning(ex, "Matching archive reconciliation failed for {MatchId}", IdString());
+        }
     }
 
     private ArchivedMatch ToArchive()

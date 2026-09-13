@@ -15,4 +15,9 @@ public sealed class MatchingMatchStateRecord
     [Id(8)] public DateTimeOffset CreatedAt { get; set; }
     [Id(9)] public int State { get; set; }
     [Id(10)] public DateTimeOffset? EndedAt { get; set; }
+    /// <summary>
+    /// The hot snapshot was durably written before its archive mirror. A true value is an outbox
+    /// marker: activation retries the idempotent archive write before clearing it.
+    /// </summary>
+    [Id(11)] public bool ArchivePending { get; set; }
 }

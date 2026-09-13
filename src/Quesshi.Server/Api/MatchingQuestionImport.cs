@@ -173,8 +173,10 @@ public static class MatchingQuestionImport
         var records = ReadCsvRecords(reader.ReadToEnd());
         if (records.Count == 0) return (null, [], []);
 
-        var header = records[0].Select((value, index) => index == 0 ? value.TrimStart('\uFEFF').Trim().ToLowerInvariant() : value.Trim().ToLowerInvariant()).ToList();
-        if (!header.ToHashSet(StringComparer.Ordinal).IsSupersetOf(RequiredColumns)) return ("bad_row", null, null);
+        var headerRecord = records[0];
+        var header = headerRecord.Fields.Select((value, index) => index == 0 ? value.TrimStart('\uFEFF').Trim().ToLowerInvariant() : value.Trim().ToLowerInvariant()).ToList();
+        if (headerRecord.Malformed || !header.ToHashSet(StringComparer.Ordinal).IsSupersetOf(RequiredColumns))
+            return ("bad_row", null, null);
 
         var rows = new List<Dictionary<string, string>>();
         var malformed = new List<int>();
@@ -182,20 +184,25 @@ public static class MatchingQuestionImport
         {
             var record = records[i];
             var map = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (record.Count != header.Count) malformed.Add(i - 1);
-            else for (var c = 0; c < header.Count; c++) map[header[c]] = record[c];
+            if (record.Malformed || record.Fields.Count != header.Count) malformed.Add(i - 1);
+            else for (var c = 0; c < header.Count; c++) map[header[c]] = record.Fields[c];
             rows.Add(map);
         }
 
         return (null, rows, malformed);
     }
 
-    private static List<List<string>> ReadCsvRecords(string text)
+    private sealed record CsvRecord(List<string> Fields, bool Malformed);
+
+    private static List<CsvRecord> ReadCsvRecords(string text)
     {
-        var records = new List<List<string>>();
+        var records = new List<CsvRecord>();
         var record = new List<string>();
         var field = new StringBuilder();
         var quoted = false;
+        var quoteClosed = false;
+        var fieldStarted = false;
+        var malformed = false;
         var sawAny = false;
         for (var i = 0; i < text.Length;)
         {
@@ -203,22 +210,53 @@ public static class MatchingQuestionImport
             if (quoted)
             {
                 if (c == '"' && i < text.Length && text[i] == '"') { field.Append('"'); i++; }
-                else if (c == '"') quoted = false;
+                else if (c == '"') { quoted = false; quoteClosed = true; }
                 else field.Append(c);
                 continue;
             }
-            if (c == '"') { quoted = true; sawAny = true; continue; }
-            if (c == ',') { record.Add(field.ToString()); field.Clear(); sawAny = true; continue; }
+            if (c == '"')
+            {
+                // A quote is legal only at the beginning of a field. Quotes in ordinary text are
+                // malformed, as is a quote after a quoted field has already been closed.
+                if (fieldStarted) malformed = true;
+                else quoted = true;
+                fieldStarted = true;
+                sawAny = true;
+                continue;
+            }
+            if (c == ',')
+            {
+                record.Add(field.ToString());
+                field.Clear();
+                fieldStarted = false;
+                quoteClosed = false;
+                sawAny = true;
+                continue;
+            }
             if (c == '\r') continue;
-            if (c == '\n') { record.Add(field.ToString()); field.Clear(); records.Add(record); record = []; sawAny = false; continue; }
-            field.Append(c); sawAny = true;
+            if (c == '\n')
+            {
+                record.Add(field.ToString());
+                field.Clear();
+                records.Add(new CsvRecord(record, malformed || quoted));
+                record = [];
+                fieldStarted = false;
+                quoteClosed = false;
+                malformed = false;
+                sawAny = false;
+                continue;
+            }
+            if (quoteClosed) malformed = true;
+            field.Append(c);
+            fieldStarted = true;
+            sawAny = true;
         }
         if (sawAny || field.Length > 0 || record.Count > 0)
         {
             record.Add(field.ToString());
-            records.Add(record);
+            records.Add(new CsvRecord(record, malformed || quoted));
         }
-        return [.. records.Where(r => r.Count > 1 || r[0].Length > 0)];
+        return [.. records.Where(r => r.Fields.Count > 1 || r.Fields[0].Length > 0 || r.Malformed)];
     }
 
     private static (string? Error, List<Dictionary<string, string>>? Rows, List<int>? Malformed) ParseJson(Stream content)

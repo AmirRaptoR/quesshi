@@ -18,6 +18,9 @@ public sealed class FakeArchive : IMatchArchive
     /// <summary>Causes the next matching archive write to lose the shared code-index race.</summary>
     public int CollisionWritesRemaining;
 
+    /// <summary>Causes the next matching archive writes to fail as a transient archive outage.</summary>
+    public int FailingWritesRemaining;
+
     /// <summary>
     /// Guards every touch of <see cref="Items"/> that happens from inside this class. Real grain
     /// activations — not just the test method's own call stack — can call in here: a live duel's
@@ -37,6 +40,11 @@ public sealed class FakeArchive : IMatchArchive
         {
             CollisionWritesRemaining--;
             throw new MatchCodeCollisionException(m.Code);
+        }
+        if (m.Mode == GameMode.Matching && FailingWritesRemaining > 0)
+        {
+            FailingWritesRemaining--;
+            throw new InvalidOperationException("Simulated archive outage.");
         }
         lock (_lock) { Items.RemoveAll(x => x.Id == m.Id); Items.Add(m); }
         return Task.CompletedTask;
