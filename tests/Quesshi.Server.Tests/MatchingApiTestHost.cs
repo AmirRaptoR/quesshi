@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,6 +10,7 @@ using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Hubs;
 
 namespace Quesshi.Server.Tests;
 
@@ -35,6 +38,10 @@ public sealed class MatchingApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<IPlayerRepository>(Shared.Players);
                 services.AddSingleton<IClock>(Shared.Clock);
                 services.AddSingleton<IIdFactory>(new FakeIdFactory(Interlocked.Increment(ref _seed) * 10_000));
+                services.AddSingleton<IQuestionRepository>(Shared.Questions);
+                services.AddSingleton<ICategoryRepository>(Shared.Categories);
+                services.AddSignalR();
+                services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
                 services.AddSingleton<IMatchingCategoryRepository>(Shared.MatchingCategories);
                 services.AddSingleton<IMatchingQuestionRepository>(Shared.MatchingQuestions);
                 services.AddSingleton<IMatchingNotifier>(Shared.MatchingNotifier);
@@ -46,11 +53,20 @@ public sealed class MatchingApiTestHost(TestCluster cluster) : IAsyncDisposable
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.UseEndpoints(endpoints => endpoints.MapMatching());
+                app.UseEndpoints(endpoints => endpoints.MapHub<LiveHub>("/hub/live"));
             });
         }).Start();
 
     private static int _seed;
     public HttpClient NewClient() => _host.GetTestServer().CreateClient();
+    public HubConnection NewHubConnection(string token) => new HubConnectionBuilder()
+        .WithUrl("http://localhost/hub/live", options =>
+        {
+            options.HttpMessageHandlerFactory = _ => _host.GetTestServer().CreateHandler();
+            options.Transports = HttpTransportType.LongPolling;
+            options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+        })
+        .Build();
     public async ValueTask DisposeAsync()
     {
         await _host.StopAsync();
