@@ -223,7 +223,7 @@ public static class MatchingEndpoints
         return Enum.IsDefined(kind);
     }
 
-    private static async Task<MatchingViewDto> ToDtoAsync(MatchingView view, string meId, IPlayerRepository players)
+    internal static async Task<MatchingViewDto> ToDtoAsync(MatchingView view, string meId, IPlayerRepository players)
     {
         var people = await players.GetManyAsync(view.Participants.Select(p => p.Id).ToList());
         var lookup = people.ToDictionary(p => p.Id);

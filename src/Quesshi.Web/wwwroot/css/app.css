@@ -1920,3 +1920,10 @@ input[type='range'] { accent-color: var(--firouzeh); }
   padding-top: 1.75rem;
   background: linear-gradient(180deg, rgb(9 14 34 / 0), var(--shab) 45%);
 }
+
+/* Matching deliberately has no clock, score ring, correctness colours or sound affordance. These
+   small roster tiles keep presence visible while the answer surface remains ordinary answer buttons. */
+.matching-players { display:flex; flex-wrap:wrap; gap:.55rem; }
+.matching-player { display:flex; align-items:center; gap:.35rem; padding:.35rem .55rem; border:1px solid var(--line); border-radius:999px; }
+.matching-player.is-left { opacity:.58; }
+.matching-player__name { font-size:var(--step--1); font-weight:700; }

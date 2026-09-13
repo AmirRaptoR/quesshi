@@ -216,6 +216,9 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// <summary>The live twin: signs in as a guest and pins them to the lobby they were invited to.</summary>
     public async Task SignInAsGuestLiveAsync(GuestLiveResultDto result) => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Live.Id, isLive: true);
 
+    public async Task SignInAsGuestMatchingAsync(GuestMatchingResultDto result)
+        => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Matching.Id, isLive: false);
+
     private async Task SignInAsGuestCoreAsync(string token, MeDto me, string matchId, bool isLive)
     {
         Apply(token);
