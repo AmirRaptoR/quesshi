@@ -31,6 +31,26 @@ public static class MatchingAdminEndpoints
                 await questions.CountAsync(filter));
         });
 
+        // Matching imports stay in this bounded context. In particular, do not add these fields to
+        // the trivia importer: matching has no level or correct answer and its choices come from a
+        // declared answer source.
+        admin.MapPost("/matching/questions/import", async (IFormFile? file, string? format,
+            IMatchingQuestionRepository questions, IMatchingCategoryRepository categories,
+            IClock clock, IIdFactory ids, bool dryRun = true) =>
+        {
+            await using var stream = file?.OpenReadStream();
+            var (error, report) = await MatchingQuestionImport.RunAsync(format, stream, file?.Length ?? 0,
+                dryRun, questions, categories, clock, ids);
+            return error is not null ? Results.BadRequest(new { error }) : Results.Ok(report);
+        }).DisableAntiforgery();
+
+        admin.MapGet("/matching/questions/import/template", (string? format) =>
+        {
+            var (error, template) = MatchingQuestionImportTemplates.Build(format);
+            if (error is not null) return Results.BadRequest(new { error });
+            return Results.File(template!.Content, template.ContentType, template.FileName);
+        });
+
         admin.MapPost("/matching/questions", async (SaveMatchingQuestionDto body,
             IMatchingQuestionRepository questions, IMatchingCategoryRepository categories,
             IClock clock, IIdFactory ids) =>
