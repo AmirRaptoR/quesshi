@@ -26,6 +26,7 @@ public sealed class LobbyClient : IAsyncDisposable
     public event Action<string>? ChallengeExpired;
     public event Action<string>? ChallengeDeclined;
     public event Action<string>? DuelReady;
+    public event Action<string, string>? MatchingReady;
     public event Action<string>? ChallengeFailed;
 
     /// <summary>Surfaces <see cref="HubConnection.Closed"/> — fired once the reconnect attempts
@@ -49,6 +50,7 @@ public sealed class LobbyClient : IAsyncDisposable
         _connection.On<string>("ChallengeExpired", id => ChallengeExpired?.Invoke(id));
         _connection.On<string>("ChallengeDeclined", id => ChallengeDeclined?.Invoke(id));
         _connection.On<string>("DuelReady", matchId => DuelReady?.Invoke(matchId));
+        _connection.On<string, string>("MatchingReady", (matchId, code) => MatchingReady?.Invoke(matchId, code));
         _connection.On<string>("ChallengeFailed", id => ChallengeFailed?.Invoke(id));
     }
 
@@ -187,6 +189,19 @@ public sealed class LobbyClient : IAsyncDisposable
         try
         {
             return await _connection.InvokeAsync<int>("InviteToLobby", targetId, lobbyId, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<int?> InviteToMatchingLobbyAsync(string targetId, string lobbyId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return await _connection.InvokeAsync<int>("InviteToMatchingLobby", targetId, lobbyId, ct);
         }
         catch
         {

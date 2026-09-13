@@ -28,6 +28,13 @@ public class LobbyPresentationTests
             Participants: participants, Capacity: capacity,
             Settings: new DuelSettingsDto("en", questionCount, [], []), SettingsLocked: settingsLocked);
 
+    private static MatchingViewDto MatchingSample(List<LiveParticipantDto> participants, int capacity = 4,
+        string state = "awaitingopponent", int questionCount = 6, List<string>? categories = null)
+        => new("matching-1", "MATCH1", "matching", "en", capacity, state,
+            [.. participants.Select(p => new MatchingParticipantDto(p.PlayerId, p.Name, true, p.IsGuest, p.Avatar))],
+            null, questionCount, null, null, null, DateTimeOffset.UtcNow, null,
+            CategoryIds: categories ?? []);
+
     [Fact]
     public void The_owner_is_always_the_first_seated_participant()
     {
@@ -180,6 +187,21 @@ public class LobbyPresentationTests
         var snapshot = LobbyPresentation.From(AsyncSample([P("amir"), P("sara")], state: "inprogress", canPlay: false));
 
         Assert.Equal("/duel/m1", LobbyPresentation.TargetRoute(snapshot));
+    }
+
+    [Fact]
+    public void Matching_projects_into_the_same_lobby_snapshot_with_its_own_categories()
+    {
+        var snapshot = LobbyPresentation.From(MatchingSample([P("amir"), P("sara")],
+            questionCount: 12, categories: ["friends", "family"]));
+
+        Assert.True(snapshot.IsMatching);
+        Assert.False(snapshot.IsLive);
+        Assert.True(snapshot.Waiting);
+        Assert.Equal(12, snapshot.Settings.QuestionCount);
+        Assert.Equal(["friends", "family"], snapshot.Settings.CategoryIds);
+        Assert.True(LobbyPresentation.CanStart(snapshot, "amir"));
+        Assert.Equal("/matching/matching-1", LobbyPresentation.TargetRoute(snapshot));
     }
 
     [Fact]

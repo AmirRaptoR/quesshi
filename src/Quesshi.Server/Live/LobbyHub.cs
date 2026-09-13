@@ -161,7 +161,15 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     /// the owner, matching the issue's ask, without this method needing to re-derive who created the
     /// lobby just to enforce it a second time.
     /// </summary>
-    public async Task<int> InviteToLobby(string targetId, string lobbyId)
+    public Task<int> InviteToLobby(string targetId, string lobbyId)
+        => InviteToLobbyAsync(targetId, lobbyId, matching: false);
+
+    /// <summary>Matching counterpart used by the shared lobby renderer. Authentication, friendship
+    /// and guest-target rules are identical; only the grain that owns the destination lobby differs.</summary>
+    public Task<int> InviteToMatchingLobby(string targetId, string lobbyId)
+        => InviteToLobbyAsync(targetId, lobbyId, matching: true);
+
+    private async Task<int> InviteToLobbyAsync(string targetId, string lobbyId, bool matching)
     {
         if (RequirePlayer() is not { } inviterId) return (int)LiveChallengeResult.NotFound;
         if (inviterId == targetId) return (int)LiveChallengeResult.SelfChallenge;
@@ -173,7 +181,9 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         var target = await players.GetAsync(targetId);
         if (target is null || target.IsGuest) return (int)LiveChallengeResult.NotFound;
 
-        return await Matchmaking.ChallengeAsync(ids.NewId(), inviterId, targetId, lobbyId);
+        return matching
+            ? await Matchmaking.ChallengeMatchingAsync(ids.NewId(), inviterId, targetId, lobbyId)
+            : await Matchmaking.ChallengeAsync(ids.NewId(), inviterId, targetId, lobbyId);
     }
 
     public Task<LiveChallengeAcceptResult> Accept(string challengeId)
@@ -213,5 +223,5 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     }
 
     private static LiveChallengeNotice ToNotice(LiveChallengeView c)
-        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt);
+        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt, c.Matching);
 }

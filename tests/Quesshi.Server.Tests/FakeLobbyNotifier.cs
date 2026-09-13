@@ -32,6 +32,10 @@ public sealed class FakeLobbyNotifier : ILobbyNotifier
     public Task DuelReadyAsync(string playerId, string matchId, CancellationToken ct = default)
         => Record("DuelReady", playerId, matchId);
 
+    public Task MatchingReadyAsync(string playerId, string matchId, string lobbyCode,
+        CancellationToken ct = default)
+        => Record("MatchingReady", playerId, (matchId, lobbyCode));
+
     public Task ChallengeFailedAsync(string playerId, string challengeId, CancellationToken ct = default)
         => Record("ChallengeFailed", playerId, challengeId);
 

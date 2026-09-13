@@ -15,7 +15,7 @@
     else
     {
         <header class="topbar">
-            <a class="icon-hit icon-hit--back" href="/play" aria-label="@L["common.back"]">
+            <a class="icon-hit icon-hit--back" href="@_return" aria-label="@L["common.back"]">
                 <Icon Name="chevron-back" Size="1.4rem" />
             </a>
             <h1 class="topbar__title">@L["matching.settings.title"]</h1>
@@ -79,8 +79,8 @@
             {
                 <div class="notice notice--bad" style="margin-top:1rem">@_error</div>
             }
-            <button type="button" class="btn btn--done" disabled="@_busy" @onclick="CreateAsync">
-                @(_busy ? L["common.loading"] : L["matching.settings.create"])
+            <button type="button" class="btn btn--done" disabled="@_busy" @onclick="DoneAsync">
+                @(_busy ? L["common.loading"] : _lobbyId is null ? L["matching.settings.create"] : L["questions.done"])
             </button>
         </section>
     }
@@ -93,12 +93,20 @@
     private List<MatchingCategoryDto> _categories = [];
     private List<string> _categoryIds = [];
     private string? _error;
+    private string? _lobbyId;
+    private string _return = QuestionsDraft.Home;
     private bool _busy;
 
     protected override async Task LoadAsync()
     {
-        _lang = State.Lang;
+        var draft = QuestionsDraft.Read(Nav.Uri, new DuelSettingsDto(State.Lang, 10, [], []));
+        _lang = draft.Lang;
+        _questions = draft.QuestionCount;
+        _categoryIds = [.. draft.Topics];
+        _lobbyId = draft.LobbyId;
+        _return = draft.Return;
         _categories = await Api.MatchingCategoriesAsync(_lang) ?? [];
+        _categoryIds = [.. _categoryIds.Where(id => _categories.Any(category => category.Id == id))];
     }
 
     private async Task PickLangAsync(string lang)
@@ -124,10 +132,22 @@
 
     private static string Pick(string first, string second) => first.Length > 0 ? first : second;
 
-    private async Task CreateAsync()
+    private async Task DoneAsync()
     {
         _busy = true;
         _error = null;
+
+        if (_lobbyId is { Length: > 0 } lobbyId)
+        {
+            var lobby = await Api.MatchingAsync(lobbyId);
+            var saved = lobby is not null && await Api.UpdateMatchingSettingsAsync(lobbyId,
+                lobby.Capacity, _lang, _categoryIds, _questions);
+            _busy = false;
+            if (saved) Nav.NavigateTo(_return);
+            else _error = L["common.error"];
+            return;
+        }
+
         var matching = await Api.CreateMatchingLobbyAsync(HomeEntryPlan.DefaultCapacity, _lang,
             _categoryIds.Count == 0 ? null : [.. _categoryIds], _questions);
         _busy = false;

@@ -17,7 +17,8 @@ public sealed record LobbySnapshot(
     DuelSettingsDto Settings, bool SettingsLocked,
     /// <summary>A live lobby's own clock (<c>LiveRules.LobbyExpires</c>, 10 minutes from creation);
     /// null for an async lobby, whose 48-hour deadline is not worth counting down live.</summary>
-    DateTimeOffset? LobbyEndsAt = null);
+    DateTimeOffset? LobbyEndsAt = null,
+    bool IsMatching = false);
 
 public static class LobbyPresentation
 {
@@ -37,6 +38,18 @@ public static class LobbyPresentation
     public static LobbySnapshot From(MatchSummaryDto v) => new(
         v.Id, v.Code, IsLive: false, Waiting: v.State == "awaitingopponent", v.CanPlay,
         v.Participants ?? [], v.Capacity, v.Settings ?? new DuelSettingsDto(v.Lang, v.Questions, [], []), v.SettingsLocked);
+
+    /// <summary>Matching carries its own participant and category DTOs, but a lobby only needs their
+    /// names, avatars, seats and settings. Projecting them here lets the same lobby renderer serve all
+    /// modes without leaking matching's answer model into the trivia contracts.</summary>
+    public static LobbySnapshot From(MatchingViewDto v) => new(
+        v.Id, v.Code, IsLive: false,
+        Waiting: v.State is "awaitingopponent" or "awaiting_opponent", CanPlay: false,
+        [.. v.Participants.Select(p => new LiveParticipantDto(p.Id, p.DisplayName,
+            p.AvatarSeed ?? p.Id, p.IsGuest))],
+        v.Capacity, new DuelSettingsDto(v.Lang, v.TotalSlots, v.CategoryIds ?? [], []),
+        SettingsLocked: v.State is not ("awaitingopponent" or "awaiting_opponent"),
+        LobbyEndsAt: null, IsMatching: true);
 
     /// <summary>Every lobby's own invariant: <c>Participants[0]</c> is always whoever created it.</summary>
     public static bool IsOwner(LobbySnapshot s, string meId) => s.Participants.Count > 0 && s.Participants[0].PlayerId == meId;
@@ -67,7 +80,9 @@ public static class LobbyPresentation
     /// <summary>Where a page holding this snapshot belongs once it is no longer waiting — read the
     /// other way, this is exactly what Duel.razor/Live.razor send a still-waiting visitor to instead:
     /// this page, at <c>/lobby/{Code}</c>.</summary>
-    public static string TargetRoute(LobbySnapshot s) => s.IsLive
+    public static string TargetRoute(LobbySnapshot s) => s.IsMatching
+        ? $"/matching/{s.MatchId}"
+        : s.IsLive
         ? $"/live/{s.MatchId}"
         : s.CanPlay ? $"/play/{s.MatchId}" : $"/duel/{s.MatchId}";
 
