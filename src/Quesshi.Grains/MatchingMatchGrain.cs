@@ -244,8 +244,10 @@ public sealed class MatchingMatchGrain(
             if (closed is not null)
                 await SafeNotifyAsync(() => notifier.SlotClosedAsync(IdString(),
                     new MatchingSlotClosedPush(closed.Slot,
-                        [.. closed.Answers.Select(kv => new MatchingAnswerPush(kv.Key, (int)kv.Value.Kind,
-                            kv.Value.ParticipantId, kv.Value.ChoiceIndex))])));
+                        _match.IsOver
+                            ? [.. closed.Answers.Select(kv => new MatchingAnswerPush(kv.Key, (int)kv.Value.Kind,
+                                kv.Value.ParticipantId, kv.Value.ChoiceIndex))]
+                            : [])));
         }
         if (_match.IsOver) await UnregisterReminderSafeAsync();
         return ViewFor(playerId);
@@ -285,8 +287,10 @@ public sealed class MatchingMatchGrain(
             if (closed is not null)
                 await SafeNotifyAsync(() => notifier.SlotClosedAsync(IdString(),
                     new MatchingSlotClosedPush(closed.Slot,
-                        [.. closed.Answers.Select(kv => new MatchingAnswerPush(kv.Key, (int)kv.Value.Kind,
-                            kv.Value.ParticipantId, kv.Value.ChoiceIndex))])));
+                        _match.IsOver
+                            ? [.. closed.Answers.Select(kv => new MatchingAnswerPush(kv.Key, (int)kv.Value.Kind,
+                                kv.Value.ParticipantId, kv.Value.ChoiceIndex))]
+                            : [])));
         }
         if (_match.IsOver) await UnregisterReminderSafeAsync();
     }
@@ -409,16 +413,19 @@ public sealed class MatchingMatchGrain(
                 null, [.. state.State.CategoryIds], []);
 
         var snapshot = _match.ToSnapshot();
-        var computed = MatchingResults.Compute(snapshot);
         var current = _match.CurrentSlot is { } active ? snapshot.Slots.FirstOrDefault(s => s.Slot == active.Slot) : null;
-        var closedSnapshots = snapshot.Slots
-            .Select((slot, index) => (slot, index))
-            .Where(item => item.index < computed.Slots.Count && computed.Slots[item.index] is not null)
-            .Select(item => item.slot)
-            .ToList();
+        var reveal = _match.IsOver && _match.IsParticipant(playerId);
+        var computed = reveal ? MatchingResults.Compute(snapshot) : null;
+        var closedSnapshots = computed is null
+            ? []
+            : snapshot.Slots
+                .Select((slot, index) => (slot, index))
+                .Where(item => item.index < computed.Slots.Count && computed.Slots[item.index] is not null)
+                .Select(item => item.slot)
+                .ToList();
         var closed = closedSnapshots.LastOrDefault();
         var own = current?.Answers?.GetValueOrDefault(playerId);
-        var results = _match.IsParticipant(playerId) ? ResultsView(snapshot) : null;
+        var results = reveal ? ResultsView(snapshot) : null;
         return new MatchingView(_match.Id, _match.Code, state.State.Lang, _match.Capacity, (int)_match.State,
             [.. _match.Participants.Select(id => new MatchingParticipantView(id, _match.IsActiveParticipant(id)))],
             _match.CurrentSlotIndex, snapshot.Questions.Count, SlotView(current, includeAnswers: false),

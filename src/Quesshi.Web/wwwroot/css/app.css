@@ -446,6 +446,225 @@ a  { color: var(--firouzeh); text-decoration: none; }
 @keyframes pop   { 0% { transform: scale(1); } 45% { transform: scale(1.035); } 100% { transform: scale(1); } }
 @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
 
+/* --- gameplay: the question is the arena, not another form ---------------- */
+.game-shell {
+  --shell: 42rem;
+  position: relative;
+  min-height: 100dvh;
+  padding-top: max(1.1rem, env(safe-area-inset-top));
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}
+.game-shell::before {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  width: min(34rem, 88vw);
+  aspect-ratio: 1;
+  top: 14vh;
+  left: 50%;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(47 191 176 / 0.12), transparent 68%);
+  filter: blur(18px);
+  animation: game-aura 8s var(--ease) infinite alternate;
+}
+
+.game-hud {
+  position: relative;
+  min-height: 3.5rem;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(9 14 34 / 0.62);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  backdrop-filter: blur(12px);
+}
+.game-hud .chip { background: rgb(47 191 176 / 0.12); }
+.game-hud .ring { flex: none; filter: drop-shadow(0 0 7px rgb(47 191 176 / 0.32)); }
+.game-progress {
+  position: absolute;
+  inset-inline: 0.7rem;
+  bottom: 0.35rem;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(237 227 208 / 0.09);
+}
+.game-progress > i {
+  display: block;
+  width: var(--game-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--firouzeh), var(--zaferan));
+  box-shadow: 0 0 12px rgb(47 191 176 / 0.6);
+  transition: width 0.55s var(--ease);
+}
+
+.game-stage {
+  isolation: isolate;
+  overflow: visible;
+  padding: clamp(1.3rem, 4vw, 2rem);
+  border-color: rgb(47 191 176 / 0.4);
+  background:
+    radial-gradient(32rem 18rem at 50% -8%, rgb(47 191 176 / 0.2), transparent 64%),
+    linear-gradient(155deg, rgb(30 46 120 / 0.98), rgb(14 23 65 / 0.98) 72%);
+  box-shadow:
+    0 28px 70px -32px rgb(0 0 0 / 0.95),
+    inset 0 1px rgb(255 255 255 / 0.05),
+    0 0 0 1px rgb(47 191 176 / 0.05);
+  animation: game-stage-in 0.58s var(--ease) backwards;
+}
+.game-stage::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 11rem;
+  height: 11rem;
+  inset-inline-end: -1rem;
+  bottom: -1rem;
+  rotate: 22.5deg;
+  border: 1px solid rgb(47 191 176 / 0.13);
+  box-shadow: 0 0 0 1.8rem rgb(47 191 176 / 0.035), 0 0 0 3.6rem rgb(47 191 176 / 0.025);
+}
+.game-stage > * { position: relative; z-index: 1; }
+.game-stage h1 {
+  max-width: 29ch;
+  margin-inline: auto;
+  font-size: clamp(1.55rem, 4.8vw, 2.35rem) !important;
+  line-height: 1.28;
+  text-align: center;
+  text-shadow: 0 3px 18px rgb(0 0 0 / 0.35);
+}
+.game-kicker {
+  width: max-content;
+  margin: 0 auto 0.65rem;
+  color: var(--firouzeh);
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+:root[dir="rtl"] .game-kicker { letter-spacing: 0.02em; }
+.game-kicker .numeral { color: var(--zaferan); }
+.game-stage .media img,
+.game-stage .media video {
+  border: 1px solid var(--line-2);
+  box-shadow: 0 16px 36px -20px rgb(0 0 0 / 0.9);
+}
+
+.game-answers { margin-top: clamp(1.15rem, 4vw, 1.7rem) !important; }
+.game-answer {
+  min-height: 3.75rem;
+  padding: 0.9rem 1rem;
+  border-color: rgb(47 191 176 / 0.27);
+  border-radius: var(--r-md);
+  background:
+    linear-gradient(110deg, rgb(255 255 255 / 0.025), transparent 45%),
+    rgb(9 14 34 / 0.7);
+  box-shadow: 0 9px 22px -18px rgb(0 0 0 / 0.9), inset 0 1px rgb(255 255 255 / 0.025);
+  animation: answer-deal 0.42s var(--ease) backwards;
+  animation-delay: calc(var(--answer-i, 0) * 55ms + 120ms);
+}
+.game-answer .answer__key {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 7px;
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+  box-shadow: 0 0 0 1px rgb(47 191 176 / 0.18), 0 0 14px rgb(47 191 176 / 0.08);
+}
+@media (hover: hover) and (pointer: fine) {
+  .game-answer:hover:not(:disabled) {
+    border-color: var(--firouzeh);
+    background: rgb(47 191 176 / 0.15);
+    box-shadow: 0 14px 28px -18px rgb(47 191 176 / 0.7);
+    transform: translateY(-2px) scale(1.006);
+  }
+}
+.answer--selected,
+.game-answer.answer--locked {
+  border-color: var(--firouzeh);
+  background: linear-gradient(110deg, rgb(47 191 176 / 0.22), rgb(9 14 34 / 0.62));
+  box-shadow: 0 0 0 1px rgb(47 191 176 / 0.18), 0 12px 32px -18px rgb(47 191 176 / 0.8);
+}
+.answer--selected .answer__key,
+.game-answer.answer--locked .answer__key { color: var(--shab); background: var(--firouzeh); }
+.game-answer.answer--right { animation: pop 0.4s var(--ease); }
+.game-answer.answer--wrong { animation: shake 0.35s var(--ease); }
+
+.game-stage .sortrow,
+.game-stage .mapbar {
+  min-height: 3.5rem;
+  border-radius: var(--r-md);
+  border-color: rgb(47 191 176 / 0.27);
+  background: rgb(9 14 34 / 0.68);
+  box-shadow: 0 9px 22px -18px rgb(0 0 0 / 0.9);
+}
+.game-stage .worldmap {
+  border-radius: var(--r-md);
+  border-color: rgb(47 191 176 / 0.34);
+  box-shadow: 0 18px 45px -24px rgb(0 0 0 / 0.95), 0 0 28px rgb(47 191 176 / 0.05);
+}
+.game-stage .btn--block { min-height: 3.25rem; border-radius: var(--r-md); }
+
+.game-status {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--sadaf-2);
+  background: rgb(9 14 34 / 0.62);
+  text-align: center;
+  box-shadow: 0 10px 28px -22px rgb(0 0 0 / 0.9);
+}
+.game-feedback {
+  border-color: rgb(232 168 58 / 0.28);
+  background: linear-gradient(135deg, rgb(22 34 92 / 0.78), rgb(9 14 34 / 0.72));
+  box-shadow: 0 18px 44px -28px rgb(0 0 0 / 0.9);
+}
+.game-review {
+  border-color: rgb(237 227 208 / 0.13);
+  background: linear-gradient(150deg, rgb(22 34 92 / 0.62), rgb(9 14 34 / 0.55));
+}
+.game-stage--reveal { border-color: rgb(232 168 58 / 0.44); }
+.game-results { border-color: rgb(232 168 58 / 0.42); }
+.game-countdown .numeral {
+  color: var(--zaferan);
+  text-shadow: 0 0 28px rgb(232 168 58 / 0.45);
+  animation: countdown-beat 0.8s var(--ease) infinite alternate;
+}
+
+@media (min-width: 38rem) {
+  .game-answers.answers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-answers .game-answer { height: 100%; }
+}
+@media (max-width: 24rem) {
+  .game-shell { width: min(100% - 1rem, var(--shell)); }
+  .game-hud { gap: 0.45rem; }
+  .game-hud .chip { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-stage { padding-inline: 1rem; }
+}
+
+@keyframes game-stage-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); filter: saturate(0.65); }
+  to { opacity: 1; transform: none; filter: saturate(1); }
+}
+@keyframes answer-deal {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes game-aura {
+  from { opacity: 0.65; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1.08); }
+}
+@keyframes countdown-beat {
+  from { transform: scale(0.96); opacity: 0.78; }
+  to { transform: scale(1.04); opacity: 1; }
+}
+
 /* --- reporting a question ------------------------------------------------- */
 .report__open {
   padding: 0;
@@ -1923,8 +2142,31 @@ input[type='range'] { accent-color: var(--firouzeh); }
 
 /* Matching deliberately has no clock, score ring, correctness colours or sound affordance. These
    small roster tiles keep presence visible while the answer surface remains ordinary answer buttons. */
-.matching-players { display:flex; flex-wrap:wrap; gap:.55rem; }
-.matching-player { display:flex; align-items:center; gap:.35rem; padding:.35rem .55rem; border:1px solid var(--line); border-radius:999px; }
+.matching-players {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:.55rem;
+  margin:.15rem 0 1rem;
+  padding:.65rem;
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  background:rgb(9 14 34 / .46);
+  backdrop-filter:blur(10px);
+}
+.matching-player {
+  display:flex;
+  align-items:center;
+  gap:.4rem;
+  min-height:2.65rem;
+  padding:.3rem .65rem .3rem .35rem;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:linear-gradient(120deg, rgb(47 191 176 / .11), rgb(22 34 92 / .38));
+  box-shadow:0 8px 18px -15px rgb(0 0 0 / .9);
+  animation:answer-deal .4s var(--ease) backwards;
+}
+:root[dir="rtl"] .matching-player { padding:.3rem .35rem .3rem .65rem; }
 .matching-player.is-left { opacity:.58; }
 .matching-player__name { font-size:var(--step--1); font-weight:700; }
 .matching-distribution { margin-top:.8rem; border-top:1px solid var(--line); padding-top:.55rem; }

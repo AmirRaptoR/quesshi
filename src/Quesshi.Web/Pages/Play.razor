@@ -5,7 +5,7 @@
 
 <PageTitle>@L["play.question"] · @L["app.name"]</PageTitle>
 
-<div class="shell">
+<div class="shell game-shell">
     @if (Unconfirmed)
     {
         <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
@@ -23,7 +23,7 @@
     }
     else
     {
-        <header class="topbar">
+        <header class="topbar game-hud">
             <span class="chip" style="border-color:@(_card.CategoryColor + "66")">
                 <span aria-hidden="true">@_card.CategoryIcon</span> @_card.CategoryName
             </span>
@@ -33,9 +33,11 @@
             <div class="topbar__spacer"></div>
             <span class="muted numeral">@L.Num(_card.Slot + 1) / @L.Num(_card.TotalSlots)</span>
             <Ring Remaining="_remaining" Total="_card.SecondsLimit" Size="38" />
+            <span class="game-progress" style="--game-progress:@ProgressPercent%" aria-hidden="true"><i></i></span>
         </header>
 
-        <section class="card card--taq enter" @key="_card.Slot">
+        <section class="card card--taq game-stage" @key="_card.Slot">
+            <p class="game-kicker">@L["play.question"] <span class="numeral">@L.Num(_card.Slot + 1)</span></p>
             <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@_card.Prompt</h1>
 
             <MediaBlock Media="_card.Media" />
@@ -77,11 +79,12 @@
             }
             else
             {
-            <div class="answers">
+            <div class="answers game-answers">
                 @for (var i = 0; i < _card.Choices.Count; i++)
                 {
                     var index = i;
-                    <button class="answer @ClassFor(index)" disabled="@(_result is not null)" @onclick="() => AnswerAsync(index)">
+                    <button class="answer game-answer @ClassFor(index)" style="--answer-i:@index"
+                            disabled="@(_result is not null)" @onclick="() => AnswerAsync(index)">
                         <span class="answer__key" aria-hidden="true">@Keys[index]</span>
                         <span class="grow" dir="auto">@_card.Choices[index]</span>
                         @if (_result is not null && index == _result.CorrectIndex) { <span aria-hidden="true">✓</span> }
@@ -93,7 +96,7 @@
 
         @if (_result is { } result)
         {
-            <section class="card card--flat enter" style="margin-top:.85rem">
+            <section class="card card--flat game-feedback enter" style="margin-top:.85rem">
                 <div class="row row--between">
                     <strong style="color:@(result.Correct ? "var(--zaferan)" : "var(--anaar)")">
                         @(_timedOut ? L["play.timeUp"] : result.Correct ? L["play.correct"] : L["play.wrong"])
@@ -140,6 +143,10 @@
     private MapPick? _pick;
     private PeriodicTimer? _timer;
     private CancellationTokenSource _ticking = new();
+
+    private int ProgressPercent => _card is null || _card.TotalSlots == 0
+        ? 0
+        : 100 * (_card.Slot + 1) / _card.TotalSlots;
 
     protected override async Task LoadAsync() => await NextAsync();
 

@@ -53,8 +53,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         Assert.Equal("image", ownerView.CurrentSlot.Media!.Kind);
         Assert.Equal("/matching-test.jpg", ownerView.CurrentSlot.Media.Url);
         Assert.Equal("Matching credit", ownerView.CurrentSlot.Media.Attribution);
-        Assert.Null(ownerView.Results!.PairStats);
-        Assert.Null(ownerView.Results.Slots.Single());
+        Assert.Null(ownerView.Results);
 
         var otherView = await otherClient.GetFromJsonAsync<MatchingViewDto>($"/api/matching/{lobby.Id}");
         Assert.Empty(otherView!.CurrentSlot!.Answers);
@@ -65,15 +64,9 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         closed.EnsureSuccessStatusCode();
         var closedView = await closed.Content.ReadFromJsonAsync<MatchingViewDto>();
         Assert.Equal(1, closedView!.CurrentSlotIndex);
-        Assert.Equal(0, closedView.LastClosedSlot!.Slot);
-        Assert.Equal(2, closedView.LastClosedSlot.Answers.Count);
-        Assert.Single(closedView.ClosedSlots!);
-        Assert.Equal(new[] { owner.Id, other.Id }.OrderBy(id => id), closedView.LastClosedSlot.Answers
-            .Select(answer => answer.PlayerId).OrderBy(id => id).ToArray());
-        Assert.NotNull(closedView.Results);
-        Assert.Null(closedView.Results!.PairStats);
-        Assert.Equal([0, 0, 1, 1], closedView.Results.Slots[0]!.Counts);
-        Assert.Null(closedView.Results.Slots[1]);
+        Assert.Null(closedView.LastClosedSlot);
+        Assert.Empty(closedView.ClosedSlots!);
+        Assert.Null(closedView.Results);
     }
 
     [Fact]
@@ -128,7 +121,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
     }
 
     [Fact]
-    public async Task One_answer_short_exposes_no_overall_stats_and_a_stranger_cannot_read_the_match()
+    public async Task In_progress_match_exposes_no_results_and_a_stranger_cannot_read_it()
     {
         var prefix = Guid.NewGuid().ToString("N");
         var category = Seed(prefix);
@@ -155,9 +148,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         submitted.EnsureSuccessStatusCode();
         var view = await submitted.Content.ReadFromJsonAsync<MatchingViewDto>();
 
-        Assert.NotNull(view!.Results);
-        Assert.Null(view.Results!.PairStats);
-        Assert.Null(view.Results.Slots.Single());
+        Assert.Null(view!.Results);
         Assert.Equal(System.Net.HttpStatusCode.NotFound,
             (await strangerClient.GetAsync($"/api/matching/{lobby.Id}")).StatusCode);
     }

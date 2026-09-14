@@ -29,9 +29,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         Assert.NotNull(started);
         Assert.Equal(0, started!.CurrentSlotIndex);
         Assert.Equal(2, started.CurrentSlot!.Options.Count(o => o.ParticipantId is not null));
-        Assert.NotNull(started.Results);
-        Assert.Null(started.Results!.PairStats);
-        Assert.Null(started.Results.Slots.Single());
+        Assert.Null(started.Results);
 
         var answered = await grain.AnswerAsync(Owner, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         Assert.Equal(0, answered.CurrentSlotIndex);
@@ -53,11 +51,9 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         await grain.AnswerAsync(Other, 0, (int)MatchingAnswerKind.NoParticipant, null, null);
         var afterBarrier = await grain.GetAsync(Other);
         Assert.Equal(1, afterBarrier!.CurrentSlotIndex);
-        Assert.Equal(0, afterBarrier.LastClosedSlot!.Slot);
-        Assert.NotNull(afterBarrier.Results);
-        Assert.Equal([0, 0, 0, 2], afterBarrier.Results!.Slots[0]!.Counts);
-        Assert.Null(afterBarrier.Results.Slots[1]);
-        Assert.Single(afterBarrier.ClosedSlots!);
+        Assert.Null(afterBarrier.LastClosedSlot);
+        Assert.Null(afterBarrier.Results);
+        Assert.Empty(afterBarrier.ClosedSlots!);
     }
 
     [Fact]
@@ -281,7 +277,7 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
     }
 
     [Fact]
-    public async Task Barrier_push_contains_closed_slot_and_all_answers_after_persistence()
+    public async Task Barrier_push_redacts_answers_until_the_match_ends()
     {
         var prefix = Guid.NewGuid().ToString("N");
         var category = Seed(prefix);
@@ -297,10 +293,10 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         var push = Shared.MatchingNotifier.EventsFor(id).Last(e => e.Kind == "SlotClosed");
         var payload = Assert.IsType<MatchingSlotClosedPush>(push.Payload);
         Assert.Equal(0, payload.Slot);
-        Assert.Equal(2, payload.Answers.Count);
+        Assert.Empty(payload.Answers);
         var view = await grain.GetAsync(Owner);
         Assert.Equal(1, view!.CurrentSlotIndex);
-        Assert.Equal(0, view.LastClosedSlot!.Slot);
+        Assert.Null(view.LastClosedSlot);
     }
 
     [Fact]
@@ -323,10 +319,8 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
         await grain.AnswerAsync(owner, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
         var afterBarrier = await grain.AnswerAsync(other, 0, (int)MatchingAnswerKind.SelectedParticipant, other, null);
 
-        var result = Assert.IsType<MatchingSlotResultView>(afterBarrier.Results!.Slots[0]);
-        Assert.Equal([0, 2, 0, 0, 0], result.Counts);
-        Assert.True(result.AllAgreed);
-        Assert.Null(afterBarrier.Results.Slots[1]);
+        Assert.Null(afterBarrier.Results);
+        Assert.Null(afterBarrier.LastClosedSlot);
     }
 
     [Fact]
@@ -355,10 +349,8 @@ public sealed class MatchingMatchGrainTests(ClusterFixture fixture)
                 .AsReference<IRemindable>().ReceiveReminder("matching-idle", default);
 
             var view = await grain.GetAsync(owner);
-            var result = Assert.IsType<MatchingSlotResultView>(view!.Results!.Slots[0]);
-            Assert.Equal([0, 2, 0, 0, 0], result.Counts);
-            Assert.True(result.AllAgreed);
-            Assert.Null(view.Results.Slots[1]);
+            Assert.Null(view!.Results);
+            Assert.Null(view.LastClosedSlot);
             Assert.False(view.Participants.Single(participant => participant.Id == expired).Active);
         }
         finally

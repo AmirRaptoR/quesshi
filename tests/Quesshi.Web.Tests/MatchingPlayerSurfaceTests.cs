@@ -42,6 +42,7 @@ public sealed class MatchingPlayerSurfaceTests
         Assert.Contains("option.AvatarSeed", page);
         Assert.Contains("ClosedSlots", page);
         Assert.Contains("@foreach (var closed in ClosedSlots)", page);
+        Assert.Contains("@if (IsFinished)", page);
         Assert.Contains("<MediaBlock Media=\"media\"", page);
     }
 

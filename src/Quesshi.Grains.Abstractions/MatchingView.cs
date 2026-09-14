@@ -18,5 +18,5 @@ public sealed record MatchingView(
     [property: Id(12)] DateTimeOffset? EndedAt,
     [property: Id(13)] MatchingResultsView? Results = null,
     [property: Id(14)] List<string>? CategoryIds = null,
-    /// <summary>Every served slot whose barrier has closed, in served order.</summary>
+    /// <summary>Every served slot in order, exposed only after the match ends.</summary>
     [property: Id(15)] List<MatchingSlotView>? ClosedSlots = null);

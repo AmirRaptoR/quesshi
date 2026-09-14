@@ -3,7 +3,7 @@
 
 <PageTitle>@Headline · @L["app.name"]</PageTitle>
 
-<div class="shell">
+<div class="shell game-shell">
     @if (Unconfirmed)
     {
         <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
@@ -23,7 +23,7 @@
     {
         var summary = _detail.Summary;
 
-        <section class="card card--taq enter" style="text-align:center">
+        <section class="card card--taq game-stage game-results" style="text-align:center">
             <h2>@Headline</h2>
 
             <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
@@ -69,7 +69,7 @@
                 <div class="stack" style="margin-top:.6rem">
                     @foreach (var row in _detail.Reveal)
                     {
-                        <article class="card card--flat">
+                        <article class="card card--flat game-review">
                             <div class="row row--between" style="gap:.5rem">
                                 <span class="faint" style="font-size:var(--step--1)">@row.CategoryName</span>
                                 <span class="faint numeral" style="font-size:var(--step--1)">@L.Num(row.Slot + 1)</span>

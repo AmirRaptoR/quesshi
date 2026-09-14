@@ -6,7 +6,7 @@
 
 <PageTitle>@L["live.title"] · @L["app.name"]</PageTitle>
 
-<div class="shell">
+<div class="shell game-shell">
     @if (Unconfirmed)
     {
         <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
@@ -40,7 +40,7 @@
         }
         else if (body == LiveBody.Countdown)
         {
-            <section class="card card--taq enter" style="text-align:center">
+            <section class="card card--taq game-stage game-countdown" style="text-align:center">
                 <div class="row row--between" style="margin-top:.5rem;flex-wrap:wrap;justify-content:center;gap:1rem">
                     @foreach (var p in _view.Participants)
                     {
@@ -66,7 +66,7 @@
             {
                 <DuelBar View="_view" MeId="@MeId" Eliminated="_eliminated" />
 
-                <header class="topbar">
+                <header class="topbar game-hud">
                     <span class="chip" style="border-color:@(card.CategoryColor + "66")">
                         <span aria-hidden="true">@card.CategoryIcon</span> @card.CategoryName
                     </span>
@@ -76,9 +76,11 @@
                     <div class="topbar__spacer"></div>
                     <span class="muted numeral">@L.Num(card.Slot + 1) / @L.Num(card.TotalRounds)</span>
                     <Ring EndsAt="card.EndsAt" Skew="Skew" Total="(int)(card.EndsAt - card.StartedAt).TotalSeconds" Size="38" />
+                    <span class="game-progress" style="--game-progress:@ProgressPercent(card.Slot, card.TotalRounds)%" aria-hidden="true"><i></i></span>
                 </header>
 
-                <section class="card card--taq enter" @key="card.Slot">
+                <section class="card card--taq game-stage" @key="card.Slot">
+                    <p class="game-kicker">@L["play.question"] <span class="numeral">@L.Num(card.Slot + 1)</span></p>
                     <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@card.Prompt</h1>
 
                     <MediaBlock Media="card.Media" />
@@ -104,13 +106,13 @@
                     }
                     else
                     {
-                    <div class="answers">
+                    <div class="answers game-answers">
                         @for (var i = 0; i < card.Choices.Count; i++)
                         {
                             var index = i;
-                            <button class="answer @(_myChoice == index ? "answer--locked" : null)"
+                            <button class="answer game-answer @(_myChoice == index ? "answer--locked" : null)" style="--answer-i:@index"
                                     disabled="@(_locked || TimeUp || IsEliminatedMe)" @onclick="() => ChooseAsync(index)">
-                                <span class="answer__key" aria-hidden="true">@Keys[index]</span>
+                                <span class="answer__key" aria-hidden="true">@KeyFor(index)</span>
                                 <span class="grow" dir="auto">@card.Choices[index]</span>
                             </button>
                         }
@@ -118,7 +120,7 @@
                     }
                 </section>
 
-                <p class="empty enter" style="margin-top:.7rem">
+                <p class="game-status enter" style="margin-top:.7rem">
                     @if (IsEliminatedMe)
                     {
                         @L["live.eliminated.notice"]
@@ -163,7 +165,7 @@
 
                 <DuelBar View="_view" MeId="@MeId" Eliminated="_eliminated" />
 
-                <header class="topbar">
+                <header class="topbar game-hud">
                     <span class="chip" style="border-color:@(card.CategoryColor + "66")">
                         <span aria-hidden="true">@card.CategoryIcon</span> @card.CategoryName
                     </span>
@@ -173,9 +175,10 @@
                     <div class="topbar__spacer"></div>
                     <span class="muted numeral">@L.Num(card.Slot + 1) / @L.Num(card.TotalRounds)</span>
                     <Ring EndsAt="_view.PhaseEndsAt" Skew="Skew" Total="RevealSeconds" Size="38" />
+                    <span class="game-progress" style="--game-progress:@ProgressPercent(card.Slot, card.TotalRounds)%" aria-hidden="true"><i></i></span>
                 </header>
 
-                <section class="card card--taq enter" @key="card.Slot">
+                <section class="card card--taq game-stage game-stage--reveal" @key="card.Slot">
                     <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@card.Prompt</h1>
 
                     <MediaBlock Media="card.Media" Loop="false" Autoplay="false" />
@@ -206,13 +209,13 @@
                             @L[agreed ? "live.players.agreed" : "live.players.disagreed"]
                         </p>
                     }
-                    <div class="answers">
+                    <div class="answers game-answers">
                         @for (var i = 0; i < card.Choices.Count; i++)
                         {
                             var index = i;
                             <div class="stack" style="gap:.3rem">
-                                <button class="answer @RevealClassFor(index, round.CorrectIndex, mine?.ChoiceIndex, card.Kind)" disabled>
-                                    <span class="answer__key" aria-hidden="true">@Keys[index]</span>
+                                <button class="answer game-answer @RevealClassFor(index, round.CorrectIndex, mine?.ChoiceIndex, card.Kind)" disabled>
+                                    <span class="answer__key" aria-hidden="true">@KeyFor(index)</span>
                                     <span class="grow" dir="auto">@card.Choices[index]</span>
                                     @if (index == round.CorrectIndex && card.Kind != 3) { <span aria-hidden="true">✓</span> }
                                 </button>
@@ -265,7 +268,7 @@
         }
         else
         {
-            <section class="card card--taq enter" style="text-align:center">
+            <section class="card card--taq game-stage game-results" style="text-align:center">
                 <h2>@L[LiveOutcomeText.HeadlineKey(Outcome)]</h2>
 
                 <div style="width:min(17rem,80%);margin:1.1rem auto .5rem">
@@ -384,6 +387,8 @@
 
     private bool _rematchPressed;
     private bool _rematchFailed;
+
+    private static int ProgressPercent(int slot, int total) => total == 0 ? 0 : 100 * (slot + 1) / total;
 
     private Timer? _ticker;
     private string? _boundMatchId;
@@ -802,6 +807,7 @@
         _view is not null && _view.RoundIndex < _view.Rounds.Count ? _view.Rounds[_view.RoundIndex] : null;
 
     private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+    private string KeyFor(int index) => index < Keys.Length ? Keys[index] : L.Num(index + 1);
 
     private LiveOutcome Outcome => LiveOutcomeText.Resolve(_view!.State, _view.WinnerId, _view.IsDraw, _view.AbandonedBy, MeId);
 

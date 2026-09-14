@@ -21,9 +21,8 @@ public sealed record MatchingPairStatDto(string FirstParticipantId, string Secon
 }
 
 /// <summary>
-/// Matching statistics. A null slot entry means that slot's answer barrier is still open. The
-/// pairwise list and group count are null until the whole match is complete; no-contest matches
-/// therefore expose only the closed per-slot results.
+/// Matching statistics, exposed only after the match ends. A null slot entry means that a no-contest
+/// match ended while that slot's answer barrier was still open.
 /// </summary>
 public sealed record MatchingResultsDto(List<MatchingSlotResultDto?> Slots,
     List<MatchingPairStatDto>? PairStats, int? AllAgreedCount)

@@ -5,7 +5,7 @@
 
 <PageTitle>@L["matching.play.title"] · @L["app.name"]</PageTitle>
 
-<div class="shell">
+<div class="shell game-shell">
     @if (Unconfirmed)
     {
         <SessionUnconfirmed Busy="State.Retrying" OnRetry="RetrySessionAsync" />
@@ -24,11 +24,12 @@
     }
     else
     {
-        <header class="topbar enter">
+        <header class="topbar game-hud enter">
             <a class="lobby-back" href="/play" aria-label="@L["common.back"]"><Icon Name="chevron-back" Size="1.4rem" /></a>
             <h1 class="topbar__title">@L["matching.play.title"]</h1>
             <div class="topbar__spacer"></div>
             <span class="muted numeral">@L.Num((_view.CurrentSlotIndex ?? _view.TotalSlots - 1) + 1) / @L.Num(_view.TotalSlots)</span>
+            <span class="game-progress" style="--game-progress:@ProgressPercent%" aria-hidden="true"><i></i></span>
         </header>
 
         <section class="matching-players enter" aria-label="@L["matching.play.players"]">
@@ -44,21 +45,24 @@
 
         @if (_view.CurrentSlot is { } slot)
         {
-            <section class="card card--taq enter" @key="slot.Slot">
-                <p class="faint" style="margin:0 0 .7rem">@L["matching.play.choose"]</p>
+            <section class="card card--taq game-stage" @key="slot.Slot">
+                <p class="game-kicker">@L["matching.play.choose"] <span class="numeral">@L.Num(slot.Slot + 1)</span></p>
                 <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">@slot.Prompt</h1>
                 @if (slot.Media is { } media)
                 {
                     <MediaBlock Media="media" Loop="false" Autoplay="false" />
                 }
-                <div class="stack" style="margin-top:1rem;gap:.5rem">
-                    @foreach (var option in slot.Options)
+                <div class="stack game-answers" style="margin-top:1rem;gap:.5rem">
+                    @for (var i = 0; i < slot.Options.Count; i++)
                     {
+                        var index = i;
+                        var option = slot.Options[index];
                         var selected = IsOwnOption(option);
-                        <button type="button" class="answer @(selected ? "answer--selected" : null)"
+                        <button type="button" class="answer game-answer @(selected ? "answer--selected" : null)"
+                                style="--answer-i:@index"
                                 aria-pressed="@selected.ToString().ToLowerInvariant()"
                                 disabled="@_answering" @onclick="() => AnswerAsync(option)">
-                            <span class="answer__key" aria-hidden="true">@(option.IsNotApplicable ? "—" : "")</span>
+                            <span class="answer__key" aria-hidden="true">@L.Num(index + 1)</span>
                             @if (option.ParticipantId is not null && option.DisplayName is { } optionName)
                             {
                                 <span class="avatar avatar--sm" style="background:@Ranks.Tint(option.AvatarSeed ?? option.ParticipantId)">@Initial(optionName)</span>
@@ -72,7 +76,7 @@
             @if (_view.OwnAnswer is not null)
             {
                 var unanswered = _view.Participants.Where(p => p.Active && !slot.AnsweredParticipantIds.Contains(p.Id)).ToList();
-                <section class="notice enter" style="margin-top:.8rem;text-align:center">
+                <section class="game-status enter" style="margin-top:.8rem;text-align:center">
                     @L["matching.play.waiting"]
                     <span class="faint" style="display:block;margin-top:.25rem">@L.Format("matching.play.answered", L.Num(slot.AnsweredParticipantIds.Count), L.Num(_view.Participants.Count))</span>
                     @if (unanswered.Count > 0)
@@ -87,9 +91,11 @@
             }
         }
 
+        @if (IsFinished)
+        {
         @foreach (var closed in ClosedSlots)
         {
-            <section class="card card--flat enter" style="margin-top:1rem" @key="closed.Slot">
+            <section class="card card--flat game-review enter" style="margin-top:1rem" @key="closed.Slot">
                 <div class="row row--between"><strong>@L["matching.play.previous"]</strong><span class="muted">@L.Num(closed.Slot + 1)</span></div>
                 <p dir="auto" style="margin:.5rem 0 .7rem">@closed.Prompt</p>
                 @if (closed.Media is { } media)
@@ -132,10 +138,11 @@
                 }
             </section>
         }
+        }
 
-        @if (_view.CurrentSlot is null || _view.State is "resolved" or "nocontest" or "no_contest")
+        @if (IsFinished)
         {
-            <section class="card card--taq enter" style="margin-top:1rem;text-align:center">
+            <section class="card card--taq game-stage game-results" style="margin-top:1rem;text-align:center">
                 @if (_view.State is "nocontest" or "no_contest")
                 {
                     <h2>@MatchingResultsText.NoContest(L)</h2>
@@ -175,6 +182,11 @@
     private bool _answering;
     private string? _error;
     private string MeId => State.Me!.Id;
+    private bool IsFinished => _view?.CurrentSlot is null
+        || _view?.State is "resolved" or "nocontest" or "no_contest";
+    private int ProgressPercent => _view is null || _view.TotalSlots == 0
+        ? 0
+        : 100 * ((_view.CurrentSlotIndex ?? _view.TotalSlots - 1) + 1) / _view.TotalSlots;
 
     private IEnumerable<MatchingSlotDto> ClosedSlots
         => _view?.ClosedSlots is { Count: > 0 } slots
