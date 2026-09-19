@@ -33,6 +33,17 @@ public sealed class MatchingMongoTests
     }
 
     [Fact]
+    public void Trivia_category_document_round_trips_the_prompt_helper()
+    {
+        var category = new Category("history", "تاریخ", "History", "📜", "#123456",
+            PromptHelper: "Focus on overlooked events.");
+
+        var restored = CategoryDoc.From(category).ToDomain();
+
+        Assert.Equal("Focus on overlooked events.", restored.PromptHelper);
+    }
+
+    [Fact]
     public void Matching_question_document_round_trips_both_answer_sources_and_all_store_fields()
     {
         var created = new DateTimeOffset(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);

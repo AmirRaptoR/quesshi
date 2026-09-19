@@ -140,6 +140,21 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
         Assert.Equal("🍳 Dutch", triviaSaved.NameNl);
     }
 
+    [Fact]
+    public async Task Trivia_category_prompt_helper_is_trimmed_and_returned_after_save()
+    {
+        using var client = AdminClient();
+        var id = "prompt-helper-" + Guid.NewGuid().ToString("N");
+
+        var response = await client.PostAsJsonAsync("/api/admin/categories",
+            new CategoryDto(id, "History", "تاریخ", "History", "📜", "#123456", true, 1,
+                PromptHelper: "  Focus on overlooked events.  "));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var categories = await client.GetFromJsonAsync<List<CategoryDto>>("/api/admin/categories");
+        Assert.Equal("Focus on overlooked events.", categories!.Single(c => c.Id == id).PromptHelper);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("A")]

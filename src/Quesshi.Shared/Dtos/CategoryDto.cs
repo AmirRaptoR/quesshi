@@ -6,4 +6,4 @@ namespace Quesshi.Shared;
 /// the Dutch-only KNM bank and be handed ten questions about birds instead.
 /// </param>
 public sealed record CategoryDto(string Id, string Name, string NameFa, string NameEn, string Icon, string Color,
-    bool IsActive, int SortOrder, string NameNl = "", List<string>? Langs = null);
+    bool IsActive, int SortOrder, string NameNl = "", List<string>? Langs = null, string PromptHelper = "");

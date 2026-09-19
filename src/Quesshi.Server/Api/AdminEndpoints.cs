@@ -253,7 +253,7 @@ public static class AdminEndpoints
                 : (all.FirstOrDefault(c => c.Id == slug)?.SortOrder ?? all.Select(c => c.SortOrder).DefaultIfEmpty(0).Max() + 1);
 
             await categories.UpsertAsync(new Category(slug, nameFa, nameEn,
-                icon, body.Color, body.IsActive, order, nameNl));
+                icon, body.Color, body.IsActive, order, nameNl, body.PromptHelper.Trim()));
             return Results.Ok();
         });
 

@@ -15,12 +15,13 @@ public sealed class CategoryDoc
     public string Color { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
+    public string PromptHelper { get; set; } = "";
 
     public static CategoryDoc From(Category c) => new()
     {
         Id = c.Id, NameFa = c.NameFa, NameEn = c.NameEn, NameNl = c.NameNl, Icon = c.Icon, Color = c.Color,
-        IsActive = c.IsActive, SortOrder = c.SortOrder
+        IsActive = c.IsActive, SortOrder = c.SortOrder, PromptHelper = c.PromptHelper
     };
 
-    public Category ToDomain() => new(Id, NameFa, NameEn, Icon, Color, IsActive, SortOrder, NameNl);
+    public Category ToDomain() => new(Id, NameFa, NameEn, Icon, Color, IsActive, SortOrder, NameNl, PromptHelper);
 }

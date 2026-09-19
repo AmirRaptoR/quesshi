@@ -41,6 +41,15 @@ public sealed class AdminUsabilitySurfaceTests
     }
 
     [Fact]
+    public void Trivia_category_editor_exposes_the_prompt_helper()
+    {
+        var page = File.ReadAllText(Page("Categories.razor"));
+
+        Assert.Contains("admin.promptHelper", page);
+        Assert.Contains("@bind=\"_editing.PromptHelper\"", page);
+    }
+
+    [Fact]
     public void Account_commands_are_separate_from_page_navigation()
     {
         var nav = File.ReadAllText(Source("Components/AdminNav.razor"));
