@@ -214,26 +214,24 @@ public class LobbyPresentationTests
     }
 
     [Fact]
-    public void Seats_are_padded_out_to_capacity_with_empty_placeholders()
+    public void Seats_include_only_occupied_participants_and_report_open_places_separately()
     {
         var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")], capacity: 5));
 
         var seats = LobbyPresentation.Seats(snapshot);
 
-        Assert.Equal(5, seats.Count);
-        Assert.Equal(["amir", "sara"], seats.Take(2).Select(s => s?.PlayerId));
-        Assert.All(seats.Skip(2), Assert.Null);
+        Assert.Equal(2, seats.Count);
+        Assert.Equal(["amir", "sara"], seats.Select(s => s?.PlayerId));
+        Assert.Equal(3, LobbyPresentation.OpenSeatCount(snapshot));
     }
 
-    /// <summary>The design note this exists for: a two-player lobby must not look emptier than it does
-    /// today, which is exactly what padding a capacity-2 lobby to eight seats would do — it stays
-    /// exactly the two rows it always had.</summary>
     [Fact]
-    public void A_capacity_two_lobby_pads_to_no_more_than_two_seats()
+    public void A_capacity_two_lobby_with_one_player_has_one_occupied_and_one_open_seat()
     {
         var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 2));
 
-        Assert.Equal(2, LobbyPresentation.Seats(snapshot).Count);
+        Assert.Single(LobbyPresentation.Seats(snapshot));
+        Assert.Equal(1, LobbyPresentation.OpenSeatCount(snapshot));
     }
 
     // --- issue #90: the roster as face tiles, and the invite row as an avatar row ------------------
@@ -255,12 +253,11 @@ public class LobbyPresentationTests
     }
 
     [Fact]
-    public void A_still_empty_seat_reads_open()
+    public void A_null_seat_reads_open()
     {
         var snapshot = LobbyPresentation.From(LiveSample([P("amir")], capacity: 3));
-        var seats = LobbyPresentation.Seats(snapshot);
 
-        Assert.Equal(LobbyPresentation.SeatState.Open, LobbyPresentation.SeatStateFor(snapshot, seats[1]));
+        Assert.Equal(LobbyPresentation.SeatState.Open, LobbyPresentation.SeatStateFor(snapshot, null));
     }
 
     [Theory]
