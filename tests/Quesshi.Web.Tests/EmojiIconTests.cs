@@ -10,6 +10,9 @@ public sealed class EmojiIconTests
     [InlineData("👨‍👩‍👧‍👦")]
     [InlineData("✈️")]
     [InlineData("👍🏽")]
+    [InlineData("1️⃣")]
+    [InlineData("#️⃣")]
+    [InlineData("*️⃣")]
     public void One_complete_emoji_sequence_is_valid(string value)
         => Assert.True(EmojiIcon.TryNormalize(value, out var normalized) && normalized == value);
 
@@ -20,6 +23,8 @@ public sealed class EmojiIconTests
     [InlineData("A")]
     [InlineData("icon")]
     [InlineData("◆")]
+    [InlineData("→")]
+    [InlineData("⌘")]
     [InlineData("😀😃")]
     [InlineData("🏽")]
     [InlineData("️")]
