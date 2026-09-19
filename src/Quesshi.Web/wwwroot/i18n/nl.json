@@ -72,6 +72,8 @@
   "admin.categories": "Categorieën",
   "admin.category": "Categorie",
   "admin.categoryHint": "Vul één emoji in het pictogramveld in. Het id en de volgorde regelen zichzelf.",
+  "admin.promptHelper": "Prompthulp",
+  "admin.additionalPrompt": "Aanvullende prompt",
   "admin.icon": "Pictogram-emoji",
   "admin.choices": "Antwoordopties",
   "admin.colour": "Kleur",

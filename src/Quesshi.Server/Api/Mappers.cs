@@ -35,7 +35,8 @@ public static class Mappers
         p.ByCategory.ToDictionary(kv => kv.Key, kv => p.Accuracy(kv.Key)), friends, p.IsGuest);
 
     public static CategoryDto ToDto(this Category c, Language lang)
-        => new(c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl);
+        => new(c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl,
+            PromptHelper: c.PromptHelper);
 
     /// <summary>
     /// Which languages each category can actually be played in, keyed by category id. One approved
@@ -49,7 +50,8 @@ public static class Mappers
 
     /// <summary>The same, plus which languages the category holds approved questions in.</summary>
     public static CategoryDto ToDto(this Category c, Language lang, IReadOnlyCollection<string> langs)
-        => new(c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl, [.. langs]);
+        => new(c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl,
+            [.. langs], c.PromptHelper);
 
     public static AdminQuestionDto ToAdminDto(this Question q) => new(
         q.Id, q.Lang.Code(), q.CategoryId, (int)q.Level, q.Prompt, [.. q.Choices], q.CorrectIndex, q.Explanation,

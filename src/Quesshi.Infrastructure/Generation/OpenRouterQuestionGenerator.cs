@@ -26,12 +26,12 @@ public sealed class OpenRouterQuestionGenerator(
     public bool IsConfigured => !string.IsNullOrWhiteSpace(options.ApiKey);
 
     public Task<IReadOnlyList<GeneratedQuestion>> GenerateAsync(Language lang, Category category, Difficulty level,
-        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => AskAsync(prompts.User(lang, category, level, count, avoid), QuestionSchema.ResponseFormat, "generate", lang, category, level, QuestionKind.Choice, ct);
+        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => AskAsync(prompts.User(lang, category, level, count, avoid, additionalPrompt), QuestionSchema.ResponseFormat, "generate", lang, category, level, QuestionKind.Choice, ct);
 
     public Task<IReadOnlyList<GeneratedQuestion>> GenerateIllustratedAsync(Language lang, Category category, Difficulty level,
-        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => AskAsync(prompts.Illustrated(lang, category, level, count, avoid), IllustratedSchema.ResponseFormat, "illustrate", lang, category, level, QuestionKind.Choice, ct);
+        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => AskAsync(prompts.Illustrated(lang, category, level, count, avoid, additionalPrompt), IllustratedSchema.ResponseFormat, "illustrate", lang, category, level, QuestionKind.Choice, ct);
 
     /// <summary>
     /// Same transport, same spend accounting, same de-duplication downstream — a different prompt
@@ -39,12 +39,12 @@ public sealed class OpenRouterQuestionGenerator(
     /// apart from a choice one after the fact.
     /// </summary>
     public Task<IReadOnlyList<GeneratedQuestion>> GenerateSortAsync(Language lang, Category category, Difficulty level,
-        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => AskAsync(prompts.Sort(lang, category, level, count, avoid), SortSchema.ResponseFormat, "sort", lang, category, level, QuestionKind.Sort, ct);
+        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => AskAsync(prompts.Sort(lang, category, level, count, avoid, additionalPrompt), SortSchema.ResponseFormat, "sort", lang, category, level, QuestionKind.Sort, ct);
 
     public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level,
-        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => AskAsync(prompts.Map(lang, category, level, count, avoid), MapSchema.ResponseFormat, "map", lang, category, level, QuestionKind.Map, ct);
+        int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => AskAsync(prompts.Map(lang, category, level, count, avoid, additionalPrompt), MapSchema.ResponseFormat, "map", lang, category, level, QuestionKind.Map, ct);
 
     Task<IReadOnlyList<GeneratedMatchingQuestion>> IMatchingQuestionGenerator.GenerateAsync(Language lang,
         MatchingCategory category, MatchingAnswerSource answerSource, int count,

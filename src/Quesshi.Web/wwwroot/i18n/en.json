@@ -72,6 +72,8 @@
   "admin.categories": "Categories",
   "admin.category": "Category",
   "admin.categoryHint": "Enter one emoji in the icon field. The id and order look after themselves.",
+  "admin.promptHelper": "Prompt helper",
+  "admin.additionalPrompt": "Additional prompt",
   "admin.icon": "Icon emoji",
   "admin.choices": "Choices",
   "admin.colour": "Colour",

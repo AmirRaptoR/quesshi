@@ -119,7 +119,7 @@ public sealed class TopUpQuestionBank(
     /// a nightly run to notice the bucket is thin.
     /// </summary>
     public async Task<GenerationRun> GenerateOnceAsync(Language lang, string categoryId, Difficulty level, int count,
-        QuestionKind kind = QuestionKind.Choice, CancellationToken ct = default)
+        QuestionKind kind = QuestionKind.Choice, CancellationToken ct = default, string additionalPrompt = "")
     {
         var run = new GenerationRun(ids.NewId(), clock.Now, null, count, 0, 0, null);
 
@@ -133,7 +133,8 @@ public sealed class TopUpQuestionBank(
 
         try
         {
-            var result = await FillAsync(lang, category, level, wanted, await IndexOfAsync(categoryId, ct), kind, ct);
+            var result = await FillAsync(lang, category, level, wanted, await IndexOfAsync(categoryId, ct), kind, ct,
+                additionalPrompt);
             return await FinishAsync(run with { Requested = wanted, Inserted = result.Inserted, Rejected = result.Rejected }, ct);
         }
         catch (Exception ex)
@@ -148,7 +149,8 @@ public sealed class TopUpQuestionBank(
     /// of it can be found the candidate is dropped, because a picture question without a picture
     /// is not a question.
     /// </summary>
-    public async Task<GenerationRun> GenerateIllustratedAsync(Language lang, string categoryId, Difficulty level, int count, CancellationToken ct = default)
+    public async Task<GenerationRun> GenerateIllustratedAsync(Language lang, string categoryId, Difficulty level,
+        int count, CancellationToken ct = default, string additionalPrompt = "")
     {
         var run = new GenerationRun(ids.NewId(), clock.Now, null, count, 0, 0, null);
 
@@ -166,7 +168,8 @@ public sealed class TopUpQuestionBank(
 
         try
         {
-            var batch = await generator.GenerateIllustratedAsync(lang, category, level, wanted, index.Recent(40), ct);
+            var batch = await generator.GenerateIllustratedAsync(lang, category, level, wanted, index.Recent(40), ct,
+                additionalPrompt);
 
             var accepted = new List<Question>();
             var rejected = 0;
@@ -209,7 +212,7 @@ public sealed class TopUpQuestionBank(
 
     /// <summary>Generate, validate, de-duplicate, store. The index grows as we accept, so one batch cannot repeat itself.</summary>
     private async Task<(int Inserted, int Rejected)> FillAsync(Language lang, Category category, Difficulty level,
-        int want, PromptIndex index, QuestionKind kind, CancellationToken ct)
+        int want, PromptIndex index, QuestionKind kind, CancellationToken ct, string additionalPrompt = "")
     {
         var recent = index.Recent(60);
 
@@ -218,9 +221,9 @@ public sealed class TopUpQuestionBank(
         // sort and a map as they always have for a choice question.
         var batch = kind switch
         {
-            QuestionKind.Sort => await generator.GenerateSortAsync(lang, category, level, want, recent, ct),
-            QuestionKind.Map => await generator.GenerateMapAsync(lang, category, level, want, recent, ct),
-            _ => await generator.GenerateAsync(lang, category, level, want, recent, ct)
+            QuestionKind.Sort => await generator.GenerateSortAsync(lang, category, level, want, recent, ct, additionalPrompt),
+            QuestionKind.Map => await generator.GenerateMapAsync(lang, category, level, want, recent, ct, additionalPrompt),
+            _ => await generator.GenerateAsync(lang, category, level, want, recent, ct, additionalPrompt)
         };
 
         var accepted = new List<Question>();

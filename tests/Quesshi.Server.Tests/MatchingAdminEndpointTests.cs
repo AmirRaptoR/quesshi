@@ -140,6 +140,38 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
         Assert.Equal("🍳 Dutch", triviaSaved.NameNl);
     }
 
+    [Fact]
+    public async Task Trivia_category_prompt_helper_is_trimmed_and_returned_after_save()
+    {
+        using var client = AdminClient();
+        var id = "prompt-helper-" + Guid.NewGuid().ToString("N");
+
+        var response = await client.PostAsJsonAsync("/api/admin/categories",
+            new CategoryDto(id, "History", "تاریخ", "History", "📜", "#123456", true, 1,
+                PromptHelper: "  Focus on overlooked events.  "));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var categories = await client.GetFromJsonAsync<List<CategoryDto>>("/api/admin/categories");
+        Assert.Equal("Focus on overlooked events.", categories!.Single(c => c.Id == id).PromptHelper);
+    }
+
+    [Fact]
+    public async Task Trivia_category_accepts_an_explicitly_null_prompt_helper_as_blank()
+    {
+        using var client = AdminClient();
+        var id = "blank-prompt-helper-" + Guid.NewGuid().ToString("N");
+
+        var response = await client.PostAsJsonAsync("/api/admin/categories",
+            new CategoryDto(id, "History", "تاریخ", "History", "📜", "#123456", true, 1)
+            {
+                PromptHelper = null!
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var categories = await client.GetFromJsonAsync<List<CategoryDto>>("/api/admin/categories");
+        Assert.Equal("", categories!.Single(c => c.Id == id).PromptHelper);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("A")]
@@ -208,6 +240,22 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
         var missingCategory = await client.PostAsJsonAsync("/api/admin/matching/generate",
             new GenerateMatchingRequestDto("en", "missing", "fixed", 5));
         Assert.Equal("unknown_category", await ErrorAsync(missingCategory));
+    }
+
+    [Fact]
+    public async Task Trivia_generation_endpoint_forwards_the_additional_prompt()
+    {
+        using var client = AdminClient();
+        var categoryId = "generation-prompt-" + Guid.NewGuid().ToString("N");
+        await LiveShared.Categories.UpsertAsync(new Category(categoryId, "تاریخ", "History", "📜", "#123456"));
+        _host.QuestionGenerator.AdditionalPrompts.Clear();
+        _host.QuestionGenerator.IsConfigured = true;
+
+        var response = await client.PostAsJsonAsync("/api/admin/generate/bucket",
+            new GenerateRequestDto("en", categoryId, 2, 1, AdditionalPrompt: "Focus on the Silk Road."));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Focus on the Silk Road.", Assert.Single(_host.QuestionGenerator.AdditionalPrompts));
     }
 
     [Theory]

@@ -29,12 +29,80 @@ public class GenerationPromptTests
 {
     private static readonly QuestionPromptBuilder Prompts = new();
     private static readonly Category Geography = new("geography", "جغرافیا", "Geography", "*", "#fff");
+    private static readonly Category GuidedGeography = Geography with
+    {
+        PromptHelper = "Focus on overlooked places, not capital cities."
+    };
     private static readonly MatchingCategory Friends = new("m-friends", "دوستان", "Friends", "*", "#fff");
 
     private static string Sort(Language lang = Language.En) => Prompts.Sort(lang, Geography, Difficulty.Medium, 5, []);
     private static string Map(Language lang = Language.En) => Prompts.Map(lang, Geography, Difficulty.Medium, 5, []);
     private static string Matching(MatchingAnswerSource source, Language lang = Language.En)
         => Prompts.Matching(lang, Friends, source, 5, []);
+
+    [Fact]
+    public void Every_trivia_prompt_includes_the_category_prompt_helper()
+    {
+        var prompts = new[]
+        {
+            Prompts.User(Language.En, GuidedGeography, Difficulty.Medium, 5, []),
+            Prompts.Illustrated(Language.En, GuidedGeography, Difficulty.Medium, 5, []),
+            Prompts.Sort(Language.En, GuidedGeography, Difficulty.Medium, 5, []),
+            Prompts.Map(Language.En, GuidedGeography, Difficulty.Medium, 5, [])
+        };
+
+        Assert.All(prompts, prompt =>
+        {
+            Assert.Contains("Category guidance:", prompt);
+            Assert.Contains(GuidedGeography.PromptHelper, prompt);
+        });
+    }
+
+    [Fact]
+    public void Every_trivia_prompt_includes_per_run_additional_guidance()
+    {
+        const string additional = "Make this batch suitable for a museum event.";
+        var prompts = new[]
+        {
+            Prompts.User(Language.En, Geography, Difficulty.Medium, 5, [], additional),
+            Prompts.Illustrated(Language.En, Geography, Difficulty.Medium, 5, [], additional),
+            Prompts.Sort(Language.En, Geography, Difficulty.Medium, 5, [], additional),
+            Prompts.Map(Language.En, Geography, Difficulty.Medium, 5, [], additional)
+        };
+
+        Assert.All(prompts, prompt =>
+        {
+            Assert.Contains("Additional guidance for this run:", prompt);
+            Assert.Contains(additional, prompt);
+        });
+    }
+
+    [Fact]
+    public void Blank_guidance_does_not_add_prompt_sections_or_change_the_prompt()
+    {
+        var blankCategory = Geography with { PromptHelper = "   " };
+        var baseline = new[]
+        {
+            Prompts.User(Language.En, Geography, Difficulty.Medium, 5, []),
+            Prompts.Illustrated(Language.En, Geography, Difficulty.Medium, 5, []),
+            Prompts.Sort(Language.En, Geography, Difficulty.Medium, 5, []),
+            Prompts.Map(Language.En, Geography, Difficulty.Medium, 5, [])
+        };
+        var withBlanks = new[]
+        {
+            Prompts.User(Language.En, blankCategory, Difficulty.Medium, 5, [], "   "),
+            Prompts.Illustrated(Language.En, blankCategory, Difficulty.Medium, 5, [], "   "),
+            Prompts.Sort(Language.En, blankCategory, Difficulty.Medium, 5, [], "   "),
+            Prompts.Map(Language.En, blankCategory, Difficulty.Medium, 5, [], "   ")
+        };
+
+        Assert.Equal(baseline, withBlanks);
+        Assert.All(withBlanks, prompt =>
+        {
+            Assert.DoesNotContain("Category guidance:", prompt);
+            Assert.DoesNotContain("Additional guidance for this run:", prompt);
+        });
+    }
 
     [Theory]
     [InlineData("MEASURABLE")]

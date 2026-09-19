@@ -2,7 +2,7 @@ namespace Quesshi.Domain;
 
 /// <summary>A topic. Id is a slug so it can live in URLs and grain keys unescaped.</summary>
 public sealed record Category(string Id, string NameFa, string NameEn, string Icon, string Color,
-    bool IsActive = true, int SortOrder = 0, string NameNl = "")
+    bool IsActive = true, int SortOrder = 0, string NameNl = "", string PromptHelper = "")
 {
     /// <summary>
     /// Falls back to English rather than showing a blank chip: a category added before a language

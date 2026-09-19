@@ -35,6 +35,11 @@
 
                 <p class="faint" style="margin:0;font-size:var(--step--1)">@L["admin.categoryHint"]</p>
 
+                <div class="field">
+                    <label>@L["admin.promptHelper"]</label>
+                    <textarea class="textarea" rows="3" @bind="_editing.PromptHelper"></textarea>
+                </div>
+
                 @if (_known)
                 {
                     <p class="faint" dir="ltr" style="margin:0;font-size:var(--step--1)">@_editing.Id</p>
