@@ -9,4 +9,7 @@ namespace Quesshi.Domain;
 /// <see cref="AnswerRecord"/> for why that is not the ambiguity it looks like.
 /// </para></summary>
 public sealed record LiveAnswer(int ChoiceIndex, bool Correct, int Score, double SecondsTaken,
-    string? Response = null);
+    string? Response = null)
+{
+    public bool Answered => ChoiceIndex >= 0 || Response is not null;
+}

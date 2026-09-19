@@ -807,11 +807,11 @@ public sealed class LiveMatchGrain(
         var round = m.Rounds[index];
         var question = await questions.GetAsync(round.QuestionId);
 
-        var players = Participants(m).Select(pid =>
+        var players = Participants(m).Where(round.Answers.ContainsKey).Select(pid =>
         {
-            var answer = round.Answers.TryGetValue(pid, out var a) ? a : new LiveAnswer(-1, false, 0, 0);
+            var answer = round.Answers[pid];
             var total = m.Rounds.Take(index + 1).Sum(r => r.Answers.TryGetValue(pid, out var ra) ? ra.Score : 0);
-            return new LivePlayerRound(pid, answer.ChoiceIndex, answer.Correct, answer.Score, total, answer.Response);
+            return new LivePlayerRound(pid, answer.ChoiceIndex, answer.Correct, answer.Score, total, answer.Response, answer.Answered);
         }).ToList();
 
         // No seed anywhere in here, and none needed. A sorting question's correct order is simply
@@ -868,11 +868,14 @@ public sealed class LiveMatchGrain(
             // whoever reconnected mid-round, which is the one thing this method exists to prevent.
             var question = closed && byId.TryGetValue(round.QuestionId, out var q) ? q : null;
 
-            var answers = Participants(m).Select(pid =>
+            var roundParticipants = closed
+                ? Participants(m).Where(round.Answers.ContainsKey)
+                : Participants(m).Where(pid => m.Abandoners.All(a => a.PlayerId != pid));
+            var answers = roundParticipants.Select(pid =>
             {
-                var answered = round.HasAnswered(pid);
+                var answered = round.Answers.TryGetValue(pid, out var stored) && stored.Answered;
                 var visible = closed || pid == forPlayerId;
-                var answer = answered && visible ? round.Answers[pid] : null;
+                var answer = answered && visible ? stored : null;
                 return new LiveRoundAnswerView(pid, answered, answer?.ChoiceIndex, visible ? answer?.Correct : null,
                     answer?.Score ?? 0, answer?.Response);
             }).ToList();

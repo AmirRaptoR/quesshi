@@ -359,6 +359,8 @@
   "live.opponentAway": "Your opponent's connection dropped.",
   "live.players.agreed": "You all agreed!",
   "live.players.disagreed": "You answered differently.",
+  "live.players.notEnoughAnswers": "Not enough answers.",
+  "live.noAnswer": "No answer",
   "live.question.locked": "Answer locked in",
   "live.question.theyAnswered": "They've answered",
   "live.question.waitingForThem": "Waiting for them to answer…",

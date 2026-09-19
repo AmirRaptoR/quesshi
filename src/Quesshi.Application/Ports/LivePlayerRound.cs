@@ -14,4 +14,4 @@ namespace Quesshi.Application.Ports;
 /// </para>
 /// </summary>
 public sealed record LivePlayerRound(string PlayerId, int ChoiceIndex, bool Correct, int RoundScore, int TotalScore,
-    string? Response = null);
+    string? Response = null, bool Answered = true);

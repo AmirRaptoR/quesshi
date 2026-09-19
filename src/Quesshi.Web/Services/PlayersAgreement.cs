@@ -9,6 +9,13 @@ namespace Quesshi.Web.Services;
 /// </summary>
 public static class PlayersAgreement
 {
+    public static PlayersAgreementState State(IEnumerable<int> choiceIndices)
+    {
+        var answered = choiceIndices.Where(c => c >= 0).ToList();
+        if (answered.Count < 2) return PlayersAgreementState.NotEnoughAnswers;
+        return answered.Distinct().Count() == 1 ? PlayersAgreementState.Agreed : PlayersAgreementState.Disagreed;
+    }
+
     /// <summary>
     /// Whether every participant who actually answered picked the same option. A miss carries
     /// <c>-1</c> (the same sentinel every other kind's timeout uses) and is excluded rather than
@@ -18,7 +25,8 @@ public static class PlayersAgreement
     /// </summary>
     public static bool AllAgreed(IEnumerable<int> choiceIndices)
     {
-        var answered = choiceIndices.Where(c => c >= 0).ToList();
-        return answered.Count >= 2 && answered.Distinct().Count() == 1;
+        return State(choiceIndices) == PlayersAgreementState.Agreed;
     }
 }
+
+public enum PlayersAgreementState { NotEnoughAnswers, Agreed, Disagreed }

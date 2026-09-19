@@ -201,7 +201,11 @@ public class LiveSubmissionKindTests(LiveClusterFixture fixture)
             // only thing that says nobody played.
             Assert.Equal(-1, answer.ChoiceIndex);
             Assert.Null(answer.Response);
+            Assert.False(answer.Answered);
         }
+
+        var rebuilt = await grain.GetAsync(Amir);
+        Assert.All(rebuilt!.Rounds[SortSlot].Answers, answer => Assert.False(answer.Answered));
     }
 
     [Theory]
@@ -274,6 +278,7 @@ public class LiveSubmissionKindTests(LiveClusterFixture fixture)
         Assert.Equal(0, amir.RoundScore);
         Assert.Equal(-1, amir.ChoiceIndex);
         Assert.Null(amir.Response);
+        Assert.False(amir.Answered);
     }
 
     [Fact]

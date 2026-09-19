@@ -359,6 +359,8 @@
   "live.opponentAway": "اتصال حریف قطع شد.",
   "live.players.agreed": "همه یک جواب دادید!",
   "live.players.disagreed": "جواب‌هاتون فرق داشت.",
+  "live.players.notEnoughAnswers": "پاسخ کافی نیست.",
+  "live.noAnswer": "بدون پاسخ",
   "live.question.locked": "پاسخ ثبت شد",
   "live.question.theyAnswered": "حریف پاسخ داد",
   "live.question.waitingForThem": "در انتظار پاسخ حریف…",

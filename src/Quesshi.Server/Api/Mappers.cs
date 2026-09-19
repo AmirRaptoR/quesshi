@@ -389,7 +389,7 @@ public static class Mappers
 
     public static LiveRoundRevealDto ToDto(this LiveRoundReveal r) => new(
         r.Slot, r.CorrectIndex, r.Explanation,
-        [.. r.Players.Select(p => new LivePlayerRoundDto(p.PlayerId, p.ChoiceIndex, p.Correct, p.RoundScore, p.TotalScore, p.Response))],
+        [.. r.Players.Select(p => new LivePlayerRoundDto(p.PlayerId, p.ChoiceIndex, p.Correct, p.RoundScore, p.TotalScore, p.Response, p.Answered))],
         r.EndsAt, (int)r.Kind, r.CorrectOrder, r.CorrectTarget);
 
     public static LiveEndedDto ToDto(this LiveEnded e) => new(

@@ -31,6 +31,13 @@
             <span class="grow" dir="ltr">@Describe(mark.Pick)</span>
         </div>
     }
+    @foreach (var answer in Answers.Where(a => !a.Answered))
+    {
+        <div class="maplegend__row" @key="answer.Label">
+            <span dir="auto">@answer.Label</span>
+            <span class="grow">@L["live.noAnswer"]</span>
+        </div>
+    }
 </div>
 
 @code {
@@ -63,7 +70,7 @@
         // A player who never answered, or whose answer will not parse, has nothing to draw and
         // nothing to name. Dropping them in one place keeps the legend and the marks on the map
         // above it in step by construction rather than by two filters agreeing.
-        _marks = [.. Answers
+        _marks = [.. Answers.Where(a => a.Answered)
             .Select(a => (a.Label, Pick: MapPick.Parse(a.Response), a.Right))
             .Where(a => a.Pick is not null)
             .Select(a => new MapMark(a.Pick!, a.Label, a.Right))];

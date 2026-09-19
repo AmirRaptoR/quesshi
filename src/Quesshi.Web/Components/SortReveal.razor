@@ -28,12 +28,21 @@
     {
         <div class="sortreveal__col" @key="column.Label">
             <div class="sortreveal__head" dir="auto">@column.Label</div>
-            @foreach (var row in AnswerReveal.SortRows(CorrectOrder, column.Placed))
+            @if (!column.Answered)
             {
-                <div class="sortreveal__item @ToneOf(row)" @key="row.Place">
-                    <span class="sortreveal__place">@L.Num(row.Place + 1)</span>
-                    <span class="grow" dir="auto">@(row.Placed ?? "—")</span>
+                <div class="sortreveal__item sortreveal__item--blank">
+                    <span class="grow" dir="auto">@L["live.noAnswer"]</span>
                 </div>
+            }
+            else
+            {
+                @foreach (var row in AnswerReveal.SortRows(CorrectOrder, column.Placed))
+                {
+                    <div class="sortreveal__item @ToneOf(row)" @key="row.Place">
+                        <span class="sortreveal__place">@L.Num(row.Place + 1)</span>
+                        <span class="grow" dir="auto">@(row.Placed ?? "—")</span>
+                    </div>
+                }
             }
         </div>
     }

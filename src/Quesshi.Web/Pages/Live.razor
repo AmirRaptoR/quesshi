@@ -204,9 +204,9 @@
                     {
                         // No correct answer to reveal for this kind — the one thing worth saying is
                         // whether everyone who answered agreed.
-                        var agreed = PlayersAgreement.AllAgreed(round.Answers.Select(a => a.ChoiceIndex ?? -1));
-                        <p class="chip @(agreed ? "chip--win" : null)" style="margin:0 0 .6rem">
-                            @L[agreed ? "live.players.agreed" : "live.players.disagreed"]
+                        var agreement = PlayersAgreement.State(round.Answers.Where(a => a.Answered).Select(a => a.ChoiceIndex ?? -1));
+                        <p class="chip @(agreement == PlayersAgreementState.Agreed ? "chip--win" : null)" style="margin:0 0 .6rem">
+                            @L[agreement switch { PlayersAgreementState.Agreed => "live.players.agreed", PlayersAgreementState.Disagreed => "live.players.disagreed", _ => "live.players.notEnoughAnswers" }]
                         </p>
                     }
                     <div class="answers game-answers">
@@ -236,6 +236,13 @@
                             </div>
                         }
                     </div>
+                    @foreach (var unanswered in round.Answers.Where(a => !a.Answered))
+                    {
+                        <p class="faint" style="margin:.35rem 0 0" @key="unanswered.PlayerId">
+                            <span dir="auto">@(unanswered.PlayerId == MeId ? L["result.you"] : others.Count == 1 ? L["result.them"] : NameOf(unanswered.PlayerId))</span>:
+                            @L["live.noAnswer"]
+                        </p>
+                    }
                     }
                 </section>
 
@@ -533,7 +540,7 @@
         // kind-specific answers included: a client that reconnects after this round must find the
         // same round it would have kept from the push, or the two would tell it different stories
         // about the same slot.
-        List<LiveRoundAnswerViewDto> answers = [.. reveal.Players.Select(p => new LiveRoundAnswerViewDto(p.PlayerId, true, p.ChoiceIndex, p.Correct, p.RoundScore, p.Response))];
+        List<LiveRoundAnswerViewDto> answers = [.. reveal.Players.Select(p => new LiveRoundAnswerViewDto(p.PlayerId, p.Answered, p.Answered ? p.ChoiceIndex : null, p.Answered ? p.Correct : null, p.RoundScore, p.Answered ? p.Response : null))];
         List<LiveRoundResultViewDto> rounds = [.. _view.Rounds.Take(reveal.Slot), new(reveal.Slot, card.QuestionId, card.StartedAt, reveal.CorrectIndex, answers, reveal.Kind, reveal.CorrectOrder, reveal.CorrectTarget)];
         List<LivePlayerViewDto> players = [.. _view.Players.Select(p =>
         {
@@ -549,7 +556,7 @@
         // always false for it, and playing the wrong-answer sound on every single round would be a
         // regression dressed up as a feature.
         var mine = reveal.Players.FirstOrDefault(p => p.PlayerId == MeId);
-        if (mine is not null && card.Kind != 3) _ = mine.Correct ? Sounds.Correct() : Sounds.Wrong();
+        if (mine is { Answered: true } && card.Kind != 3) _ = mine.Correct ? Sounds.Correct() : Sounds.Wrong();
 
         InvokeAsync(StateHasChanged);
     }
@@ -747,13 +754,13 @@
         var others = round.Answers.Where(a => a.PlayerId != MeId).ToList();
         var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
 
-        List<SortRevealColumn> columns = [new(L["result.you"], AnswerReveal.PlacedItems(round.CorrectOrder, mine?.Response))];
+        List<SortRevealColumn> columns = [new(L["result.you"], AnswerReveal.PlacedItems(round.CorrectOrder, mine?.Response), mine?.Answered == true)];
 
         // A capacity-2 duel says "Them", the way every other two-player surface in this app does;
         // beyond two there is no "them" to speak of and each column carries a name instead.
         columns.AddRange(others.Select(other => new SortRevealColumn(
             others.Count == 1 ? L["result.them"] : NameOf(other.PlayerId),
-            AnswerReveal.PlacedItems(round.CorrectOrder, other.Response))));
+            AnswerReveal.PlacedItems(round.CorrectOrder, other.Response), other.Answered)));
 
         return columns;
     }
@@ -766,10 +773,10 @@
         var others = round.Answers.Where(a => a.PlayerId != MeId).ToList();
         var mine = round.Answers.FirstOrDefault(a => a.PlayerId == MeId);
 
-        List<MapAnswerLine> lines = [new(L["result.you"], mine?.Response, mine?.Correct)];
+        List<MapAnswerLine> lines = [new(L["result.you"], mine?.Response, mine?.Correct, mine?.Answered == true)];
 
         lines.AddRange(others.Select(other => new MapAnswerLine(
-            others.Count == 1 ? L["result.them"] : NameOf(other.PlayerId), other.Response, other.Correct)));
+            others.Count == 1 ? L["result.them"] : NameOf(other.PlayerId), other.Response, other.Correct, other.Answered)));
 
         return lines;
     }

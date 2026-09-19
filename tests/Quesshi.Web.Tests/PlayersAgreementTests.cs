@@ -22,5 +22,15 @@ public class PlayersAgreementTests
         Assert.False(PlayersAgreement.AllAgreed([1]));
         Assert.False(PlayersAgreement.AllAgreed([]));
         Assert.False(PlayersAgreement.AllAgreed([-1, -1]));
+        Assert.Equal(PlayersAgreementState.NotEnoughAnswers, PlayersAgreement.State([1]));
+        Assert.Equal(PlayersAgreementState.NotEnoughAnswers, PlayersAgreement.State([]));
+        Assert.Equal(PlayersAgreementState.NotEnoughAnswers, PlayersAgreement.State([-1, -1]));
+    }
+
+    [Fact]
+    public void Two_answers_report_agreement_or_disagreement()
+    {
+        Assert.Equal(PlayersAgreementState.Agreed, PlayersAgreement.State([1, 1, -1]));
+        Assert.Equal(PlayersAgreementState.Disagreed, PlayersAgreement.State([1, 0, -1]));
     }
 }
