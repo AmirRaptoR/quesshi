@@ -53,6 +53,31 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
     private static void Advance(TimeSpan by) => LiveShared.TimeProvider.Advance(by);
 
+    [Fact]
+    public async Task Lowered_runtime_limit_grandfathers_capacity_but_blocks_later_increases()
+    {
+        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        await settings.SetMaxCapacityAsync(30);
+        try
+        {
+            var (grain, _) = await NewLobbyAsync($"LG{Guid.NewGuid():N}"[..6], Amir, 30);
+            await settings.SetMaxCapacityAsync(20);
+
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 30));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 25));
+            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 26));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 20));
+            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 21));
+
+            var view = await grain.GetAsync(Amir);
+            Assert.Equal(20, view!.Capacity);
+        }
+        finally
+        {
+            await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        }
+    }
+
     /// <summary>
     /// Grain timers fire off the fake clock asynchronously relative to the calling thread, so every
     /// clock-driven assertion polls on real wall-clock time until the grain's own processing catches

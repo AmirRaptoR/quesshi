@@ -187,6 +187,35 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
         Assert.Equal(results[0].NewMatchId, results[1].NewMatchId);
     }
 
+    [Fact]
+    public async Task Rematch_clamps_a_grandfathered_capacity_to_the_current_limit()
+    {
+        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        await settings.SetMaxCapacityAsync(30);
+        try
+        {
+            var n = Interlocked.Increment(ref _n);
+            var owner = $"{Challenger}-large-{n}";
+            var opponent = $"{Opponent}-large-{n}";
+            var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(Guid.NewGuid().ToString("N"));
+            await grain.CreateLobbyAsync($"RM{n:0000}", owner, (int)Language.En, 10,
+                [SeedCategory().Id], [], 30);
+            await grain.JoinAsync(opponent);
+            await grain.EndAsync("test");
+            await settings.SetMaxCapacityAsync(20);
+
+            var outcome = await grain.RequestRematchAsync(owner);
+            var rematch = await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(outcome.NewMatchId!).GetAsync(owner);
+
+            Assert.Equal((int)RematchStatus.Created, outcome.Status);
+            Assert.Equal(20, rematch!.Capacity);
+        }
+        finally
+        {
+            await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        }
+    }
+
     /// <summary>
     /// The chain keeps extending rather than colliding: a rematch of the rematch lobby (once *it* is
     /// over) derives a further id from its own, distinct from both the original match and its own

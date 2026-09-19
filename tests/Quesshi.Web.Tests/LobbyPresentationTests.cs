@@ -124,6 +124,15 @@ public class LobbyPresentationTests
     }
 
     [Fact]
+    public void A_large_lobby_materializes_only_occupied_seats_and_reports_the_open_count()
+    {
+        var snapshot = LobbyPresentation.From(LiveSample([P("amir"), P("sara")], capacity: 500));
+
+        Assert.Equal(2, LobbyPresentation.Seats(snapshot).Count);
+        Assert.Equal(498, LobbyPresentation.OpenSeatCount(snapshot));
+    }
+
+    [Fact]
     public void Settings_are_locked_once_the_question_set_is_drawn_for_a_live_lobby()
     {
         // TotalRounds (here 0, meaning no rounds/questions drawn) is what Mappers.ToLiveDtoAsync

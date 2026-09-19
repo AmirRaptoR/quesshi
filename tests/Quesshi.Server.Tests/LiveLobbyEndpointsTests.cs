@@ -78,14 +78,15 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task Create_refuses_a_capacity_outside_2_to_8()
+    public async Task Create_refuses_a_capacity_outside_the_configured_range()
     {
+        await Grains.GetGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         var tooSmall = await LiveEndpoints.CreateLobbyAsync(new CreateLobbyDto(1, "en", [Category], null, null),
             Amir, Grains, NewIds(), LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
 
-        var tooBig = await LiveEndpoints.CreateLobbyAsync(new CreateLobbyDto(9, "en", [Category], null, null),
+        var tooBig = await LiveEndpoints.CreateLobbyAsync(new CreateLobbyDto(21, "en", [Category], null, null),
             Amir, Grains, NewIds(), LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
@@ -227,7 +228,7 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
     }
 
     [Fact]
-    public async Task UpdateSettings_with_a_capacity_outside_2_to_8_is_refused_before_the_domain_sees_it()
+    public async Task UpdateSettings_with_a_capacity_outside_the_absolute_range_is_refused_before_the_domain_sees_it()
     {
         var lobby = await CreateLobbyAsync(NewIds(), capacity: 3);
 
@@ -237,7 +238,7 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
 
         var tooBig = await LiveEndpoints.UpdateSettingsAsync(lobby.Id,
-            new UpdateDuelSettingsDto("en", [Category], null, null, 9), Amir, Grains, LiveShared.Players);
+            new UpdateDuelSettingsDto("en", [Category], null, null, 501), Amir, Grains, LiveShared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
 

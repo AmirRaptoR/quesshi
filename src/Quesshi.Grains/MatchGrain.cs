@@ -76,6 +76,8 @@ public sealed class MatchGrain(
         List<string> categoryIds, List<int> levels, int capacity)
     {
         if (_match is not null) return View(_match, ownerId);
+        if (capacity > await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync())
+            throw new ArgumentOutOfRangeException(nameof(capacity));
 
         var settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
         _match = Match.Create(this.GetPrimaryKeyString(), code, ownerId, settings, capacity, clock.Now);
@@ -194,7 +196,9 @@ public sealed class MatchGrain(
 
         var settingsChanged = settings != _match.Settings;
         var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
-        var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity);
+        var configuredMax = await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity)
+            && (newCapacity <= _match.Capacity || newCapacity <= configuredMax);
 
         if (!settingsOk || !capacityOk)
         {

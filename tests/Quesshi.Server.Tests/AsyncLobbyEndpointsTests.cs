@@ -117,13 +117,14 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
     }
 
     [Fact]
-    public async Task Create_refuses_a_capacity_outside_2_to_8()
+    public async Task Create_refuses_a_capacity_outside_the_configured_range()
     {
+        await Grains.GetGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         var tooSmall = await GameEndpoints.CreateLobbyAsync(new CreateLobbyDto(1, "en", [Category], null, null), Amir, Grains, Ids, Shared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
 
-        var tooBig = await GameEndpoints.CreateLobbyAsync(new CreateLobbyDto(9, "en", [Category], null, null), Amir, Grains, Ids, Shared.Players);
+        var tooBig = await GameEndpoints.CreateLobbyAsync(new CreateLobbyDto(21, "en", [Category], null, null), Amir, Grains, Ids, Shared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
     }
@@ -201,7 +202,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
     }
 
     [Fact]
-    public async Task UpdateSettings_with_a_capacity_outside_2_to_8_is_refused_before_the_domain_sees_it()
+    public async Task UpdateSettings_with_a_capacity_outside_the_absolute_range_is_refused_before_the_domain_sees_it()
     {
         var lobby = await CreateLobbyAsync(capacity: 3);
 
@@ -211,7 +212,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));
 
         var tooBig = await GameEndpoints.UpdateSettingsAsync(lobby.Id,
-            new UpdateDuelSettingsDto("en", [Category], null, null, 9), Amir, Grains, Shared.Players);
+            new UpdateDuelSettingsDto("en", [Category], null, null, 501), Amir, Grains, Shared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooBig));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooBig));
 

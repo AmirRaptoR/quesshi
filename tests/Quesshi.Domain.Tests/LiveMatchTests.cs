@@ -108,9 +108,24 @@ public class LiveMatchTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(9)]
-    public void Create_rejects_a_capacity_outside_two_to_eight(int capacity)
+    [InlineData(501)]
+    public void Create_rejects_a_capacity_outside_two_to_five_hundred(int capacity)
         => Assert.Throws<ArgumentOutOfRangeException>(() => LiveMatch.Create("lm", "CODE01", Challenger, NewSettings(), capacity, T0));
+
+    [Fact]
+    public void Players_answer_accepts_and_preserves_a_selection_beyond_index_nineteen()
+    {
+        var match = LiveMatch.Create("large", "LARGE1", Challenger, NewSettings(), 21, T0);
+        match.DrawQuestions(Ten);
+        for (var i = 1; i < 21; i++) match.Join($"player-{i}", T0);
+        Assert.True(match.Start(Challenger, T0));
+        match.Advance(T0 + LiveRules.StartCountdown);
+
+        var answer = match.Answer(Challenger, 0, 20, false, T0 + LiveRules.StartCountdown,
+            Difficulty.Easy, QuestionKind.Players);
+
+        Assert.Equal(20, answer.ChoiceIndex);
+    }
 
     [Fact]
     public void A_lobby_with_room_for_more_does_not_start_until_capacity_is_reached()
@@ -363,8 +378,8 @@ public class LiveMatchTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(9)]
-    public void SetCapacity_is_refused_outside_two_to_eight(int capacity)
+    [InlineData(501)]
+    public void SetCapacity_is_refused_outside_two_to_five_hundred(int capacity)
     {
         var m = NewMatch();
         Assert.False(m.CanSetCapacity(Challenger, capacity));

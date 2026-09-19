@@ -214,6 +214,7 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<AdminLivePageDto?> AdminLiveAsync() => GetAsync<AdminLivePageDto>("api/admin/live");
     public Task<bool> EndLiveDuelAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/live/{id}/end");
     public Task<bool> SetLiveEnabledAsync(bool value) => SendAsync(HttpMethod.Post, $"api/admin/live/enabled?value={value}");
+    public Task<bool> SetMaxLobbyCapacityAsync(int value) => SendAsync(HttpMethod.Post, $"api/admin/lobby/max-capacity?value={value}");
 
     /// <summary>The <c>{ "error": "code" }</c> body the question endpoint refuses with. Its own
     /// record because <c>AdminAuthErrorDto</c> spells the same idea "reason", and reading one as the

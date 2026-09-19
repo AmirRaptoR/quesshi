@@ -79,7 +79,7 @@ public static class LiveEndpoints
 
         // --- lobby lifecycle (issue #52) ----------------------------------------------------------
         // Join is deliberately not repeated here: /join/{code} above already calls the same
-        // capacity-aware ILiveMatchGrain.JoinAsync a 2-to-8-seat lobby needs, so an N-player lobby is
+        // capacity-aware ILiveMatchGrain.JoinAsync a multi-seat lobby needs, so an N-player lobby is
         // joined exactly as a 1v1 always was.
         api.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids,
             IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
@@ -114,7 +114,8 @@ public static class LiveEndpoints
         IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions,
         ICategoryRepository categories, IClock clock)
     {
-        if (body.Capacity is < 2 or > 8) return Results.BadRequest(new { error = "bad_capacity" });
+        var maxCapacity = await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        if (body.Capacity < 2 || body.Capacity > maxCapacity) return Results.BadRequest(new { error = "bad_capacity" });
 
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
@@ -130,7 +131,9 @@ public static class LiveEndpoints
 
             var matchId = ids.NewId();
             var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
-            var view = await grain.CreateLobbyAsync(code, meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+            LiveView view;
+            try { view = await grain.CreateLobbyAsync(code, meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity); }
+            catch (ArgumentOutOfRangeException) { return Results.BadRequest(new { error = "bad_capacity" }); }
             var lookup = await players.LiveLookupAsync(view);
             return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
         }
@@ -141,7 +144,8 @@ public static class LiveEndpoints
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
         IGrainFactory grains, IPlayerRepository players)
     {
-        if (body.Capacity is { } capacity and (< 2 or > 8)) return Results.BadRequest(new { error = "bad_capacity" });
+        if (body.Capacity is { } capacity and (< MatchRules.MinParticipants or > MatchRules.MaxParticipants))
+            return Results.BadRequest(new { error = "bad_capacity" });
 
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
