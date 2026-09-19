@@ -8,7 +8,7 @@ public sealed class MatchingCategoryForm
     public string NameFa { get; set; } = "";
     public string NameEn { get; set; } = "";
     public string NameNl { get; set; } = "";
-    public string Icon { get; set; } = "◆";
+    public string Icon { get; set; } = "";
     public string Color { get; set; } = "#2EC4B6";
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }

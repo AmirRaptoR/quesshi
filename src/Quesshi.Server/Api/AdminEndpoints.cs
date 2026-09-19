@@ -232,13 +232,11 @@ public static class AdminEndpoints
         admin.MapGet("/categories", async (ICategoryRepository categories) =>
             (await categories.AllAsync()).Select(c => c.ToDto(Language.Fa)).ToList());
 
-        // A new category is two names and a colour. The id, the position in the list and the icon are
-        // all derivable — asking a human for them is three fields that can only be got wrong.
         admin.MapPost("/categories", async (CategoryDto body, ICategoryRepository categories) =>
         {
-            var (iconFa, nameFa) = SplitIcon(body.NameFa);
-            var (iconEn, nameEn) = SplitIcon(body.NameEn);
-            var (iconNl, nameNl) = SplitIcon(body.NameNl);
+            var nameFa = (body.NameFa ?? "").Trim();
+            var nameEn = (body.NameEn ?? "").Trim();
+            var nameNl = (body.NameNl ?? "").Trim();
 
             if (nameEn.Length == 0) return Results.BadRequest(new { error = "bad_name" });
 
@@ -246,15 +244,16 @@ public static class AdminEndpoints
             if (slug.Length == 0) return Results.BadRequest(new { error = "bad_id" });
             if (slug.StartsWith("m-", StringComparison.OrdinalIgnoreCase))
                 return Results.BadRequest(new { error = "reserved_prefix" });
+            if (!EmojiIcon.TryNormalize(body.Icon, out var icon))
+                return Results.BadRequest(new { error = "bad_icon" });
 
             var all = await categories.AllAsync();
-            var icon = new[] { iconFa, iconEn, iconNl, body.Icon.Trim() }.FirstOrDefault(i => i.Length > 0) ?? "";
             var order = body.SortOrder > 0
                 ? body.SortOrder
                 : (all.FirstOrDefault(c => c.Id == slug)?.SortOrder ?? all.Select(c => c.SortOrder).DefaultIfEmpty(0).Max() + 1);
 
             await categories.UpsertAsync(new Category(slug, nameFa, nameEn,
-                icon.Length > 0 ? icon : "◆", body.Color, body.IsActive, order, nameNl));
+                icon, body.Color, body.IsActive, order, nameNl));
             return Results.Ok();
         });
 
@@ -370,19 +369,4 @@ public static class AdminEndpoints
         return kept.Trim('-');
     }
 
-    /// <summary>
-    /// Splits a leading emoji off a category name, so "🍳 Cooking" is an icon and a name. Anything
-    /// that starts with a letter, digit or ordinary punctuation is left alone.
-    /// </summary>
-    private static (string Icon, string Name) SplitIcon(string value)
-    {
-        var name = value.Trim();
-        if (name.Length == 0) return ("", "");
-
-        // Index-based overloads read the whole code point, so an emoji surrogate pair is one character.
-        if (char.IsLetterOrDigit(name, 0) || char.IsPunctuation(name, 0)) return ("", name);
-
-        var length = System.Globalization.StringInfo.GetNextTextElementLength(name);
-        return (name[..length], name[length..].Trim());
-    }
 }

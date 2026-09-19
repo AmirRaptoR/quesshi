@@ -162,15 +162,8 @@ public static class MatchingAdminEndpoints
             var nameNl = (body.NameNl ?? "").Trim();
             if (nameFa.Length == 0 && nameEn.Length == 0)
                 return Results.BadRequest(new { error = "blank_name" });
-
-            var (iconFa, cleanFa) = SplitIcon(nameFa);
-            var (iconEn, cleanEn) = SplitIcon(nameEn);
-            var (iconNl, cleanNl) = SplitIcon(nameNl);
-            nameFa = cleanFa;
-            nameEn = cleanEn;
-            nameNl = cleanNl;
-            if (nameFa.Length == 0 && nameEn.Length == 0)
-                return Results.BadRequest(new { error = "blank_name" });
+            if (!EmojiIcon.TryNormalize(body.Icon, out var icon))
+                return Results.BadRequest(new { error = "bad_icon" });
 
             var rawId = (body.Id ?? "").Trim().ToLowerInvariant();
             if (rawId.Length == 0) return Results.BadRequest(new { error = "bad_category_id" });
@@ -183,9 +176,6 @@ public static class MatchingAdminEndpoints
 
             var existing = await categories.GetAsync(id);
             var all = await categories.AllAsync();
-            var icon = string.IsNullOrWhiteSpace(body.Icon)
-                ? new[] { iconFa, iconEn, iconNl }.FirstOrDefault(i => i.Length > 0) ?? "◆"
-                : body.Icon.Trim();
             var order = body.SortOrder > 0
                 ? body.SortOrder
                 : existing?.SortOrder ?? all.Select(c => c.SortOrder).DefaultIfEmpty(0).Max() + 1;
@@ -246,11 +236,4 @@ public static class MatchingAdminEndpoints
             _ => "bad_matching_question"
         };
 
-    private static (string Icon, string Name) SplitIcon(string value)
-    {
-        if (value.Length == 0) return ("", "");
-        if (char.IsLetterOrDigit(value, 0) || char.IsPunctuation(value, 0)) return ("", value);
-        var length = System.Globalization.StringInfo.GetNextTextElementLength(value);
-        return (value[..length], value[length..].Trim());
-    }
 }
