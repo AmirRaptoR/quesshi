@@ -29,6 +29,7 @@
                     <div class="field"><label>@L["admin.name"] (@L["lang.fa"])</label><input class="input" @bind="_editing.NameFa" /></div>
                     <div class="field"><label>@L["admin.name"] (@L["lang.en"])</label><input class="input" dir="ltr" @bind="_editing.NameEn" /></div>
                     <div class="field"><label>@L["admin.name"] (@L["lang.nl"])</label><input class="input" dir="ltr" @bind="_editing.NameNl" /></div>
+                    <div class="field"><label>@L["admin.icon"]</label><input class="input" dir="ltr" inputmode="text" @bind="_editing.Icon" /></div>
                     <div class="field"><label>@L["admin.colour"]</label><input class="input" type="color" @bind="_editing.Color" /></div>
                 </div>
 
@@ -84,14 +85,15 @@
     {
         _error = null;
 
-        // The id, the icon and the position are all derived server-side; only the English name is needed.
         if (_editing.NameEn.Trim().Length == 0)
         {
             _error = L["common.error"];
             return;
         }
 
-        if (!await Api.SaveCategoryAsync(_editing.ToDto())) { _error = L["common.error"]; return; }
+        if (!EmojiIcon.TryNormalize(_editing.Icon, out _)) { _error = L["admin.err.bad_icon"]; return; }
+        var result = await Api.TrySaveCategoryAsync(_editing.ToDto());
+        if (!result.Saved) { _error = L.Or("admin.err." + (result.Error ?? "common.error"), L["common.error"]); return; }
 
         Reset();
         await LoadAsync();
@@ -100,7 +102,8 @@
     private async Task ToggleAsync(string id)
     {
         var category = _categories.Single(c => c.Id == id);
-        await Api.SaveCategoryAsync(category with { IsActive = !category.IsActive });
+        var result = await Api.TrySaveCategoryAsync(category with { IsActive = !category.IsActive });
+        if (!result.Saved) { _error = L.Or("admin.err." + (result.Error ?? "common.error"), L["common.error"]); return; }
         await LoadAsync();
     }
 

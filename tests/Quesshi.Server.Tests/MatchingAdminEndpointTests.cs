@@ -108,6 +108,59 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
         Assert.Equal("reserved_prefix", await ErrorAsync(trivia));
     }
 
+    [Theory]
+    [InlineData("🍳")]
+    [InlineData("🇳🇱")]
+    [InlineData("👨‍👩‍👧‍👦")]
+    [InlineData("✈️")]
+    [InlineData("👍🏽")]
+    public async Task Both_category_endpoints_preserve_explicit_emoji_and_emoji_prefixed_names(string icon)
+    {
+        using var client = AdminClient();
+        var suffix = Guid.NewGuid().ToString("N");
+
+        var matching = await client.PostAsJsonAsync("/api/admin/matching/categories",
+            Category("emoji-" + suffix) with { Icon = $" {icon} ", NameFa = "🍳 فارسی", NameEn = "🍳 English", NameNl = "🍳 Dutch" });
+        Assert.Equal(HttpStatusCode.OK, matching.StatusCode);
+        var matchingSaved = (await matching.Content.ReadFromJsonAsync<MatchingCategoryDto>())!;
+        Assert.Equal(icon, matchingSaved.Icon);
+        Assert.Equal("🍳 فارسی", matchingSaved.NameFa);
+        Assert.Equal("🍳 English", matchingSaved.NameEn);
+        Assert.Equal("🍳 Dutch", matchingSaved.NameNl);
+
+        var triviaId = "emoji-" + suffix;
+        var trivia = await client.PostAsJsonAsync("/api/admin/categories",
+            new CategoryDto(triviaId, "display", "🍳 فارسی", "🍳 English", $" {icon} ", "#123456", true, 1, "🍳 Dutch"));
+        Assert.Equal(HttpStatusCode.OK, trivia.StatusCode);
+        var triviaRows = await client.GetFromJsonAsync<List<CategoryDto>>("/api/admin/categories");
+        var triviaSaved = triviaRows!.Single(c => c.Id == triviaId);
+        Assert.Equal(icon, triviaSaved.Icon);
+        Assert.Equal("🍳 فارسی", triviaSaved.NameFa);
+        Assert.Equal("🍳 English", triviaSaved.NameEn);
+        Assert.Equal("🍳 Dutch", triviaSaved.NameNl);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("A")]
+    [InlineData("◆")]
+    [InlineData("😀😃")]
+    [InlineData("🏽")]
+    [InlineData("👨‍")]
+    public async Task Both_category_endpoints_reject_invalid_icons_without_writing(string icon)
+    {
+        using var client = AdminClient();
+        var suffix = Guid.NewGuid().ToString("N");
+
+        var matching = await client.PostAsJsonAsync("/api/admin/matching/categories",
+            Category("bad-icon-" + suffix) with { Icon = icon });
+        Assert.Equal("bad_icon", await ErrorAsync(matching));
+
+        var trivia = await client.PostAsJsonAsync("/api/admin/categories",
+            new CategoryDto("bad-icon-" + suffix, "display", "فارسی", "English", icon, "#123456", true, 1, "Dutch"));
+        Assert.Equal("bad_icon", await ErrorAsync(trivia));
+    }
+
     [Fact]
     public async Task Matching_question_delete_does_not_delete_trivia_question_with_same_id()
     {

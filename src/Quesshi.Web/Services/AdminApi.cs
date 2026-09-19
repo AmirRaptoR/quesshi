@@ -13,7 +13,7 @@ public sealed class AdminApi(AdminHttpClient http)
     [
         "bad_answer_source", "blank_prompt", "choices_not_allowed", "too_few_choices", "too_many_choices",
         "blank_choice", "duplicate_choice", "unknown_category", "inactive_category", "bad_status", "bad_lang",
-        "bad_media", "duplicate_topic", "category_in_use", "bad_category_id", "blank_name", "bad_color",
+        "bad_media", "duplicate_topic", "category_in_use", "bad_category_id", "blank_name", "bad_color", "bad_icon",
         "bad_count", "generator_not_configured", "generation_failed"
     ];
 
@@ -140,7 +140,15 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<bool> RejectAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/questions/{id}/reject");
     public Task<bool> DeleteQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/questions/{id}");
     public Task<List<CategoryDto>?> AdminCategoriesAsync() => GetAsync<List<CategoryDto>>("api/admin/categories");
-    public Task<bool> SaveCategoryAsync(CategoryDto body) => PostJsonAsync("api/admin/categories", body);
+    public async Task<(bool Saved, string? Error)> TrySaveCategoryAsync(CategoryDto body)
+    {
+        try
+        {
+            var response = await Client.PostAsJsonAsync("api/admin/categories", body);
+            return response.IsSuccessStatusCode ? (true, null) : (false, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
+        }
+        catch { return (false, null); }
+    }
     public Task<bool> DeleteCategoryAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/categories/{id}");
     public Task<AdminUserPageDto?> AdminUsersAsync(string? q) => GetAsync<AdminUserPageDto>($"api/admin/users?q={Uri.EscapeDataString(q ?? "")}");
     public Task<bool> SetBannedAsync(string id, bool value) => SendAsync(HttpMethod.Post, $"api/admin/users/{id}/ban?value={value}");

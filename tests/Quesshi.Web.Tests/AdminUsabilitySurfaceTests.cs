@@ -2,6 +2,18 @@ namespace Quesshi.Web.Tests;
 
 public sealed class AdminUsabilitySurfaceTests
 {
+    [Fact]
+    public void Both_category_editors_expose_a_plain_emoji_text_field()
+    {
+        foreach (var page in new[] { "Categories.razor", "MatchingCategories.razor" })
+        {
+            var source = File.ReadAllText(Page(page));
+            Assert.Contains("admin.icon", source);
+            Assert.Contains("@bind=\"_editing.Icon\"", source);
+            Assert.DoesNotContain("<select", source[source.IndexOf("admin.icon", StringComparison.Ordinal)..]);
+        }
+    }
+
     [Theory]
     [InlineData("Questions.razor")]
     [InlineData("MatchingQuestions.razor")]

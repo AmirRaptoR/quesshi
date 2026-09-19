@@ -29,7 +29,7 @@ public sealed class MatchingQuestionImportEndpointTests(LiveClusterFixture fixtu
     private static async Task SeedCategoryAsync(HttpClient client, string id, bool active = true)
     {
         var response = await client.PostAsJsonAsync("/api/admin/matching/categories",
-            new MatchingCategoryDto(id, "واردات", "Import", "Import", "◆", "#123456", active, 1));
+            new MatchingCategoryDto(id, "واردات", "Import", "Import", "📥", "#123456", active, 1));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 

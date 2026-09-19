@@ -17,7 +17,7 @@
         {
         <AdminModal Title="@(_known ? L["admin.edit"] : L["admin.matching.addCategory"])" OnClose="Reset">
             <div class="stack" style="margin-top:.9rem">
-                <div class="grid-2"><div class="field"><label>@L["admin.name"] (@L["lang.fa"])</label><input class="input" @bind="_editing.NameFa" /></div><div class="field"><label>@L["admin.name"] (@L["lang.en"])</label><input class="input" dir="ltr" @bind="_editing.NameEn" /></div><div class="field"><label>@L["admin.name"] (@L["lang.nl"])</label><input class="input" dir="ltr" @bind="_editing.NameNl" /></div><div class="field"><label>@L["admin.colour"]</label><input class="input" type="color" @bind="_editing.Color" /></div></div>
+                <div class="grid-2"><div class="field"><label>@L["admin.name"] (@L["lang.fa"])</label><input class="input" @bind="_editing.NameFa" /></div><div class="field"><label>@L["admin.name"] (@L["lang.en"])</label><input class="input" dir="ltr" @bind="_editing.NameEn" /></div><div class="field"><label>@L["admin.name"] (@L["lang.nl"])</label><input class="input" dir="ltr" @bind="_editing.NameNl" /></div><div class="field"><label>@L["admin.icon"]</label><input class="input" dir="ltr" inputmode="text" @bind="_editing.Icon" /></div><div class="field"><label>@L["admin.colour"]</label><input class="input" type="color" @bind="_editing.Color" /></div></div>
                 <div class="field"><label>@L["admin.matching.categoryId"]</label><input class="input" dir="ltr" @bind="_editing.Id" disabled="@_known" placeholder="@L["admin.matching.categoryIdHint"]" /></div>
                 <label class="row" style="gap:.5rem"><input type="checkbox" @bind="_editing.IsActive" /> @L["admin.active"]</label>
                 @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
@@ -44,6 +44,7 @@
     private async Task SaveAsync()
     {
         _error = null;
+        if (!EmojiIcon.TryNormalize(_editing.Icon, out _)) { _error = L["admin.err.bad_icon"]; return; }
         var result = await Api.TrySaveMatchingCategoryAsync(_editing.ToDto());
         if (result.Saved is null) { _error = L.Or("admin.err." + (result.Error ?? "common.error"), L["common.error"]); return; }
         Reset(); await ReloadAsync();
