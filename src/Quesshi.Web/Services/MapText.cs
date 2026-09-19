@@ -65,7 +65,7 @@ public static class MapText
 /// order as the items the card served them. Null renders as an empty column beside the correct order
 /// rather than as no column at all, so a timed-out round still shows who was being waited on.
 /// </param>
-public sealed record SortRevealColumn(string Label, IReadOnlyList<string>? Placed);
+public sealed record SortRevealColumn(string Label, IReadOnlyList<string>? Placed, bool Answered = true);
 
 /// <summary>
 /// One player's answer to a map question, as a reveal receives it: whose it is, the raw answer
@@ -76,4 +76,4 @@ public sealed record SortRevealColumn(string Label, IReadOnlyList<string>? Place
 /// four screens cannot each decide for themselves what to do with a malformed one.
 /// </para>
 /// </summary>
-public sealed record MapAnswerLine(string Label, string? Response, bool? Right);
+public sealed record MapAnswerLine(string Label, string? Response, bool? Right, bool Answered = true);

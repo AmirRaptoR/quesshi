@@ -7,4 +7,4 @@ namespace Quesshi.Shared;
 /// reveal's <c>CorrectOrder</c>, which is the list it is expressed against.
 /// </summary>
 public sealed record LivePlayerRoundDto(string PlayerId, int ChoiceIndex, bool Correct, int RoundScore, int TotalScore,
-    string? Response = null);
+    string? Response = null, bool Answered = true);

@@ -67,6 +67,7 @@ public class RevealContractKindTests
         // Amazon, Nile, Mississippi, Yangtze — which is what a client renders, with no seed anywhere.
         Assert.Equal("0,1,2,3", dto.Players.Single(p => p.PlayerId == Amir).Response);
         Assert.Equal("1,0,3,2", dto.Players.Single(p => p.PlayerId == Sara).Response);
+        Assert.All(dto.Players, player => Assert.True(player.Answered));
         Assert.Equal(["Amazon", "Nile", "Mississippi", "Yangtze"],
             SortOrder.TryParseOrder(dto.Players.Single(p => p.PlayerId == Sara).Response, 4, out var order)
                 ? [.. order.Select(i => dto.CorrectOrder![i])]
@@ -90,6 +91,7 @@ public class RevealContractKindTests
         Assert.Null(dto.CorrectOrder);
         Assert.Equal("DE", dto.Players.Single(p => p.PlayerId == Amir).Response);
         Assert.Equal("FR", dto.Players.Single(p => p.PlayerId == Sara).Response);
+        Assert.All(dto.Players, player => Assert.True(player.Answered));
     }
 
     /// <summary>The old kind, unchanged on the wire but for the kind itself.</summary>
