@@ -5,11 +5,10 @@ namespace Quesshi.Domain;
 public static class MatchingRules
 {
     public const int MinFixedChoices = 2;
+    public const int MaxParticipants = 8;
 
-    /// <summary>Derived from <see cref="MatchRules.MaxParticipants"/> rather than a separate literal,
-    /// so a served question's fixed choices can never outnumber the participants that could be
-    /// matched against them.</summary>
-    public const int MaxFixedChoices = MatchRules.MaxParticipants;
+    /// <summary>Matching remains an eight-seat bounded context even when trivia lobbies grow.</summary>
+    public const int MaxFixedChoices = 8;
 
     /// <summary>
     /// How long a participant may leave the current matching slot unanswered before the next

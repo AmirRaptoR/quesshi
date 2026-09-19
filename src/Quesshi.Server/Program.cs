@@ -53,6 +53,9 @@ builder.UseOrleans(silo =>
     var liveEnabled = builder.Configuration.GetValue("Live:Enabled", true);
     silo.AddStartupTask(async (services, ct) =>
         await services.GetRequiredService<IGrainFactory>().GetGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled));
+    var maxLobbyCapacity = builder.Configuration.GetValue("Lobby:MaxCapacity", MatchRules.DefaultMaxParticipants);
+    silo.AddStartupTask(async (services, ct) =>
+        await services.GetRequiredService<IGrainFactory>().GetGrain<ILobbySettingsGrain>(0).SeedAsync(maxLobbyCapacity));
 });
 
 // --- configuration objects -----------------------------------------------------------

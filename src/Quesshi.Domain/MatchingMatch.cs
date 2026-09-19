@@ -52,7 +52,7 @@ public sealed class MatchingMatch
     public static MatchingMatch Create(string id, string code, string ownerId, int capacity,
         IReadOnlyList<MatchingQuestion> questions, DateTimeOffset now)
     {
-        if (capacity is < 2 or > MatchRules.MaxParticipants)
+        if (capacity is < 2 or > MatchingRules.MaxParticipants)
             throw new ArgumentOutOfRangeException(nameof(capacity), capacity,
                 "A matching lobby holds between 2 and 8 players.");
         ArgumentNullException.ThrowIfNull(questions);

@@ -77,7 +77,7 @@ public static class MatchingEndpoints
         if (body.Mode is not null && !body.Mode.Equals("matching", StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest(new { error = "mode_immutable" });
         if (body.Levels is { Count: > 0 }) return Results.BadRequest(new { error = "levels_not_allowed" });
-        if (body.Capacity is < 2 or > MatchRules.MaxParticipants)
+        if (body.Capacity is < 2 or > MatchingRules.MaxParticipants)
             return Results.BadRequest(new { error = "bad_capacity" });
 
         var count = body.Questions ?? MatchRules.QuestionsPerMatch;

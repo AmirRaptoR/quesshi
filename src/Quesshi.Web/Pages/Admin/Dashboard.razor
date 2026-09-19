@@ -60,6 +60,15 @@
         </section>
 
         <section class="card enter" style="margin-top:1rem">
+            <span class="eyebrow">@L["admin.lobbyCapacity"]</span>
+            <div class="row" style="gap:.5rem;margin-top:.8rem">
+                <input class="input" style="width:8rem" type="number" min="@LobbyLimitsDto.MinCapacity"
+                       max="@LobbyLimitsDto.AbsoluteMaxCapacity" @bind="_maxLobbyCapacity" />
+                <button class="btn btn--sm" disabled="@_savingCapacity" @onclick="SaveCapacityAsync">@L["admin.save"]</button>
+            </div>
+        </section>
+
+        <section class="card enter" style="margin-top:1rem">
             <div class="row row--between">
                 <span class="eyebrow">@L["admin.spend"]</span>
                 <span class="faint" dir="ltr" style="font-size:var(--step--1)">@_data.Model</span>
@@ -187,8 +196,23 @@
     private static string Thousands(long tokens) => tokens < 1000 ? tokens.ToString() : $"{tokens / 1000m:0.#}k";
     private bool _busy;
     private bool _toggling;
+    private bool _savingCapacity;
+    private int _maxLobbyCapacity;
 
-    protected override async Task LoadAsync() => _data = await Api.DashboardAsync();
+    protected override async Task LoadAsync()
+    {
+        _data = await Api.DashboardAsync();
+        if (_data is not null) _maxLobbyCapacity = _data.MaxLobbyCapacity;
+    }
+
+    private async Task SaveCapacityAsync()
+    {
+        if (_maxLobbyCapacity is < LobbyLimitsDto.MinCapacity or > LobbyLimitsDto.AbsoluteMaxCapacity) return;
+        _savingCapacity = true;
+        await Api.SetMaxLobbyCapacityAsync(_maxLobbyCapacity);
+        await LoadAsync();
+        _savingCapacity = false;
+    }
 
     private async Task GenerateAsync()
     {

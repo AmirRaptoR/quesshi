@@ -41,7 +41,7 @@ public sealed class LiveMatch
 
     public Language Lang => Settings.Language;
 
-    /// <summary>How many seats this lobby has: 2 to 8, set at creation and changeable by the owner
+    /// <summary>How many seats this lobby has, set at creation and changeable by the owner
     /// while the lobby is still open — see <see cref="SetCapacity"/>.</summary>
     public int Capacity { get; private set; }
 
@@ -119,8 +119,9 @@ public sealed class LiveMatch
     /// </summary>
     public static LiveMatch Create(string id, string code, string ownerId, DuelSettings settings, int capacity, DateTimeOffset now)
     {
-        if (capacity is < 2 or > 8)
-            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "A duel lobby holds between 2 and 8 players.");
+        if (capacity is < MatchRules.MinParticipants or > MatchRules.MaxParticipants)
+            throw new ArgumentOutOfRangeException(nameof(capacity), capacity,
+                $"A duel lobby holds between {MatchRules.MinParticipants} and {MatchRules.MaxParticipants} players.");
 
         return new LiveMatch(id, code, ownerId, settings, capacity, [], now);
     }
@@ -260,7 +261,8 @@ public sealed class LiveMatch
     /// <summary>
     /// Whether <see cref="SetCapacity"/> would succeed right now, without changing anything — lets a
     /// caller validate a combined settings-and-capacity update before committing to either half. Owner
-    /// only, lobby phase only, 2 to 8, and never below however many are already seated.
+    /// only, lobby phase only, within the absolute safety range, and never below however many are
+    /// already seated.
     /// </summary>
     public bool CanSetCapacity(string playerId, int capacity) =>
         playerId == OwnerId && Phase == LivePhase.Lobby

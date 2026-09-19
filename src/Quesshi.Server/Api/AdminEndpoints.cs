@@ -49,7 +49,8 @@ public static class AdminEndpoints
                 await live.ConnectedCountAsync(),
                 await live.QueueDepthAsync(),
                 await matches.CountLiveAsync(),
-                await grains.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync());
+                await grains.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync(),
+                await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync());
         });
 
         // --- live duels ----------------------------------------------------------------
@@ -98,6 +99,11 @@ public static class AdminEndpoints
             await grains.GetGrain<ILiveSettingsGrain>(0).SetEnabledAsync(value);
             return Results.Ok();
         });
+
+        admin.MapPost("/lobby/max-capacity", async (int value, IGrainFactory grains) =>
+            await grains.GetGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(value)
+                ? Results.Ok()
+                : Results.BadRequest(new { error = "bad_capacity" }));
 
         // --- questions ---------------------------------------------------------------
         admin.MapGet("/questions", async (string? lang, string? category, int? level, string? status, string? text,
