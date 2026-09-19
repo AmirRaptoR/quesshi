@@ -17,7 +17,7 @@ public sealed class CategoryForm
     public static CategoryForm From(CategoryDto c) => new()
     {
         Id = c.Id, NameFa = c.NameFa, NameEn = c.NameEn, NameNl = c.NameNl, Icon = c.Icon,
-        Color = c.Color, IsActive = c.IsActive, SortOrder = c.SortOrder, PromptHelper = c.PromptHelper
+        Color = c.Color, IsActive = c.IsActive, SortOrder = c.SortOrder, PromptHelper = c.PromptHelper ?? ""
     };
 
     public CategoryDto ToDto() => new(Id.Trim(), NameFa.Trim(), NameFa.Trim(), NameEn.Trim(), Icon.Trim(), Color,

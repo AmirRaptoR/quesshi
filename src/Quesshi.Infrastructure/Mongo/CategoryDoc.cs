@@ -23,5 +23,6 @@ public sealed class CategoryDoc
         IsActive = c.IsActive, SortOrder = c.SortOrder, PromptHelper = c.PromptHelper
     };
 
-    public Category ToDomain() => new(Id, NameFa, NameEn, Icon, Color, IsActive, SortOrder, NameNl, PromptHelper);
+    public Category ToDomain() => new(Id, NameFa, NameEn, Icon, Color, IsActive, SortOrder, NameNl,
+        PromptHelper ?? "");
 }

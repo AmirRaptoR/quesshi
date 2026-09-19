@@ -77,6 +77,33 @@ public class GenerationPromptTests
         });
     }
 
+    [Fact]
+    public void Blank_guidance_does_not_add_prompt_sections_or_change_the_prompt()
+    {
+        var blankCategory = Geography with { PromptHelper = "   " };
+        var baseline = new[]
+        {
+            Prompts.User(Language.En, Geography, Difficulty.Medium, 5, []),
+            Prompts.Illustrated(Language.En, Geography, Difficulty.Medium, 5, []),
+            Prompts.Sort(Language.En, Geography, Difficulty.Medium, 5, []),
+            Prompts.Map(Language.En, Geography, Difficulty.Medium, 5, [])
+        };
+        var withBlanks = new[]
+        {
+            Prompts.User(Language.En, blankCategory, Difficulty.Medium, 5, [], "   "),
+            Prompts.Illustrated(Language.En, blankCategory, Difficulty.Medium, 5, [], "   "),
+            Prompts.Sort(Language.En, blankCategory, Difficulty.Medium, 5, [], "   "),
+            Prompts.Map(Language.En, blankCategory, Difficulty.Medium, 5, [], "   ")
+        };
+
+        Assert.Equal(baseline, withBlanks);
+        Assert.All(withBlanks, prompt =>
+        {
+            Assert.DoesNotContain("Category guidance:", prompt);
+            Assert.DoesNotContain("Additional guidance for this run:", prompt);
+        });
+    }
+
     [Theory]
     [InlineData("MEASURABLE")]
     [InlineData("population")]
