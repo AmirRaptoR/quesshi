@@ -225,6 +225,22 @@ public sealed class MatchingAdminEndpointTests(LiveClusterFixture fixture) : IAs
         Assert.Equal("unknown_category", await ErrorAsync(missingCategory));
     }
 
+    [Fact]
+    public async Task Trivia_generation_endpoint_forwards_the_additional_prompt()
+    {
+        using var client = AdminClient();
+        var categoryId = "generation-prompt-" + Guid.NewGuid().ToString("N");
+        await LiveShared.Categories.UpsertAsync(new Category(categoryId, "تاریخ", "History", "📜", "#123456"));
+        _host.QuestionGenerator.AdditionalPrompts.Clear();
+        _host.QuestionGenerator.IsConfigured = true;
+
+        var response = await client.PostAsJsonAsync("/api/admin/generate/bucket",
+            new GenerateRequestDto("en", categoryId, 2, 1, AdditionalPrompt: "Focus on the Silk Road."));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Focus on the Silk Road.", Assert.Single(_host.QuestionGenerator.AdditionalPrompts));
+    }
+
     [Theory]
     [InlineData("/api/admin/matching/questions")]
     [InlineData("/api/admin/matching/categories")]

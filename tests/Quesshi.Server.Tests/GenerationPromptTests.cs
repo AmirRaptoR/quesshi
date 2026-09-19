@@ -58,6 +58,25 @@ public class GenerationPromptTests
         });
     }
 
+    [Fact]
+    public void Every_trivia_prompt_includes_per_run_additional_guidance()
+    {
+        const string additional = "Make this batch suitable for a museum event.";
+        var prompts = new[]
+        {
+            Prompts.User(Language.En, Geography, Difficulty.Medium, 5, [], additional),
+            Prompts.Illustrated(Language.En, Geography, Difficulty.Medium, 5, [], additional),
+            Prompts.Sort(Language.En, Geography, Difficulty.Medium, 5, [], additional),
+            Prompts.Map(Language.En, Geography, Difficulty.Medium, 5, [], additional)
+        };
+
+        Assert.All(prompts, prompt =>
+        {
+            Assert.Contains("Additional guidance for this run:", prompt);
+            Assert.Contains(additional, prompt);
+        });
+    }
+
     [Theory]
     [InlineData("MEASURABLE")]
     [InlineData("population")]

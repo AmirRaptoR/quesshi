@@ -73,6 +73,7 @@
   "admin.category": "موضوع",
   "admin.categoryHint": "در کادر نشان یک ایموجی وارد کن. شناسه و ترتیب خودکار ساخته می‌شوند.",
   "admin.promptHelper": "راهنمای پرامپت",
+  "admin.additionalPrompt": "پرامپت تکمیلی",
   "admin.icon": "ایموجی نشان",
   "admin.choices": "گزینه‌ها",
   "admin.colour": "رنگ",

@@ -50,6 +50,16 @@ public sealed class AdminUsabilitySurfaceTests
     }
 
     [Fact]
+    public void Trivia_generation_modal_sends_an_additional_prompt()
+    {
+        var page = File.ReadAllText(Page("Questions.razor"));
+
+        Assert.Contains("admin.additionalPrompt", page);
+        Assert.Contains("@bind=\"_ask.AdditionalPrompt\"", page);
+        Assert.Contains("_ask.AdditionalPrompt", page[page.IndexOf("new GenerateRequestDto", StringComparison.Ordinal)..]);
+    }
+
+    [Fact]
     public void Account_commands_are_separate_from_page_navigation()
     {
         var nav = File.ReadAllText(Source("Components/AdminNav.razor"));

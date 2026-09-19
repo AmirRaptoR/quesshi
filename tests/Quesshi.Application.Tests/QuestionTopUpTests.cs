@@ -33,6 +33,20 @@ public class QuestionTopUpTests
     private void OneCategory() => _categories.UpsertAsync(new Category("geography", "geography-fa", "Geography", "*", "#fff"));
 
     [Fact]
+    public async Task Additional_prompt_applies_only_to_the_requested_generation_run()
+    {
+        OneCategory();
+        var gen = new ScriptedGenerator(Good("p"));
+        var sut = Sut(gen);
+
+        await sut.GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 1,
+            additionalPrompt: "Focus on the Silk Road.");
+        await sut.GenerateOnceAsync(Language.En, "geography", Difficulty.Easy, 1);
+
+        Assert.Equal(["Focus on the Silk Road.", ""], gen.AdditionalPrompts);
+    }
+
+    [Fact]
     public async Task Generates_for_buckets_that_are_below_target()
     {
         OneCategory();

@@ -72,7 +72,8 @@ public sealed class QuestionPromptBuilder
         """;
     }
 
-    public string User(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid)
+    public string User(Language lang, Category category, Difficulty level, int count,
+        IReadOnlyCollection<string> avoid, string additionalPrompt = "")
     {
         var language = Name(lang);
         var audience = lang switch
@@ -87,7 +88,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt and every choice in {language}, for {audience}
-        Difficulty: {Describe(level)}{CategoryGuidance(category)}
+        Difficulty: {Describe(level)}{Guidance(category, additionalPrompt)}
 
         Rules:
         - Exactly {MatchRules.ChoicesPerQuestion} choices per question, exactly one of them correct.
@@ -119,7 +120,8 @@ public sealed class QuestionPromptBuilder
     /// Questions where the picture is the question. The subject must be the correct answer, so the
     /// image is sourced from the answer rather than the answer being trusted to match the image.
     /// </summary>
-    public string Illustrated(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid)
+    public string Illustrated(Language lang, Category category, Difficulty level, int count,
+        IReadOnlyCollection<string> avoid, string additionalPrompt = "")
     {
         var language = Name(lang);
 
@@ -128,7 +130,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt and every choice in {language}
-        Difficulty: {Describe(level)}{CategoryGuidance(category)}
+        Difficulty: {Describe(level)}{Guidance(category, additionalPrompt)}
 
         Each question carries a "subject": the exact title of the English Wikipedia article for the
         CORRECT answer. We fetch that article's photograph and show it to the player, so:
@@ -170,7 +172,8 @@ public sealed class QuestionPromptBuilder
     /// next person to read this file will be looking for the validation that does not exist.
     /// </para>
     /// </summary>
-    public string Sort(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid)
+    public string Sort(Language lang, Category category, Difficulty level, int count,
+        IReadOnlyCollection<string> avoid, string additionalPrompt = "")
     {
         var language = Name(lang);
 
@@ -180,7 +183,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt and every item in {language}
-        Difficulty: {Describe(level)}{CategoryGuidance(category)}
+        Difficulty: {Describe(level)}{Guidance(category, additionalPrompt)}
 
         The criterion is everything:
         - Order by something MEASURABLE and objective: population, year, height, length, area,
@@ -226,7 +229,8 @@ public sealed class QuestionPromptBuilder
     /// knows its coordinates will be verified tends to reach for the ones it is sure of.
     /// </para>
     /// </summary>
-    public string Map(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid)
+    public string Map(Language lang, Category category, Difficulty level, int count,
+        IReadOnlyCollection<string> avoid, string additionalPrompt = "")
     {
         var language = Name(lang);
 
@@ -235,7 +239,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt in {language}
-        Difficulty: {Describe(level)}{CategoryGuidance(category)}
+        Difficulty: {Describe(level)}{Guidance(category, additionalPrompt)}
 
         Each question is one of two shapes, and you say which:
         - "country": the answer is a whole country. Give its ISO 3166-1 alpha-2 code in
@@ -282,10 +286,16 @@ public sealed class QuestionPromptBuilder
         _ => "Very hard — for someone who really knows the subject. Still a fair, checkable fact, never obscure trivia nobody could reason about."
     };
 
-    private static string CategoryGuidance(Category category)
-        => string.IsNullOrWhiteSpace(category.PromptHelper)
+    private static string Guidance(Category category, string additionalPrompt)
+    {
+        var categoryGuidance = string.IsNullOrWhiteSpace(category.PromptHelper)
             ? ""
             : $"\n\nCategory guidance:\n{category.PromptHelper.Trim()}";
+        var runGuidance = string.IsNullOrWhiteSpace(additionalPrompt)
+            ? ""
+            : $"\n\nAdditional guidance for this run:\n{additionalPrompt.Trim()}";
+        return categoryGuidance + runGuidance;
+    }
 
     /// <summary>A nudge only: the real de-duplication happens on the way back, in TopUpQuestionBank.</summary>
     private static string Avoid(IReadOnlyCollection<string> avoid)

@@ -88,6 +88,8 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
         .Start();
 
     public HttpClient NewClient() => _host.GetTestServer().CreateClient();
+    public FakeQuestionGenerator QuestionGenerator =>
+        (FakeQuestionGenerator)_host.Services.GetRequiredService<IQuestionGenerator>();
 
     public async ValueTask DisposeAsync()
     {

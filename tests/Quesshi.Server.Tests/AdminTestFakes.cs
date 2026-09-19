@@ -19,15 +19,22 @@ public sealed class FakeAiSpendLog : IAiSpendLog
 
 public sealed class FakeQuestionGenerator : IQuestionGenerator
 {
-    public bool IsConfigured => false;
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateIllustratedAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateSortAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
+    public bool IsConfigured { get; set; }
+    public List<string> AdditionalPrompts { get; } = [];
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(additionalPrompt);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateIllustratedAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(additionalPrompt);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateSortAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(additionalPrompt);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(additionalPrompt);
+
+    private Task<IReadOnlyList<GeneratedQuestion>> Answer(string additionalPrompt)
+    {
+        AdditionalPrompts.Add(additionalPrompt);
+        return Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
+    }
 }
 
 public sealed class FakeMatchingQuestionGenerator : IMatchingQuestionGenerator

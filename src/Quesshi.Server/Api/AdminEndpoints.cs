@@ -303,7 +303,7 @@ public static class AdminEndpoints
             if (!Enum.IsDefined((Difficulty)body.Level)) return Results.BadRequest(new { error = "bad_level" });
 
             var run = await topUp.GenerateIllustratedAsync(body.Lang.ToLanguage(), body.CategoryId,
-                (Difficulty)body.Level, Math.Clamp(body.Count, 1, 20));
+                (Difficulty)body.Level, Math.Clamp(body.Count, 1, 20), additionalPrompt: body.AdditionalPrompt);
 
             return Results.Ok(run.ToDto());
         });
@@ -317,7 +317,7 @@ public static class AdminEndpoints
             if (!QuestionSaveBinding.TryParseKind(body.Kind, out var kind)) return Results.BadRequest(new { error = "bad_kind" });
 
             var run = await topUp.GenerateOnceAsync(body.Lang.ToLanguage(), body.CategoryId,
-                (Difficulty)body.Level, Math.Clamp(body.Count, 1, 20), kind);
+                (Difficulty)body.Level, Math.Clamp(body.Count, 1, 20), kind, additionalPrompt: body.AdditionalPrompt);
 
             return Results.Ok(run.ToDto());
         });

@@ -19,6 +19,7 @@ public sealed class ScriptedGenerator(params GeneratedQuestion[] batch) : IQuest
 
     /// <summary>Every kind the bank asked for, in order — what proves a run tried for sorts at all.</summary>
     public List<QuestionKind> Kinds { get; } = [];
+    public List<string> AdditionalPrompts { get; } = [];
 
     /// <summary>What a sorting request comes back with. Empty unless a test fills it.</summary>
     public List<GeneratedQuestion> Sorts { get; } = [];
@@ -26,23 +27,25 @@ public sealed class ScriptedGenerator(params GeneratedQuestion[] batch) : IQuest
     /// <summary>What a map request comes back with. Empty unless a test fills it.</summary>
     public List<GeneratedQuestion> Maps { get; } = [];
 
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Answer(lang, QuestionKind.Choice, [.. batch]);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(lang, QuestionKind.Choice, [.. batch], additionalPrompt);
 
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateIllustratedAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Answer(lang, QuestionKind.Choice, [.. batch]);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateIllustratedAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(lang, QuestionKind.Choice, [.. batch], additionalPrompt);
 
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateSortAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Answer(lang, QuestionKind.Sort, [.. Sorts]);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateSortAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(lang, QuestionKind.Sort, [.. Sorts], additionalPrompt);
 
-    public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Answer(lang, QuestionKind.Map, [.. Maps]);
+    public Task<IReadOnlyList<GeneratedQuestion>> GenerateMapAsync(Language lang, Category category, Difficulty level, int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default, string additionalPrompt = "")
+        => Answer(lang, QuestionKind.Map, [.. Maps], additionalPrompt);
 
-    private Task<IReadOnlyList<GeneratedQuestion>> Answer(Language lang, QuestionKind kind, List<GeneratedQuestion> scripted)
+    private Task<IReadOnlyList<GeneratedQuestion>> Answer(Language lang, QuestionKind kind,
+        List<GeneratedQuestion> scripted, string additionalPrompt)
     {
         Calls++;
         Languages.Add(lang);
         Kinds.Add(kind);
+        AdditionalPrompts.Add(additionalPrompt);
 
         return Task.FromResult<IReadOnlyList<GeneratedQuestion>>(scripted);
     }

@@ -47,6 +47,11 @@
             </button>
         </div>
 
+        <div class="field" style="margin-top:.7rem">
+            <label>@L["admin.additionalPrompt"]</label>
+            <textarea class="textarea" rows="3" @bind="_ask.AdditionalPrompt"></textarea>
+        </div>
+
         <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["admin.generateHint"]</p>
         <p class="faint" style="margin:.2rem 0 0;font-size:var(--step--1)">@L["admin.imagesHint"]</p>
 
@@ -461,7 +466,8 @@
         _generating = true;
         _lastRun = null;
 
-        _lastRun = await Api.GenerateBucketAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level, _ask.Count, _ask.Kind))
+        _lastRun = await Api.GenerateBucketAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level,
+                       _ask.Count, _ask.Kind, _ask.AdditionalPrompt))
                    ?? new GenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now, 0, 0, 0, L["common.error"]);
 
         _generating = false;
@@ -473,7 +479,8 @@
         _generating = true;
         _lastRun = null;
 
-        _lastRun = await Api.GenerateIllustratedAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level, _ask.Count))
+        _lastRun = await Api.GenerateIllustratedAsync(new GenerateRequestDto(_ask.Lang, _ask.CategoryId, _ask.Level,
+                       _ask.Count, AdditionalPrompt: _ask.AdditionalPrompt))
                    ?? new GenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now, 0, 0, 0, L["common.error"]);
 
         _generating = false;
