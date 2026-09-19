@@ -205,10 +205,12 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
             await settings.SetMaxCapacityAsync(20);
 
             var outcome = await grain.RequestRematchAsync(owner);
-            var rematch = await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(outcome.NewMatchId!).GetAsync(owner);
+            var rematchGrain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(outcome.NewMatchId!);
+            var rematch = await rematchGrain.GetAsync(owner);
 
             Assert.Equal((int)RematchStatus.Created, outcome.Status);
             Assert.Equal(20, rematch!.Capacity);
+            await rematchGrain.CancelAsync(owner);
         }
         finally
         {

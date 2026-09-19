@@ -71,6 +71,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
 
             var view = await grain.GetAsync(Amir);
             Assert.Equal(20, view!.Capacity);
+            await grain.CancelAsync(Amir);
         }
         finally
         {
