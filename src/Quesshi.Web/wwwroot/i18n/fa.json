@@ -535,5 +535,9 @@
   "topics.any": "هر موضوعی",
   "topics.doneAny": "تمام · هر موضوعی",
   "topics.donePicked": "تمام ({0} موضوع)",
-  "topics.title": "موضوع‌ها"
+  "topics.title": "موضوع‌ها",
+  "admin.lobbyCapacity": "حداکثر اندازه اتاق مسابقه",
+  "lobby.openSeats": "{0} جای خالی",
+  "lobby.badCapacity": "اندازه معتبر برای اتاق انتخاب کن.",
+  "lobby.capacityRange": "{0} تا {1} بازیکن"
 }

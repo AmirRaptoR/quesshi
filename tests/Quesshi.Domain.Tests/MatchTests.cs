@@ -315,8 +315,8 @@ public class MatchTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(9)]
-    public void Create_rejects_a_capacity_outside_two_to_eight(int capacity)
+    [InlineData(501)]
+    public void Create_rejects_a_capacity_outside_two_to_five_hundred(int capacity)
         => Assert.Throws<ArgumentOutOfRangeException>(() => Match.Create("m", "C", Challenger, NewSettings(), capacity, T0));
 
     [Fact]
@@ -496,8 +496,8 @@ public class MatchTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(9)]
-    public void SetCapacity_is_refused_outside_two_to_eight(int capacity)
+    [InlineData(501)]
+    public void SetCapacity_is_refused_outside_two_to_five_hundred(int capacity)
     {
         var m = NewMatch();
         Assert.False(m.CanSetCapacity(Challenger, capacity));

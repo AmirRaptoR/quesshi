@@ -51,6 +51,7 @@ public sealed class Api(HttpClient http)
         catch { return (null, null); }
     }
     public Task<List<CategoryDto>?> CategoriesAsync() => GetAsync<List<CategoryDto>>("api/categories");
+    public Task<LobbyLimitsDto?> LobbyLimitsAsync() => GetAsync<LobbyLimitsDto>("api/lobby-limits");
     public Task<List<FriendDto>?> SearchPlayersAsync(string q) => GetAsync<List<FriendDto>>($"api/players/search?q={Uri.EscapeDataString(q)}");
     public Task<bool> AddFriendAsync(string id) => SendAsync(HttpMethod.Post, $"api/friends/{id}");
     public Task<bool> RemoveFriendAsync(string id) => SendAsync(HttpMethod.Delete, $"api/friends/{id}");
@@ -90,7 +91,7 @@ public sealed class Api(HttpClient http)
         int? questions = null, List<int>? levels = null)
         => PostAsync<MatchSummaryDto>("api/matches/lobby", new CreateLobbyDto(capacity, lang, categories, questions, levels));
 
-    /// <summary>The live half of the pair above — same shape, same capacity range (2-8), landing its
+    /// <summary>The live half of the pair above — same shape and runtime capacity range, landing its
     /// caller on a lobby to share rather than an already-paired duel, because a live invite has no
     /// "matched instantly" shortcut the way random matchmaking does.</summary>
     public Task<LiveViewDto?> CreateLiveLobbyAsync(int capacity, string? lang, List<string>? categories = null,

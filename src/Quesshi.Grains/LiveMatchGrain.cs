@@ -120,6 +120,8 @@ public sealed class LiveMatchGrain(
         List<string> categoryIds, List<int> levels, int capacity)
     {
         if (_match is not null) return await ViewAsync(_match, ownerId);
+        if (capacity > await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync())
+            throw new ArgumentOutOfRangeException(nameof(capacity));
 
         var settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
         _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, ownerId, settings, capacity, clock.Now);
@@ -245,7 +247,9 @@ public sealed class LiveMatchGrain(
 
         var settingsChanged = settings != _match.Settings;
         var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
-        var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity);
+        var configuredMax = await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity)
+            && (newCapacity <= _match.Capacity || newCapacity <= configuredMax);
 
         if (!settingsOk || !capacityOk)
         {
@@ -448,8 +452,9 @@ public sealed class LiveMatchGrain(
             if (await archive.ByCodeAsync(code) is not null) continue;
 
             var grain = GrainFactory.GetGrain<ILiveMatchGrain>(lobbyId);
+            var maxCapacity = await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
             return await grain.CreateLobbyAsync(code, m.OwnerId, (int)m.Lang, m.Settings.QuestionCount,
-                [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)], m.Capacity);
+                [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)], Math.Min(m.Capacity, maxCapacity));
         }
 
         return null;

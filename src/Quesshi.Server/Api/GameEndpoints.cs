@@ -29,6 +29,10 @@ public static class GameEndpoints
                 : await next(context);
         });
 
+        api.MapGet("/lobby-limits", async (IGrainFactory grains) =>
+            new LobbyLimitsDto(await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync()))
+            .WithMetadata(new AllowGuest());
+
         // --- profile -----------------------------------------------------------------
         api.MapGet("/me", async (HttpContext ctx, IPlayerRepository players, ILeaderboard board, IPresence presence) =>
         {
@@ -212,7 +216,7 @@ public static class GameEndpoints
 
         // --- async lobby lifecycle (issue #52) -----------------------------------------------------
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
-        // capacity-aware IMatchGrain.JoinAsync a 2-to-8-seat lobby needs, so an N-player async lobby is
+        // capacity-aware IMatchGrain.JoinAsync a multi-seat lobby needs, so an N-player async lobby is
         // joined exactly as a 1v1 always was.
         api.MapPost("/matches/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
             await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
@@ -410,7 +414,8 @@ public static class GameEndpoints
     internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
         IIdFactory ids, IPlayerRepository players)
     {
-        if (body.Capacity is < 2 or > 8) return Results.BadRequest(new { error = "bad_capacity" });
+        var maxCapacity = await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        if (body.Capacity < 2 || body.Capacity > maxCapacity) return Results.BadRequest(new { error = "bad_capacity" });
 
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
@@ -421,7 +426,9 @@ public static class GameEndpoints
 
         var matchId = ids.NewId();
         var grain = grains.GetGrain<IMatchGrain>(matchId);
-        var view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+        MatchView view;
+        try { view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity); }
+        catch (ArgumentOutOfRangeException) { return Results.BadRequest(new { error = "bad_capacity" }); }
 
         return Results.Ok(await ToSummaryAsync(view, meId, players));
     }
@@ -429,7 +436,8 @@ public static class GameEndpoints
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
         IGrainFactory grains, IPlayerRepository players)
     {
-        if (body.Capacity is { } capacity and (< 2 or > 8)) return Results.BadRequest(new { error = "bad_capacity" });
+        if (body.Capacity is { } capacity and (< MatchRules.MinParticipants or > MatchRules.MaxParticipants))
+            return Results.BadRequest(new { error = "bad_capacity" });
 
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();

@@ -9,7 +9,7 @@ public interface ILiveMatchGrain : IGrainWithStringKey
 
     /// <summary>
     /// The lobby-aware create path: opens a lobby for <paramref name="ownerId"/> with these settings
-    /// and this <paramref name="capacity"/> (2-8), with no question set drawn yet — <c>StartAsync</c>
+    /// and this <paramref name="capacity"/>, with no question set drawn yet — <c>StartAsync</c>
     /// draws it from whatever the settings say at that instant. Idempotent, exactly like
     /// <see cref="CreateAsync"/>. <c>DuelSettings</c> crosses this boundary as the same
     /// primitives <paramref name="lang"/> already is one of, and <paramref name="levels"/> as

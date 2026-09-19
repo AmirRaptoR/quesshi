@@ -68,10 +68,6 @@ public static class LobbyPresentation
     /// take-a-seat button renders enabled or as <c>lobby.invite.full</c>.</summary>
     public static bool IsFull(LobbySnapshot s) => s.Participants.Count >= s.Capacity;
 
-    /// <summary>The domain's own ceiling on a duel's seat count (<c>LiveMatch.CanSetCapacity</c> /
-    /// <c>Match.CanSetCapacity</c>) — the owner-only seat stepper's upper bound.</summary>
-    public const int MaxCapacity = 8;
-
     /// <summary>The seat stepper's lower bound: capacity can never drop below however many are already
     /// seated, nor below 2 — the same floor <c>CanSetCapacity</c> enforces server-side. This only
     /// decides whether the stepper's own <c>−</c> renders enabled; the server is what actually refuses.</summary>
@@ -94,10 +90,10 @@ public static class LobbyPresentation
     /// </summary>
     public static IReadOnlyList<LiveParticipantDto?> Seats(LobbySnapshot s)
     {
-        var seats = new List<LiveParticipantDto?>(s.Participants);
-        while (seats.Count < s.Capacity) seats.Add(null);
-        return seats;
+        return [.. s.Participants];
     }
+
+    public static int OpenSeatCount(LobbySnapshot s) => Math.Max(0, s.Capacity - s.Participants.Count);
 
     /// <summary>
     /// What a face tile in the roster grid says about the seat it draws (issue #90's replacement for

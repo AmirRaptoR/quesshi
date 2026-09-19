@@ -535,5 +535,9 @@
   "topics.any": "Any topic",
   "topics.doneAny": "Done · Any topic",
   "topics.donePicked": "Done · {0} picked",
-  "topics.title": "Topics"
+  "topics.title": "Topics",
+  "admin.lobbyCapacity": "Maximum trivia lobby size",
+  "lobby.openSeats": "{0} open seats",
+  "lobby.badCapacity": "Choose a valid lobby size.",
+  "lobby.capacityRange": "{0}–{1} players"
 }

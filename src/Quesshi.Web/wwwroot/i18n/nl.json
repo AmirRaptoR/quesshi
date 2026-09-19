@@ -535,5 +535,9 @@
   "topics.any": "Elk onderwerp",
   "topics.doneAny": "Klaar · Elk onderwerp",
   "topics.donePicked": "Klaar · {0} gekozen",
-  "topics.title": "Onderwerpen"
+  "topics.title": "Onderwerpen",
+  "admin.lobbyCapacity": "Maximale grootte van een trivia-lobby",
+  "lobby.openSeats": "{0} vrije plaatsen",
+  "lobby.badCapacity": "Kies een geldige lobbygrootte.",
+  "lobby.capacityRange": "{0}–{1} spelers"
 }

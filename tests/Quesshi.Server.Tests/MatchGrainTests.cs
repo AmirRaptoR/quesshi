@@ -60,6 +60,118 @@ public class MatchGrainTests(ClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Lowered_runtime_limit_grandfathers_capacity_but_blocks_later_increases()
+    {
+        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        await settings.SetMaxCapacityAsync(30);
+        try
+        {
+            var (grain, _) = await NewLobbyAsync($"GR{Guid.NewGuid():N}"[..6], Amir, 30);
+            await settings.SetMaxCapacityAsync(20);
+
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 30));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 25));
+            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 26));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 20));
+            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 21));
+
+            var view = await grain.GetAsync(Amir);
+            Assert.Equal(20, view!.Capacity);
+        }
+        finally
+        {
+            await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        }
+    }
+
+    [Fact]
+    public async Task Idempotent_create_returns_a_grandfathered_lobby_after_the_limit_is_lowered()
+    {
+        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        await settings.SetMaxCapacityAsync(30);
+        try
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(id);
+            var first = await grain.CreateLobbyAsync("GRAND1", Amir, (int)Language.En,
+                MatchRules.QuestionsPerMatch, [], [], 30);
+            await settings.SetMaxCapacityAsync(20);
+
+            var repeated = await grain.CreateLobbyAsync("OTHER1", Sara, (int)Language.En,
+                MatchRules.QuestionsPerMatch, [], [], 30);
+
+            Assert.Equal(first.Id, repeated.Id);
+            Assert.Equal(30, repeated.Capacity);
+            Assert.Equal(Amir, repeated.Participants[0]);
+        }
+        finally
+        {
+            await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        }
+    }
+
+    [Fact]
+    public async Task Capacity_and_limit_mutations_observe_committed_order()
+    {
+        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        await settings.SetMaxCapacityAsync(30);
+        try
+        {
+            var (capacityFirst, _) = await NewLobbyAsync("ORDER1", Amir, 10);
+            Assert.True(await capacityFirst.UpdateSettingsAsync(Amir, (int)Language.En,
+                MatchRules.QuestionsPerMatch, [], [], 25));
+            await settings.SetMaxCapacityAsync(20);
+            Assert.Equal(25, (await capacityFirst.GetAsync(Amir))!.Capacity);
+
+            var (limitFirst, _) = await NewLobbyAsync("ORDER2", Amir, 10);
+            Assert.False(await limitFirst.UpdateSettingsAsync(Amir, (int)Language.En,
+                MatchRules.QuestionsPerMatch, [], [], 25));
+            Assert.Equal(10, (await limitFirst.GetAsync(Amir))!.Capacity);
+        }
+        finally
+        {
+            await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        }
+    }
+
+    [Fact]
+    public async Task Players_question_preserves_a_participant_selection_beyond_index_nineteen()
+    {
+        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        await settings.SetMaxCapacityAsync(21);
+        try
+        {
+            const string category = "large-players-question";
+            if (Shared.Categories.Items.All(c => c.Id != category))
+                Shared.Categories.Items.Add(new Category(category, "بازیکنان", "Players", "people", "#336699"));
+
+            for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)
+            {
+                var id = $"{category}-{Guid.NewGuid():N}";
+                Shared.Questions.Items.Add(Question.Create(id, Language.En, category, MatchRules.LevelForSlot(slot),
+                    $"players {slot}", [], 0, Shared.Clock.Now, status: QuestionStatus.Approved,
+                    kind: QuestionKind.Players));
+            }
+
+            var grain = fixture.Cluster.GrainFactory.GetGrain<IMatchGrain>(Guid.NewGuid().ToString("N"));
+            await grain.CreateLobbyAsync("PLYR21", Amir, (int)Language.En, MatchRules.QuestionsPerMatch,
+                [category], [], 21);
+            for (var i = 1; i < 21; i++) Assert.True(await grain.JoinAsync($"large-player-{i}"));
+            Assert.True(await grain.StartAsync(Amir));
+
+            var served = await grain.ServeNextAsync(Amir);
+            await grain.AnswerAsync(Amir, served!.Slot, 20);
+
+            var view = await grain.GetAsync(Amir);
+            Assert.Equal(20, Assert.Single(view!.Runs, r => r.PlayerId == Amir).Choices[0]);
+        }
+        finally
+        {
+            await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        }
+    }
+
+    [Fact]
     public async Task A_full_duel_resolves_and_lands_in_the_archive()
     {
         var grain = NewMatch(out var id, out var questionIds);

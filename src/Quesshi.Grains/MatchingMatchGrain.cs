@@ -169,7 +169,7 @@ public sealed class MatchingMatchGrain(
             || playerId != state.State.OwnerId)
             return false;
         if (!MatchRules.IsValidCount(questionCount)) return false;
-        if (capacity is { } newCapacity && (newCapacity < 2 || newCapacity > MatchRules.MaxParticipants
+        if (capacity is { } newCapacity && (newCapacity < 2 || newCapacity > MatchingRules.MaxParticipants
             || newCapacity < state.State.Participants.Count)) return false;
 
         state.State.Lang = lang;

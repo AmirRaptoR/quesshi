@@ -8,7 +8,7 @@ public interface IMatchGrain : IGrainWithStringKey
 
     /// <summary>
     /// The lobby-aware create path: opens a lobby for <paramref name="ownerId"/> with these settings
-    /// and this <paramref name="capacity"/> (2-8), with no question set drawn yet — <c>StartAsync</c>
+    /// and this <paramref name="capacity"/>, with no question set drawn yet — <c>StartAsync</c>
     /// draws it from whatever the settings say at that instant. Idempotent, exactly like
     /// <see cref="CreateAsync"/>. <c>DuelSettings</c> crosses this boundary as the same primitives
     /// <paramref name="lang"/> already is one of, and <paramref name="levels"/> as <c>Difficulty</c>
@@ -53,7 +53,7 @@ public interface IMatchGrain : IGrainWithStringKey
     /// The owner changes the lobby's <c>DuelSettings</c> and, optionally, its <c>Capacity</c> in the
     /// same call — atomically: both halves are validated before either is applied. <paramref name="capacity"/>
     /// null means "leave capacity alone". Refused for anyone but the owner; the settings half is
-    /// refused once the question set is drawn, and the capacity half below 2, above 8, below the
+    /// refused once the question set is drawn, and the capacity half outside its bounds or below the
     /// seated count, or once joins have already closed.
     /// </summary>
     [Alias("UpdateSettingsAsync")]
