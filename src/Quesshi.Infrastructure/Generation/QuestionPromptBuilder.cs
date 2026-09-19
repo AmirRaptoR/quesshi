@@ -87,7 +87,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt and every choice in {language}, for {audience}
-        Difficulty: {Describe(level)}
+        Difficulty: {Describe(level)}{CategoryGuidance(category)}
 
         Rules:
         - Exactly {MatchRules.ChoicesPerQuestion} choices per question, exactly one of them correct.
@@ -128,7 +128,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt and every choice in {language}
-        Difficulty: {Describe(level)}
+        Difficulty: {Describe(level)}{CategoryGuidance(category)}
 
         Each question carries a "subject": the exact title of the English Wikipedia article for the
         CORRECT answer. We fetch that article's photograph and show it to the player, so:
@@ -180,7 +180,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt and every item in {language}
-        Difficulty: {Describe(level)}
+        Difficulty: {Describe(level)}{CategoryGuidance(category)}
 
         The criterion is everything:
         - Order by something MEASURABLE and objective: population, year, height, length, area,
@@ -235,7 +235,7 @@ public sealed class QuestionPromptBuilder
 
         Category: {category.NameEn}
         Language: write the prompt in {language}
-        Difficulty: {Describe(level)}
+        Difficulty: {Describe(level)}{CategoryGuidance(category)}
 
         Each question is one of two shapes, and you say which:
         - "country": the answer is a whole country. Give its ISO 3166-1 alpha-2 code in
@@ -281,6 +281,11 @@ public sealed class QuestionPromptBuilder
         Difficulty.Hard => "Hard — most players will not know it, but an enthusiast of this topic will.",
         _ => "Very hard — for someone who really knows the subject. Still a fair, checkable fact, never obscure trivia nobody could reason about."
     };
+
+    private static string CategoryGuidance(Category category)
+        => string.IsNullOrWhiteSpace(category.PromptHelper)
+            ? ""
+            : $"\n\nCategory guidance:\n{category.PromptHelper.Trim()}";
 
     /// <summary>A nudge only: the real de-duplication happens on the way back, in TopUpQuestionBank.</summary>
     private static string Avoid(IReadOnlyCollection<string> avoid)
