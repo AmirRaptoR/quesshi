@@ -34,8 +34,15 @@ readonly env_file="$deploy_root/.env"
 [[ -f "$compose_file" ]] || fail "release has no compose.yaml: $compose_file"
 [[ -f "$env_file" ]] || fail "server settings are missing: $env_file"
 
+compose_for() {
+    local target_release="$1"
+    shift
+    docker compose --project-directory "$target_release" --env-file "$env_file" \
+        -f "$target_release/compose.yaml" "$@"
+}
+
 compose() {
-    docker compose --project-directory "$release_dir" --env-file "$env_file" -f "$compose_file" "$@"
+    compose_for "$release_dir" "$@"
 }
 
 config="$(compose config --format json)" || fail 'Compose could not load the production settings'
@@ -63,6 +70,8 @@ docker volume inspect "$redis_volume" >/dev/null || fail "Redis volume does not 
 
 if [[ -f "$state_file" ]]; then
     previous_commit="$(jq -er '.commit | strings' "$state_file")" || fail 'deployment state is unreadable'
+    stored_previous_commit="$(jq -r '.previous_commit // empty' "$state_file")" \
+        || fail 'deployment state is unreadable'
     previous_run="$(jq -er '.run_number | numbers' "$state_file")" || fail 'deployment state is unreadable'
     previous_attempt="$(jq -er '.run_attempt | numbers' "$state_file")" || fail 'deployment state is unreadable'
     if (( run_number < previous_run || (run_number == previous_run && run_attempt < previous_attempt) )); then
@@ -88,8 +97,14 @@ TAG="$commit" compose build app || fail 'image build failed; the running app was
 rollback_image="quesshi:rollback-$commit"
 rollback() {
     if [[ -n "$previous_image_id" ]]; then
+        previous_release="$release_dir"
+        if [[ -n "$previous_commit" ]]; then
+            previous_release="$deploy_root/releases/$previous_commit"
+            [[ -f "$previous_release/compose.yaml" ]] \
+                || fail "previous release definition is missing: $previous_release/compose.yaml"
+        fi
         docker tag "$previous_image_id" "$rollback_image" || fail 'could not tag the previous app image for rollback'
-        if ! TAG="rollback-$commit" compose up -d --no-deps app; then
+        if ! TAG="rollback-$commit" compose_for "$previous_release" up -d --no-deps app; then
             fail 'new app failed and Compose could not restore the previous image'
         fi
         if ! wait_for_healthy; then
@@ -125,8 +140,12 @@ if ! wait_for_healthy; then
     exit 1
 fi
 
+state_previous_commit="$previous_commit"
+if [[ "$commit" == "$previous_commit" ]]; then
+    state_previous_commit="$stored_previous_commit"
+fi
 state_tmp="$state_file.tmp.$$"
-jq -n --arg commit "$commit" --arg previous_commit "$previous_commit" \
+jq -n --arg commit "$commit" --arg previous_commit "$state_previous_commit" \
     --argjson run_number "$run_number" --argjson run_attempt "$run_attempt" \
     '{commit:$commit, previous_commit:(if $previous_commit == "" then null else $previous_commit end), run_number:$run_number, run_attempt:$run_attempt}' > "$state_tmp"
 chmod 600 "$state_tmp"

@@ -82,7 +82,7 @@ flock 9
 CURRENT=$(jq -r .commit .deployment-state)
 PREVIOUS=$(jq -r '.previous_commit // empty' .deployment-state)
 test -n "$PREVIOUS"
-RELEASE="/opt/quesshi/releases/$CURRENT"
+RELEASE="/opt/quesshi/releases/$PREVIOUS"
 TAG="$PREVIOUS" docker compose --project-directory "$RELEASE" --env-file /opt/quesshi/.env \
   -f "$RELEASE/compose.yaml" up -d --no-deps app
 healthy=0
