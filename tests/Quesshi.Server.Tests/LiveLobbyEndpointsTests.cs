@@ -80,7 +80,7 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Create_refuses_a_capacity_outside_the_configured_range()
     {
-        await Grains.GetGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        await Grains.GetTenantGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         var tooSmall = await LiveEndpoints.CreateLobbyAsync(new CreateLobbyDto(1, "en", [Category], null, null),
             Amir, Grains, NewIds(), LiveShared.Archive, LiveShared.Players, LiveShared.Questions, LiveShared.Categories, Clock);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));

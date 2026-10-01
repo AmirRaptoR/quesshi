@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
 using Quesshi.Application.Ports;
 using Quesshi.Server.Api;
+using Quesshi.Infrastructure;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Hubs;
@@ -13,9 +14,9 @@ namespace Quesshi.Server.Hubs;
 /// drives: a connection maps to at most one (match, player) at a time, so a disconnect knows who to
 /// announce as gone without the grain ever having to know a socket exists.
 /// </summary>
-public sealed class SignalRLiveNotifier(IHubContext<LiveHub> hub) : ILiveNotifier
+public sealed class SignalRLiveNotifier(IHubContext<LiveHub> hub, TenantContext tenant) : ILiveNotifier
 {
-    private readonly ConcurrentDictionary<string, (string MatchId, string PlayerId)> _connections = new();
+    private readonly ConcurrentDictionary<string, (string MatchId, string PlayerId, string TenantId)> _connections = new();
 
     public Task CountdownStartedAsync(string matchId, LiveCountdown countdown, CancellationToken ct = default)
         => Task.CompletedTask; // no client listens for this push (see #13's contract-additions note); the phase is read from the catch-up view instead.
@@ -51,14 +52,15 @@ public sealed class SignalRLiveNotifier(IHubContext<LiveHub> hub) : ILiveNotifie
     /// connection that was never away is harmless, and simpler than tracking whether it was.</summary>
     public Task NoteConnectedAsync(string connectionId, string matchId, string playerId)
     {
-        _connections[connectionId] = (matchId, playerId);
+        _connections[connectionId] = (matchId, playerId, tenant.Id);
         return OpponentPresenceChangedAsync(matchId, playerId, online: true);
     }
 
     public Task NoteDisconnectedAsync(string connectionId)
         => _connections.TryRemove(connectionId, out var info)
-            ? OpponentPresenceChangedAsync(info.MatchId, info.PlayerId, online: false)
+            ? Group(info.MatchId, info.TenantId).SendAsync("OpponentLeft", new OpponentPresenceDto(info.PlayerId, false))
             : Task.CompletedTask;
 
-    private IClientProxy Group(string matchId) => hub.Clients.Group(LiveHub.GroupName(matchId));
+    private IClientProxy Group(string matchId, string? tenantId = null)
+        => hub.Clients.Group(LiveHub.GroupName(matchId, tenantId ?? tenant.Id));
 }

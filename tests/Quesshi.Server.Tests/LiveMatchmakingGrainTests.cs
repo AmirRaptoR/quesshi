@@ -16,7 +16,7 @@ namespace Quesshi.Server.Tests;
 [Collection(nameof(LiveClusterCollection))]
 public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
 {
-    private ILiveMatchmakingGrain Queue => fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+    private ILiveMatchmakingGrain Queue => fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
     private static int _n;
 
     private static void Advance(TimeSpan by) => LiveShared.TimeProvider.Advance(by);
@@ -54,7 +54,7 @@ public class LiveMatchmakingGrainTests(LiveClusterFixture fixture)
 
     private ILiveMatchmakingGrain Matchmaking()
         // A fresh key per test so tests never see each other's challenges or queue entries.
-        => fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(Interlocked.Increment(ref _counter));
+        => fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(Interlocked.Increment(ref _counter));
 
     private static string NewPlayerId(string tag) => $"lp-{tag}-{Guid.NewGuid():N}";
 

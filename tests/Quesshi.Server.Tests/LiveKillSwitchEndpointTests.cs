@@ -50,7 +50,7 @@ public class LiveKillSwitchEndpointTests(LiveClusterFixture fixture) : IAsyncDis
         return player;
     }
 
-    private ILiveSettingsGrain SettingsGrain => fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0);
+    private ILiveSettingsGrain SettingsGrain => fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0);
 
     [Fact]
     public async Task Toggling_the_switch_off_then_on_changes_whether_create_succeeds_in_one_run()

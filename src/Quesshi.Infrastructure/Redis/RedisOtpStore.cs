@@ -6,11 +6,11 @@ using StackExchange.Redis;
 namespace Quesshi.Infrastructure.Redis;
 
 /// <summary>OTP challenges live in Redis with a TTL, so an abandoned code cleans itself up.</summary>
-public sealed class RedisOtpStore(IConnectionMultiplexer redis) : IOtpStore
+public sealed class RedisOtpStore(IConnectionMultiplexer redis, TenantContext tenant) : IOtpStore
 {
     private IDatabase Db => redis.GetDatabase();
 
-    private static string Key(string email) => $"quesshi:otp:{email.Trim().ToLowerInvariant()}";
+    private string Key(string email) => tenant.Key($"quesshi:otp:{email.Trim().ToLowerInvariant()}");
 
     public Task SaveAsync(OtpChallenge challenge, CancellationToken ct = default)
         => Db.StringSetAsync(Key(challenge.Email), JsonSerializer.Serialize(challenge.ToSnapshot()), OtpChallenge.Lifetime);

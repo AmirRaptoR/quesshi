@@ -3,6 +3,7 @@ using Orleans.TestingHost;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Domain;
+using Quesshi.Grains.Abstractions;
 
 namespace Quesshi.Server.Tests;
 
@@ -10,6 +11,7 @@ public sealed class TestSilo : ISiloConfigurator
 {
     public void Configure(ISiloBuilder silo)
     {
+        silo.AddIncomingGrainCallFilter<TenantGrainCallFilter>();
         silo.AddMemoryGrainStorage("hot");
         silo.UseInMemoryReminderService();
         silo.ConfigureServices(services =>

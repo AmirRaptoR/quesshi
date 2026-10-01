@@ -11,7 +11,7 @@ namespace Quesshi.Server.Auth;
 /// the player token: a game session can never be mistaken for an admin session, whatever else goes
 /// wrong. Sessions are short, because an admin token is worth far more than a player one.
 /// </summary>
-public sealed class AdminTokenIssuer(AdminAuthOptions options)
+public sealed class AdminTokenIssuer(AdminAuthOptions options, Quesshi.Infrastructure.TenantContext? tenantContext = null)
 {
     public const string Scheme = "AdminBearer";
     public const string Audience = "quesshi-admin";
@@ -28,7 +28,8 @@ public sealed class AdminTokenIssuer(AdminAuthOptions options)
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id),
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
                 new Claim(ClaimTypes.Name, user.Username),
-                new Claim("typ", "admin")
+                new Claim("typ", "admin"),
+                new Claim(TokenIssuer.TenantClaim, tenantContext?.Id ?? "quesshi")
             ],
             expires: DateTime.UtcNow.AddHours(options.SessionHours),
             signingCredentials: new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256));

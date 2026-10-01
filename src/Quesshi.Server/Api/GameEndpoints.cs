@@ -30,7 +30,7 @@ public static class GameEndpoints
         });
 
         api.MapGet("/lobby-limits", async (IGrainFactory grains) =>
-            new LobbyLimitsDto(await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync()))
+            new LobbyLimitsDto(await grains.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync()))
             .WithMetadata(new AllowGuest());
 
         // --- profile -----------------------------------------------------------------
@@ -59,7 +59,7 @@ public static class GameEndpoints
                 return Results.BadRequest(new { error = "bad_avatar" });
 
             var meId = ctx.User.PlayerId()!;
-            var updated = await grains.GetGrain<IPlayerGrain>(meId).UpdateProfileAsync(name, (int)body.Lang.ToLanguage(), body.AvatarSeed);
+            var updated = await grains.GetTenantGrain<IPlayerGrain>(meId).UpdateProfileAsync(name, (int)body.Lang.ToLanguage(), body.AvatarSeed);
             if (!updated) return Results.Unauthorized();
 
             // Read back rather than trusting a client-built projection: FriendsOfAsync and ToMeDto both
@@ -104,16 +104,16 @@ public static class GameEndpoints
             if (await players.GetAsync(id) is null) return Results.NotFound();
 
             // Friendship is mutual: a one-way list makes "challenge a friend" confusing on the other side.
-            await grains.GetGrain<IPlayerGrain>(meId).AddFriendAsync(id);
-            await grains.GetGrain<IPlayerGrain>(id).AddFriendAsync(meId);
+            await grains.GetTenantGrain<IPlayerGrain>(meId).AddFriendAsync(id);
+            await grains.GetTenantGrain<IPlayerGrain>(id).AddFriendAsync(meId);
             return Results.Ok();
         });
 
         api.MapDelete("/friends/{id}", async (string id, HttpContext ctx, IGrainFactory grains) =>
         {
             var meId = ctx.User.PlayerId()!;
-            await grains.GetGrain<IPlayerGrain>(meId).RemoveFriendAsync(id);
-            await grains.GetGrain<IPlayerGrain>(id).RemoveFriendAsync(meId);
+            await grains.GetTenantGrain<IPlayerGrain>(meId).RemoveFriendAsync(id);
+            await grains.GetTenantGrain<IPlayerGrain>(id).RemoveFriendAsync(meId);
             return Results.Ok();
         });
 
@@ -159,12 +159,12 @@ public static class GameEndpoints
 
             if (body.Random)
             {
-                var queue = grains.GetGrain<IMatchmakingGrain>(0);
+                var queue = grains.GetTenantGrain<IMatchmakingGrain>(0);
                 var waitingMatchId = await queue.FindOrQueueAsync(meId, (int)lang, "");
 
                 if (waitingMatchId is { Length: > 0 })
                 {
-                    var opponentMatch = grains.GetGrain<IMatchGrain>(waitingMatchId);
+                    var opponentMatch = grains.GetTenantGrain<IMatchGrain>(waitingMatchId);
                     // Join no longer starts the duel on its own (issue #104) — random pairing has to
                     // start it explicitly, the same way a shared-link lobby's owner presses Start. A
                     // failed start is treated exactly like a failed join always was: fall through and
@@ -192,11 +192,11 @@ public static class GameEndpoints
             }
 
             var matchId = ids.NewId();
-            var grain = grains.GetGrain<IMatchGrain>(matchId);
+            var grain = grains.GetTenantGrain<IMatchGrain>(matchId);
             await grain.CreateAsync((int)lang, meId, [.. set.Select(q => q.Id)], ids.NewMatchCode());
 
             if (body.Random)
-                await grains.GetGrain<IMatchmakingGrain>(0).FindOrQueueAsync(meId, (int)lang, matchId);
+                await grains.GetTenantGrain<IMatchmakingGrain>(0).FindOrQueueAsync(meId, (int)lang, matchId);
 
             return Results.Ok(await SummaryAsync(grain, meId, players));
         });
@@ -222,12 +222,12 @@ public static class GameEndpoints
             await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
 
         api.MapPost("/matches/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
+            await grains.GetTenantGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
         api.MapPost("/matches/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+            await grains.GetTenantGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_start" }));
 
@@ -248,7 +248,7 @@ public static class GameEndpoints
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
-            var view = await grains.GetGrain<IMatchGrain>(id).GetAsync(meId);
+            var view = await grains.GetTenantGrain<IMatchGrain>(id).GetAsync(meId);
             if (view is null || !IsIn(view, meId)) return Results.NotFound();
 
             var summary = await ToSummaryAsync(view, meId, players);
@@ -264,7 +264,7 @@ public static class GameEndpoints
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
-            var grain = grains.GetGrain<IMatchGrain>(id);
+            var grain = grains.GetTenantGrain<IMatchGrain>(id);
             var served = await grain.ServeNextAsync(meId);
             if (served is null) return Results.NoContent();
 
@@ -301,7 +301,7 @@ public static class GameEndpoints
 
             try
             {
-                var outcome = await grains.GetGrain<IMatchGrain>(id).AnswerAsync(meId, body.Slot, body.ChoiceIndex, body.Response);
+                var outcome = await grains.GetTenantGrain<IMatchGrain>(id).AnswerAsync(meId, body.Slot, body.ChoiceIndex, body.Response);
                 return Results.Ok(new AnswerResultDto(outcome.Correct, outcome.CorrectIndex, outcome.Score,
                     outcome.Explanation, outcome.RunFinished, outcome.RunScore,
                     outcome.Kind, outcome.CorrectOrder, outcome.CorrectTarget));
@@ -350,7 +350,7 @@ public static class GameEndpoints
         // False only for a player id with no record at all — a token for a guest that has since been
         // deleted, which nothing in this app currently does, but the grain's own contract still answers
         // "unauthorized" rather than silently doing nothing.
-        if (!await grains.GetGrain<IPlayerGrain>(meId).ClaimEmailAsync(email))
+        if (!await grains.GetTenantGrain<IPlayerGrain>(meId).ClaimEmailAsync(email))
             return Results.Unauthorized();
 
         var me = await players.GetAsync(meId);
@@ -373,7 +373,7 @@ public static class GameEndpoints
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
         if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
 
-        var grain = grains.GetGrain<IMatchGrain>(found.Id);
+        var grain = grains.GetTenantGrain<IMatchGrain>(found.Id);
         if (!await grain.JoinAsync(meId)) return Results.BadRequest(new { error = "cannot_join" });
 
         return Results.Ok(await SummaryAsync(grain, meId, players));
@@ -394,7 +394,7 @@ public static class GameEndpoints
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
         if (found.IsLive) return Results.BadRequest(new { error = "not_an_async_code" });
 
-        var view = await grains.GetGrain<IMatchGrain>(found.Id).GetAsync(meId);
+        var view = await grains.GetTenantGrain<IMatchGrain>(found.Id).GetAsync(meId);
         if (view is null) return Results.NotFound(new { error = "no_such_code" });
 
         if (!IsIn(view, meId) && view.State != (int)MatchState.AwaitingOpponent)
@@ -414,7 +414,7 @@ public static class GameEndpoints
     internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
         IIdFactory ids, IPlayerRepository players)
     {
-        var maxCapacity = await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        var maxCapacity = await grains.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
         if (body.Capacity < 2 || body.Capacity > maxCapacity) return Results.BadRequest(new { error = "bad_capacity" });
 
         var me = await players.GetAsync(meId);
@@ -425,7 +425,7 @@ public static class GameEndpoints
         var levels = CoerceLevels(body.Levels);
 
         var matchId = ids.NewId();
-        var grain = grains.GetGrain<IMatchGrain>(matchId);
+        var grain = grains.GetTenantGrain<IMatchGrain>(matchId);
         MatchView view;
         try { view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity); }
         catch (ArgumentOutOfRangeException) { return Results.BadRequest(new { error = "bad_capacity" }); }
@@ -446,7 +446,7 @@ public static class GameEndpoints
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
 
-        var ok = await grains.GetGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+        var ok = await grains.GetTenantGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 
@@ -508,7 +508,7 @@ public static class GameEndpoints
 
         // Asked all at once, so the wait is the slowest single activation rather than the sum of
         // forty. Redaction still happens inside each grain, per player, exactly as it did before.
-        var views = await Task.WhenAll(asyncRows.Select(r => grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId)));
+        var views = await Task.WhenAll(asyncRows.Select(r => grains.GetTenantGrain<IMatchGrain>(r.Id).GetAsync(meId)));
         var asyncViews = views.OfType<MatchView>().ToList();
 
         // The row was only a way of finding the duel. A grain is written before it is indexed, so a

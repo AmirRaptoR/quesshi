@@ -1,7 +1,7 @@
 namespace Quesshi.Grains.Abstractions;
 
 [Alias("Quesshi.Grains.Abstractions.IMatchmakingGrain")]
-public interface IMatchmakingGrain : IGrainWithIntegerKey
+public interface IMatchmakingGrain : IGrainWithIntegerCompoundKey
 {
     /// <summary>Returns an opponent's open match to join, or null after queueing this player's own match.</summary>
     [Alias("FindOrQueueAsync")]

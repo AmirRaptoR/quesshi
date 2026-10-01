@@ -11,11 +11,11 @@ namespace Quesshi.Infrastructure.Redis;
 /// Redis-backed test host. The behaviour that matters — the online/offline lifecycle, the guest
 /// refusal, the single-bulk-read shape — is covered above this port, against a fake.
 /// </summary>
-public sealed class RedisPresence(IConnectionMultiplexer redis) : IPresence
+public sealed class RedisPresence(IConnectionMultiplexer redis, TenantContext tenant) : IPresence
 {
     private IDatabase Db => redis.GetDatabase();
 
-    private static string Key(string playerId) => $"quesshi:presence:{playerId}";
+    private string Key(string playerId) => tenant.Key($"quesshi:presence:{playerId}");
 
     public Task MarkOnlineAsync(string playerId, TimeSpan ttl, CancellationToken ct = default)
         => Db.StringSetAsync(Key(playerId), "1", ttl);

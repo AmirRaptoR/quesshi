@@ -29,6 +29,7 @@ public sealed class MatchingMatchGrain(
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         state.State.ServedQuestionPending ??= [];
         if (!string.IsNullOrWhiteSpace(state.State.Json))
             _match = MatchingMatch.FromSnapshot(JsonSerializer.Deserialize<MatchingMatchSnapshot>(state.State.Json)!);
@@ -488,5 +489,5 @@ public sealed class MatchingMatchGrain(
         catch (Exception ex) { logger.LogDebug(ex, "Matching reminder was already absent for {MatchId}", IdString()); }
     }
 
-    private string IdString() => this.GetPrimaryKeyString();
+    private string IdString() => TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString());
 }

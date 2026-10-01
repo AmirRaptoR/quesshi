@@ -56,7 +56,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Lowered_runtime_limit_grandfathers_capacity_but_blocks_later_increases()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(30);
         try
         {

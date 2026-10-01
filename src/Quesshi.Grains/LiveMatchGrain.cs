@@ -54,6 +54,7 @@ public sealed class LiveMatchGrain(
 
     public override async Task OnActivateAsync(CancellationToken ct)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         if (string.IsNullOrEmpty(state.State.Json)) return;
 
         _match = LiveMatch.FromSnapshot(JsonSerializer.Deserialize<LiveMatchSnapshot>(state.State.Json)!);
@@ -103,7 +104,7 @@ public sealed class LiveMatchGrain(
         // (LiveMatchmakingGrain) is this method's only caller, and it always hands over a set it has
         // already drawn, so DrawQuestions here can never see a mismatched count.
         var settings = DuelSettings.Create((Language)lang, questionIds.Count, [], []);
-        _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, challengerId, settings, capacity: 2, clock.Now);
+        _match = LiveMatch.Create(TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()), code, challengerId, settings, capacity: 2, clock.Now);
         _match.DrawQuestions(questionIds);
 
         // A lobby nobody joins must still expire even with the grain deactivated, so the reminder
@@ -120,11 +121,11 @@ public sealed class LiveMatchGrain(
         List<string> categoryIds, List<int> levels, int capacity)
     {
         if (_match is not null) return await ViewAsync(_match, ownerId);
-        if (capacity > await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync())
+        if (capacity > await GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync())
             throw new ArgumentOutOfRangeException(nameof(capacity));
 
         var settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
-        _match = LiveMatch.Create(this.GetPrimaryKeyString(), code, ownerId, settings, capacity, clock.Now);
+        _match = LiveMatch.Create(TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()), code, ownerId, settings, capacity, clock.Now);
 
         await this.RegisterOrUpdateReminder(SafetyNetReminder, ReminderPeriod, ReminderPeriod);
         await AfterChangeAsync(LivePhase.Lobby, false);
@@ -247,7 +248,7 @@ public sealed class LiveMatchGrain(
 
         var settingsChanged = settings != _match.Settings;
         var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
-        var configuredMax = await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        var configuredMax = await GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
         var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity)
             && (newCapacity <= _match.Capacity || newCapacity <= configuredMax);
 
@@ -402,7 +403,7 @@ public sealed class LiveMatchGrain(
         if (_match is null || !_match.IsOver || !_match.IsParticipant(playerId) || _match.Participants.Count < 2)
             return new RematchOutcome((int)RematchStatus.Refused);
 
-        if (!await GrainFactory.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync())
+        if (!await GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0).IsEnabledAsync())
         {
             await SafeNotifyAsync(() => notifier.RematchFailedAsync(_match.Id));
             return new RematchOutcome((int)RematchStatus.Failed);
@@ -451,8 +452,8 @@ public sealed class LiveMatchGrain(
             var code = ids.NewMatchCode();
             if (await archive.ByCodeAsync(code) is not null) continue;
 
-            var grain = GrainFactory.GetGrain<ILiveMatchGrain>(lobbyId);
-            var maxCapacity = await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+            var grain = GrainFactory.GetTenantGrain<ILiveMatchGrain>(lobbyId);
+            var maxCapacity = await GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
             return await grain.CreateLobbyAsync(code, m.OwnerId, (int)m.Lang, m.Settings.QuestionCount,
                 [.. m.Settings.CategoryIds], [.. m.Settings.Levels.Select(l => (int)l)], Math.Min(m.Capacity, maxCapacity));
         }
@@ -479,7 +480,7 @@ public sealed class LiveMatchGrain(
     /// </summary>
     private async Task InviteOthersAsync(LiveView lobbyView, string requesterId)
     {
-        var matchmaking = GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var matchmaking = GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
         var lobbyOwnerId = lobbyView.Participants[0];
         foreach (var participantId in _match!.Participants)
         {
@@ -513,6 +514,7 @@ public sealed class LiveMatchGrain(
 
     private async Task OnTimerTickAsync(CancellationToken ct)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         if (_match is null || _match.IsOver) return;
 
         var phaseBefore = _match.Phase;

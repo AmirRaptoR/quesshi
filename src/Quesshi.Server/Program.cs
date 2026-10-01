@@ -17,6 +17,7 @@ using Quesshi.Server.Hubs;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Seed;
+using Quesshi.Server.Tenants;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +34,7 @@ var mongoOptions = new MongoOptions
 // through the repositories rather than through an Orleans provider.
 builder.UseOrleans(silo =>
 {
+    silo.AddIncomingGrainCallFilter<TenantGrainCallFilter>();
     silo.Configure<ClusterOptions>(options =>
     {
         options.ClusterId = builder.Configuration["Orleans:ClusterId"] ?? "quesshi";
@@ -46,16 +48,43 @@ builder.UseOrleans(silo =>
     // A startup task runs once the silo is actually up; a plain Task.Run races it and throws.
     var nightly = builder.Configuration.GetValue("Generation:Nightly", false);
     silo.AddStartupTask(async (services, ct) =>
-        await services.GetRequiredService<IGrainFactory>().GetGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly));
+    {
+        var tenants = services.GetRequiredService<TenantOptions>();
+        var tenantContext = services.GetRequiredService<TenantContext>();
+        var grains = services.GetRequiredService<IGrainFactory>();
+        foreach (var tenant in tenants.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await grains.GetTenantGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly);
+        }
+    });
 
     // Seeds, never overwrites: a runtime toggle through POST /api/admin/live/enabled must survive
     // the next restart, so this only ever writes into a grain that has never persisted a value.
     var liveEnabled = builder.Configuration.GetValue("Live:Enabled", true);
     silo.AddStartupTask(async (services, ct) =>
-        await services.GetRequiredService<IGrainFactory>().GetGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled));
+    {
+        var tenants = services.GetRequiredService<TenantOptions>();
+        var tenantContext = services.GetRequiredService<TenantContext>();
+        var grains = services.GetRequiredService<IGrainFactory>();
+        foreach (var tenant in tenants.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await grains.GetTenantGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled);
+        }
+    });
     var maxLobbyCapacity = builder.Configuration.GetValue("Lobby:MaxCapacity", MatchRules.DefaultMaxParticipants);
     silo.AddStartupTask(async (services, ct) =>
-        await services.GetRequiredService<IGrainFactory>().GetGrain<ILobbySettingsGrain>(0).SeedAsync(maxLobbyCapacity));
+    {
+        var tenants = services.GetRequiredService<TenantOptions>();
+        var tenantContext = services.GetRequiredService<TenantContext>();
+        var grains = services.GetRequiredService<IGrainFactory>();
+        foreach (var tenant in tenants.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await grains.GetTenantGrain<ILobbySettingsGrain>(0).SeedAsync(maxLobbyCapacity);
+        }
+    });
 });
 
 // --- configuration objects -----------------------------------------------------------
@@ -76,6 +105,12 @@ builder.Services.AddSingleton(openRouterOptions);
 builder.Services.AddSingleton(topUpOptions);
 builder.Services.AddSingleton(matchingGenerationOptions);
 builder.Services.AddSingleton(mongoOptions);
+var tenantOptions = builder.Configuration.GetSection("Tenants").Get<TenantOptions>() ?? new TenantOptions();
+var tenantRegistry = new TenantRegistry(tenantOptions);
+builder.Services.AddSingleton(tenantOptions);
+builder.Services.AddSingleton(tenantRegistry);
+var tenantContext = new TenantContext();
+builder.Services.AddSingleton(tenantContext);
 
 // --- infrastructure ------------------------------------------------------------------
 builder.Services.AddHttpClient();
@@ -162,8 +197,8 @@ builder.Services.AddSingleton<Seeder>();
 builder.Services.AddSingleton<TokenIssuer>();
 
 // --- auth ----------------------------------------------------------------------------
-var tokenIssuer = new TokenIssuer(jwtOptions);
-var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions);
+var tokenIssuer = new TokenIssuer(jwtOptions, tenantContext);
+var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions, tenantContext);
 builder.Services.AddSingleton(tokenIssuer);
 builder.Services.AddSingleton(adminTokenIssuer);
 
@@ -182,6 +217,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
 
 var app = builder.Build();
+
+app.UseMiddleware<TenantResolutionMiddleware>();
 
 if (smtpOptions.Delivery(app.Environment.IsDevelopment()) == MailDelivery.Log)
 {
@@ -209,6 +246,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapTenantSettings();
 app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
@@ -226,7 +264,12 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
-        await scope.ServiceProvider.GetRequiredService<MongoContext>().EnsureIndexesAsync();
+        var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
+        foreach (var tenant in tenantOptions.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await mongo.EnsureIndexesAsync();
+        }
     }
     catch (Exception ex)
     {

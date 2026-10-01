@@ -54,7 +54,7 @@ public static class MatchingEndpoints
             await StartAsync(id, ctx.User.PlayerId()!, grains));
 
         api.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetGrain<IMatchingMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
+            await grains.GetTenantGrain<IMatchingMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
@@ -92,7 +92,7 @@ public static class MatchingEndpoints
             var code = ids.NewMatchCode();
             if (await archive.ByCodeAsync(code) is not null) continue;
             var id = ids.NewId();
-            var grain = grains.GetGrain<IMatchingMatchGrain>(id);
+            var grain = grains.GetTenantGrain<IMatchingMatchGrain>(id);
             try
             {
                 var view = await grain.CreateAsync(code, meId, (int)lang, count, categoryIds, body.Capacity);
@@ -115,7 +115,7 @@ public static class MatchingEndpoints
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
         if (found.Mode != GameMode.Matching) return Results.BadRequest(new { error = "not_a_matching_code" });
 
-        var grain = grains.GetGrain<IMatchingMatchGrain>(found.Id);
+        var grain = grains.GetTenantGrain<IMatchingMatchGrain>(found.Id);
         var result = (MatchingJoinResult)await grain.JoinAsync(meId);
         if (result is not MatchingJoinResult.Joined)
             return result switch
@@ -142,7 +142,7 @@ public static class MatchingEndpoints
     internal static async Task<IResult> GetAsync(string id, string meId, IGrainFactory grains,
         IPlayerRepository players)
     {
-        var view = await grains.GetGrain<IMatchingMatchGrain>(id).GetAsync(meId);
+        var view = await grains.GetTenantGrain<IMatchingMatchGrain>(id).GetAsync(meId);
         return view is null ? Results.NotFound() : Results.Ok(await ToDtoAsync(view, meId, players));
     }
 
@@ -150,7 +150,7 @@ public static class MatchingEndpoints
     {
         try
         {
-            var ok = await grains.GetGrain<IMatchingMatchGrain>(id).StartAsync(meId);
+            var ok = await grains.GetTenantGrain<IMatchingMatchGrain>(id).StartAsync(meId);
             return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_start" });
         }
         catch (NotEnoughQuestionsException ex)
@@ -183,7 +183,7 @@ public static class MatchingEndpoints
         if (!await CategoriesExistAsync(categoryIds, categories))
             return Results.BadRequest(new { error = "unknown_category" });
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
-        var ok = await grains.GetGrain<IMatchingMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang,
+        var ok = await grains.GetTenantGrain<IMatchingMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang,
             count, categoryIds, [], body.Capacity, (int)GameMode.Matching);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
@@ -206,7 +206,7 @@ public static class MatchingEndpoints
 
         try
         {
-            var view = await grains.GetGrain<IMatchingMatchGrain>(id).AnswerAsync(meId, body.Slot,
+            var view = await grains.GetTenantGrain<IMatchingMatchGrain>(id).AnswerAsync(meId, body.Slot,
                 (int)kind, body.ParticipantId, body.ChoiceIndex);
             return Results.Ok(await ToDtoAsync(view, meId, players));
         }

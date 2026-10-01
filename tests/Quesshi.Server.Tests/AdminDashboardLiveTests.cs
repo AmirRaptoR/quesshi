@@ -31,7 +31,7 @@ public class AdminDashboardLiveTests(LiveClusterFixture fixture) : IAsyncDisposa
         LiveShared.Directory.ConnectedCount = 0;
         LiveShared.Directory.QueueDepth = 0;
         LiveShared.Archive.Items.RemoveAll(m => m.IsLive);
-        await fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0).SetEnabledAsync(true);
+        await fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0).SetEnabledAsync(true);
 
         using var client = AdminClient();
         var dto = await client.GetFromJsonAsync<AdminDashboardDto>("/api/admin/dashboard");
@@ -71,7 +71,7 @@ public class AdminDashboardLiveTests(LiveClusterFixture fixture) : IAsyncDisposa
     [Fact]
     public async Task Renders_with_live_disabled()
     {
-        await fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0).SetEnabledAsync(false);
+        await fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0).SetEnabledAsync(false);
         try
         {
             using var client = AdminClient();
@@ -83,7 +83,7 @@ public class AdminDashboardLiveTests(LiveClusterFixture fixture) : IAsyncDisposa
         }
         finally
         {
-            await fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0).SetEnabledAsync(true);
+            await fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0).SetEnabledAsync(true);
         }
     }
 

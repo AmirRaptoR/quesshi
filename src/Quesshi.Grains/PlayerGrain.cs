@@ -15,7 +15,10 @@ public sealed class PlayerGrain(IPlayerRepository players, ILeaderboard leaderbo
     private Player? _player;
 
     public override async Task OnActivateAsync(CancellationToken ct)
-        => _player = await players.GetAsync(this.GetPrimaryKeyString(), ct);
+    {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
+        _player = await players.GetAsync(TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()), ct);
+    }
 
     /// <summary>
     /// Every write path reads through this rather than the bare field, because a prior failed write
@@ -24,14 +27,14 @@ public sealed class PlayerGrain(IPlayerRepository players, ILeaderboard leaderbo
     /// next call, not the next time Orleans happens to activate this grain again.
     /// </summary>
     private async Task<Player?> EnsurePlayerAsync()
-        => _player ??= await players.GetAsync(this.GetPrimaryKeyString());
+        => _player ??= await players.GetAsync(TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()));
 
     public async Task SettleMatchAsync(string matchId, int? outcome, int score, List<string> categoryIds, List<bool> correct, DateTimeOffset? abandonedAt)
     {
         var player = await EnsurePlayerAsync();
         if (player is null)
         {
-            logger.LogWarning("Settlement for unknown player {Player}", this.GetPrimaryKeyString());
+            logger.LogWarning("Settlement for unknown player {Player}", TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()));
             return;
         }
 

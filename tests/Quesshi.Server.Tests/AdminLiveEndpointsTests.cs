@@ -306,7 +306,7 @@ public class AdminLiveEndpointsTests(LiveClusterFixture fixture) : IAsyncDisposa
     [Fact]
     public async Task Admin_can_toggle_Live_Enabled_and_it_is_reflected_on_the_settings_grain()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0);
         using var client = AdminClient();
 
         await client.PostAsync("/api/admin/live/enabled?value=false", null);

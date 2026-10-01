@@ -11,11 +11,11 @@ namespace Quesshi.Infrastructure.Redis;
 /// <see cref="QueueDepthAsync"/> read the two sets the presence/queue sub-issue writes; this class
 /// only reads them, and a set nobody has written yet has length zero.
 /// </summary>
-public sealed class RedisLiveDirectory(IConnectionMultiplexer redis) : ILiveDirectory
+public sealed class RedisLiveDirectory(IConnectionMultiplexer redis, TenantContext tenant) : ILiveDirectory
 {
-    private const string InFlightKey = "quesshi:live:inflight";
-    private const string ConnectedKey = "quesshi:live:connected";
-    private const string QueueKey = "quesshi:live:queue";
+    private string InFlightKey => tenant.Key("quesshi:live:inflight");
+    private string ConnectedKey => tenant.Key("quesshi:live:connected");
+    private string QueueKey => tenant.Key("quesshi:live:queue");
 
     private IDatabase Db => redis.GetDatabase();
 

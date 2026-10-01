@@ -6,7 +6,7 @@ namespace Quesshi.Grains.Abstractions;
 /// duels already running are untouched.
 /// </summary>
 [Alias("Quesshi.Grains.Abstractions.ILiveSettingsGrain")]
-public interface ILiveSettingsGrain : IGrainWithIntegerKey
+public interface ILiveSettingsGrain : IGrainWithIntegerCompoundKey
 {
     [Alias("IsEnabledAsync")]
     Task<bool> IsEnabledAsync();

@@ -24,7 +24,7 @@ public sealed class AdminLobbySettingsTests(LiveClusterFixture fixture) : IAsync
     [Fact]
     public async Task Dashboard_reads_the_saved_value_and_admin_can_update_it()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         using var client = AdminClient();
 
@@ -45,7 +45,7 @@ public sealed class AdminLobbySettingsTests(LiveClusterFixture fixture) : IAsync
     [InlineData("501")]
     public async Task Invalid_admin_values_are_rejected_without_changing_the_setting(string value)
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(20);
         using var client = AdminClient();
 
@@ -67,7 +67,7 @@ public sealed class AdminLobbySettingsTests(LiveClusterFixture fixture) : IAsync
 
     public async ValueTask DisposeAsync()
     {
-        await fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0)
+        await fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0)
             .SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         await _host.DisposeAsync();
     }

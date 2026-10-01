@@ -22,7 +22,7 @@ public class LobbyHubInviteToLobbyTests(LiveClusterFixture fixture)
     private static Player GuestPlayer(string id) => Player.Guest(id, id, Language.En, DateTimeOffset.UtcNow);
 
     private static LobbyHub NewHub(IGrainFactory grains, FakePlayers players, string playerId, bool isGuest = false)
-        => new(grains, new FakePresence(), new FakeLobbyNotifier(), players, new IdFactory(), new FakeArchive())
+        => new(grains, new FakePresence(), new FakeLobbyNotifier(), players, new IdFactory(), new FakeArchive(), new TenantContext())
         {
             Context = new FakeHubCallerContext(playerId, isGuest)
         };
@@ -68,7 +68,7 @@ public class LobbyHubInviteToLobbyTests(LiveClusterFixture fixture)
         var result = await ownerHub.InviteToLobby(friendId, lobbyId);
         Assert.Equal((int)LiveChallengeResult.Sent, result);
 
-        var matchmaking = grains.GetGrain<ILiveMatchmakingGrain>(0);
+        var matchmaking = grains.GetTenantGrain<ILiveMatchmakingGrain>(0);
         var pending = (await matchmaking.PendingForAsync(friendId)).Single();
         Assert.Equal(lobbyId, pending.LobbyId); // the invitation points at the lobby already given it, not a fresh one
         Assert.Equal(ownerId, pending.ChallengerId);
@@ -103,7 +103,7 @@ public class LobbyHubInviteToLobbyTests(LiveClusterFixture fixture)
         var result = await hub.InviteToLobby(strangerId, lobbyId);
 
         Assert.Equal((int)LiveChallengeResult.NotFound, result);
-        Assert.Empty(await grains.GetGrain<ILiveMatchmakingGrain>(0).PendingForAsync(strangerId));
+        Assert.Empty(await grains.GetTenantGrain<ILiveMatchmakingGrain>(0).PendingForAsync(strangerId));
     }
 
     /// <summary>
@@ -132,7 +132,7 @@ public class LobbyHubInviteToLobbyTests(LiveClusterFixture fixture)
         var result = await hub.InviteToLobby(guestId, lobbyId);
 
         Assert.NotEqual((int)LiveChallengeResult.Sent, result);
-        Assert.Empty(await grains.GetGrain<ILiveMatchmakingGrain>(0).PendingForAsync(guestId));
+        Assert.Empty(await grains.GetTenantGrain<ILiveMatchmakingGrain>(0).PendingForAsync(guestId));
     }
 
     /// <summary>
@@ -163,7 +163,7 @@ public class LobbyHubInviteToLobbyTests(LiveClusterFixture fixture)
         Assert.Equal((int)LiveChallengeResult.Sent, result1);
         Assert.Equal((int)LiveChallengeResult.Sent, result2);
 
-        var matchmaking = grains.GetGrain<ILiveMatchmakingGrain>(0);
+        var matchmaking = grains.GetTenantGrain<ILiveMatchmakingGrain>(0);
         var pending1 = (await matchmaking.PendingForAsync(friend1Id)).Single();
         var pending2 = (await matchmaking.PendingForAsync(friend2Id)).Single();
 
@@ -203,7 +203,7 @@ public class LobbyHubInviteToLobbyTests(LiveClusterFixture fixture)
         var ownerHub = NewHub(grains, players, ownerId);
         var sent = await ownerHub.InviteToLobby(friendId, lobbyId);
         Assert.Equal((int)LiveChallengeResult.Sent, sent);
-        var pending = (await grains.GetGrain<ILiveMatchmakingGrain>(0).PendingForAsync(friendId)).Single();
+        var pending = (await grains.GetTenantGrain<ILiveMatchmakingGrain>(0).PendingForAsync(friendId)).Single();
 
         // A capacity-2 lobby's last seat filling also starts it, synchronously — by the time the
         // invited friend gets around to accepting, there is no seat left at all.

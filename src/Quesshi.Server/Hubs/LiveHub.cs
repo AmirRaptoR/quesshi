@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Quesshi.Application.Ports;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Api;
 using Quesshi.Shared;
 
@@ -21,17 +22,18 @@ namespace Quesshi.Server.Hubs;
 [Authorize]
 public sealed class LiveHub(
     IGrainFactory grains, IPlayerRepository players, IQuestionRepository questions,
-    ICategoryRepository categories, IClock clock, ILiveNotifier notifier) : Hub
+    ICategoryRepository categories, IClock clock, ILiveNotifier notifier, TenantContext tenant) : Hub
 {
-    internal static string GroupName(string matchId) => $"live:{matchId}";
+    internal static string GroupName(string matchId, string tenantId = "quesshi")
+        => tenantId == "quesshi" ? $"live:{matchId}" : $"live:{tenantId}:{matchId}";
 
     public async Task<LiveViewDto> Join(string matchId)
     {
         var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
-        var view = await grains.GetGrain<ILiveMatchGrain>(matchId).GetAsync(meId);
+        var view = await grains.GetTenantGrain<ILiveMatchGrain>(matchId).GetAsync(meId);
         if (view is null) throw new HubException("not_a_participant");
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId));
+        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId, tenant.Id));
 
         if (notifier is SignalRLiveNotifier tracker)
             await tracker.NoteConnectedAsync(Context.ConnectionId, matchId, meId);
@@ -40,7 +42,7 @@ public sealed class LiveHub(
         return await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup);
     }
 
-    public Task Leave(string matchId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId));
+    public Task Leave(string matchId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId, tenant.Id));
 
     /// <summary>
     /// The async-lobby twin of <see cref="Join"/> — issue #53's one bit of new plumbing. An async duel
@@ -57,18 +59,18 @@ public sealed class LiveHub(
     public async Task JoinAsyncLobby(string matchId)
     {
         var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
-        var view = await grains.GetGrain<IMatchGrain>(matchId).GetAsync(meId);
+        var view = await grains.GetTenantGrain<IMatchGrain>(matchId).GetAsync(meId);
         if (view is null)
         {
-            var matching = await grains.GetGrain<IMatchingMatchGrain>(matchId).GetAsync(meId);
+            var matching = await grains.GetTenantGrain<IMatchingMatchGrain>(matchId).GetAsync(meId);
             if (matching is null || matching.Participants.All(participant => participant.Id != meId))
                 throw new HubException("not_a_participant");
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId));
+        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId, tenant.Id));
     }
 
-    public Task LeaveAsyncLobby(string matchId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId));
+    public Task LeaveAsyncLobby(string matchId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(matchId, tenant.Id));
 
     /// <summary>
     /// No return value on purpose: right/wrong is withheld until <c>RoundRevealed</c> reaches both
@@ -86,7 +88,7 @@ public sealed class LiveHub(
     {
         var meId = Context.User!.PlayerId();
         if (meId is null) return;
-        await grains.GetGrain<ILiveMatchGrain>(matchId).AnswerAsync(meId, round, choiceIndex, response);
+        await grains.GetTenantGrain<ILiveMatchGrain>(matchId).AnswerAsync(meId, round, choiceIndex, response);
     }
 
     /// <summary>
@@ -101,7 +103,7 @@ public sealed class LiveHub(
         var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
         if (Context.User!.IsGuest()) return new RematchOutcomeDto("refused");
 
-        var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
+        var grain = grains.GetTenantGrain<ILiveMatchGrain>(matchId);
         var view = await grain.GetAsync(meId);
         if (view is null) return new RematchOutcomeDto("refused");
 
