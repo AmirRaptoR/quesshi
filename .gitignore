@@ -13,9 +13,6 @@ src/Quesshi.Server/wwwroot/media/sourced/
 appsettings.Development.json
 appsettings.Local.json
 
-# Deployment scripts hold host names and paths for one particular machine, so they stay local.
-deploy/
-
 # Per-machine compose settings, and the media bind-mount a local stack writes into.
 .env
 .media/
