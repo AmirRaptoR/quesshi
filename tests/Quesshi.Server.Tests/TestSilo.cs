@@ -4,6 +4,7 @@ using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Infrastructure;
 
 namespace Quesshi.Server.Tests;
 
@@ -16,6 +17,7 @@ public sealed class TestSilo : ISiloConfigurator
         silo.UseInMemoryReminderService();
         silo.ConfigureServices(services =>
         {
+            services.AddSingleton(Shared.Tenant);
             services.AddSingleton<IClock>(Shared.Clock);
             services.AddSingleton<IQuestionRepository>(Shared.Questions);
             services.AddSingleton<ICategoryRepository>(Shared.Categories);

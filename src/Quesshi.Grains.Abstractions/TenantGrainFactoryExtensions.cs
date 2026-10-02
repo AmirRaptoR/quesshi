@@ -49,7 +49,14 @@ public static class TenantGrainAddress
     }
 
     public static string StringKey(string id, string? tenantId)
-        => tenantId is null or "quesshi" ? id : $"{tenantId}:{id}";
+    {
+        // The prefix is how incoming grain calls recover tenant context. Letting a caller choose
+        // that prefix would let a Quesshi request address another tenant's grain directly.
+        if ((tenantId is null or "quesshi") && id.Contains(':'))
+            throw new ArgumentException("Quesshi grain IDs cannot contain a tenant separator.", nameof(id));
+
+        return tenantId is null or "quesshi" ? id : $"{tenantId}:{id}";
+    }
 
     public static string? IntegerKeyExtension(string? tenantId)
         => tenantId is null or "quesshi" ? null : tenantId;

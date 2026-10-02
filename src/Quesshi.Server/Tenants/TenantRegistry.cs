@@ -8,6 +8,7 @@ namespace Quesshi.Server.Tenants;
 public sealed class TenantRegistry
 {
     private readonly IReadOnlyDictionary<string, TenantSettingsDto> tenantsByHost;
+    private readonly IReadOnlySet<string> tenantIds;
 
     public TenantRegistry(TenantOptions options)
     {
@@ -39,7 +40,10 @@ public sealed class TenantRegistry
         }
 
         tenantsByHost = map;
+        tenantIds = ids;
     }
+
+    public bool ContainsTenant(string tenantId) => tenantIds.Contains(tenantId);
 
     public bool TryResolve(string host, out TenantSettingsDto settings)
         => tenantsByHost.TryGetValue(NormalizeHost(host), out settings!);

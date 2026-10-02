@@ -262,63 +262,63 @@ app.MapFallbackToFile("index.html");
 using (var scope = app.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    try
+    var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
+    foreach (var tenant in tenantOptions.Tenants)
     {
-        var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
-        foreach (var tenant in tenantOptions.Tenants)
+        using (tenantContext.Enter(tenant.Id))
         {
-            using (tenantContext.Enter(tenant.Id))
+            try
+            {
                 await mongo.EnsureIndexesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Required indexes include the unique matching code/topic constraints. Running without
+                // them changes correctness (not merely performance), so do not advertise a healthy app
+                // after an incomplete migration or an unavailable Mongo instance.
+                logger.LogCritical(ex, "Required Mongo indexes could not be created for tenant {TenantId}; stopping startup.", tenant.Id);
+                throw;
+            }
+
+            try
+            {
+                // Each tenant gets the same idempotent starter content in its own database.
+                await scope.ServiceProvider.GetRequiredService<Seeder>().RunAsync(app.Environment.ContentRootPath);
+
+                // Bootstrap an administrator independently in every tenant database.
+                var admins = scope.ServiceProvider.GetRequiredService<IAdminUserRepository>();
+                await TenantAdminBootstrapper.EnsureFirstAdminAsync(tenant.Id, tenantContext, admins,
+                    scope.ServiceProvider.GetRequiredService<AdminAuthService>(), adminAuthOptions, logger);
+
+                // A placeholder address cannot receive a reset link, which only matters once you need one.
+                foreach (var stranded in (await admins.AllAsync()).Where(a => !EmailAddress.LooksValid(a.Email) || IsPlaceholderDomain(a.Email)))
+                    logger.LogWarning("Admin \"{Username}\" in tenant {TenantId} has an unreachable email ({Email}); password reset cannot get to it. Change it under Admin -> Change password.",
+                        stranded.Username, tenant.Id, stranded.Email);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Start-up seeding/bootstrap failed for tenant {TenantId}; the app will keep going with diagnostics above.", tenant.Id);
+            }
         }
-    }
-    catch (Exception ex)
-    {
-        // Required indexes include the unique matching code/topic constraints. Running without
-        // them changes correctness (not merely performance), so do not advertise a healthy app
-        // after an incomplete migration or an unavailable Mongo instance.
-        logger.LogCritical(ex, "Required Mongo indexes could not be created; stopping startup.");
-        throw;
-    }
-
-    try
-    {
-        await scope.ServiceProvider.GetRequiredService<Seeder>().RunAsync(app.Environment.ContentRootPath);
-
-        // Bootstrap: an install with no administrator has no way in, so make one and say so loudly.
-        var admins = scope.ServiceProvider.GetRequiredService<IAdminUserRepository>();
-        if (await admins.CountAsync() == 0)
-        {
-            var generated = string.IsNullOrWhiteSpace(adminAuthOptions.BootstrapPassword);
-            var password = generated
-                ? "quesshi-" + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)).ToLowerInvariant()
-                : adminAuthOptions.BootstrapPassword!;
-
-            await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
-                .CreateAsync(adminAuthOptions.BootstrapUsername, adminAuthOptions.BootstrapEmail, password, mustChangePassword: generated);
-
-            if (generated)
-                logger.LogWarning("Created the first administrator: username \"{Username}\", password \"{Password}\" — sign in at /admin and change it.",
-                    adminAuthOptions.BootstrapUsername, password);
-            else
-                logger.LogInformation("Created the first administrator \"{Username}\" from configuration.", adminAuthOptions.BootstrapUsername);
-        }
-
-        // A placeholder address cannot receive a reset link, which only matters once you need one.
-        foreach (var stranded in (await admins.AllAsync()).Where(a => !EmailAddress.LooksValid(a.Email) || IsPlaceholderDomain(a.Email)))
-            logger.LogWarning("Admin \"{Username}\" has an unreachable email ({Email}); password reset cannot get to it. Change it under Admin -> Change password.",
-                stranded.Username, stranded.Email);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Start-up seeding/bootstrap failed; the app will keep going with diagnostics above.");
     }
 }
 
-// `dotnet run --project src/Quesshi.Server -- add-admin <username> <email> <password>`
+// `dotnet run --project src/Quesshi.Server -- add-admin [--tenant <id>] <username> <email> <password>`
 // Creating an administrator otherwise requires being signed in as one, so this is the way back in
 // when every password is lost. The silo only starts on app.Run, so this costs one Mongo round trip.
-if (args is ["add-admin", var newUsername, var newEmail, var newPassword, ..])
+if (args.Length > 0 && args[0] == "add-admin")
 {
+    if (!TenantCommandArguments.TryParse(args[1..], tenantRegistry, out var command, out var error)
+        || command.Remaining.Length != 3)
+    {
+        Console.Error.WriteLine(error ?? "Usage: add-admin [--tenant <id>] <username> <email> <password>");
+        return 1;
+    }
+
+    var newUsername = command.Remaining[0];
+    var newEmail = command.Remaining[1];
+    var newPassword = command.Remaining[2];
+    using var tenant = tenantContext.Enter(command.TenantId);
     using var scope = app.Services.CreateScope();
     var admins = scope.ServiceProvider.GetRequiredService<IAdminUserRepository>();
 
@@ -344,15 +344,23 @@ if (args is ["add-admin", var newUsername, var newEmail, var newPassword, ..])
     await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
         .CreateAsync(newUsername, newEmail, newPassword, mustChangePassword: true);
 
-    Console.WriteLine($"Created administrator \"{newUsername}\". It must change its password on first sign-in.");
+    Console.WriteLine($"Created administrator \"{newUsername}\" for tenant \"{command.TenantId}\". It must change its password on first sign-in.");
     return 0;
 }
 
-// `dotnet run --project src/Quesshi.Server -- approve-ai`
+// `dotnet run --project src/Quesshi.Server -- approve-ai [--tenant <id>]`
 // Publishes the backlog of generated questions that were parked for review under the old
 // review-everything-first policy. Questions an admin explicitly rejected are left rejected.
-if (args is ["approve-ai", ..])
+if (args.Length > 0 && args[0] == "approve-ai")
 {
+    if (!TenantCommandArguments.TryParse(args[1..], tenantRegistry, out var command, out var error)
+        || command.Remaining.Length != 0)
+    {
+        Console.Error.WriteLine(error ?? "Usage: approve-ai [--tenant <id>]");
+        return 1;
+    }
+
+    using var tenant = tenantContext.Enter(command.TenantId);
     using var scope = app.Services.CreateScope();
     var questions = scope.ServiceProvider.GetRequiredService<IQuestionRepository>();
 
@@ -371,7 +379,7 @@ if (args is ["approve-ai", ..])
         if (generated.Count < batch.Count) break;
     }
 
-    Console.WriteLine($"Approved {approved} generated questions.");
+    Console.WriteLine($"Approved {approved} generated questions for tenant \"{command.TenantId}\".");
     return 0;
 }
 
