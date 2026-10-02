@@ -31,12 +31,12 @@ public class MatchDocBackfillTests
     [Fact]
     public void Mode_is_persisted_and_a_legacy_document_defaults_to_trivia()
     {
-        var matching = new ArchivedMatch("m-mode", "MODE01", Language.En, "u-a", "u-b", null, false,
+        var voting = new ArchivedMatch("m-mode", "MODE01", Language.En, "u-a", "u-b", null, false,
             [new ParticipantResult("u-a", 0, 0, MatchOutcome.Loss)], MatchState.InProgress, T0, null, ["q1"],
-            Mode: GameMode.Matching);
+            Mode: GameMode.Voting);
 
-        Assert.Equal((int)GameMode.Matching, MatchDoc.From(matching).Mode);
-        Assert.Equal(GameMode.Matching, MatchDoc.From(matching).ToDomain().Mode);
+        Assert.Equal((int)GameMode.Voting, MatchDoc.From(voting).Mode);
+        Assert.Equal(GameMode.Voting, MatchDoc.From(voting).ToDomain().Mode);
         Assert.Equal(GameMode.Trivia, new MatchDoc().ToDomain().Mode);
     }
 

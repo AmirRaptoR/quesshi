@@ -18,8 +18,8 @@ public static class JoinRedirect
         if (!isGuest || guestMatchId is not { Length: > 0 } pinned || invite is null || invite.MatchId != pinned)
             return null;
 
-        return string.Equals(invite.Mode, "matching", StringComparison.OrdinalIgnoreCase)
-            ? $"/matching/{pinned}"
+        return string.Equals(invite.Mode, "voting", StringComparison.OrdinalIgnoreCase)
+            ? $"/voting/{pinned}"
             : invite.Live ? $"/live/{pinned}" : $"/duel/{pinned}";
     }
 }

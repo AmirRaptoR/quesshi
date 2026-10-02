@@ -13,7 +13,7 @@ public sealed record HomeDuelSplit(List<MatchSummaryDto> YourTurn, List<MatchSum
 public static class HomeDuels
 {
     /// <summary>
-    /// Archived non-live summaries, including matching rooms, split by whether this player can act.
+    /// Archived non-live summaries, including voting rooms, split by whether this player can act.
     /// A live duel is never <c>CanPlay</c> — it advances on its own clock and belongs to the Live tab
     /// — so it is dropped here rather than filed under "waiting on them", where it would read as
     /// something this player could wait out.
@@ -37,7 +37,7 @@ public static class HomeDuels
     /// end the audit called out.
     /// </summary>
     public static string Route(MatchSummaryDto match)
-        => string.Equals(match.Mode, "matching", StringComparison.OrdinalIgnoreCase)
-            ? $"/matching/{match.Id}"
+        => string.Equals(match.Mode, "voting", StringComparison.OrdinalIgnoreCase)
+            ? $"/voting/{match.Id}"
             : match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}";
 }

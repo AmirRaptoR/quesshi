@@ -4,6 +4,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Tenants;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Api;
@@ -20,6 +21,8 @@ public static class GameEndpoints
     public static void MapGame(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api").RequireAuthorization();
+        var matches = api.MapGroup("/matches");
+        matches.AddEndpointFilter(new TenantModeFilter("async"));
 
         api.AddEndpointFilter(static async (context, next) =>
         {
@@ -148,7 +151,7 @@ public static class GameEndpoints
         });
 
         // --- matches -----------------------------------------------------------------
-        api.MapPost("/matches", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains,
+        matches.MapPost("", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains,
             QuestionSetBuilder builder, IIdFactory ids, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
@@ -201,7 +204,7 @@ public static class GameEndpoints
             return Results.Ok(await SummaryAsync(grain, meId, players));
         });
 
-        api.MapPost("/matches/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+        matches.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
             await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
@@ -209,7 +212,7 @@ public static class GameEndpoints
         // No side effects: nothing is joined, started, drawn or written. A participant may read at
         // any phase; a non-participant only while the lobby is still open, so a duel already in
         // progress cannot be inspected by code alone (see ByCodeAsync's own remarks).
-        api.MapGet("/matches/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+        matches.MapGet("/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
             await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
@@ -218,20 +221,20 @@ public static class GameEndpoints
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
         // capacity-aware IMatchGrain.JoinAsync a multi-seat lobby needs, so an N-player async lobby is
         // joined exactly as a 1v1 always was.
-        api.MapPost("/matches/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
+        matches.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
             await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
 
-        api.MapPost("/matches/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
+        matches.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await grains.GetTenantGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
-        api.MapPost("/matches/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
+        matches.MapPost("/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await grains.GetTenantGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_start" }));
 
-        api.MapPut("/matches/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
+        matches.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
             await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
 
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
@@ -240,11 +243,13 @@ public static class GameEndpoints
             IQuestionRepository questions, IMatchArchive archive, IClock clock) =>
             await ReportAsync(body, ctx.User.PlayerId()!, questions, archive, clock));
 
+        // The list combines async, live and voting rows. Keep it on the shared API group so a
+        // tenant with only one mode can still resume and review every game it is allowed to see.
         api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
             IGrainFactory grains, bool? active, int? take) =>
             await ListMatchesAsync(ctx.User.PlayerId()!, active ?? false, take, archive, players, grains));
 
-        api.MapGet("/matches/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
+        matches.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
@@ -260,7 +265,7 @@ public static class GameEndpoints
             return Results.Ok(new MatchDetailDto(summary, reveal, standings));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPost("/matches/{id}/next", async (string id, HttpContext ctx, IGrainFactory grains,
+        matches.MapPost("/{id}/next", async (string id, HttpContext ctx, IGrainFactory grains,
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
@@ -284,7 +289,7 @@ public static class GameEndpoints
             return Results.Ok(BuildCard(id, served, question, category, participantNames));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPost("/matches/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
+        matches.MapPost("/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
         {
             var meId = ctx.User.PlayerId()!;
             // -1 is the timeout: the player ran out of clock, and the run still has to move on. It is
@@ -503,8 +508,8 @@ public static class GameEndpoints
         // nothing and has no result to show, so it is left out entirely — it stays in the archive and
         // is still findable by code, just not in this list.
         var liveRows = rows.Where(r => r.IsLive && r.State != MatchState.NoContest).ToList();
-        var matchingRows = rows.Where(r => !r.IsLive && r.Mode == GameMode.Matching).ToList();
-        var asyncRows = rows.Where(r => !r.IsLive && r.Mode != GameMode.Matching).ToList();
+        var votingRows = rows.Where(r => !r.IsLive && r.Mode == GameMode.Voting).ToList();
+        var asyncRows = rows.Where(r => !r.IsLive && r.Mode != GameMode.Voting).ToList();
 
         // Asked all at once, so the wait is the slowest single activation rather than the sum of
         // forty. Redaction still happens inside each grain, per player, exactly as it did before.
@@ -524,16 +529,16 @@ public static class GameEndpoints
         // is the only source there is — so its ids come from the row instead. One query either way.
         var names = (await players.GetManyAsync([.. asyncViews
                 .SelectMany(ParticipantIds)
-                .Concat(matchingRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
+                .Concat(votingRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
                 .Concat(liveRows.SelectMany(r => r.Results.Select(rr => rr.PlayerId)))
                 .Distinct()]))
             .ToDictionary(p => p.Id, p => (p.DisplayName, p.AvatarSeed, p.IsGuest));
 
         (string, string, bool) Lookup(string id) => names.TryGetValue(id, out var found) ? found : ("—", id, false);
 
-        var matchingSummaries = matchingRows.Select(r => r.ToMatchingSummary(meId, Lookup));
+        var votingSummaries = votingRows.Select(r => r.ToVotingSummary(meId, Lookup));
         var summaries = asyncViews.Select(v => v.ToSummary(meId, Lookup))
-            .Concat(matchingSummaries)
+            .Concat(votingSummaries)
             .Concat(liveRows.Select(r => r.ToLiveSummary(meId, Lookup)));
 
         // A caller that says how many it will show gets that many. Playable first and newest after,

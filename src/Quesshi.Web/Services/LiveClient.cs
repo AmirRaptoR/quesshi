@@ -58,10 +58,10 @@ public sealed class LiveClient : IAsyncDisposable
     /// </summary>
     public event Action? LobbyUpdated;
 
-    /// <summary>Matching uses the same per-match SignalR group as live duels, but its payload is
+    /// <summary>Voting uses the same per-match SignalR group as live duels, but its payload is
     /// deliberately only a slot-close marker. The page refetches the redacted REST snapshot.</summary>
-    public event Action<MatchingSlotClosedDto>? MatchingSlotClosed;
-    public event Action? MatchingRosterChanged;
+    public event Action<VotingSlotClosedDto>? VotingSlotClosed;
+    public event Action? VotingRosterChanged;
 
     /// <summary>
     /// Fires after a reconnect's automatic rejoin completes, with the fresh catch-up view. Whatever
@@ -100,8 +100,8 @@ public sealed class LiveClient : IAsyncDisposable
         _connection.On<RematchCreatedDto>("RematchCreated", r => RematchCreated?.Invoke(r));
         _connection.On("RematchFailed", () => RematchFailed?.Invoke());
         _connection.On("LobbyUpdated", () => LobbyUpdated?.Invoke());
-        _connection.On<MatchingSlotClosedDto>("MatchingSlotClosed", push => MatchingSlotClosed?.Invoke(push));
-        _connection.On("MatchingRosterChanged", () => MatchingRosterChanged?.Invoke());
+        _connection.On<VotingSlotClosedDto>("VotingSlotClosed", push => VotingSlotClosed?.Invoke(push));
+        _connection.On("VotingRosterChanged", () => VotingRosterChanged?.Invoke());
     }
 
     internal HubConnection Connection => _connection;
@@ -153,9 +153,9 @@ public sealed class LiveClient : IAsyncDisposable
         }
     }
 
-    /// <summary>Matching has no live-duel catch-up payload: REST owns the snapshot and this
+    /// <summary>Voting has no live-duel catch-up payload: REST owns the snapshot and this
     /// connection only subscribes to redaction-safe roster/slot-close notifications.</summary>
-    public async Task<bool> StartAndJoinMatchingAsync(string matchId, CancellationToken ct = default)
+    public async Task<bool> StartAndJoinVotingAsync(string matchId, CancellationToken ct = default)
     {
         try
         {
@@ -205,9 +205,9 @@ public sealed class LiveClient : IAsyncDisposable
     private async Task RejoinAsyncLobby(string matchId)
     {
         await _connection.InvokeAsync("JoinAsyncLobby", matchId);
-        // Matching has no hub catch-up payload. A reconnect therefore invalidates the page's
+        // Voting has no hub catch-up payload. A reconnect therefore invalidates the page's
         // redacted REST snapshot so it immediately refetches anything missed while offline.
-        MatchingRosterChanged?.Invoke();
+        VotingRosterChanged?.Invoke();
     }
 
     private async Task RejoinAsync(string matchId)

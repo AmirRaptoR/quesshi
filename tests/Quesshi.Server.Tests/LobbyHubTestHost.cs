@@ -28,11 +28,12 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
 
     public TokenIssuer TokenIssuer { get; } = new(new JwtOptions { Key = SigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 });
     public FakePresence Presence { get; } = new();
+    public FakeLobbyNotifier Notifier { get; } = new();
 
     private readonly IHost _host;
     private readonly TestServer _server;
 
-    public LobbyHubTestHost(TestCluster cluster)
+    public LobbyHubTestHost(TestCluster cluster, params string[] enabledModes)
     {
         _host = new HostBuilder()
             .ConfigureWebHost(web =>
@@ -51,7 +52,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                         new AdminTokenIssuer(new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" }));
                     services.AddSingleton<IPresence>(Presence);
                     services.AddSingleton(cluster.GrainFactory);
-                    services.AddSingleton<ILobbyNotifier, FakeLobbyNotifier>();
+                    services.AddSingleton<ILobbyNotifier>(Notifier);
                     services.AddSingleton<IPlayerRepository, FakePlayers>();
                     services.AddSingleton<IIdFactory, IdFactory>();
                     services.AddSingleton<IMatchArchive, FakeArchive>();
@@ -59,6 +60,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                 web.Configure(app =>
                 {
                     app.UseRouting();
+                    app.UseModes(enabledModes.Length == 0 ? ["async", "live", "voting"] : enabledModes);
                     app.UseAuthentication();
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints => endpoints.MapHub<LobbyHub>("/hub/lobby"));

@@ -23,9 +23,9 @@ public static class AdminEndpoints
     {
         var admin = app.MapGroup("/api/admin").RequireAuthorization("admin");
 
-        // Matching has a separate bounded context and persistence contract. Keep its authoring
+        // Voting has a separate bounded context and persistence contract. Keep its authoring
         // routes parallel to the trivia routes so the latter remain byte-compatible.
-        admin.MapMatchingAdmin();
+        admin.MapVotingAdmin();
 
         admin.MapGet("/dashboard", async (IPlayerRepository players, IQuestionRepository questions,
             IMatchArchive matches, IGenerationLog log, IQuestionGenerator generator, TopUpOptions topUp,

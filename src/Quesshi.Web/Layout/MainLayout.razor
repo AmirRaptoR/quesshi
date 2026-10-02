@@ -75,7 +75,7 @@ else
     /// other page would ever set.
     /// </summary>
     private static readonly string[] TabBarHiddenPrefixes =
-        ["/play/", "/play/questions", "/play/topics", "/play/matching", "/live/", "/matching/", "/matching/lobby/", "/settings", "/lobby/"];
+        ["/play/", "/play/questions", "/play/topics", "/play/voting", "/live/", "/voting/", "/voting/lobby/", "/settings", "/lobby/"];
 
     private bool HidesTabBar
     {
@@ -174,7 +174,7 @@ else
         Lobby.ChallengeDeclined += OnChallengeCleared;
         Lobby.ChallengeFailed += OnChallengeCleared;
         Lobby.DuelReady += OnDuelReady;
-        Lobby.MatchingReady += OnMatchingReady;
+        Lobby.VotingReady += OnVotingReady;
         Lobby.Closed += OnLobbyClosed;
     }
 
@@ -185,7 +185,7 @@ else
         Lobby.ChallengeDeclined -= OnChallengeCleared;
         Lobby.ChallengeFailed -= OnChallengeCleared;
         Lobby.DuelReady -= OnDuelReady;
-        Lobby.MatchingReady -= OnMatchingReady;
+        Lobby.VotingReady -= OnVotingReady;
         Lobby.Closed -= OnLobbyClosed;
     }
 
@@ -206,8 +206,8 @@ else
 
     private void OnDuelReady(string matchId) => InvokeAsync(() => Nav.NavigateTo($"/live/{matchId}"));
 
-    private void OnMatchingReady(string _, string lobbyCode)
-        => InvokeAsync(() => Nav.NavigateTo($"/matching/lobby/{lobbyCode}"));
+    private void OnVotingReady(string _, string lobbyCode)
+        => InvokeAsync(() => Nav.NavigateTo($"/voting/lobby/{lobbyCode}"));
 
     private void Remove(string challengeId) => InvokeAsync(() =>
     {

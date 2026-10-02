@@ -47,14 +47,17 @@
     }
     else
     {
-        <div class="home-tabs" role="tablist" aria-label="@L["home.tabs"]">
-            <button type="button" role="tab" id="home-tab-live" aria-controls="home-panel-live"
-                    aria-selected="@Selected(HomeTabs.Live)" class="home-tabs__tab @(IsLive ? "is-on" : null)"
-                    @onclick="() => SwitchAsync(HomeTabs.Live)">@L["home.tabLive"]</button>
-            <button type="button" role="tab" id="home-tab-offline" aria-controls="home-panel-offline"
-                    aria-selected="@Selected(HomeTabs.Offline)" class="home-tabs__tab @(!IsLive ? "is-on" : null)"
-                    @onclick="() => SwitchAsync(HomeTabs.Offline)">@L["home.tabOffline"]</button>
-        </div>
+        @if (HasLiveModes && HasAsyncMode)
+        {
+            <div class="home-tabs" role="tablist" aria-label="@L["home.tabs"]">
+                <button type="button" role="tab" id="home-tab-live" aria-controls="home-panel-live"
+                        aria-selected="@Selected(HomeTabs.Live)" class="home-tabs__tab @(IsLive ? "is-on" : null)"
+                        @onclick="() => SwitchAsync(HomeTabs.Live)">@L["home.tabLive"]</button>
+                <button type="button" role="tab" id="home-tab-offline" aria-controls="home-panel-offline"
+                        aria-selected="@Selected(HomeTabs.Offline)" class="home-tabs__tab @(!IsLive ? "is-on" : null)"
+                        @onclick="() => SwitchAsync(HomeTabs.Offline)">@L["home.tabOffline"]</button>
+            </div>
+        }
 
         @if (IsLive)
         {
@@ -74,14 +77,17 @@
                 }
                 else
                 {
-                    <div class="home-choice" role="group" aria-label="@L["home.duelMode"]">
-                        <button type="button" class="home-choice__option @(!_matchingMode ? "is-on" : null)"
-                                aria-pressed="@(!_matchingMode).ToString().ToLowerInvariant()"
-                                @onclick="() => _matchingMode = false">@L["home.modeTrivia"]</button>
-                        <button type="button" class="home-choice__option @(_matchingMode ? "is-on" : null)"
-                                aria-pressed="@_matchingMode.ToString().ToLowerInvariant()"
-                                @onclick="() => _matchingMode = true">@L["home.modeMatching"]</button>
-                    </div>
+                    @if (HasLiveMode && HasVotingMode)
+                    {
+                        <div class="home-choice" role="group" aria-label="@L["home.duelMode"]">
+                            <button type="button" class="home-choice__option @(!_votingMode ? "is-on" : null)"
+                                    aria-pressed="@(!_votingMode).ToString().ToLowerInvariant()"
+                                    @onclick="() => _votingMode = false">@L["home.modeTrivia"]</button>
+                            <button type="button" class="home-choice__option @(_votingMode ? "is-on" : null)"
+                                    aria-pressed="@_votingMode.ToString().ToLowerInvariant()"
+                                    @onclick="() => _votingMode = true">@L["home.modeVoting"]</button>
+                        </div>
+                    }
                     <button type="button" class="home-primary" disabled="@_busy" @onclick="() => RunAsync(HomeEntry.CreateLobby)">
                         @* A room with seats along its sides: the one drawing that says "more than two
                            people, all here at once" without a word of explanation. *@
@@ -110,6 +116,8 @@
                             <span>@L["home.join"]</span>
                         </button>
 
+                        @if (HasLiveMode)
+                        {
                         <button type="button" class="home-tile" disabled="@_busy" @onclick="() => RunAsync(HomeEntry.PlayAStranger)">
                             <svg class="home-tile__icon" width="22" height="22" viewBox="0 0 24 24" fill="none"
                                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -118,6 +126,7 @@
                             </svg>
                             <span>@L["home.stranger"]</span>
                         </button>
+                        }
                     </div>
 
                     @if (_codeOpen)
@@ -128,6 +137,8 @@
 
                 @SettingsLine()
 
+                @if (HasLiveMode)
+                {
                 <section class="home-sect">
                     <h2 class="home-sect__title">@L["home.friendsOnline"]</h2>
 
@@ -157,6 +168,7 @@
                         <p class="home-sect__hint">@L["home.friendsOnlineHint"]</p>
                     }
                 </section>
+                }
             </div>
         }
         else
@@ -256,7 +268,7 @@
     /// </summary>
     private RenderFragment SettingsLine() =>
         @<button type="button" class="home-settings" @onclick="OpenSettings">
-            <span class="home-settings__text">@(MatchingSelected ? L["matching.settings.summary"] : DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L))</span>
+            <span class="home-settings__text">@(VotingSelected ? L["voting.settings.summary"] : DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L))</span>
             <span class="home-settings__change">@L["home.settingsChange"]</span>
         </button>;
 
@@ -313,6 +325,11 @@
 
     private string _tab = HomeTabs.Live;
     private bool IsLive => _tab == HomeTabs.Live;
+    private readonly HashSet<string> _enabledModes = new(StringComparer.OrdinalIgnoreCase);
+    private bool HasAsyncMode => _enabledModes.Contains("async");
+    private bool HasLiveMode => _enabledModes.Contains("live");
+    private bool HasVotingMode => _enabledModes.Contains("voting");
+    private bool HasLiveModes => HasLiveMode || HasVotingMode;
 
     private HomeDuelSplit _split = new([], []);
 
@@ -320,8 +337,8 @@
     /// tab revealed it: the field is the same field on both, so the state is too.</summary>
     private bool _codeOpen;
     private bool _opponent;
-    private bool _matchingMode;
-    private bool MatchingSelected => IsLive && _matchingMode;
+    private bool _votingMode;
+    private bool VotingSelected => IsLive && _votingMode;
 
     private string _code = "";
     private string? _error;
@@ -339,7 +356,15 @@
 
     protected override async Task LoadAsync()
     {
+        _enabledModes.Clear();
+        foreach (var mode in await Api.TenantModesAsync() ?? []) _enabledModes.Add(mode);
+        if (!HasLiveModes) _tab = HomeTabs.Offline;
+        else if (!HasAsyncMode) _tab = HomeTabs.Live;
+        _votingMode = HasVotingMode && !HasLiveMode;
+
         _tab = State.HomeTab;
+        if ((!HasLiveModes && IsLive) || (!HasAsyncMode && !IsLive))
+            _tab = HasLiveModes ? HomeTabs.Live : HomeTabs.Offline;
 
         // The friends row is only as true as the presence flags on it, and State.Me is whatever the
         // startup identity call returned — possibly minutes ago, on a session left open. One refetch
@@ -351,7 +376,7 @@
         // belongs to neither "your turn" nor "waiting on them".
         _split = HomeDuels.Split(await Api.MatchesAsync(activeOnly: true) ?? []);
 
-        SubscribeLive();
+        if (HasLiveMode) SubscribeLive();
     }
 
     private async Task SwitchAsync(string tab)
@@ -400,12 +425,12 @@
         {
             case HomeCall.CreateLiveLobby:
                 _busy = true;
-                if (MatchingSelected)
+                if (VotingSelected)
                 {
                     _busy = false;
-                    // Matching has its own category picker and must never consume the saved trivia
+                    // Voting has its own category picker and must never consume the saved trivia
                     // topics or difficulty range. Creation happens after that picker commits.
-                    Nav.NavigateTo("/play/matching");
+                    Nav.NavigateTo("/play/voting");
                     break;
                 }
                 await State.SetLastDuelSettingsAsync(settings);
@@ -502,14 +527,14 @@
     {
         _busy = true;
 
-        // Matching codes live in their own archive namespace. Trying this read first lets invite
-        // links and the home code field land in the matching lobby without exposing matching DTOs
+        // Voting codes live in their own archive namespace. Trying this read first lets invite
+        // links and the home code field land in the voting lobby without exposing voting DTOs
         // through the trivia invite contract.
-        if (await Api.MatchingByCodeAsync(_code) is { Code: { Length: > 0 } matchingCode })
+        if (await Api.VotingByCodeAsync(_code) is { Code: { Length: > 0 } votingCode })
         {
-            var matching = await Api.JoinMatchingAsync(matchingCode);
+            var voting = await Api.JoinVotingAsync(votingCode);
             _busy = false;
-            if (matching is not null) Nav.NavigateTo($"/matching/lobby/{matching.Code}");
+            if (voting is not null) Nav.NavigateTo($"/voting/lobby/{voting.Code}");
             else _error = L["common.error"];
             return;
         }
@@ -590,7 +615,7 @@
         return L.Num(L.Lang == "fa" ? grouped.Replace(',', '٬') : grouped);
     }
 
-    private void OpenSettings() => Nav.NavigateTo(MatchingSelected ? "/play/matching" : "/play/questions");
+    private void OpenSettings() => Nav.NavigateTo(VotingSelected ? "/play/voting" : "/play/questions");
 
     private string Selected(string tab) => (_tab == tab).ToString().ToLowerInvariant();
 

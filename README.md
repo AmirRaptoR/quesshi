@@ -219,13 +219,23 @@ coordinates is caught before anything is stored. The third constraint cannot be 
 ordering question must sort by something measurable, and no check can decide whether "by importance"
 is objective — so that one is prompt guidance backed by review and the player report path.
 
-Matching questions have their own on-demand generator under **Admin → Matching questions**. An
-admin chooses the language, matching category and whether answers come from the participant roster
-or from 2–8 generated fixed choices. Matching generation uses a separate prompt, schema, application
+Voting questions have their own on-demand generator under **Admin → Voting questions**. An
+admin chooses the language, voting category and whether answers come from the participant roster
+or from 2–8 generated fixed choices. Voting generation uses a separate prompt, schema, application
 port, repository and run log: it never asks for a difficulty or correct answer and never writes into
-the trivia bank. Generated matching content is pending by default because socially awkward wording
+the trivia bank. Generated voting content is pending by default because socially awkward wording
 is harder to validate mechanically than a malformed choice list; set
-`MatchingGeneration:AutoApprove` only after reviewing representative batches.
+`VotingGeneration:AutoApprove` only after reviewing representative batches.
+
+The scoreless game mode is `voting` (`GameMode.Voting`, numeric value `1`). Its player routes include
+`/play/voting`, `/voting/{id}` and `/voting/lobby/{code}`; admin authoring is under `/admin/voting`.
+API operations use `/api/voting` and `/api/admin/voting`. `Tenants:Tenants:<index>:EnabledModes` controls
+which modes each tenant exposes. Voting generation uses `VotingGeneration:MaxBatchSize` and
+`VotingGeneration:AutoApprove`, and stores its separate content in MongoDB collections
+`voting_questions`, `voting_categories` and `voting_generation_runs`. Existing non-admin game data
+and old Matching content collections are not migrated; voting content can be regenerated or
+imported. Check production `.env` and deployment overrides for `EnabledModes` or
+`MatchingGeneration` before release, and replace old names with their voting equivalents.
 
 Dropping `questions.<lang>*.json` files into `src/Quesshi.Server/Seed/` seeds them on the next
 start, and re-seeding is idempotent: a question's id is derived from its language, category and
@@ -300,8 +310,8 @@ anything that is not `Development` must either configure `Smtp:Host` or ask for
 | `Generation:SortTargetPerBucket` | The same for ordering questions. Default 6.                                            |
 | `Generation:MapTargetPerBucket` | The same for map questions. Default 6.                                                  |
 | `Generation:AutoApprove`      | Publish generated questions immediately instead of parking them for review. **Turn off before the first run of a new kind.** |
-| `MatchingGeneration:MaxBatchSize` | Maximum matching questions requested in one admin call. Default 20.                 |
-| `MatchingGeneration:AutoApprove` | Publish AI matching questions immediately. Off by default; review is safer for social prompts. |
+| `VotingGeneration:MaxBatchSize` | Maximum voting questions requested in one admin call. Default 20.                 |
+| `VotingGeneration:AutoApprove` | Publish AI voting questions immediately. Off by default; review is safer for social prompts. |
 | `Live:Enabled`                | Whether a new live duel can start. On by default. Toggle at runtime from the admin dashboard; a duel already in flight always finishes. |
 
 Put local values in `appsettings.Development.json` or user secrets. **Do not commit keys** —

@@ -28,12 +28,12 @@ public sealed class MongoContext
 
     public IMongoCollection<QuestionDoc> Questions => Database.GetCollection<QuestionDoc>("questions");
     public IMongoCollection<CategoryDoc> Categories => Database.GetCollection<CategoryDoc>("categories");
-    public IMongoCollection<MatchingQuestionDoc> MatchingQuestions => Database.GetCollection<MatchingQuestionDoc>("matching_questions");
-    public IMongoCollection<MatchingCategoryDoc> MatchingCategories => Database.GetCollection<MatchingCategoryDoc>("matching_categories");
+    public IMongoCollection<VotingQuestionDoc> VotingQuestions => Database.GetCollection<VotingQuestionDoc>("voting_questions");
+    public IMongoCollection<VotingCategoryDoc> VotingCategories => Database.GetCollection<VotingCategoryDoc>("voting_categories");
     public IMongoCollection<PlayerDoc> Players => Database.GetCollection<PlayerDoc>("players");
     public IMongoCollection<MatchDoc> Matches => Database.GetCollection<MatchDoc>("matches");
     public IMongoCollection<GenerationRunDoc> GenerationRuns => Database.GetCollection<GenerationRunDoc>("generation_runs");
-    public IMongoCollection<MatchingGenerationRunDoc> MatchingGenerationRuns => Database.GetCollection<MatchingGenerationRunDoc>("matching_generation_runs");
+    public IMongoCollection<VotingGenerationRunDoc> VotingGenerationRuns => Database.GetCollection<VotingGenerationRunDoc>("voting_generation_runs");
     public IMongoCollection<AdminUserDoc> AdminUsers => Database.GetCollection<AdminUserDoc>("admin_users");
     public IMongoCollection<AiCallDoc> AiCalls => Database.GetCollection<AiCallDoc>("ai_calls");
 
@@ -60,20 +60,20 @@ public sealed class MongoContext
                 })
         ], ct);
 
-        await MatchingQuestions.Indexes.CreateManyAsync(
+        await VotingQuestions.Indexes.CreateManyAsync(
         [
-            new CreateIndexModel<MatchingQuestionDoc>(Builders<MatchingQuestionDoc>.IndexKeys
-                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.MatchingCategoryId)),
-            new CreateIndexModel<MatchingQuestionDoc>(Builders<MatchingQuestionDoc>.IndexKeys
-                .Ascending(q => q.MatchingCategoryId)),
+            new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
+                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.VotingCategoryId)),
+            new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
+                .Ascending(q => q.VotingCategoryId)),
             // A topic is unique only within a language. Null topics are intentionally left out so
             // questions without a deduplication key can coexist.
-            new CreateIndexModel<MatchingQuestionDoc>(Builders<MatchingQuestionDoc>.IndexKeys
+            new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
                     .Ascending(q => q.Lang).Ascending(q => q.Topic),
-                new CreateIndexOptions<MatchingQuestionDoc>
+                new CreateIndexOptions<VotingQuestionDoc>
                 {
                     Unique = true,
-                    PartialFilterExpression = Builders<MatchingQuestionDoc>.Filter.Type(q => q.Topic, MongoDB.Bson.BsonType.String)
+                    PartialFilterExpression = Builders<VotingQuestionDoc>.Filter.Type(q => q.Topic, MongoDB.Bson.BsonType.String)
                 })
         ], ct);
 
@@ -89,9 +89,9 @@ public sealed class MongoContext
         await AiCalls.Indexes.CreateOneAsync(
             new CreateIndexModel<AiCallDoc>(Builders<AiCallDoc>.IndexKeys.Descending(c => c.At)), cancellationToken: ct);
 
-        await MatchingGenerationRuns.Indexes.CreateOneAsync(
-            new CreateIndexModel<MatchingGenerationRunDoc>(
-                Builders<MatchingGenerationRunDoc>.IndexKeys.Descending(r => r.StartedAt)), cancellationToken: ct);
+        await VotingGenerationRuns.Indexes.CreateOneAsync(
+            new CreateIndexModel<VotingGenerationRunDoc>(
+                Builders<VotingGenerationRunDoc>.IndexKeys.Descending(r => r.StartedAt)), cancellationToken: ct);
 
         // A one-time backfill for every row written before Participants/OwnerId existed. Unlike the
         // grain snapshots in Redis this migration also tolerates — which stay permanently dual-shaped

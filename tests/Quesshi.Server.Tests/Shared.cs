@@ -20,7 +20,7 @@ public static class Shared
     /// LiveShared.Notifier: this assembly's live and async matches run in different silos, and each
     /// silo's fake needs its own event list for the same reason Shared.Players is not LiveShared.Players.</summary>
     public static readonly FakeLiveNotifier Notifier = new();
-    public static readonly FakeMatchingNotifier MatchingNotifier = new();
-    public static readonly FakeMatchingQuestions MatchingQuestions = new();
-    public static readonly FakeMatchingCategories MatchingCategories = new();
+    public static readonly FakeVotingNotifier VotingNotifier = new();
+    public static readonly FakeVotingQuestions VotingQuestions = new();
+    public static readonly FakeVotingCategories VotingCategories = new();
 }

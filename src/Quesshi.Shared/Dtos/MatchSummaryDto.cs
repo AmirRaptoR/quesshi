@@ -26,5 +26,5 @@ public sealed record MatchSummaryDto(string Id, string Code, string Lang, string
     /// <summary>Settings stop being editable once the question set is drawn — <see cref="Questions"/>
     /// itself is that drawn count, so this is simply <see cref="Questions"/> &gt; 0.</summary>
     bool SettingsLocked = false,
-    /// <summary>Matching is sent explicitly; null retains the byte shape of legacy trivia rows.</summary>
+    /// <summary>Voting is sent explicitly; null retains the byte shape of legacy trivia rows.</summary>
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Mode = null);

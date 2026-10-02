@@ -4,6 +4,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Tenants;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Api;
@@ -40,14 +41,15 @@ public static class AuthEndpoints
         // --- guests ------------------------------------------------------------------
         // Anonymous on purpose: an invite link has to say who is challenging before anyone is asked
         // to identify themselves. It reveals nothing a person holding the code should not see.
-        app.MapGet("/api/invite/{code}", async (string code, IMatchArchive archive, IPlayerRepository players) =>
-            await InviteAsync(code, archive, players));
+        app.MapGet("/api/invite/{code}", async (string code, HttpContext context,
+            IMatchArchive archive, IPlayerRepository players) =>
+            await InviteForTenantAsync(code, context, archive, players));
 
         // Becoming a guest and taking the seat are one call, so a name typed against a duel that has
         // already been taken never leaves a player record behind.
-        group.MapPost("/guest/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
-            IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock) =>
-            await GuestJoinAsync(code, body, archive, players, grains, tokens, ids, clock));
+        group.MapPost("/guest/{code}", async (string code, GuestJoinDto body, HttpContext context,
+            IMatchArchive archive, IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock) =>
+            await GuestJoinForTenantAsync(code, body, context, archive, players, grains, tokens, ids, clock));
 
         // The live twin: a person following an invite link holds no token yet, so POST
         // /api/live/join/{code} cannot serve them. Becoming a guest and taking the lobby seat are
@@ -55,11 +57,13 @@ public static class AuthEndpoints
         group.MapPost("/guest/live/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
             IPlayerRepository players, IGrainFactory grains, IQuestionRepository questions, ICategoryRepository categories,
             TokenIssuer tokens, IIdFactory ids, IClock clock) =>
-            await GuestJoinLiveAsync(code, body, archive, players, grains, questions, categories, tokens, ids, clock));
+            await GuestJoinLiveAsync(code, body, archive, players, grains, questions, categories, tokens, ids, clock))
+            .AddEndpointFilter(new TenantModeFilter("live"));
 
-        group.MapPost("/guest/matching/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
+        group.MapPost("/guest/voting/{code}", async (string code, GuestJoinDto body, IMatchArchive archive,
             IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock) =>
-            await GuestJoinMatchingAsync(code, body, archive, players, grains, tokens, ids, clock));
+            await GuestJoinVotingAsync(code, body, archive, players, grains, tokens, ids, clock))
+            .AddEndpointFilter(new TenantModeFilter("voting"));
 
         group.MapPost("/google", async (GoogleSignInDto body, AuthOptions auth, AuthService service,
             TokenIssuer tokens, IHttpClientFactory http, ILoggerFactory logs) =>
@@ -76,6 +80,28 @@ public static class AuthEndpoints
         });
     }
 
+    private static async Task<IResult> InviteForTenantAsync(string code, HttpContext context,
+        IMatchArchive archive, IPlayerRepository players)
+    {
+        var match = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (match is not null && !TenantModeFilter.IsEnabled(context, ModeName(match)))
+            return Results.NotFound(new { error = "mode_disabled" });
+        return await InviteAsync(code, archive, players);
+    }
+
+    private static async Task<IResult> GuestJoinForTenantAsync(string code, GuestJoinDto body, HttpContext context,
+        IMatchArchive archive, IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens,
+        IIdFactory ids, IClock clock)
+    {
+        var match = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
+        if (match is not null && !TenantModeFilter.IsEnabled(context, ModeName(match)))
+            return Results.NotFound(new { error = "mode_disabled" });
+        return await GuestJoinAsync(code, body, archive, players, grains, tokens, ids, clock);
+    }
+
+    private static string ModeName(ArchivedMatch match)
+        => match.Mode == GameMode.Voting ? "voting" : match.IsLive ? "live" : "async";
+
     /// <summary>
     /// The one lookup every consumer of a code shares; who to route it to reads <see cref="InviteDto.Live"/>
     /// off this same call rather than guessing by trying an endpoint of one kind first.
@@ -89,7 +115,7 @@ public static class AuthEndpoints
         return Results.Ok(new InviteDto(match.Code, match.Id, challenger?.DisplayName ?? "—",
             challenger?.AvatarSeed ?? match.ChallengerId, match.QuestionIds.Count,
             match.State == MatchState.AwaitingOpponent, match.IsLive,
-            match.Mode == GameMode.Matching ? "matching" : "trivia"));
+            match.Mode == GameMode.Voting ? "voting" : "trivia"));
     }
 
     /// <summary>
@@ -110,21 +136,21 @@ public static class AuthEndpoints
 
         var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
 
-        // Matching owns its lobby under its own grain interface. Join before persisting the guest so
+        // Voting owns its lobby under its own grain interface. Join before persisting the guest so
         // a full, started, or raced lobby never leaves a player record that cannot be used anywhere.
-        if (found.Mode == GameMode.Matching)
+        if (found.Mode == GameMode.Voting)
         {
-            var matching = grains.GetTenantGrain<IMatchingMatchGrain>(found.Id);
-            if ((MatchingJoinResult)await matching.JoinAsync(guest.Id) is not MatchingJoinResult.Joined)
+            var voting = grains.GetTenantGrain<IVotingMatchGrain>(found.Id);
+            if ((VotingJoinResult)await voting.JoinAsync(guest.Id) is not VotingJoinResult.Joined)
                 return Results.BadRequest(new { error = "cannot_join" });
 
             await players.UpsertAsync(guest);
             var updated = await archive.ByCodeAsync(found.Code) ?? found;
-            var matchingChallenger = await players.GetAsync(updated.ChallengerId);
-            var matchingSummary = updated.ToMatchingSummary(guest.Id, id => id == guest.Id
+            var votingChallenger = await players.GetAsync(updated.ChallengerId);
+            var votingSummary = updated.ToVotingSummary(guest.Id, id => id == guest.Id
                 ? (guest.DisplayName, guest.AvatarSeed, true)
-                : (matchingChallenger?.DisplayName ?? "—", matchingChallenger?.AvatarSeed ?? id, matchingChallenger?.IsGuest ?? false));
-            return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), matchingSummary));
+                : (votingChallenger?.DisplayName ?? "—", votingChallenger?.AvatarSeed ?? id, votingChallenger?.IsGuest ?? false));
+            return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), votingSummary));
         }
 
         await players.UpsertAsync(guest);
@@ -143,9 +169,9 @@ public static class AuthEndpoints
         return Results.Ok(new GuestResultDto(tokens.Issue(guest), guest.ToMeDto([]), summary));
     }
 
-    /// <summary>Matching's guest twin. The guest is created only after the matching grain accepts the
+    /// <summary>Voting's guest twin. The guest is created only after the voting grain accepts the
     /// seat, so a full/started code never leaves an unusable guest account behind.</summary>
-    internal static async Task<IResult> GuestJoinMatchingAsync(string code, GuestJoinDto body, IMatchArchive archive,
+    internal static async Task<IResult> GuestJoinVotingAsync(string code, GuestJoinDto body, IMatchArchive archive,
         IPlayerRepository players, IGrainFactory grains, TokenIssuer tokens, IIdFactory ids, IClock clock)
     {
         var name = body.Name?.Trim() ?? "";
@@ -153,19 +179,19 @@ public static class AuthEndpoints
 
         var found = await archive.ByCodeAsync(code.Trim().ToUpperInvariant());
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
-        if (found.Mode != GameMode.Matching) return Results.BadRequest(new { error = "not_a_matching_code" });
+        if (found.Mode != GameMode.Voting) return Results.BadRequest(new { error = "not_a_voting_code" });
         if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
 
         var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
-        var grain = grains.GetTenantGrain<IMatchingMatchGrain>(found.Id);
-        if ((MatchingJoinResult)await grain.JoinAsync(guest.Id) != MatchingJoinResult.Joined)
+        var grain = grains.GetTenantGrain<IVotingMatchGrain>(found.Id);
+        if ((VotingJoinResult)await grain.JoinAsync(guest.Id) != VotingJoinResult.Joined)
             return Results.BadRequest(new { error = "cannot_join" });
 
         await players.UpsertAsync(guest);
         var view = await grain.GetAsync(guest.Id);
         if (view is null) return Results.BadRequest(new { error = "cannot_join" });
-        var dto = await MatchingEndpoints.ToDtoAsync(view, guest.Id, players);
-        return Results.Ok(new GuestMatchingResultDto(tokens.Issue(guest), guest.ToMeDto([]), dto));
+        var dto = await VotingEndpoints.ToDtoAsync(view, guest.Id, players);
+        return Results.Ok(new GuestVotingResultDto(tokens.Issue(guest), guest.ToMeDto([]), dto));
     }
 
     /// <summary>

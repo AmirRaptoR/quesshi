@@ -286,7 +286,7 @@ public class AdminQuestionImportEndpointTests(LiveClusterFixture fixture) : IAsy
     }
 
     [Fact]
-    public async Task A_topic_matching_an_already_stored_question_in_the_same_language_is_rejected()
+    public async Task A_topic_voting_an_already_stored_question_in_the_same_language_is_rejected()
     {
         using var client = AdminClient();
         var subject = $"subject-{Guid.NewGuid():N}";

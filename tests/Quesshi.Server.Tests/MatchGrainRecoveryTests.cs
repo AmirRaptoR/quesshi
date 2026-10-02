@@ -17,7 +17,7 @@ namespace Quesshi.Server.Tests;
 [Collection(nameof(MatchRecoveryClusterCollection))]
 public class MatchGrainRecoveryTests(MatchRecoveryClusterFixture fixture)
 {
-    /// <summary>Six questions where the correct answer is always index 0, matching MatchGrainTests' own bank.</summary>
+    /// <summary>Six questions where the correct answer is always index 0, voting MatchGrainTests' own bank.</summary>
     private static List<string> SeedQuestions(string prefix)
     {
         var ids = new List<string>();

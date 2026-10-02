@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
@@ -107,6 +108,48 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         await connection.InvokeAsync("Heartbeat");
 
         Assert.True(host.Presence.IsOnline("p1"));
+    }
+
+    [Fact]
+    public async Task Voting_only_tenant_refuses_live_hub_actions_and_delivers_voting_invites()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var ownerId = $"mode-owner-{suffix}";
+        var targetId = $"mode-target-{suffix}";
+        var liveId = $"mode-live-{suffix}";
+        var votingId = $"mode-voting-{suffix}";
+        var matchmaking = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
+
+        await fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchGrain>(liveId)
+            .CreateLobbyAsync($"L{suffix[..5]}", ownerId, (int)Language.En, 10, [], [], 2);
+        var liveChallengeId = $"mode-live-challenge-{suffix}";
+        await matchmaking.ChallengeAsync(liveChallengeId, ownerId, targetId, liveId);
+
+        var voting = await fixture.Cluster.GrainFactory.GetTenantGrain<IVotingMatchGrain>(votingId)
+            .CreateAsync($"V{suffix[..5]}", ownerId, (int)Language.En, 10, [], 2);
+        var votingChallengeId = $"mode-voting-challenge-{suffix}";
+        await matchmaking.ChallengeVotingAsync(votingChallengeId, ownerId, targetId, voting.Id);
+
+        await using var host = new LobbyHubTestHost(fixture.Cluster, "voting");
+        await using var connection = host.NewConnection(host.TokenIssuer.Issue(RealPlayer(targetId)));
+        await connection.StartAsync();
+
+        var queueError = await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync<string?>(
+            "QueueRandom", (int)Language.En, 10, new List<string>(), new List<int>()));
+        Assert.Contains("live mode disabled", queueError.Message);
+
+        var challenge = await connection.InvokeAsync<int>("Challenge", "another-player", "en", 10,
+            new List<string>(), new List<int>());
+        Assert.Equal((int)LiveChallengeResult.NotFound, challenge);
+
+        var accepted = await connection.InvokeAsync<LiveChallengeAcceptResult>("Accept", liveChallengeId);
+        Assert.Equal((int)LiveChallengeResult.NotFound, accepted.Result);
+
+        var notice = Assert.Single(host.Notifier.EventsFor(targetId),
+            e => e.Kind == "ChallengeReceived" && e.Payload is LiveChallengeNotice n && n.Voting);
+        Assert.Equal(votingChallengeId, ((LiveChallengeNotice)notice.Payload!).ChallengeId);
+        Assert.DoesNotContain(host.Notifier.EventsFor(targetId), e =>
+            e.Kind == "ChallengeReceived" && e.Payload is LiveChallengeNotice n && n.ChallengeId == liveChallengeId);
     }
 
     [Fact]

@@ -94,10 +94,10 @@ public class HomeDuelsTests
     }
 
     [Fact]
-    public void A_matching_summary_opens_the_matching_player_even_when_it_is_playable()
+    public void A_voting_summary_opens_the_voting_player_even_when_it_is_playable()
     {
-        var matching = Duel("matching", canPlay: true) with { Mode = "matching" };
+        var voting = Duel("voting", canPlay: true) with { Mode = "voting" };
 
-        Assert.Equal("/matching/matching", HomeDuels.Route(matching));
+        Assert.Equal("/voting/voting", HomeDuels.Route(voting));
     }
 }

@@ -13,7 +13,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     private const string LangKey = "quesshi.lang";
     private const string GuestMatchKey = "quesshi.guestMatch";
     private const string GuestMatchLiveKey = "quesshi.guestMatchLive";
-    private const string GuestMatchMatchingKey = "quesshi.guestMatchMatching";
+    private const string GuestMatchVotingKey = "quesshi.guestMatchVoting";
     private const string HomeTabKey = "quesshi.homeTab";
     private const string DuelSettingsKey = "quesshi.duelSettings";
 
@@ -39,13 +39,13 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// <summary>The one match a guest may look at. Null for everybody else.</summary>
     public string? GuestMatchId { get; private set; }
 
-    /// <summary>Which kind of duel <see cref="GuestMatchId"/> is — matching routes to <c>/matching/{id}</c>,
+    /// <summary>Which kind of duel <see cref="GuestMatchId"/> is — voting routes to <c>/voting/{id}</c>,
     /// live to <c>/live/{id}</c>, and async trivia to <c>/duel/{id}</c>. Meaningless while the pin is null.</summary>
     public bool GuestMatchIsLive { get; private set; }
-    public bool GuestMatchIsMatching { get; private set; }
+    public bool GuestMatchIsVoting { get; private set; }
 
     public string GuestMatchRoute(string matchId)
-        => GuestMatchIsMatching ? $"/matching/{matchId}"
+        => GuestMatchIsVoting ? $"/voting/{matchId}"
             : GuestMatchIsLive ? $"/live/{matchId}" : $"/duel/{matchId}";
 
     /// <summary>
@@ -144,7 +144,7 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
 
         GuestMatchId = await js.InvokeAsync<string?>("quesshi.get", GuestMatchKey);
         GuestMatchIsLive = await js.InvokeAsync<string?>("quesshi.get", GuestMatchLiveKey) == "1";
-        GuestMatchIsMatching = await js.InvokeAsync<string?>("quesshi.get", GuestMatchMatchingKey) == "1";
+        GuestMatchIsVoting = await js.InvokeAsync<string?>("quesshi.get", GuestMatchVotingKey) == "1";
 
         HomeTab = HomeTabs.Normalise(await js.InvokeAsync<string?>("quesshi.get", HomeTabKey));
         await RestoreDuelSettingsAsync();
@@ -223,22 +223,22 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     /// <summary>The live twin: signs in as a guest and pins them to the lobby they were invited to.</summary>
     public async Task SignInAsGuestLiveAsync(GuestLiveResultDto result) => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Live.Id, isLive: true);
 
-    public async Task SignInAsGuestMatchingAsync(GuestMatchingResultDto result)
-        => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Matching.Id, isLive: false, isMatching: true);
+    public async Task SignInAsGuestVotingAsync(GuestVotingResultDto result)
+        => await SignInAsGuestCoreAsync(result.Token, result.Me, result.Voting.Id, isLive: false, isVoting: true);
 
     private async Task SignInAsGuestCoreAsync(string token, MeDto me, string matchId, bool isLive,
-        bool isMatching = false)
+        bool isVoting = false)
     {
         Apply(token);
         Me = me;
         GuestMatchId = matchId;
         GuestMatchIsLive = isLive;
-        GuestMatchIsMatching = isMatching;
+        GuestMatchIsVoting = isVoting;
 
         await js.InvokeVoidAsync("quesshi.set", TokenKey, token);
         await js.InvokeVoidAsync("quesshi.set", GuestMatchKey, matchId);
         await js.InvokeVoidAsync("quesshi.set", GuestMatchLiveKey, isLive ? "1" : "0");
-        await js.InvokeVoidAsync("quesshi.set", GuestMatchMatchingKey, isMatching ? "1" : "0");
+        await js.InvokeVoidAsync("quesshi.set", GuestMatchVotingKey, isVoting ? "1" : "0");
         await SetLangAsync(me.Lang);
     }
 
@@ -257,10 +257,10 @@ public sealed class AppState(HttpClient http, IJSRuntime js, Translator translat
     {
         GuestMatchId = null;
         GuestMatchIsLive = false;
-        GuestMatchIsMatching = false;
+        GuestMatchIsVoting = false;
         await js.InvokeVoidAsync("quesshi.remove", GuestMatchKey);
         await js.InvokeVoidAsync("quesshi.remove", GuestMatchLiveKey);
-        await js.InvokeVoidAsync("quesshi.remove", GuestMatchMatchingKey);
+        await js.InvokeVoidAsync("quesshi.remove", GuestMatchVotingKey);
     }
 
     /// <summary>

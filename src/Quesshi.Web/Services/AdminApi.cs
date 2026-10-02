@@ -9,7 +9,7 @@ namespace Quesshi.Web.Services;
 /// </summary>
 public sealed class AdminApi(AdminHttpClient http)
 {
-    public static readonly string[] MatchingAdminErrorCodes =
+    public static readonly string[] VotingAdminErrorCodes =
     [
         "bad_answer_source", "blank_prompt", "choices_not_allowed", "too_few_choices", "too_many_choices",
         "blank_choice", "duplicate_choice", "unknown_category", "inactive_category", "bad_status", "bad_lang",
@@ -71,45 +71,45 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<AdminQuestionPageDto?> AdminQuestionsAsync(string query) => GetAsync<AdminQuestionPageDto>($"api/admin/questions?{query}");
     public Task<AdminQuestionDto?> SaveQuestionAsync(SaveQuestionDto body) => PostAsync<AdminQuestionDto>("api/admin/questions", body);
 
-    public Task<AdminMatchingQuestionPageDto?> AdminMatchingQuestionsAsync(string query)
-        => GetAsync<AdminMatchingQuestionPageDto>($"api/admin/matching/questions?{query}");
+    public Task<AdminVotingQuestionPageDto?> AdminVotingQuestionsAsync(string query)
+        => GetAsync<AdminVotingQuestionPageDto>($"api/admin/voting/questions?{query}");
 
-    public async Task<(MatchingQuestionDto? Saved, string? Error)> TrySaveMatchingQuestionAsync(SaveMatchingQuestionDto body)
+    public async Task<(VotingQuestionDto? Saved, string? Error)> TrySaveVotingQuestionAsync(SaveVotingQuestionDto body)
     {
         try
         {
-            var response = await Client.PostAsJsonAsync("api/admin/matching/questions", body);
+            var response = await Client.PostAsJsonAsync("api/admin/voting/questions", body);
             return response.IsSuccessStatusCode
-                ? (await response.Content.ReadFromJsonAsync<MatchingQuestionDto>(), null)
+                ? (await response.Content.ReadFromJsonAsync<VotingQuestionDto>(), null)
                 : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
         }
         catch { return (null, null); }
     }
 
-    public Task<bool> ApproveMatchingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/matching/questions/{id}/approve");
-    public Task<bool> RejectMatchingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/matching/questions/{id}/reject");
-    public Task<bool> DeleteMatchingQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/matching/questions/{id}");
+    public Task<bool> ApproveVotingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/voting/questions/{id}/approve");
+    public Task<bool> RejectVotingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/voting/questions/{id}/reject");
+    public Task<bool> DeleteVotingQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/voting/questions/{id}");
 
-    public Task<List<MatchingCategoryDto>?> AdminMatchingCategoriesAsync()
-        => GetAsync<List<MatchingCategoryDto>>("api/admin/matching/categories");
+    public Task<List<VotingCategoryDto>?> AdminVotingCategoriesAsync()
+        => GetAsync<List<VotingCategoryDto>>("api/admin/voting/categories");
 
-    public async Task<(MatchingCategoryDto? Saved, string? Error)> TrySaveMatchingCategoryAsync(MatchingCategoryDto body)
+    public async Task<(VotingCategoryDto? Saved, string? Error)> TrySaveVotingCategoryAsync(VotingCategoryDto body)
     {
         try
         {
-            var response = await Client.PostAsJsonAsync("api/admin/matching/categories", body);
+            var response = await Client.PostAsJsonAsync("api/admin/voting/categories", body);
             return response.IsSuccessStatusCode
-                ? (await response.Content.ReadFromJsonAsync<MatchingCategoryDto>(), null)
+                ? (await response.Content.ReadFromJsonAsync<VotingCategoryDto>(), null)
                 : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
         }
         catch { return (null, null); }
     }
 
-    public async Task<string?> TryDeleteMatchingCategoryAsync(string id)
+    public async Task<string?> TryDeleteVotingCategoryAsync(string id)
     {
         try
         {
-            var response = await Client.DeleteAsync($"api/admin/matching/categories/{id}");
+            var response = await Client.DeleteAsync($"api/admin/voting/categories/{id}");
             return response.IsSuccessStatusCode ? null : (await response.Content.ReadFromJsonAsync<SaveError>())?.Error;
         }
         catch { return "common.error"; }
@@ -155,14 +155,14 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<GenerationRunDto?> GenerateNowAsync() => PostAsync<GenerationRunDto>("api/admin/generate", new { });
     public Task<GenerationRunDto?> GenerateBucketAsync(GenerateRequestDto body) => PostAsync<GenerationRunDto>("api/admin/generate/bucket", body);
     public Task<GenerationRunDto?> GenerateIllustratedAsync(GenerateRequestDto body) => PostAsync<GenerationRunDto>("api/admin/generate/illustrated", body);
-    public async Task<(MatchingGenerationRunDto? Run, string? Error)> GenerateMatchingAsync(
-        GenerateMatchingRequestDto body)
+    public async Task<(VotingGenerationRunDto? Run, string? Error)> GenerateVotingAsync(
+        GenerateVotingRequestDto body)
     {
         try
         {
-            var response = await Client.PostAsJsonAsync("api/admin/matching/generate", body);
+            var response = await Client.PostAsJsonAsync("api/admin/voting/generate", body);
             return response.IsSuccessStatusCode
-                ? (await response.Content.ReadFromJsonAsync<MatchingGenerationRunDto>(), null)
+                ? (await response.Content.ReadFromJsonAsync<VotingGenerationRunDto>(), null)
                 : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
         }
         catch { return (null, null); }
@@ -195,25 +195,25 @@ public sealed class AdminApi(AdminHttpClient http)
         catch { return null; }
     }
 
-    /// <summary>Dry run or commit a matching-only import in the matching bounded context.</summary>
-    public async Task<ImportReportDto?> ImportMatchingQuestionsAsync(string format, bool dryRun, MultipartFormDataContent content)
+    /// <summary>Dry run or commit a voting-only import in the voting bounded context.</summary>
+    public async Task<ImportReportDto?> ImportVotingQuestionsAsync(string format, bool dryRun, MultipartFormDataContent content)
     {
         try
         {
-            var response = await Client.PostAsync($"api/admin/matching/questions/import?format={format}&dryRun={dryRun}", content);
+            var response = await Client.PostAsync($"api/admin/voting/questions/import?format={format}&dryRun={dryRun}", content);
             return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ImportReportDto>() : null;
         }
         catch { return null; }
     }
 
-    public async Task<(byte[] Bytes, string FileName)?> DownloadMatchingImportTemplateAsync(string format)
+    public async Task<(byte[] Bytes, string FileName)?> DownloadVotingImportTemplateAsync(string format)
     {
         try
         {
-            var response = await Client.GetAsync($"api/admin/matching/questions/import/template?format={format}");
+            var response = await Client.GetAsync($"api/admin/voting/questions/import/template?format={format}");
             if (!response.IsSuccessStatusCode) return null;
 
-            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"matching-template.{format}");
+            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"voting-template.{format}");
         }
         catch { return null; }
     }

@@ -30,22 +30,22 @@ public sealed class FakeQuestionGenerator : IQuestionGenerator
         => Task.FromResult<IReadOnlyList<GeneratedQuestion>>([]);
 }
 
-public sealed class FakeMatchingQuestionGenerator : IMatchingQuestionGenerator
+public sealed class FakeVotingQuestionGenerator : IVotingQuestionGenerator
 {
     public bool IsConfigured => false;
 
-    public Task<IReadOnlyList<GeneratedMatchingQuestion>> GenerateAsync(Language lang,
-        MatchingCategory category, MatchingAnswerSource answerSource, int count,
+    public Task<IReadOnlyList<GeneratedVotingQuestion>> GenerateAsync(Language lang,
+        VotingCategory category, VotingAnswerSource answerSource, int count,
         IReadOnlyCollection<string> avoid, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<GeneratedMatchingQuestion>>([]);
+        => Task.FromResult<IReadOnlyList<GeneratedVotingQuestion>>([]);
 }
 
-public sealed class FakeMatchingGenerationLog : IMatchingGenerationLog
+public sealed class FakeVotingGenerationLog : IVotingGenerationLog
 {
-    public Task SaveAsync(MatchingGenerationRun run, CancellationToken ct = default)
+    public Task SaveAsync(VotingGenerationRun run, CancellationToken ct = default)
         => Task.CompletedTask;
 
-    public Task<IReadOnlyList<MatchingGenerationRun>> RecentAsync(int take,
+    public Task<IReadOnlyList<VotingGenerationRun>> RecentAsync(int take,
         CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<MatchingGenerationRun>>([]);
+        => Task.FromResult<IReadOnlyList<VotingGenerationRun>>([]);
 }

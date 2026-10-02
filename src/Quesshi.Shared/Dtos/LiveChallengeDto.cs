@@ -4,4 +4,4 @@ namespace Quesshi.Shared;
 /// Carries no settings — the invitation is a pointer at a lobby that already owns them.</summary>
 public sealed record LiveChallengeDto(string ChallengeId, string ChallengerId, string ChallengerName,
     string ChallengerAvatarSeed, string LobbyId, string LobbyCode, DateTimeOffset ExpiresAt,
-    bool Matching = false);
+    bool Voting = false);

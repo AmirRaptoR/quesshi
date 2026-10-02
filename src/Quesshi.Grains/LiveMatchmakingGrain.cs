@@ -148,19 +148,19 @@ public sealed class LiveMatchmakingGrain(
         return (int)LiveChallengeResult.Sent;
     }
 
-    public async Task<int> ChallengeMatchingAsync(string challengeId, string challengerId, string targetId,
+    public async Task<int> ChallengeVotingAsync(string challengeId, string challengerId, string targetId,
         string lobbyId)
     {
         if (challengerId == targetId) return (int)LiveChallengeResult.SelfChallenge;
 
-        var lobby = GrainFactory.GetTenantGrain<IMatchingMatchGrain>(lobbyId);
+        var lobby = GrainFactory.GetTenantGrain<IVotingMatchGrain>(lobbyId);
         var view = await lobby.GetAsync(challengerId);
         if (view is null || (MatchState)view.State != MatchState.AwaitingOpponent)
             return (int)LiveChallengeResult.NotFound;
 
         var sentAt = clock.Now;
         var challenge = new LiveChallengeView(challengeId, challengerId, targetId, lobbyId, view.Code,
-            sentAt, sentAt + LiveRules.LobbyExpires, Matching: true);
+            sentAt, sentAt + LiveRules.LobbyExpires, Voting: true);
 
         state.State.Challenges.Add(challenge);
         await state.WriteStateAsync();
@@ -191,15 +191,15 @@ public sealed class LiveMatchmakingGrain(
         RemoveAndDisarm(challenge);
         await state.WriteStateAsync();
 
-        if (challenge.Matching)
+        if (challenge.Voting)
         {
-            var matching = GrainFactory.GetTenantGrain<IMatchingMatchGrain>(challenge.LobbyId);
-            var result = (MatchingJoinResult)await matching.JoinAsync(targetId);
-            if (result is MatchingJoinResult.Joined or MatchingJoinResult.AlreadyIn)
+            var voting = GrainFactory.GetTenantGrain<IVotingMatchGrain>(challenge.LobbyId);
+            var result = (VotingJoinResult)await voting.JoinAsync(targetId);
+            if (result is VotingJoinResult.Joined or VotingJoinResult.AlreadyIn)
             {
-                await SafeNotifyAsync(() => notifier.MatchingReadyAsync(challenge.ChallengerId,
+                await SafeNotifyAsync(() => notifier.VotingReadyAsync(challenge.ChallengerId,
                     challenge.LobbyId, challenge.LobbyCode));
-                await SafeNotifyAsync(() => notifier.MatchingReadyAsync(challenge.TargetId,
+                await SafeNotifyAsync(() => notifier.VotingReadyAsync(challenge.TargetId,
                     challenge.LobbyId, challenge.LobbyCode));
                 return new LiveChallengeAcceptResult((int)LiveChallengeResult.Accepted, challenge.LobbyId,
                     challenge.ChallengerId);
@@ -207,13 +207,13 @@ public sealed class LiveMatchmakingGrain(
 
             await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.ChallengerId, challengeId));
             await SafeNotifyAsync(() => notifier.ChallengeFailedAsync(challenge.TargetId, challengeId));
-            var matchingReason = result switch
+            var votingReason = result switch
             {
-                MatchingJoinResult.Full => LiveChallengeResult.LobbyFull,
-                MatchingJoinResult.Started => LiveChallengeResult.LobbyTaken,
+                VotingJoinResult.Full => LiveChallengeResult.LobbyFull,
+                VotingJoinResult.Started => LiveChallengeResult.LobbyTaken,
                 _ => LiveChallengeResult.DuelFailed
             };
-            return new LiveChallengeAcceptResult((int)matchingReason, null, challenge.ChallengerId);
+            return new LiveChallengeAcceptResult((int)votingReason, null, challenge.ChallengerId);
         }
 
         var lobby = GrainFactory.GetTenantGrain<ILiveMatchGrain>(challenge.LobbyId);
@@ -334,7 +334,7 @@ public sealed class LiveMatchmakingGrain(
     }
 
     private static LiveChallengeNotice ToNotice(LiveChallengeView c)
-        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt, c.Matching);
+        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt, c.Voting);
 
     private async Task PruneTickAsync(CancellationToken ct)
     {

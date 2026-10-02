@@ -15,10 +15,10 @@ public sealed class FakeArchive : IMatchArchive
     /// <summary>Stands in for the round trip to Mongo, as in FakePlayers.</summary>
     public int DelayMs;
 
-    /// <summary>Causes the next matching archive write to lose the shared code-index race.</summary>
+    /// <summary>Causes the next voting archive write to lose the shared code-index race.</summary>
     public int CollisionWritesRemaining;
 
-    /// <summary>Causes the next matching archive writes to fail as a transient archive outage.</summary>
+    /// <summary>Causes the next voting archive writes to fail as a transient archive outage.</summary>
     public int FailingWritesRemaining;
 
     /// <summary>
@@ -36,12 +36,12 @@ public sealed class FakeArchive : IMatchArchive
 
     public Task SaveAsync(ArchivedMatch m, CancellationToken ct = default)
     {
-        if (m.Mode == GameMode.Matching && CollisionWritesRemaining > 0)
+        if (m.Mode == GameMode.Voting && CollisionWritesRemaining > 0)
         {
             CollisionWritesRemaining--;
             throw new MatchCodeCollisionException(m.Code);
         }
-        if (m.Mode == GameMode.Matching && FailingWritesRemaining > 0)
+        if (m.Mode == GameMode.Voting && FailingWritesRemaining > 0)
         {
             FailingWritesRemaining--;
             throw new InvalidOperationException("Simulated archive outage.");

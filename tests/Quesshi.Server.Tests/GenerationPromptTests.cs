@@ -29,12 +29,12 @@ public class GenerationPromptTests
 {
     private static readonly QuestionPromptBuilder Prompts = new();
     private static readonly Category Geography = new("geography", "جغرافیا", "Geography", "*", "#fff");
-    private static readonly MatchingCategory Friends = new("m-friends", "دوستان", "Friends", "*", "#fff");
+    private static readonly VotingCategory Friends = new("m-friends", "دوستان", "Friends", "*", "#fff");
 
     private static string Sort(Language lang = Language.En) => Prompts.Sort(lang, Geography, Difficulty.Medium, 5, []);
     private static string Map(Language lang = Language.En) => Prompts.Map(lang, Geography, Difficulty.Medium, 5, []);
-    private static string Matching(MatchingAnswerSource source, Language lang = Language.En)
-        => Prompts.Matching(lang, Friends, source, 5, []);
+    private static string Voting(VotingAnswerSource source, Language lang = Language.En)
+        => Prompts.Voting(lang, Friends, source, 5, []);
 
     [Theory]
     [InlineData("MEASURABLE")]
@@ -130,27 +130,27 @@ public class GenerationPromptTests
     [InlineData(Language.Fa, "Persian")]
     [InlineData(Language.Nl, "Dutch")]
     [InlineData(Language.En, "English")]
-    public void Matching_prompt_names_the_language_and_forbids_grading(Language lang, string expected)
+    public void Voting_prompt_names_the_language_and_forbids_grading(Language lang, string expected)
     {
-        var prompt = Matching(MatchingAnswerSource.Fixed, lang);
+        var prompt = Voting(VotingAnswerSource.Fixed, lang);
         Assert.Contains(expected, prompt);
         Assert.Contains("no correct answer", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not add \"not applicable\"", prompt);
     }
 
     [Fact]
-    public void Matching_participant_prompt_forbids_names_and_sensitive_questions()
+    public void Voting_participant_prompt_forbids_names_and_sensitive_questions()
     {
-        var prompt = Matching(MatchingAnswerSource.Participants);
+        var prompt = Voting(VotingAnswerSource.Participants);
         Assert.Contains("Do not write participant names or choices", prompt);
         Assert.Contains("medical or mental-health", prompt);
         Assert.Contains("protected traits", prompt);
     }
 
     [Fact]
-    public void Matching_prompt_requires_specific_stable_keys_instead_of_numbered_placeholders()
+    public void Voting_prompt_requires_specific_stable_keys_instead_of_numbered_placeholders()
     {
-        var prompt = Matching(MatchingAnswerSource.Participants, Language.Fa);
+        var prompt = Voting(VotingAnswerSource.Participants, Language.Fa);
 
         Assert.Contains("stable unique", prompt);
         Assert.Contains("Derive both from this question's prompt and choices", prompt);
@@ -159,18 +159,18 @@ public class GenerationPromptTests
     }
 
     [Fact]
-    public void Matching_schemas_keep_trivia_fields_out_and_apply_choice_bounds()
+    public void Voting_schemas_keep_trivia_fields_out_and_apply_choice_bounds()
     {
         var participants = JsonSerializer.Serialize(
-            MatchingQuestionSchema.ResponseFormat(MatchingAnswerSource.Participants));
+            VotingQuestionSchema.ResponseFormat(VotingAnswerSource.Participants));
         var fixedChoices = JsonSerializer.Serialize(
-            MatchingQuestionSchema.ResponseFormat(MatchingAnswerSource.Fixed));
+            VotingQuestionSchema.ResponseFormat(VotingAnswerSource.Fixed));
 
-        Assert.Contains("quesshi_matching_participant_questions", participants);
+        Assert.Contains("quesshi_voting_participant_questions", participants);
         Assert.DoesNotContain("choices", participants);
-        Assert.Contains("quesshi_matching_fixed_questions", fixedChoices);
-        Assert.Contains($"\"minItems\":{MatchingRules.MinFixedChoices}", fixedChoices);
-        Assert.Contains($"\"maxItems\":{MatchingRules.MaxFixedChoices}", fixedChoices);
+        Assert.Contains("quesshi_voting_fixed_questions", fixedChoices);
+        Assert.Contains($"\"minItems\":{VotingRules.MinFixedChoices}", fixedChoices);
+        Assert.Contains($"\"maxItems\":{VotingRules.MaxFixedChoices}", fixedChoices);
         Assert.DoesNotContain("correctIndex", fixedChoices);
         Assert.DoesNotContain("difficulty", fixedChoices, StringComparison.OrdinalIgnoreCase);
     }

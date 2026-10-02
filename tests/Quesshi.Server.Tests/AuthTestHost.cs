@@ -40,7 +40,7 @@ public sealed class AuthTestHost : IAsyncDisposable
         {
             Tenants =
             [
-                new TenantDefinition { Id = "quesshi", Name = "Quesshi", Hosts = ["localhost"], Theme = "red" },
+                new TenantDefinition { Id = "quesshi", Name = "Quesshi", Hosts = ["localhost"], Theme = "red", EnabledModes = ["async", "live", "voting"] },
                 new TenantDefinition
                 {
                     Id = "brand-a", Name = "Brand A", Hosts = ["brand-a.test"], Theme = "blue",

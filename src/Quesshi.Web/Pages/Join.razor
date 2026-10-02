@@ -121,14 +121,14 @@
             return;
         }
 
-        // Matching has its own read/join contract and deliberately does not leak its answer
+        // Voting has its own read/join contract and deliberately does not leak its answer
         // surface through the trivia invite DTO. A signed-in visitor can identify it without a
         // second server-side mode flag on /api/invite/{code}.
-        if (State.SignedIn && !State.IsGuest && await Api.MatchingByCodeAsync(Code) is { Code: { Length: > 0 } } matching)
+        if (State.SignedIn && !State.IsGuest && await Api.VotingByCodeAsync(Code) is { Code: { Length: > 0 } } voting)
         {
-            if (await Api.JoinMatchingAsync(matching.Code) is { } joined)
+            if (await Api.JoinVotingAsync(voting.Code) is { } joined)
             {
-                Nav.NavigateTo($"/matching/lobby/{joined.Code}");
+                Nav.NavigateTo($"/voting/lobby/{joined.Code}");
                 return;
             }
         }
@@ -159,13 +159,13 @@
     {
         _busy = true; _error = null;
 
-        // A matching invite is anonymous until the name is supplied, just like a trivia invite, but
-        // it receives the matching-scoped guest snapshot and token rather than a trivia summary.
-        var matching = await Api.JoinAsGuestMatchingAsync(Code, _name.Trim(), State.Lang);
-        if (matching is not null)
+        // A voting invite is anonymous until the name is supplied, just like a trivia invite, but
+        // it receives the voting-scoped guest snapshot and token rather than a trivia summary.
+        var voting = await Api.JoinAsGuestVotingAsync(Code, _name.Trim(), State.Lang);
+        if (voting is not null)
         {
-            await State.SignInAsGuestMatchingAsync(matching);
-            Nav.NavigateTo($"/matching/lobby/{matching.Matching.Code}");
+            await State.SignInAsGuestVotingAsync(voting);
+            Nav.NavigateTo($"/voting/lobby/{voting.Voting.Code}");
             return;
         }
 
