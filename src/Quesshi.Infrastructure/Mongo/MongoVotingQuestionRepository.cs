@@ -22,13 +22,24 @@ public sealed class MongoVotingQuestionRepository(MongoContext db) : IVotingQues
     public Task<long> CountAsync(VotingQuestionFilter filter, CancellationToken ct = default)
         => db.VotingQuestions.CountDocumentsAsync(Build(filter), cancellationToken: ct);
 
-    public async Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string categoryId,
+    public async Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string? categoryId,
         int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
     {
         var filter = F.Eq(q => q.Status, (int)QuestionStatus.Approved)
             & F.Eq(q => q.Lang, (int)lang)
-            & F.Eq(q => q.VotingCategoryId, categoryId)
             & F.Nin(q => q.Id, exclude);
+        if (categoryId is not null) filter &= F.Eq(q => q.CategoryId, categoryId);
+        var docs = await db.VotingQuestions.Aggregate().Match(filter).Sample(count).ToListAsync(ct);
+        return [.. docs.Select(d => d.ToDomain())];
+    }
+
+    public async Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, ContentScope scope,
+        int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
+    {
+        if (scope.CategoryIds is { Count: 0 }) return [];
+        var filter = F.Eq(q => q.Status, (int)QuestionStatus.Approved)
+            & F.Eq(q => q.Lang, (int)lang) & F.Nin(q => q.Id, exclude);
+        if (scope.CategoryIds is { } categories) filter &= F.In(q => q.CategoryId, categories);
         var docs = await db.VotingQuestions.Aggregate().Match(filter).Sample(count).ToListAsync(ct);
         return [.. docs.Select(d => d.ToDomain())];
     }
@@ -88,7 +99,7 @@ public sealed class MongoVotingQuestionRepository(MongoContext db) : IVotingQues
     public async Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
         CancellationToken ct = default)
         => await db.VotingQuestions
-            .Find(F.Eq(q => q.Lang, (int)lang) & F.Eq(q => q.VotingCategoryId, categoryId))
+            .Find(F.Eq(q => q.Lang, (int)lang) & F.Eq(q => q.CategoryId, categoryId))
             .Project(q => q.Prompt)
             .ToListAsync(ct);
 
@@ -96,7 +107,7 @@ public sealed class MongoVotingQuestionRepository(MongoContext db) : IVotingQues
     {
         var filter = F.Empty;
         if (f.Lang is { } lang) filter &= F.Eq(q => q.Lang, (int)lang);
-        if (f.CategoryId is { } category) filter &= F.Eq(q => q.VotingCategoryId, category);
+        if (f.CategoryId is { } category) filter &= F.Eq(q => q.CategoryId, category);
         if (f.Status is { } status) filter &= F.Eq(q => q.Status, (int)status);
         if (!string.IsNullOrWhiteSpace(f.Text))
             filter &= F.Regex(q => q.Prompt,
@@ -108,7 +119,7 @@ public sealed class MongoVotingQuestionRepository(MongoContext db) : IVotingQues
     {
         var update = Builders<VotingQuestionDoc>.Update
             .Set(d => d.Lang, (int)q.Lang)
-            .Set(d => d.VotingCategoryId, q.VotingCategoryId)
+            .Set(d => d.CategoryId, q.CategoryId)
             .Set(d => d.Prompt, q.Prompt)
             .Set(d => d.AnswerSource, (int)q.AnswerSource)
             .Set(d => d.FixedChoices, [.. q.FixedChoices])

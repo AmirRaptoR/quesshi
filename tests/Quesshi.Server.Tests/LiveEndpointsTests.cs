@@ -25,7 +25,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
     private IGrainFactory Grains => fixture.Cluster.GrainFactory;
     private static readonly TimeProviderClock Clock = new(LiveShared.TimeProvider);
-    private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions, LiveShared.Categories);
+    private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions);
 
     private static int _n = LiveIdRanges.NewIdsPoolStart;
 
@@ -314,7 +314,10 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
     private static readonly TokenIssuer Issuer = new(new JwtOptions
     {
-        Key = "a-live-guest-test-signing-key-long-enough", Issuer = "quesshi", Audience = "quesshi", Days = 1
+        Key = "a-live-guest-test-signing-key-long-enough",
+        Issuer = "quesshi",
+        Audience = "quesshi",
+        Days = 1
     });
 
     [Fact]

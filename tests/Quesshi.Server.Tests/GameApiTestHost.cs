@@ -80,7 +80,8 @@ public sealed class GameApiTestHost : IAsyncDisposable
                     services.AddSingleton<IOtpSender, FakeOtpSender>();
                     services.AddSingleton<AuthService>();
                     services.AddSingleton<AuthOptions>();
-                    services.AddSingleton<IVotingCategoryRepository>(Shared.VotingCategories);
+                    services.AddSingleton<ICategoryRepository>(Shared.VotingCategories);
+                    services.AddSingleton<IContentSettingsRepository>(sp => new FakeContentSettingsRepository(sp.GetRequiredService<ICategoryRepository>()));
                     services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
                     services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
                     services.AddSingleton<VotingQuestionSetBuilder>();

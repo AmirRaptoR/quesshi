@@ -85,16 +85,18 @@ public static class GameEndpoints
             await UpgradeAsync(body, ctx.User.PlayerId()!, ctx.User.IsGuest(), auth, grains, tokens, players)
         ).WithMetadata(new AllowGuest());
 
-        api.MapGet("/categories", async (ICategoryRepository categories, HttpContext ctx,
-            IPlayerRepository players, IQuestionRepository questions) =>
+        api.MapGet("/categories", async (ICategoryRepository categories, IContentSettingsRepository settings,
+            HttpContext ctx, IPlayerRepository players, IQuestionRepository questions) =>
         {
             var me = await players.GetAsync(ctx.User.PlayerId()!);
             var lang = me?.Lang ?? Language.Fa;
 
             var playable = Mappers.PlayableLanguages(await questions.BucketCountsAsync());
 
+            var configured = (await settings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
             return (await categories.AllAsync())
-                .Where(c => c.IsActive)
+                .Where(c => c.IsActive && configured.Contains(c.Id))
+                .OrderBy(c => c.SortOrder)
                 .Select(c => c.ToDto(lang, playable.GetValueOrDefault(c.Id, [])))
                 .ToList();
         });
@@ -187,7 +189,7 @@ public static class GameEndpoints
                     .Select(l => (Difficulty)l)
                     .ToList();
 
-                set = [.. await builder.BuildAsync(lang, body.Categories, body.Questions, levels)];
+                set = [.. await builder.BuildAsync(lang, new ContentScope(body.Categories), body.Questions, levels)];
             }
             catch (NotEnoughQuestionsException ex)
             {
@@ -221,8 +223,10 @@ public static class GameEndpoints
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
         // capacity-aware IMatchGrain.JoinAsync a multi-seat lobby needs, so an N-player async lobby is
         // joined exactly as a 1v1 always was.
-        matches.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
-            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
+        matches.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains,
+            IIdFactory ids, IPlayerRepository players, ICategoryRepository categories,
+            IContentSettingsRepository settings, IQuestionRepository questions) =>
+            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players, categories, settings, questions));
 
         matches.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await grains.GetTenantGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
@@ -230,12 +234,24 @@ public static class GameEndpoints
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
         matches.MapPost("/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetTenantGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
-                ? Results.Ok()
-                : Results.BadRequest(new { error = "cannot_start" }));
+        {
+            try
+            {
+                return await grains.GetTenantGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+                    ? Results.Ok()
+                    : Results.BadRequest(new { error = "cannot_start" });
+            }
+            catch (InvalidOperationException ex) when (ex.Message.StartsWith("match_not_enough_questions:", StringComparison.Ordinal))
+            {
+                return Results.Json(new { error = "not_enough_questions", detail = ex.Message["match_not_enough_questions:".Length..] },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
 
-        matches.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
-            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
+        matches.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx,
+            IGrainFactory grains, IPlayerRepository players, ICategoryRepository categories,
+            IContentSettingsRepository settings, IQuestionRepository questions) =>
+            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players, categories, settings, questions));
 
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
         // report a question you were actually served, and only once.
@@ -276,7 +292,7 @@ public static class GameEndpoints
             var question = await questions.GetAsync(served.QuestionId);
             if (question is null) return Results.Problem("That question has vanished.", statusCode: 500);
 
-            var category = await categories.GetAsync(question.CategoryId);
+            var category = question.CategoryId is null ? null : await categories.GetAsync(question.CategoryId);
 
             // Only a players question ever needs the roster, so only it pays for fetching it.
             List<string>? participantNames = null;
@@ -417,7 +433,8 @@ public static class GameEndpoints
     /// it sits beside.
     /// </summary>
     internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
-        IIdFactory ids, IPlayerRepository players)
+        IIdFactory ids, IPlayerRepository players, ICategoryRepository? categories = null,
+        IContentSettingsRepository? contentSettings = null, IQuestionRepository? questions = null)
     {
         var maxCapacity = await grains.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
         if (body.Capacity < 2 || body.Capacity > maxCapacity) return Results.BadRequest(new { error = "bad_capacity" });
@@ -428,18 +445,30 @@ public static class GameEndpoints
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
+        var selected = body.Categories ?? [];
+        if (categories is not null && contentSettings is not null)
+        {
+            var configured = (await contentSettings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var playable = questions is null ? null : Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+            selected = [.. CategorySelection.Select((await categories.AllAsync())
+                .Where(c => configured.Contains(c.Id) && (playable is null
+                    || playable.GetValueOrDefault(c.Id, []).Contains(lang.Code(), StringComparer.Ordinal))), body.Categories)];
+            if (body.Categories is { Count: > 0 } && selected.Count == 0)
+                return Results.BadRequest(new { error = "unknown_category" });
+        }
 
         var matchId = ids.NewId();
         var grain = grains.GetTenantGrain<IMatchGrain>(matchId);
         MatchView view;
-        try { view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity); }
+        try { view = await grain.CreateLobbyAsync(ids.NewMatchCode(), meId, (int)lang, count, selected, levels, body.Capacity); }
         catch (ArgumentOutOfRangeException) { return Results.BadRequest(new { error = "bad_capacity" }); }
 
         return Results.Ok(await ToSummaryAsync(view, meId, players));
     }
 
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
-        IGrainFactory grains, IPlayerRepository players)
+        IGrainFactory grains, IPlayerRepository players, ICategoryRepository? categories = null,
+        IContentSettingsRepository? contentSettings = null, IQuestionRepository? questions = null)
     {
         if (body.Capacity is { } capacity and (< MatchRules.MinParticipants or > MatchRules.MaxParticipants))
             return Results.BadRequest(new { error = "bad_capacity" });
@@ -450,8 +479,19 @@ public static class GameEndpoints
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
+        var selected = body.Categories ?? [];
+        if (categories is not null && contentSettings is not null)
+        {
+            var configured = (await contentSettings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var playable = questions is null ? null : Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+            selected = [.. CategorySelection.Select((await categories.AllAsync())
+                .Where(c => configured.Contains(c.Id) && (playable is null
+                    || playable.GetValueOrDefault(c.Id, []).Contains(lang.Code(), StringComparer.Ordinal))), body.Categories)];
+            if (body.Categories is { Count: > 0 } && selected.Count == 0)
+                return Results.BadRequest(new { error = "unknown_category" });
+        }
 
-        var ok = await grains.GetTenantGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+        var ok = await grains.GetTenantGrain<IMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, selected, levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 
@@ -599,7 +639,7 @@ public static class GameEndpoints
     internal static QuestionCardDto BuildCard(string matchId, ServedSlot served, Question question, Category? category,
         IReadOnlyList<string>? participantNames = null)
         => new(served.Slot, question.Id, question.Prompt, [.. ChoicesFor(matchId, served.Slot, question, participantNames)],
-            question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
+            question.CategoryId ?? "", category?.NameFor(question.Lang) ?? (question.CategoryId is null ? "Uncategorized" : question.CategoryId),
             category?.Icon ?? "◆", category?.Color ?? "#2EC4B6", (int)question.Level,
             ToMediaDto(question.Media),
             served.SecondsLimit, served.Total,
@@ -659,7 +699,7 @@ public static class GameEndpoints
             [.. (q.Kind == QuestionKind.Players ? participantNames ?? [] : q.Choices)], q.CorrectIndex,
             slot < mine.Count ? mine[slot] : null,
             slot < theirs.Count ? theirs[slot] : null,
-            cats.GetValueOrDefault(q.CategoryId)?.NameFor(q.Lang) ?? q.CategoryId,
+            q.CategoryId is null ? "Uncategorized" : cats.GetValueOrDefault(q.CategoryId)?.NameFor(q.Lang) ?? q.CategoryId,
             q.Explanation,
             ToMediaDto(q.Media),
             (int)q.Kind, q.Target?.ToResponse(),

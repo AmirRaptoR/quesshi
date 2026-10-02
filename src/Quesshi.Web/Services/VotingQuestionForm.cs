@@ -12,7 +12,7 @@ public sealed class VotingQuestionForm
 
     public string? Id { get; set; }
     public string Lang { get; set; } = "fa";
-    public string VotingCategoryId { get; set; } = "";
+    public string? CategoryId { get; set; }
     public string Prompt { get; set; } = "";
     public List<string> Choices { get; set; } = ["", ""];
     public string? Subject { get; set; }
@@ -61,7 +61,6 @@ public sealed class VotingQuestionForm
     {
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(Prompt)) errors.Add("blank_prompt");
-        if (string.IsNullOrWhiteSpace(VotingCategoryId)) errors.Add("unknown_category");
 
         if (!UseParticipants)
         {
@@ -85,7 +84,7 @@ public sealed class VotingQuestionForm
     public SaveVotingQuestionDto ToDto() => new(
         Id,
         Lang.Trim(),
-        VotingCategoryId.Trim(),
+        string.IsNullOrWhiteSpace(CategoryId) ? null : CategoryId.Trim(),
         Prompt.Trim(),
         AnswerSource,
         UseParticipants ? [] : [.. Choices.Select(c => c.Trim())],
@@ -100,7 +99,7 @@ public sealed class VotingQuestionForm
     {
         Id = question.Id,
         Lang = question.Lang,
-        VotingCategoryId = question.VotingCategoryId,
+        CategoryId = question.CategoryId,
         Prompt = question.Prompt,
         _useParticipants = string.Equals(question.AnswerSource, "participants", StringComparison.OrdinalIgnoreCase),
         Choices = question.AnswerSource.Equals("participants", StringComparison.OrdinalIgnoreCase)

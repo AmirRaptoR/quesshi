@@ -128,8 +128,9 @@
                 <div class="stack" style="margin-top:.9rem">
                     <div class="row" style="flex-wrap:wrap;gap:.5rem">
                         <select class="select" style="width:auto" @bind="_editing.Lang"><option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option></select>
-                        <select class="select" style="width:auto" @bind="_editing.VotingCategoryId">
-                            <option value="">@L["admin.voting.chooseCategory"]</option>
+                        <select class="select" style="width:auto" @bind="_editing.CategoryId">
+                            <option value="">Uncategorized</option>
+                            <option value="">@L["admin.chooseCategory"]</option>
                             @foreach (var category in EditableCategories) { <option value="@category.Id">@CategoryName(category)@(category.IsActive ? "" : " · " + L["admin.inactive"])</option> }
                         </select>
                         <select class="select" style="width:auto" @bind="_editing.Status"><option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option></select>
@@ -180,7 +181,7 @@
             <div class="stack" style="margin-top:.75rem">
                 @foreach (var question in _results?.Items ?? [])
                 {
-                    <AdminVotingQuestionCard Question="question" CategoryName="@CategoryName(question.VotingCategoryId)"
+                    <AdminVotingQuestionCard Question="question" CategoryName="@CategoryName(question.CategoryId)"
                         Approve="ApproveAsync" Reject="RejectAsync" Edit="Edit" Delete="DeleteAsync" />
                 }
             </div>
@@ -191,7 +192,7 @@
 
 @code {
     private AdminVotingQuestionPageDto? _results;
-    private List<VotingCategoryDto> _categories = [];
+    private List<CategoryDto> _categories = [];
     private VotingQuestionForm? _editing;
     private string _lang = "", _category = "", _status = "", _text = "";
     private int _page = 1, _size = 25;
@@ -206,11 +207,12 @@
     private VotingGenerationRunDto? _lastGeneration;
     private string? _dialog;
 
-    private IEnumerable<VotingCategoryDto> EditableCategories => _editing is { } form && _categories.Any(c => c.Id == form.VotingCategoryId && !c.IsActive)
-        ? _categories.Where(c => c.IsActive || c.Id == form.VotingCategoryId) : _categories.Where(c => c.IsActive);
+    private IEnumerable<CategoryDto> EditableCategories => _editing is { } form && _categories.Any(c => c.Id == form.CategoryId && !c.IsActive)
+        ? _categories.Where(c => c.IsActive || c.Id == form.CategoryId) : _categories.Where(c => c.IsActive);
 
-    private string CategoryName(VotingCategoryDto c) => L.Lang switch { "fa" => Pick(c.NameFa, c.NameEn), "nl" => Pick(c.NameNl, c.NameEn), _ => Pick(c.NameEn, c.NameFa) };
-    private string CategoryName(string id) => _categories.FirstOrDefault(c => c.Id == id) is { } c ? CategoryName(c) : id;
+    private string CategoryName(CategoryDto c) => L.Lang switch { "fa" => Pick(c.NameFa, c.NameEn), "nl" => Pick(c.NameNl, c.NameEn), _ => Pick(c.NameEn, c.NameFa) };
+    private string CategoryName(string? id) => string.IsNullOrWhiteSpace(id) ? L["admin.uncategorized"]
+        : _categories.FirstOrDefault(c => c.Id == id) is { } c ? CategoryName(c) : id;
     private static string Pick(string first, string second) => string.IsNullOrWhiteSpace(first) ? second : first;
     private void OpenGenerate() => _dialog = "generate";
     private void OpenImport() => _dialog = "import";
@@ -218,7 +220,7 @@
 
     protected override async Task LoadAsync()
     {
-        _categories = await Api.AdminVotingCategoriesAsync() ?? [];
+        _categories = await Api.AdminCategoriesAsync() ?? [];
         _generate.CategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "";
         _generatorReady = (await Api.DashboardAsync())?.GeneratorConfigured ?? false;
         _lang = QueryState.Read(Nav, "lang"); _category = QueryState.Read(Nav, "category"); _status = QueryState.Read(Nav, "status"); _text = QueryState.Read(Nav, "q");
@@ -255,7 +257,7 @@
     private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await ReloadAsync(); }
     private async Task GoToPageAsync(int page) { _page = page; await FetchAsync(); }
     private async Task SetPageSizeAsync(int size) { _size = size; _page = 1; await FetchAsync(); }
-    private void StartNew() { _error = null; _editing = new VotingQuestionForm { VotingCategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "" }; }
+    private void StartNew() { _error = null; _editing = new VotingQuestionForm { CategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "" }; }
     private void Edit(string id)
     {
         var question = _results?.Items.FirstOrDefault(q => q.Id == id);

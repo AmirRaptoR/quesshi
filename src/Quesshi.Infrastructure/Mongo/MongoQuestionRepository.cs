@@ -38,15 +38,27 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
     public Task<long> CountAsync(QuestionFilter filter, CancellationToken ct = default)
         => db.Questions.CountDocumentsAsync(Build(filter), cancellationToken: ct);
 
-    public async Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string categoryId, Difficulty level,
+    public async Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string? categoryId, Difficulty level,
         int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
     {
         var filter = F.Eq(q => q.Status, (int)QuestionStatus.Approved)
                    & F.Eq(q => q.Lang, (int)lang)
-                   & F.Eq(q => q.CategoryId, categoryId)
                    & F.Eq(q => q.Level, (int)level)
                    & F.Nin(q => q.Id, exclude);
+        if (categoryId is not null) filter &= F.Eq(q => q.CategoryId, categoryId);
 
+        var docs = await db.Questions.Aggregate().Match(filter).Sample(count).ToListAsync(ct);
+        return [.. docs.Select(d => d.ToDomain())];
+    }
+
+    public async Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, ContentScope scope,
+        Difficulty? level, int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
+    {
+        if (scope.CategoryIds is { Count: 0 }) return [];
+        var filter = F.Eq(q => q.Status, (int)QuestionStatus.Approved)
+            & F.Eq(q => q.Lang, (int)lang) & F.Nin(q => q.Id, exclude);
+        if (scope.CategoryIds is { } categories) filter &= F.In(q => q.CategoryId, categories);
+        if (level is { } difficulty) filter &= F.Eq(q => q.Level, (int)difficulty);
         var docs = await db.Questions.Aggregate().Match(filter).Sample(count).ToListAsync(ct);
         return [.. docs.Select(d => d.ToDomain())];
     }

@@ -26,11 +26,11 @@ public static class VotingEndpoints
 
         api.MapPost("/lobby", async (CreateVotingLobbyDto body, HttpContext ctx,
             IGrainFactory grains, IIdFactory ids, IMatchArchive archive, IPlayerRepository players,
-            IVotingCategoryRepository categories) =>
-            await CreateAsync(body, ctx.User.PlayerId()!, grains, ids, archive, players, categories));
+            ICategoryRepository categories, IContentSettingsRepository settings, IVotingQuestionRepository questions) =>
+            await CreateAsync(body, ctx.User.PlayerId()!, grains, ids, archive, players, categories, settings, questions));
 
         api.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
-            IMatchArchive archive, IPlayerRepository players, IVotingCategoryRepository categories) =>
+            IMatchArchive archive, IPlayerRepository players, ICategoryRepository categories) =>
             await JoinAsync(code, ctx.User.PlayerId()!, grains, archive, players, categories))
             .WithMetadata(new AllowGuest());
 
@@ -39,14 +39,17 @@ public static class VotingEndpoints
             await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
 
-        api.MapGet("/categories", async (string? lang, IVotingCategoryRepository categories) =>
-            (await categories.AllAsync())
-                .Where(category => category.IsActive)
+        api.MapGet("/categories", async (string? lang, ICategoryRepository categories,
+            IContentSettingsRepository settings, IVotingQuestionRepository questions) =>
+        {
+            var configured = (await settings.GetAsync()).VotingCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var eligible = await EligibleCategoriesAsync(lang.ToLanguage(), configured, categories, questions);
+            return eligible
                 .OrderBy(category => category.SortOrder)
                 .ThenBy(category => category.Id)
                 .Select(category => category.ToDto(lang.ToLanguage()))
-                .ToList())
-            .WithMetadata(new AllowGuest());
+                .ToList();
+        }).WithMetadata(new AllowGuest());
 
         api.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
             IPlayerRepository players) => await GetAsync(id, ctx.User.PlayerId()!, grains, players))
@@ -61,8 +64,9 @@ public static class VotingEndpoints
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
         api.MapPut("/{id}/settings", async (string id, UpdateVotingSettingsDto body, HttpContext ctx,
-            IGrainFactory grains, IPlayerRepository players, IVotingCategoryRepository categories) =>
-            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players, categories));
+            IGrainFactory grains, IPlayerRepository players, ICategoryRepository categories,
+            IContentSettingsRepository settings, IVotingQuestionRepository questions) =>
+            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players, categories, settings, questions));
 
         api.MapPost("/{id}/answer", async (string id, SubmitVotingAnswerDto body, HttpContext ctx,
             IGrainFactory grains, IPlayerRepository players) =>
@@ -72,7 +76,8 @@ public static class VotingEndpoints
 
     internal static async Task<IResult> CreateAsync(CreateVotingLobbyDto body, string meId,
         IGrainFactory grains, IIdFactory ids, IMatchArchive archive, IPlayerRepository players,
-        IVotingCategoryRepository categories)
+        ICategoryRepository categories, IContentSettingsRepository? contentSettings = null,
+        IVotingQuestionRepository? questions = null)
     {
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
@@ -84,11 +89,15 @@ public static class VotingEndpoints
 
         var count = body.Questions ?? MatchRules.QuestionsPerMatch;
         if (!MatchRules.IsValidCount(count)) return Results.BadRequest(new { error = "bad_question_count" });
-        var categoryIds = body.Categories ?? [];
-        if (!await CategoriesExistAsync(categoryIds, categories))
-            return Results.BadRequest(new { error = "unknown_category" });
-
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var settings = contentSettings is null ? null : await contentSettings.GetAsync();
+        var configured = settings?.VotingCategoryIds.ToHashSet(StringComparer.Ordinal);
+        var eligible = questions is null
+            ? (await categories.AllAsync()).Where(c => configured is null || configured.Contains(c.Id))
+            : await EligibleCategoriesAsync(lang, configured ?? (await categories.AllAsync()).Select(c => c.Id).ToHashSet(StringComparer.Ordinal), categories, questions);
+        var categoryIds = CategorySelection.Select(eligible, body.Categories).ToList();
+        if (body.Categories is { Count: > 0 } && categoryIds.Count == 0)
+            return Results.BadRequest(new { error = "unknown_category" });
         for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
         {
             var code = ids.NewMatchCode();
@@ -111,7 +120,7 @@ public static class VotingEndpoints
     }
 
     internal static async Task<IResult> JoinAsync(string code, string meId, IGrainFactory grains,
-        IMatchArchive archive, IPlayerRepository players, IVotingCategoryRepository categories)
+        IMatchArchive archive, IPlayerRepository players, ICategoryRepository categories)
     {
         var found = await archive.ByCodeAsync(code);
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
@@ -172,7 +181,8 @@ public static class VotingEndpoints
             statusCode: StatusCodes.Status503ServiceUnavailable);
 
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateVotingSettingsDto body,
-        string meId, IGrainFactory grains, IPlayerRepository players, IVotingCategoryRepository categories)
+        string meId, IGrainFactory grains, IPlayerRepository players, ICategoryRepository categories,
+        IContentSettingsRepository? contentSettings = null, IVotingQuestionRepository? questions = null)
     {
         var me = await players.GetAsync(meId);
         if (me is null) return Results.Unauthorized();
@@ -181,10 +191,15 @@ public static class VotingEndpoints
         if (body.Levels is { Count: > 0 }) return Results.BadRequest(new { error = "levels_not_allowed" });
         var count = body.Questions ?? MatchRules.QuestionsPerMatch;
         if (!MatchRules.IsValidCount(count)) return Results.BadRequest(new { error = "bad_question_count" });
-        var categoryIds = body.Categories ?? [];
-        if (!await CategoriesExistAsync(categoryIds, categories))
-            return Results.BadRequest(new { error = "unknown_category" });
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+        var settings = contentSettings is null ? null : await contentSettings.GetAsync();
+        var configured = settings?.VotingCategoryIds.ToHashSet(StringComparer.Ordinal);
+        var eligible = questions is null
+            ? (await categories.AllAsync()).Where(c => configured is null || configured.Contains(c.Id))
+            : await EligibleCategoriesAsync(lang, configured ?? (await categories.AllAsync()).Select(c => c.Id).ToHashSet(StringComparer.Ordinal), categories, questions);
+        var categoryIds = CategorySelection.Select(eligible, body.Categories).ToList();
+        if (body.Categories is { Count: > 0 } && categoryIds.Count == 0)
+            return Results.BadRequest(new { error = "unknown_category" });
         var ok = await grains.GetTenantGrain<IVotingMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang,
             count, categoryIds, [], body.Capacity, (int)GameMode.Voting);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
@@ -222,13 +237,6 @@ public static class VotingEndpoints
         }
     }
 
-    private static async Task<bool> CategoriesExistAsync(IReadOnlyList<string> ids, IVotingCategoryRepository categories)
-    {
-        foreach (var id in ids.Distinct())
-            if (await categories.GetAsync(id) is null) return false;
-        return true;
-    }
-
     private static bool TryParseKind(string? raw, out VotingAnswerKind kind)
     {
         kind = raw?.ToLowerInvariant() switch
@@ -241,6 +249,17 @@ public static class VotingEndpoints
             _ => (VotingAnswerKind)(-1)
         };
         return Enum.IsDefined(kind);
+    }
+
+    private static async Task<IReadOnlyList<Category>> EligibleCategoriesAsync(Language lang,
+        IReadOnlySet<string> configured, ICategoryRepository categories, IVotingQuestionRepository questions)
+    {
+        var eligible = new List<Category>();
+        foreach (var category in await categories.AllAsync())
+            if (category.IsActive && configured.Contains(category.Id)
+                && await questions.CountAsync(new VotingQuestionFilter(lang, category.Id, QuestionStatus.Approved, Take: 1)) > 0)
+                eligible.Add(category);
+        return eligible;
     }
 
     internal static async Task<VotingViewDto> ToDtoAsync(VotingView view, string meId, IPlayerRepository players)

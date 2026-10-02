@@ -99,8 +99,9 @@
     private int _pageSize = 25;
 
     /// <summary>A category's display name, falling back to the slug for one that has since been deleted.</summary>
-    private string CategoryName(string id)
-        => _categories.FirstOrDefault(c => c.Id == id) is { } category ? L.Name(category) : id;
+    private string CategoryName(string? id)
+        => string.IsNullOrWhiteSpace(id) ? L["admin.uncategorized"]
+            : _categories.FirstOrDefault(c => c.Id == id) is { } category ? L.Name(category) : id;
 
     protected override async Task LoadAsync()
     {

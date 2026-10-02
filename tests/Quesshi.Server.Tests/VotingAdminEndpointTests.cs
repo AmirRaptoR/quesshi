@@ -21,10 +21,10 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
         return client;
     }
 
-    private static VotingCategoryDto Category(string id = "friends")
+    private static CategoryDto Category(string id = "friends")
         => new(id, "دوستان", "Friends", "Vrienden", "👥", "#123456", true, 1);
 
-    private static SaveVotingQuestionDto Question(string category = "m-friends", string? id = null,
+    private static SaveVotingQuestionDto Question(string category = "friends", string? id = null,
         string source = "fixed")
         => new(id, "en", category, $"Which friend {Guid.NewGuid():N}?", source,
             source == "fixed" ? ["A", "B"] : [], "image", "/media/friend.png", "credit", "friends", "choice", "pending");
@@ -37,7 +37,7 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
 
     private static async Task SeedCategoryAsync(HttpClient client)
     {
-        var response = await client.PostAsJsonAsync("/api/admin/voting/categories", Category());
+        var response = await client.PostAsJsonAsync("/api/admin/categories", Category());
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
@@ -50,7 +50,7 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
         var create = await client.PostAsJsonAsync("/api/admin/voting/questions", Question());
         Assert.Equal(HttpStatusCode.OK, create.StatusCode);
         var saved = (await create.Content.ReadFromJsonAsync<VotingQuestionDto>())!;
-        Assert.Equal("m-friends", saved.VotingCategoryId);
+        Assert.Equal("friends", saved.CategoryId);
         Assert.Equal("/media/friend.png", saved.Media!.Url);
         Assert.Equal("credit", saved.Media.Attribution);
         Assert.Equal("friends|choice", saved.Topic);
@@ -94,18 +94,22 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
     }
 
     [Fact]
-    public async Task Voting_categories_are_namespaced_and_trivia_rejects_reserved_prefix()
+    public async Task Shared_category_can_be_configured_for_both_game_families()
     {
         using var client = AdminClient();
-        var category = await client.PostAsJsonAsync("/api/admin/voting/categories", Category("household"));
+        var category = await client.PostAsJsonAsync("/api/admin/categories", Category("household"));
         Assert.Equal(HttpStatusCode.OK, category.StatusCode);
 
-        var categories = await client.GetFromJsonAsync<List<VotingCategoryDto>>("/api/admin/voting/categories");
-        Assert.Contains(categories!, c => c.Id == "m-household");
+        var saved = await client.PutAsJsonAsync("/api/admin/content-settings",
+            new ContentSettingsDto(["household"], ["household"]));
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var settings = await saved.Content.ReadFromJsonAsync<ContentSettingsDto>();
+        Assert.Equal(["household"], settings!.TriviaCategoryIds);
+        Assert.Equal(["household"], settings.VotingCategoryIds);
 
-        var trivia = await client.PostAsJsonAsync("/api/admin/categories",
-            new CategoryDto("m-household", "Household", "خانه", "Household", "◆", "#123456", true, 0));
-        Assert.Equal("reserved_prefix", await ErrorAsync(trivia));
+        var reloaded = await client.GetFromJsonAsync<Quesshi.Shared.AdminContentSettingsDto>("/api/admin/content-settings");
+        Assert.Equal(["household"], reloaded!.Settings.TriviaCategoryIds);
+        Assert.Equal(["household"], reloaded.Settings.VotingCategoryIds);
     }
 
     [Theory]
@@ -114,19 +118,10 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
     [InlineData("👨‍👩‍👧‍👦")]
     [InlineData("✈️")]
     [InlineData("👍🏽")]
-    public async Task Both_category_endpoints_preserve_explicit_emoji_and_emoji_prefixed_names(string icon)
+    public async Task Shared_category_endpoint_preserves_explicit_emoji_and_emoji_prefixed_names(string icon)
     {
         using var client = AdminClient();
         var suffix = Guid.NewGuid().ToString("N");
-
-        var voting = await client.PostAsJsonAsync("/api/admin/voting/categories",
-            Category("emoji-" + suffix) with { Icon = $" {icon} ", NameFa = "🍳 فارسی", NameEn = "🍳 English", NameNl = "🍳 Dutch" });
-        Assert.Equal(HttpStatusCode.OK, voting.StatusCode);
-        var votingSaved = (await voting.Content.ReadFromJsonAsync<VotingCategoryDto>())!;
-        Assert.Equal(icon, votingSaved.Icon);
-        Assert.Equal("🍳 فارسی", votingSaved.NameFa);
-        Assert.Equal("🍳 English", votingSaved.NameEn);
-        Assert.Equal("🍳 Dutch", votingSaved.NameNl);
 
         var triviaId = "emoji-" + suffix;
         var trivia = await client.PostAsJsonAsync("/api/admin/categories",
@@ -147,14 +142,10 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
     [InlineData("😀😃")]
     [InlineData("🏽")]
     [InlineData("👨‍")]
-    public async Task Both_category_endpoints_reject_invalid_icons_without_writing(string icon)
+    public async Task Shared_category_endpoint_rejects_invalid_icons_without_writing(string icon)
     {
         using var client = AdminClient();
         var suffix = Guid.NewGuid().ToString("N");
-
-        var voting = await client.PostAsJsonAsync("/api/admin/voting/categories",
-            Category("bad-icon-" + suffix) with { Icon = icon });
-        Assert.Equal("bad_icon", await ErrorAsync(voting));
 
         var trivia = await client.PostAsJsonAsync("/api/admin/categories",
             new CategoryDto("bad-icon-" + suffix, "display", "فارسی", "English", icon, "#123456", true, 1, "Dutch"));
@@ -188,7 +179,7 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
             new GenerateVotingRequestDto("en", "friends", "participants", 5));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var run = (await response.Content.ReadFromJsonAsync<VotingGenerationRunDto>())!;
-        Assert.Equal("m-friends", run.CategoryId);
+        Assert.Equal("friends", run.CategoryId);
         Assert.Equal("participants", run.AnswerSource);
         Assert.Equal("generator_not_configured", run.Error);
         Assert.Equal(0, run.Requested);
@@ -212,7 +203,8 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
 
     [Theory]
     [InlineData("/api/admin/voting/questions")]
-    [InlineData("/api/admin/voting/categories")]
+    [InlineData("/api/admin/categories")]
+    [InlineData("/api/admin/content-settings")]
     public async Task Voting_routes_require_admin_authorization(string path)
     {
         using var client = _host.NewClient();
@@ -220,12 +212,37 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
     }
 
     [Fact]
+    public async Task Content_settings_cannot_be_changed_without_admin_authorization()
+    {
+        using var client = _host.NewClient();
+        var response = await client.PutAsJsonAsync("/api/admin/content-settings", new ContentSettingsDto(["trivia"], ["voting"]));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Voting_generation_requires_admin_authorization()
     {
         using var client = _host.NewClient();
         var response = await client.PostAsJsonAsync("/api/admin/voting/generate",
-            new GenerateVotingRequestDto("en", "m-friends", "participants", 5));
+            new GenerateVotingRequestDto("en", "friends", "participants", 5));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Shared_category_deletion_checks_voting_questions_too()
+    {
+        using var client = AdminClient();
+        const string categoryId = "shared-voting-use";
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/admin/categories", Category(categoryId))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/admin/voting/questions", Question(categoryId))).StatusCode);
+
+        var deletion = await client.DeleteAsync($"/api/admin/categories/{categoryId}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, deletion.StatusCode);
+        var categories = await client.GetFromJsonAsync<List<CategoryDto>>("/api/admin/categories");
+        Assert.Contains(categories!, category => category.Id == categoryId && category.IsActive);
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();

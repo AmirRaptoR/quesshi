@@ -9,7 +9,7 @@ public sealed class VotingQuestionDoc
 {
     [BsonId] public string Id { get; set; } = "";
     public int Lang { get; set; }
-    public string VotingCategoryId { get; set; } = "";
+    public string? CategoryId { get; set; }
     public string Prompt { get; set; } = "";
     public int AnswerSource { get; set; }
     public List<string> FixedChoices { get; set; } = [];
@@ -28,7 +28,7 @@ public sealed class VotingQuestionDoc
     {
         Id = q.Id,
         Lang = (int)q.Lang,
-        VotingCategoryId = q.VotingCategoryId,
+        CategoryId = q.CategoryId,
         Prompt = q.Prompt,
         AnswerSource = (int)q.AnswerSource,
         FixedChoices = [.. q.FixedChoices],
@@ -45,7 +45,7 @@ public sealed class VotingQuestionDoc
     };
 
     public VotingQuestion ToDomain() => VotingQuestion.Restore(
-        Id, (Language)Lang, VotingCategoryId, Prompt, (VotingAnswerSource)AnswerSource,
+        Id, (Language)Lang, CategoryId, Prompt, (VotingAnswerSource)AnswerSource,
         FixedChoices, new MediaRef((MediaKind)MediaKind, MediaUrl, MediaAttribution),
         (QuestionStatus)Status, (QuestionSource)Source, Topic,
         new DateTimeOffset(CreatedAt, TimeSpan.Zero), new DateTimeOffset(UpdatedAt, TimeSpan.Zero), TimesServed);

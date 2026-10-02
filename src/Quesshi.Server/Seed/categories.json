@@ -11,5 +11,11 @@
   { "id": "art",        "nameFa": "هنر",             "nameEn": "Art",              "icon": "🎨", "color": "#E86FA8", "sortOrder": 10 },
   { "id": "technology", "nameFa": "فناوری",          "nameEn": "Technology",       "icon": "💻", "color": "#4FD1C5", "sortOrder": 11 },
   { "id": "sport",      "nameFa": "ورزش",            "nameEn": "Sport",            "icon": "⚽", "color": "#48BB78", "sortOrder": 12 },
-  { "id": "knm",        "nameFa": "شناخت جامعهٔ هلند", "nameEn": "Dutch Society (KNM)", "nameNl": "Kennis van de Nederlandse Maatschappij", "icon": "🇳🇱", "color": "#FF7A2F", "sortOrder": 13 }
+  { "id": "knm",        "nameFa": "شناخت جامعهٔ هلند", "nameEn": "Dutch Society (KNM)", "nameNl": "Kennis van de Nederlandse Maatschappij", "icon": "🇳🇱", "color": "#FF7A2F", "sortOrder": 13 },
+  { "id": "partners", "nameFa": "همسران", "nameEn": "Partners", "nameNl": "Partners", "icon": "💞", "color": "#E86FA8", "sortOrder": 14 },
+  { "id": "partners-living-together", "nameFa": "همخانه‌ها", "nameEn": "Partners living together", "nameNl": "Samenwonende partners", "icon": "🏠", "color": "#C77DFF", "sortOrder": 15 },
+  { "id": "families-with-children", "nameFa": "خانواده‌های دارای فرزند", "nameEn": "Families with children", "nameNl": "Gezinnen met kinderen", "icon": "👨‍👩‍👧", "color": "#5FBF6A", "sortOrder": 16 },
+  { "id": "friends", "nameFa": "دوستان", "nameEn": "Friends", "nameNl": "Vrienden", "icon": "🤝", "color": "#2EC4B6", "sortOrder": 17 },
+  { "id": "colleagues", "nameFa": "همکاران", "nameEn": "Colleagues", "nameNl": "Collega's", "icon": "💼", "color": "#F2B441", "sortOrder": 18 },
+  { "id": "teammates", "nameFa": "هم‌تیمی‌ها", "nameEn": "Teammates", "nameNl": "Teamgenoten", "icon": "⚽", "color": "#48BB78", "sortOrder": 19 }
 ]

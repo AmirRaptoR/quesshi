@@ -10,6 +10,17 @@ public class VotingQuestionTests
         "Match each actor to their role.", VotingAnswerSource.Participants, null,
         T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
 
+    [Fact]
+    public void Uncategorized_voting_question_is_valid_and_editable()
+    {
+        var question = VotingQuestion.Create("mq-null", Language.En, null, "Who should host?",
+            VotingAnswerSource.Participants, null, T0);
+
+        Assert.Null(question.CategoryId);
+        question.Edit(Language.En, null, "Who should choose?", VotingAnswerSource.Participants, null, null, null, T0.AddMinutes(1));
+        Assert.Null(question.CategoryId);
+    }
+
     private static VotingQuestion NewFixed(IReadOnlyList<string>? choices = null) => VotingQuestion.Create(
         "mq1", Language.En, "movies", "Match each actor to their role.", VotingAnswerSource.Fixed,
         choices ?? ["Hero", "Sidekick", "Villain"], T0, source: QuestionSource.Admin, status: QuestionStatus.Pending);
@@ -112,7 +123,7 @@ public class VotingQuestionTests
             VotingAnswerSource.Participants, null, T0);
 
         Assert.Equal("", q.Id);
-        Assert.Equal("not-m-prefixed", q.VotingCategoryId);
+        Assert.Equal("not-m-prefixed", q.CategoryId);
         Assert.Equal("Prompt", q.Prompt);
         Assert.Equal(MediaRef.None, q.Media);
     }

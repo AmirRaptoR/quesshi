@@ -20,7 +20,7 @@ public static class VotingQuestionImport
 
     public static async Task<(string? RequestError, ImportReportDto? Report)> RunAsync(
         string? format, Stream? content, long contentLength, bool dryRun,
-        IVotingQuestionRepository questions, IVotingCategoryRepository categories,
+        IVotingQuestionRepository questions, ICategoryRepository categories,
         IClock clock, IIdFactory ids, CancellationToken ct = default)
     {
         var normalizedFormat = format?.Trim().ToLowerInvariant();
@@ -105,7 +105,7 @@ public static class VotingQuestionImport
     }
 
     private static async Task<(VotingQuestion? Question, string? Error)> BindRowAsync(
-        Dictionary<string, string> fields, IVotingCategoryRepository categories,
+        Dictionary<string, string> fields, ICategoryRepository categories,
         IIdFactory ids, DateTimeOffset now, CancellationToken ct)
     {
         var langRaw = Field(fields, "lang")?.ToLowerInvariant();
@@ -114,7 +114,6 @@ public static class VotingQuestionImport
 
         var categoryId = Field(fields, "categoryid")?.ToLowerInvariant();
         if (categoryId is null) return (null, "unknown_category");
-        if (!categoryId.StartsWith("m-", StringComparison.Ordinal)) categoryId = "m-" + categoryId;
         var category = await categories.GetAsync(categoryId, ct);
         if (category is null) return (null, "unknown_category");
         if (!category.IsActive) return (null, "inactive_category");

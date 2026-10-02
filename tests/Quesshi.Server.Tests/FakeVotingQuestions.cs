@@ -17,20 +17,20 @@ public sealed class FakeVotingQuestions : IVotingQuestionRepository
         => Task.FromResult(Items.FirstOrDefault(q => q.Id == id) is { } question ? Clone(question) : null);
     public Task<IReadOnlyList<VotingQuestion>> FindAsync(VotingQuestionFilter f, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<VotingQuestion>>([.. Items.Where(q =>
-            (f.Lang is null || q.Lang == f.Lang) && (f.CategoryId is null || q.VotingCategoryId == f.CategoryId) &&
+            (f.Lang is null || q.Lang == f.Lang) && (f.CategoryId is null || q.CategoryId == f.CategoryId) &&
             (f.Status is null || q.Status == f.Status) &&
             (string.IsNullOrWhiteSpace(f.Text) || q.Prompt.Contains(f.Text, StringComparison.OrdinalIgnoreCase)))
             .Select(q => Clone(q))
             .Skip(f.Skip).Take(f.Take)]);
     public Task<long> CountAsync(VotingQuestionFilter f, CancellationToken ct = default)
         => Task.FromResult((long)Items.Count(q =>
-            (f.Lang is null || q.Lang == f.Lang) && (f.CategoryId is null || q.VotingCategoryId == f.CategoryId) &&
+            (f.Lang is null || q.Lang == f.Lang) && (f.CategoryId is null || q.CategoryId == f.CategoryId) &&
             (f.Status is null || q.Status == f.Status) &&
             (string.IsNullOrWhiteSpace(f.Text) || q.Prompt.Contains(f.Text, StringComparison.OrdinalIgnoreCase))));
-    public Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string categoryId, int count,
+    public Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string? categoryId, int count,
         IReadOnlyCollection<string> exclude, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<VotingQuestion>>([.. Items.Where(q => q.Status == QuestionStatus.Approved &&
-            q.Lang == lang && q.VotingCategoryId == categoryId && !exclude.Contains(q.Id)).Take(count).Select(q => Clone(q))]);
+            q.Lang == lang && (categoryId is null || q.CategoryId == categoryId) && !exclude.Contains(q.Id)).Take(count).Select(q => Clone(q))]);
     public Task UpsertAsync(VotingQuestion q, CancellationToken ct = default)
     {
         if (q.Topic is { } topic && Items.Any(x => x.Id != q.Id && x.Lang == q.Lang && x.Topic == topic))
@@ -81,11 +81,11 @@ public sealed class FakeVotingQuestions : IVotingQuestionRepository
     public Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
         CancellationToken ct = default)
         => Task.FromResult<IReadOnlyCollection<string>>([.. Items
-            .Where(q => q.Lang == lang && q.VotingCategoryId == categoryId)
+            .Where(q => q.Lang == lang && q.CategoryId == categoryId)
             .Select(q => q.Prompt)]);
 
     private static VotingQuestion Clone(VotingQuestion q, int? timesServed = null)
-        => VotingQuestion.Restore(q.Id, q.Lang, q.VotingCategoryId, q.Prompt, q.AnswerSource,
+        => VotingQuestion.Restore(q.Id, q.Lang, q.CategoryId, q.Prompt, q.AnswerSource,
             q.FixedChoices, q.Media, q.Status, q.Source, q.Topic, q.CreatedAt, q.UpdatedAt,
             timesServed ?? q.TimesServed);
 }

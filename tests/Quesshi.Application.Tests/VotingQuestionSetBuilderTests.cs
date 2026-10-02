@@ -5,89 +5,54 @@ namespace Quesshi.Application.Tests;
 
 public sealed class VotingQuestionSetBuilderTests
 {
-    private static readonly DateTimeOffset T0 = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
     private readonly InMemoryVotingQuestions _questions = new();
-    private readonly InMemoryVotingCategories _categories = new();
+    private VotingQuestionSetBuilder Sut() => new(_questions);
 
-    private VotingQuestionSetBuilder Sut() => new(_questions, _categories);
+    private async Task AddAsync(string id, string? category)
+        => await _questions.UpsertAsync(VotingQuestion.Create(id, Language.En, category, $"Prompt {id}",
+            VotingAnswerSource.Fixed, ["one", "two"], DateTimeOffset.UnixEpoch,
+            status: QuestionStatus.Approved));
 
-    private async Task Stock(int perCategory, params string[] ids)
+    [Fact]
+    public async Task Null_scope_samples_categorized_and_uncategorized_voting_content()
     {
-        foreach (var id in ids)
+        for (var i = 0; i < MatchRules.QuestionsPerMatch / 2; i++)
         {
-            await _categories.UpsertAsync(new VotingCategory(id, id, id, "*", "#fff"));
-            for (var i = 0; i < perCategory; i++)
-                await _questions.UpsertAsync(VotingQuestion.Create($"{id}-{i}", Language.En, id,
-                    $"prompt {id}-{i}", VotingAnswerSource.Fixed, ["one", "two"], T0,
-                    status: QuestionStatus.Approved));
+            await AddAsync($"uncategorized-{i}", null);
+            await AddAsync($"categorized-{i}", "topic");
         }
+
+        var set = await Sut().BuildAsync(Language.En, ContentScope.All);
+
+        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
+        Assert.Contains(set, question => question.CategoryId is null);
+        Assert.Contains(set, question => question.CategoryId == "topic");
     }
 
     [Fact]
-    public async Task Draws_only_voting_questions_and_never_repeats()
+    public async Task Empty_scope_samples_none_and_explicit_scope_never_escapes()
     {
-        await Stock(10, "a", "b", "c");
+        await AddAsync("inside", "allowed");
+        for (var i = 0; i < 10; i++) await AddAsync($"outside-{i}", "outside");
 
-        var result = await Sut().BuildAsync(Language.En, ["a", "b", "c"], 10);
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(() => Sut().BuildAsync(Language.En, new ContentScope([]), 1));
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(() =>
+            Sut().BuildAsync(Language.En, new ContentScope(["allowed"]), 2));
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["outside", "allowed"]), 5);
 
-        Assert.Equal(10, result.Count);
-        Assert.Equal(10, result.Select(q => q.Id).Distinct().Count());
-        Assert.All(result, q => Assert.IsType<VotingQuestion>(q));
+        Assert.All(set, question => Assert.Contains(question.CategoryId, new[] { "outside", "allowed" }));
+        Assert.Contains(set, question => question.CategoryId == "allowed");
     }
 
     [Fact]
-    public async Task Named_categories_are_exclusive_and_rotate_in_order()
+    public async Task Voting_builder_never_repeats_a_question_and_keeps_the_default_count()
     {
-        await Stock(10, "a", "b", "c");
+        for (var i = 0; i < MatchRules.QuestionsPerMatch * 2; i++)
+            await AddAsync($"question-{i}", "topic");
 
-        var result = await Sut().BuildAsync(Language.En, ["b", "a"], 10);
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["topic"]), questionCount: 999);
 
-        Assert.Equal(["b", "a", "b", "a", "b", "a", "b", "a", "b", "a"],
-            result.Select(q => q.VotingCategoryId));
-    }
-
-    [Fact]
-    public async Task Unknown_or_inactive_named_ids_are_dropped_and_all_dropped_means_random_active_set()
-    {
-        await Stock(10, "a", "b", "c", "inactive");
-        await _categories.UpsertAsync(new VotingCategory("inactive", "", "", "", "", false));
-
-        var result = await Sut().BuildAsync(Language.En, ["missing", "inactive", "inactive"], 10);
-
-        Assert.Equal(3, result.Select(q => q.VotingCategoryId).Distinct().Count());
-        Assert.DoesNotContain("inactive", result.Select(q => q.VotingCategoryId));
-    }
-
-    [Fact]
-    public async Task Named_shortfall_does_not_escape_to_an_unnamed_category()
-    {
-        await Stock(10, "a", "b");
-        await _categories.UpsertAsync(new VotingCategory("empty", "", "", "", ""));
-
-        var error = await Assert.ThrowsAsync<NotEnoughQuestionsException>(() =>
-            Sut().BuildAsync(Language.En, ["empty"], 10));
-
-        Assert.Contains("0 of 10", error.Message);
-        Assert.Contains("empty", error.Message);
-    }
-
-    [Fact]
-    public async Task Invalid_builder_count_uses_the_default()
-    {
-        await Stock(10, "a", "b", "c");
-
-        var result = await Sut().BuildAsync(Language.En, ["a", "b", "c"], 7);
-
-        Assert.Equal(MatchRules.QuestionsPerMatch, result.Count);
-    }
-
-    [Fact]
-    public async Task No_active_voting_categories_is_a_not_enough_error()
-    {
-        await _categories.UpsertAsync(new VotingCategory("off", "", "", "", "", false));
-
-        var error = await Assert.ThrowsAsync<NotEnoughQuestionsException>(() => Sut().BuildAsync(Language.En));
-
-        Assert.Contains("no active categories", error.Message);
+        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
+        Assert.Equal(set.Count, set.Select(q => q.Id).Distinct().Count());
     }
 }

@@ -84,8 +84,9 @@ public static class LiveEndpoints
         // capacity-aware ILiveMatchGrain.JoinAsync a multi-seat lobby needs, so an N-player lobby is
         // joined exactly as a 1v1 always was.
         api.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids,
-            IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
-            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, archive, players, questions, categories, clock))
+            IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions,
+            ICategoryRepository categories, IContentSettingsRepository settings, IClock clock) =>
+            await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, archive, players, questions, categories, clock, settings))
             .WithMetadata(new RequiresLiveEnabled());
 
         api.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
@@ -94,12 +95,24 @@ public static class LiveEndpoints
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
         api.MapPost("/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetTenantGrain<ILiveMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
-                ? Results.Ok()
-                : Results.BadRequest(new { error = "cannot_start" }));
+        {
+            try
+            {
+                return await grains.GetTenantGrain<ILiveMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+                    ? Results.Ok()
+                    : Results.BadRequest(new { error = "cannot_start" });
+            }
+            catch (InvalidOperationException ex) when (ex.Message.StartsWith("live_not_enough_questions:", StringComparison.Ordinal))
+            {
+                return Results.Json(new { error = "not_enough_questions", detail = ex.Message["live_not_enough_questions:".Length..] },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
 
-        api.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
-            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
+        api.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx,
+            IGrainFactory grains, IPlayerRepository players, ICategoryRepository categories,
+            IContentSettingsRepository settings, IQuestionRepository questions) =>
+            await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players, categories, settings, questions));
     }
 
     /// <summary>
@@ -114,7 +127,7 @@ public static class LiveEndpoints
     /// </summary>
     internal static async Task<IResult> CreateLobbyAsync(CreateLobbyDto body, string meId, IGrainFactory grains,
         IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions,
-        ICategoryRepository categories, IClock clock)
+        ICategoryRepository categories, IClock clock, IContentSettingsRepository? contentSettings = null)
     {
         var maxCapacity = await grains.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
         if (body.Capacity < 2 || body.Capacity > maxCapacity) return Results.BadRequest(new { error = "bad_capacity" });
@@ -125,6 +138,17 @@ public static class LiveEndpoints
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
+        var selected = body.Categories ?? [];
+        if (contentSettings is not null)
+        {
+            var configured = (await contentSettings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var playable = Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+            selected = [.. CategorySelection.Select((await categories.AllAsync())
+                .Where(c => configured.Contains(c.Id)
+                    && playable.GetValueOrDefault(c.Id, []).Contains(lang.Code(), StringComparer.Ordinal)), body.Categories)];
+            if (body.Categories is { Count: > 0 } && selected.Count == 0)
+                return Results.BadRequest(new { error = "unknown_category" });
+        }
 
         for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
         {
@@ -134,7 +158,7 @@ public static class LiveEndpoints
             var matchId = ids.NewId();
             var grain = grains.GetTenantGrain<ILiveMatchGrain>(matchId);
             LiveView view;
-            try { view = await grain.CreateLobbyAsync(code, meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity); }
+            try { view = await grain.CreateLobbyAsync(code, meId, (int)lang, count, selected, levels, body.Capacity); }
             catch (ArgumentOutOfRangeException) { return Results.BadRequest(new { error = "bad_capacity" }); }
             var lookup = await players.LiveLookupAsync(view);
             return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
@@ -144,7 +168,8 @@ public static class LiveEndpoints
     }
 
     internal static async Task<IResult> UpdateSettingsAsync(string id, UpdateDuelSettingsDto body, string meId,
-        IGrainFactory grains, IPlayerRepository players)
+        IGrainFactory grains, IPlayerRepository players, ICategoryRepository? categories = null,
+        IContentSettingsRepository? contentSettings = null, IQuestionRepository? questions = null)
     {
         if (body.Capacity is { } capacity and (< MatchRules.MinParticipants or > MatchRules.MaxParticipants))
             return Results.BadRequest(new { error = "bad_capacity" });
@@ -155,8 +180,19 @@ public static class LiveEndpoints
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
+        var selected = body.Categories ?? [];
+        if (categories is not null && contentSettings is not null)
+        {
+            var configured = (await contentSettings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var playable = questions is null ? null : Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+            selected = [.. CategorySelection.Select((await categories.AllAsync())
+                .Where(c => configured.Contains(c.Id) && (playable is null
+                    || playable.GetValueOrDefault(c.Id, []).Contains(lang.Code(), StringComparer.Ordinal))), body.Categories)];
+            if (body.Categories is { Count: > 0 } && selected.Count == 0)
+                return Results.BadRequest(new { error = "unknown_category" });
+        }
 
-        var ok = await grains.GetTenantGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+        var ok = await grains.GetTenantGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, selected, levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 
@@ -198,7 +234,7 @@ public static class LiveEndpoints
                 .Select(l => (Difficulty)l)
                 .ToList();
 
-            set = [.. await builder.BuildAsync(lang, body.Categories, body.Questions, levels)];
+            set = [.. await builder.BuildAsync(lang, new ContentScope(body.Categories), body.Questions, levels)];
         }
         catch (NotEnoughQuestionsException ex)
         {

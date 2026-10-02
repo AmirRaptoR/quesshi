@@ -84,7 +84,7 @@ public sealed class VotingEndpointTests(ClusterFixture fixture)
         var lobby = await create.Content.ReadFromJsonAsync<VotingViewDto>();
 
         Assert.Equal([category], lobby!.CategoryIds);
-        var categories = await client.GetFromJsonAsync<List<VotingCategoryDto>>(
+        var categories = await client.GetFromJsonAsync<List<CategoryDto>>(
             "/api/voting/categories?lang=en");
         Assert.Contains(categories!, item => item.Id == category && item.IsActive);
 
@@ -528,7 +528,10 @@ public sealed class VotingEndpointTests(ClusterFixture fixture)
     {
         var prefix = Guid.NewGuid().ToString("N");
         var category = $"m-empty-{prefix}";
-        Shared.VotingCategories.Items.Add(new VotingCategory(category, "خالی", "Empty", "x", "#000"));
+        Shared.VotingCategories.Items.Add(new Category(category, "خالی", "Empty", "x", "#000"));
+        await Shared.VotingQuestions.UpsertAsync(VotingQuestion.Create($"empty-voting-{prefix}", Language.En,
+            category, "Too little voting content", VotingAnswerSource.Fixed, ["one", "two"], Shared.Clock.Now,
+            status: QuestionStatus.Approved));
         var owner = Player.Register($"owner-{prefix}", $"{prefix}@example.com", "Owner", Language.En, Shared.Clock.Now);
         var other = Player.Register($"other-{prefix}", $"other-{prefix}@example.com", "Other", Language.En, Shared.Clock.Now);
         await Shared.Players.UpsertAsync(owner);
@@ -559,7 +562,7 @@ public sealed class VotingEndpointTests(ClusterFixture fixture)
     private static string Seed(string prefix)
     {
         var categoryId = $"m-{prefix}";
-        Shared.VotingCategories.Items.Add(new VotingCategory(categoryId, "آزمون", "Test", "x", "#000"));
+        Shared.VotingCategories.Items.Add(new Category(categoryId, "آزمون", "Test", "x", "#000"));
         for (var i = 0; i < 10; i++)
             Shared.VotingQuestions.Items.Add(VotingQuestion.Create($"mq-{prefix}-{i}", Language.En,
                 categoryId, $"Prompt {i}", VotingAnswerSource.Participants, null, Shared.Clock.Now,
@@ -571,7 +574,7 @@ public sealed class VotingEndpointTests(ClusterFixture fixture)
     private static string SeedFixed(string prefix)
     {
         var categoryId = $"m-fixed-{prefix}";
-        Shared.VotingCategories.Items.Add(new VotingCategory(categoryId, "اختیار", "Fixed", "x", "#000"));
+        Shared.VotingCategories.Items.Add(new Category(categoryId, "اختیار", "Fixed", "x", "#000"));
         for (var i = 0; i < 10; i++)
             Shared.VotingQuestions.Items.Add(VotingQuestion.Create($"mq-fixed-{prefix}-{i}", Language.En,
                 categoryId, $"Fixed prompt {i}", VotingAnswerSource.Fixed, ["A", "B"], Shared.Clock.Now,

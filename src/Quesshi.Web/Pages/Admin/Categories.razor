@@ -18,6 +18,28 @@
             <Filters><span class="faint">@L.Num(_categories.Count) @L["admin.categories"]</span></Filters>
             <Actions><button type="button" class="btn btn--sm" @onclick="StartNew">@L["admin.addCategory"]</button></Actions>
         </AdminToolbar>
+        <section class="card stack" style="margin:1rem 0;padding:1rem">
+            <h2 style="margin:0">@L["admin.categoryFamilies"]</h2>
+            <p class="faint">@L["admin.categoryFamiliesHint"]</p>
+            <div class="grid-2">
+                <div class="stack"><strong>@L["admin.triviaFamily"]</strong>
+                    @foreach (var category in _categories)
+                    {
+                        <label class="row"><input type="checkbox" checked="@_content.TriviaCategoryIds.Contains(category.Id)"
+                            @onchange="e => SetTrivia(category.Id, (bool)e.Value!)" /> @category.NameEn</label>
+                    }
+                </div>
+                <div class="stack"><strong>@L["admin.votingFamily"]</strong>
+                    @foreach (var category in _categories)
+                    {
+                        <label class="row"><input type="checkbox" checked="@_content.VotingCategoryIds.Contains(category.Id)"
+                            @onchange="e => SetVoting(category.Id, (bool)e.Value!)" /> @category.NameEn</label>
+                    }
+                </div>
+            </div>
+            <div class="row"><button class="btn btn--sm" @onclick="SaveSettingsAsync">@L["admin.saveGameCategories"]</button>
+                @if (_settingsSaved) { <span class="faint">@L["admin.saved"]</span> }</div>
+        </section>
         <AdminCategoryTable Rows="Rows" Edit="Edit" Toggle="ToggleAsync" Delete="DeleteAsync" />
         @if (_error is not null) { <div class="notice notice--bad" style="margin-top:.8rem">@_error</div> }
 
@@ -54,6 +76,8 @@
 
 @code {
     private List<CategoryDto> _categories = [];
+    private ContentSettingsDto _content = new([], []);
+    private bool _settingsSaved;
 
     private CategoryForm _editing = new();
     private bool _known, _editorOpen;
@@ -61,7 +85,27 @@
     private IReadOnlyList<AdminCategoryRow> Rows => [.. _categories.Select(c =>
         new AdminCategoryRow(c.Id, c.NameFa, c.NameEn, c.NameNl, c.Icon, c.Color, c.IsActive))];
 
-    protected override async Task LoadAsync() => _categories = await Api.AdminCategoriesAsync() ?? [];
+    protected override async Task LoadAsync()
+    {
+        var response = await Api.ContentSettingsAsync();
+        _categories = response?.Categories ?? await Api.AdminCategoriesAsync() ?? [];
+        _content = response?.Settings ?? new([], []);
+    }
+
+    private void SetTrivia(string id, bool selected) => _content = _content with
+    { TriviaCategoryIds = UpdateIds(_content.TriviaCategoryIds, id, selected) };
+    private void SetVoting(string id, bool selected) => _content = _content with
+    { VotingCategoryIds = UpdateIds(_content.VotingCategoryIds, id, selected) };
+    private static List<string> UpdateIds(List<string> ids, string id, bool selected)
+        => selected ? [.. ids.Append(id).Distinct(StringComparer.Ordinal)] : [.. ids.Where(x => x != id)];
+    private async Task SaveSettingsAsync()
+    {
+        _settingsSaved = false;
+        var saved = await Api.SaveContentSettingsAsync(_content);
+        if (saved is null) { _error = L["common.error"]; return; }
+        _content = saved;
+        _settingsSaved = true;
+    }
 
     private void StartNew() { Reset(); _editorOpen = true; }
 

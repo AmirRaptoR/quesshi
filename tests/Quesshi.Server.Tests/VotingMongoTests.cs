@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Infrastructure.Mongo;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Seed;
 
 namespace Quesshi.Server.Tests;
@@ -33,6 +34,44 @@ public sealed class VotingMongoTests
     }
 
     [Fact]
+    public async Task Content_settings_persist_in_one_document_per_tenant_database()
+    {
+        var client = await TryConnectAsync();
+        if (client is null) return;
+        var database = "quesshi_content_settings_" + Guid.NewGuid().ToString("N");
+        var options = new MongoOptions { ConnectionString = ConnectionString, Database = database };
+        var firstTenant = new TenantContext();
+        var secondTenant = new TenantContext();
+        try
+        {
+            using (firstTenant.Enter("tenant-a"))
+            {
+                var repository = new MongoContentSettingsRepository(new MongoContext(options, firstTenant));
+                await repository.SaveAsync(new ContentSettings(["trivia"], ["voting"]));
+                var persisted = await repository.GetAsync();
+                Assert.Equal(["trivia"], persisted.TriviaCategoryIds);
+                Assert.Equal(["voting"], persisted.VotingCategoryIds);
+            }
+            using (secondTenant.Enter("tenant-b"))
+            {
+                var repository = new MongoContentSettingsRepository(new MongoContext(options, secondTenant));
+                var missing = await repository.GetAsync();
+                Assert.Empty(missing.TriviaCategoryIds);
+                Assert.Empty(missing.VotingCategoryIds);
+            }
+            Assert.Equal(1, await client.GetDatabase(database + "_tenant-a")
+                .GetCollection<ContentSettingsDoc>("content_settings").CountDocumentsAsync(FilterDefinition<ContentSettingsDoc>.Empty));
+            Assert.Equal(0, await client.GetDatabase(database + "_tenant-b")
+                .GetCollection<ContentSettingsDoc>("content_settings").CountDocumentsAsync(FilterDefinition<ContentSettingsDoc>.Empty));
+        }
+        finally
+        {
+            await client.DropDatabaseAsync(database + "_tenant-a");
+            await client.DropDatabaseAsync(database + "_tenant-b");
+        }
+    }
+
+    [Fact]
     public void Voting_question_document_round_trips_both_answer_sources_and_all_store_fields()
     {
         var created = new DateTimeOffset(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);
@@ -49,7 +88,7 @@ public sealed class VotingMongoTests
 
         Assert.Equal(participants.Id, restoredParticipants.Id);
         Assert.Equal(participants.Lang, restoredParticipants.Lang);
-        Assert.Equal(participants.VotingCategoryId, restoredParticipants.VotingCategoryId);
+        Assert.Equal(participants.CategoryId, restoredParticipants.CategoryId);
         Assert.Equal(participants.Prompt, restoredParticipants.Prompt);
         Assert.Equal(participants.AnswerSource, restoredParticipants.AnswerSource);
         Assert.Empty(restoredParticipants.FixedChoices);
@@ -62,7 +101,7 @@ public sealed class VotingMongoTests
         Assert.Equal(participants.TimesServed, restoredParticipants.TimesServed);
         Assert.Equal(fixedQuestion.Id, restoredFixed.Id);
         Assert.Equal(fixedQuestion.Lang, restoredFixed.Lang);
-        Assert.Equal(fixedQuestion.VotingCategoryId, restoredFixed.VotingCategoryId);
+        Assert.Equal(fixedQuestion.CategoryId, restoredFixed.CategoryId);
         Assert.Equal(fixedQuestion.Prompt, restoredFixed.Prompt);
         Assert.Equal(fixedQuestion.AnswerSource, restoredFixed.AnswerSource);
         Assert.Equal(fixedQuestion.FixedChoices, restoredFixed.FixedChoices);
@@ -158,14 +197,37 @@ public sealed class VotingMongoTests
             Assert.Equal(["Another", "Edited friend", "Empty topic", "Other", "Rejected friend"],
                 (await repository.ExistingPromptsAsync(Language.En, "m-friends")).Order());
 
+            var uncategorized = VotingQuestion.Create("m-uncategorized", Language.En, null, "Uncategorized prompt",
+                VotingAnswerSource.Participants, null, now, status: QuestionStatus.Approved);
+            await repository.UpsertAsync(uncategorized);
+            Assert.Empty(await repository.SampleApprovedAsync(Language.En, new ContentScope([]), 10, []));
+            var allScope = await repository.SampleApprovedAsync(Language.En, ContentScope.All, 100, []);
+            Assert.Contains(allScope, q => q.Id == uncategorized.Id);
+            var categoryScope = await repository.SampleApprovedAsync(Language.En, new ContentScope(["m-friends"]), 100, []);
+            Assert.All(categoryScope, q => Assert.Equal("m-friends", q.CategoryId));
+            var collectionNames = await client.GetDatabase(dbName).ListCollectionNames().ToListAsync();
+            Assert.Contains("categories", collectionNames);
+            Assert.DoesNotContain("voting_categories", collectionNames);
+
             var batchInsert = VotingQuestion.Create("m10", Language.En, "m-friends", "Batch row",
                 VotingAnswerSource.Participants, null, now, topic: "batch-row");
             Assert.Equal(2, await repository.UpsertManyAsync([first, batchInsert]));
             Assert.NotNull(await repository.GetAsync("m10"));
 
+            var triviaRepository = new MongoQuestionRepository(context);
             var trivia = Question.Create("same-topic-trivia", Language.En, "general", Difficulty.Easy,
-                "Trivia", ["a", "b", "c", "d"], 0, now, topic: "people/trivia");
-            await new MongoQuestionRepository(context).UpsertAsync(trivia);
+                "Trivia", ["a", "b", "c", "d"], 0, now, topic: "people/trivia", status: QuestionStatus.Approved);
+            var uncategorizedTrivia = Question.Create("uncategorized-trivia", Language.En, null, Difficulty.Easy,
+                "Uncategorized trivia", ["a", "b", "c", "d"], 0, now, status: QuestionStatus.Approved);
+            await triviaRepository.UpsertAsync(trivia);
+            await triviaRepository.UpsertAsync(uncategorizedTrivia);
+            Assert.Null((await triviaRepository.GetAsync(uncategorizedTrivia.Id))!.CategoryId);
+            Assert.Empty(await triviaRepository.SampleApprovedAsync(Language.En, new ContentScope([]), Difficulty.Easy, 10, []));
+            var triviaAll = await triviaRepository.SampleApprovedAsync(Language.En, ContentScope.All, Difficulty.Easy, 10, []);
+            Assert.Contains(triviaAll, q => q.Id == trivia.Id);
+            Assert.Contains(triviaAll, q => q.Id == uncategorizedTrivia.Id);
+            var triviaCategory = await triviaRepository.SampleApprovedAsync(Language.En, new ContentScope(["general"]), Difficulty.Easy, 10, []);
+            Assert.All(triviaCategory, q => Assert.Equal("general", q.CategoryId));
             Assert.DoesNotContain("people/trivia", await repository.ExistingTopicsAsync(Language.En));
 
             var generationLog = new MongoVotingGenerationLog(context);
@@ -183,46 +245,37 @@ public sealed class VotingMongoTests
     }
 
     [Fact]
-    public void Voting_seed_file_has_the_exact_isolated_categories()
+    public void Seed_categories_share_one_collection_and_family_allowlists_are_separate()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "Seed", "voting_categories.json");
+        var path = Path.Combine(AppContext.BaseDirectory, "Seed", "categories.json");
         var rows = System.Text.Json.JsonSerializer.Deserialize<List<SeedCategory>>(
             File.ReadAllText(path), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
 
-        Assert.Equal([
-            "m-partners", "m-partners-living-together", "m-families-with-children",
-            "m-friends", "m-colleagues", "m-teammates"], rows.Select(x => x.Id));
-        Assert.Equal([
-            "Partners", "Partners living together", "Families with children",
-            "Friends", "Colleagues", "Teammates"], rows.Select(x => x.NameEn));
-        Assert.Equal([
-            "همسران", "همخانه‌ها", "خانواده‌های دارای فرزند", "دوستان", "همکاران", "هم‌تیمی‌ها"],
-            rows.Select(x => x.NameFa));
-        Assert.Equal([
-            "Partners", "Samenwonende partners", "Gezinnen met kinderen", "Vrienden", "Collega's", "Teamgenoten"],
-            rows.Select(x => x.NameNl));
-
-        var trivia = System.Text.Json.JsonSerializer.Deserialize<List<SeedCategory>>(
-            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Seed", "categories.json")),
+        Assert.Contains(rows, x => x.Id == "friends" && x.NameEn == "Friends");
+        Assert.Contains(rows, x => x.Id == "geography" && x.NameEn == "Geography");
+        Assert.All(rows, x => Assert.False(x.Id.StartsWith("m-", StringComparison.Ordinal)));
+        var settings = System.Text.Json.JsonSerializer.Deserialize<ContentSettings>(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Seed", "content_settings.json")),
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
-        Assert.DoesNotContain(trivia, x => x.Id.StartsWith("m-", StringComparison.Ordinal));
-        Assert.Empty(rows.Select(x => x.Id).Intersect(trivia.Select(x => x.Id)));
+        Assert.Contains("geography", settings.TriviaCategoryIds);
+        Assert.Contains("friends", settings.VotingCategoryIds);
+        Assert.DoesNotContain("friends", settings.TriviaCategoryIds);
     }
 
     [Fact]
-    public void Voting_seeder_has_one_unambiguous_production_constructor()
+    public void Seeder_has_one_unambiguous_production_constructor()
     {
         var constructors = typeof(Seeder).GetConstructors();
         Assert.Single(constructors);
         Assert.Equal([
-            typeof(IQuestionRepository), typeof(ICategoryRepository), typeof(IVotingCategoryRepository),
+            typeof(IQuestionRepository), typeof(ICategoryRepository), typeof(IContentSettingsRepository),
             typeof(IClock), typeof(ILogger<Seeder>)], constructors[0].GetParameters().Select(x => x.ParameterType));
 
         var services = new ServiceCollection();
         services.AddSingleton<IQuestionRepository, FakeQuestions>();
         services.AddSingleton<ICategoryRepository, FakeCategories>();
-        services.AddSingleton<IVotingCategoryRepository, FakeVotingCategories>();
         services.AddSingleton<IClock>(new TimeProviderClock(TimeProvider.System));
+        services.AddSingleton<IContentSettingsRepository, FakeContentSettingsRepository>();
         services.AddLogging();
         services.AddSingleton<Seeder>();
         using var provider = services.BuildServiceProvider();
@@ -230,59 +283,30 @@ public sealed class VotingMongoTests
     }
 
     [Fact]
-    public void Voting_repository_ports_are_isolated_from_trivia_ports_and_models()
-    {
-        var triviaTypes = new HashSet<Type>
-        {
-            typeof(IQuestionRepository), typeof(ICategoryRepository), typeof(Question), typeof(Category),
-            typeof(QuestionDoc), typeof(CategoryDoc)
-        };
-        var votingPorts = new[] { typeof(IVotingQuestionRepository), typeof(IVotingCategoryRepository) };
-
-        foreach (var port in votingPorts)
-        foreach (var method in port.GetMethods())
-        {
-            var values = method.GetParameters().Select(p => p.ParameterType).Append(method.ReturnType);
-            foreach (var value in values)
-            {
-                var type = value;
-                while (type.IsArray || type.IsByRef || type.IsPointer) type = type.GetElementType()!;
-                if (type.IsGenericType)
-                    foreach (var argument in type.GetGenericArguments())
-                        Assert.DoesNotContain(argument, triviaTypes);
-                Assert.DoesNotContain(type, triviaTypes);
-            }
-        }
-    }
-
-    [Fact]
-    public async Task Seeder_inserts_voting_categories_without_overwriting_an_admin_rename()
+    public async Task Seeder_uses_the_shared_category_repository_and_seeds_tenant_family_settings()
     {
         var root = Path.Combine(Path.GetTempPath(), "quesshi-seed-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(root, "Seed"));
         try
         {
-            File.Copy(Path.Combine(AppContext.BaseDirectory, "Seed", "voting_categories.json"),
-                Path.Combine(root, "Seed", "voting_categories.json"));
-            File.WriteAllText(Path.Combine(root, "Seed", "categories.json"), "[]");
-            var voting = new FakeVotingCategories();
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Seed", "categories.json"),
+                Path.Combine(root, "Seed", "categories.json"));
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Seed", "content_settings.json"),
+                Path.Combine(root, "Seed", "content_settings.json"));
             var questions = new FakeQuestions();
             var categories = new FakeCategories();
-            var seeder = new Seeder(questions, categories, voting, new TimeProviderClock(TimeProvider.System),
+            var content = new FakeContentSettingsRepository(categories);
+            var seeder = new Seeder(questions, categories, content, new TimeProviderClock(TimeProvider.System),
                 NullLogger<Seeder>.Instance);
 
             await seeder.RunAsync(root);
-            Assert.Equal(6, voting.Items.Count);
-            Assert.All(voting.Items, c => Assert.StartsWith("m-", c.Id));
-            Assert.All(voting.Items, c =>
-            {
-                Assert.False(string.IsNullOrWhiteSpace(c.NameFa));
-                Assert.False(string.IsNullOrWhiteSpace(c.NameEn));
-                Assert.False(string.IsNullOrWhiteSpace(c.NameNl));
-            });
-            await voting.UpsertAsync(voting.Items[0] with { NameEn = "Renamed" });
+            Assert.Contains(categories.Items, c => c.Id == "friends");
+            Assert.Contains(categories.Items, c => c.Id == "geography");
+            Assert.Contains("friends", (await content.GetAsync()).VotingCategoryIds);
+            var editedCategoryId = categories.Items[0].Id;
+            await categories.UpsertAsync(categories.Items[0] with { NameEn = "Renamed" });
             await seeder.RunAsync(root);
-            Assert.Equal("Renamed", (await voting.GetAsync("m-partners"))!.NameEn);
+            Assert.Equal("Renamed", (await categories.GetAsync(editedCategoryId))!.NameEn);
         }
         finally
         {

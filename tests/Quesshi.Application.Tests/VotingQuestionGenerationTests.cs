@@ -7,13 +7,13 @@ namespace Quesshi.Application.Tests;
 public sealed class VotingQuestionGenerationTests
 {
     private readonly InMemoryVotingQuestions _questions = new();
-    private readonly InMemoryVotingCategories _categories = new();
+    private readonly InMemoryCategories _categories = new();
     private readonly InMemoryVotingGenerationLog _log = new();
     private readonly FakeClock _clock = FakeClock.At2026();
     private readonly SeqIds _ids = new();
 
     public VotingQuestionGenerationTests()
-        => _categories.Items.Add(new VotingCategory("m-friends", "دوستان", "Friends", "👥", "#123456"));
+        => _categories.Items.Add(new Category("m-friends", "دوستان", "Friends", "👥", "#123456"));
 
     private GenerateVotingQuestions Sut(ScriptedVotingGenerator generator,
         bool autoApprove = false, int maxBatch = 20)
@@ -112,7 +112,7 @@ public sealed class VotingQuestionGenerationTests
             VotingAnswerSource.Participants, 5);
         Assert.Equal("unknown_category", missing.Error);
 
-        _categories.Items.Add(new VotingCategory("m-retired", "", "Retired", "◆", "#000", false));
+        _categories.Items.Add(new Category("m-retired", "", "Retired", "◆", "#000", false));
         var inactive = await Sut(configured).RunAsync(Language.En, "m-retired",
             VotingAnswerSource.Participants, 5);
         Assert.Equal("inactive_category", inactive.Error);

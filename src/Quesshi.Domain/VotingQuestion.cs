@@ -15,13 +15,13 @@ namespace Quesshi.Domain;
 /// </summary>
 public sealed class VotingQuestion
 {
-    private VotingQuestion(string id, Language lang, string votingCategoryId, string prompt,
+    private VotingQuestion(string id, Language lang, string? categoryId, string prompt,
         VotingAnswerSource answerSource, IReadOnlyList<string> fixedChoices, MediaRef media,
         DateTimeOffset createdAt)
     {
         Id = id;
         Lang = lang;
-        VotingCategoryId = votingCategoryId;
+        CategoryId = categoryId;
         Prompt = prompt;
         AnswerSource = answerSource;
         FixedChoices = fixedChoices;
@@ -32,7 +32,7 @@ public sealed class VotingQuestion
 
     public string Id { get; }
     public Language Lang { get; private set; }
-    public string VotingCategoryId { get; private set; }
+    public string? CategoryId { get; private set; }
     public string Prompt { get; private set; }
     public VotingAnswerSource AnswerSource { get; private set; }
 
@@ -60,14 +60,14 @@ public sealed class VotingQuestion
     /// <see cref="Question.Create"/>'s split from <see cref="Restore"/>: this validates, that trusts
     /// storage.
     /// </summary>
-    public static VotingQuestion Create(string id, Language lang, string votingCategoryId, string prompt,
+    public static VotingQuestion Create(string id, Language lang, string? categoryId, string prompt,
         VotingAnswerSource answerSource, IReadOnlyList<string>? choices, DateTimeOffset now,
         MediaRef? media = null, QuestionSource source = QuestionSource.Admin,
         QuestionStatus status = QuestionStatus.Pending, string? topic = null)
     {
         Validate(prompt, answerSource, choices);
         var fixedChoices = choices ?? [];
-        return new VotingQuestion(id, lang, votingCategoryId, prompt.Trim(), answerSource,
+        return new VotingQuestion(id, lang, categoryId, prompt.Trim(), answerSource,
             [.. fixedChoices.Select(c => c.Trim())], media ?? MediaRef.None, now)
         {
             Source = source,
@@ -78,13 +78,13 @@ public sealed class VotingQuestion
 
     /// <summary>Rehydrates a stored question. Storage is trusted; use <see cref="Create"/> for
     /// anything else.</summary>
-    public static VotingQuestion Restore(string id, Language lang, string votingCategoryId, string prompt,
+    public static VotingQuestion Restore(string id, Language lang, string? categoryId, string prompt,
         VotingAnswerSource answerSource, IReadOnlyList<string>? choices, MediaRef media,
         QuestionStatus status, QuestionSource source, string? topic,
         DateTimeOffset createdAt, DateTimeOffset updatedAt,
         int timesServed)
     {
-        return new VotingQuestion(id, lang, votingCategoryId, prompt, answerSource, choices ?? [], media,
+        return new VotingQuestion(id, lang, categoryId, prompt, answerSource, choices ?? [], media,
             createdAt)
         {
             UpdatedAt = updatedAt,
@@ -136,14 +136,14 @@ public sealed class VotingQuestion
     /// see the class's technical notes for why voting content tracks when it last changed and
     /// trivia does not.
     /// </summary>
-    public void Edit(Language lang, string votingCategoryId, string prompt, VotingAnswerSource answerSource,
+    public void Edit(Language lang, string? categoryId, string prompt, VotingAnswerSource answerSource,
         IReadOnlyList<string>? choices, MediaRef? media, string? topic, DateTimeOffset now)
     {
         Validate(prompt, answerSource, choices);
         var fixedChoices = choices ?? [];
 
         Lang = lang;
-        VotingCategoryId = votingCategoryId;
+        CategoryId = categoryId;
         Prompt = prompt.Trim();
         AnswerSource = answerSource;
         FixedChoices = [.. fixedChoices.Select(c => c.Trim())];

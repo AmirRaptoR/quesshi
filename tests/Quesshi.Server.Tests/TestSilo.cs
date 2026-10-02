@@ -27,7 +27,7 @@ public sealed class TestSilo : ISiloConfigurator
             services.AddSingleton<ILiveNotifier>(Shared.Notifier);
             services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
             services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
-            services.AddSingleton<IVotingCategoryRepository>(Shared.VotingCategories);
+            services.AddSingleton<ICategoryRepository>(Shared.VotingCategories);
 
             // MatchGrain now draws its own question set at Start/auto-start, the way LiveMatchGrain
             // already does — needed for DI to construct the grain at all, even in tests that only ever

@@ -20,15 +20,15 @@ public sealed class InMemoryVotingQuestions : IVotingQuestionRepository
 
     private IEnumerable<VotingQuestion> Match(VotingQuestionFilter f) => Items.Where(q =>
         (f.Lang is null || q.Lang == f.Lang) &&
-        (f.CategoryId is null || q.VotingCategoryId == f.CategoryId) &&
+        (f.CategoryId is null || q.CategoryId == f.CategoryId) &&
         (f.Status is null || q.Status == f.Status) &&
         (string.IsNullOrWhiteSpace(f.Text) || q.Prompt.Contains(f.Text, StringComparison.OrdinalIgnoreCase)));
 
-    public Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string categoryId, int count,
+    public Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string? categoryId, int count,
         IReadOnlyCollection<string> exclude, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<VotingQuestion>>([.. Items
             .Where(q => q.Status == QuestionStatus.Approved && q.Lang == lang &&
-                        q.VotingCategoryId == categoryId && !exclude.Contains(q.Id))
+                        (categoryId is null || q.CategoryId == categoryId) && !exclude.Contains(q.Id))
             .OrderBy(_ => _rng.Next()).Take(count)]);
 
     public Task UpsertAsync(VotingQuestion q, CancellationToken ct = default)
@@ -74,6 +74,6 @@ public sealed class InMemoryVotingQuestions : IVotingQuestionRepository
     public Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
         CancellationToken ct = default)
         => Task.FromResult<IReadOnlyCollection<string>>([.. Items
-            .Where(q => q.Lang == lang && q.VotingCategoryId == categoryId)
+            .Where(q => q.Lang == lang && q.CategoryId == categoryId)
             .Select(q => q.Prompt)]);
 }

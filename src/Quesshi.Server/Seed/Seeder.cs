@@ -13,7 +13,7 @@ namespace Quesshi.Server.Seed;
 public sealed class Seeder(
     IQuestionRepository questions,
     ICategoryRepository categories,
-    IVotingCategoryRepository votingCategories,
+    IContentSettingsRepository contentSettings,
     IClock clock,
     ILogger<Seeder> logger)
 {
@@ -27,13 +27,8 @@ public sealed class Seeder(
             if (await categories.GetAsync(row.Id, ct) is null)
                 await categories.UpsertAsync(new Category(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
 
-        // Voting categories live in their own collection and are insert-only by design. An admin
-        // may rename one after installation; unlike seeded questions, a redeploy must not overwrite
-        // that edit.
-        foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "voting_categories.json"), ct))
-            if (await votingCategories.GetAsync(row.Id, ct) is null)
-                await votingCategories.UpsertAsync(
-                    new VotingCategory(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
+        var defaults = await ReadSingleAsync<ContentSettings>(Path.Combine(folder, "content_settings.json"), ct);
+        await contentSettings.GetOrCreateAsync(defaults ?? ContentSettings.Empty, ct);
 
         var inserted = 0;
 
@@ -86,6 +81,14 @@ public sealed class Seeder(
 
         logger.LogWarning("Seed file {Path} is missing", path);
         return [];
+    }
+
+    private async Task<T?> ReadSingleAsync<T>(string path, CancellationToken ct)
+    {
+        if (File.Exists(path)) return JsonSerializer.Deserialize<T>(await File.ReadAllTextAsync(path, ct), Json);
+
+        logger.LogWarning("Seed file {Path} is missing", path);
+        return default;
     }
 
     private static MediaRef? ToMedia(SeedMedia? media)

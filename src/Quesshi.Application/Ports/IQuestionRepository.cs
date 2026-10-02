@@ -10,7 +10,26 @@ public interface IQuestionRepository
     Task<long> CountAsync(QuestionFilter filter, CancellationToken ct = default);
 
     /// <summary>Random approved questions for a bucket, excluding ids already used in this match.</summary>
-    Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string categoryId, Difficulty level, int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default);
+    Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string? categoryId, Difficulty level, int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default);
+    async Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, ContentScope scope, Difficulty? level,
+        int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
+    {
+        if (scope.CategoryIds is { Count: 0 }) return [];
+        var selected = new List<Question>();
+        var categories = scope.CategoryIds?.Distinct(StringComparer.Ordinal).ToList();
+        var categoryIds = categories is null ? new string?[] { null } : categories.Select(x => (string?)x).ToArray();
+        var levels = level is { } exact ? new[] { exact } : Enum.GetValues<Difficulty>();
+        foreach (var currentLevel in levels)
+        {
+            foreach (var id in categoryIds)
+            {
+                selected.AddRange(await SampleApprovedAsync(lang, id, currentLevel,
+                    count - selected.Count, [.. exclude.Concat(selected.Select(q => q.Id))], ct));
+                if (selected.Count >= count) return selected.Take(count).ToList();
+            }
+        }
+        return selected;
+    }
 
     Task<IReadOnlyList<BucketCount>> BucketCountsAsync(CancellationToken ct = default);
     Task UpsertAsync(Question question, CancellationToken ct = default);

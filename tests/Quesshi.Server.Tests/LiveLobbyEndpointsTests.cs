@@ -26,7 +26,7 @@ public class LiveLobbyEndpointsTests(LiveClusterFixture fixture)
 
     private IGrainFactory Grains => fixture.Cluster.GrainFactory;
     private static readonly TimeProviderClock Clock = new(LiveShared.TimeProvider);
-    private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions, LiveShared.Categories);
+    private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions);
 
     private static int _n = LiveIdRanges.LobbyEndpointsPoolStart;
 

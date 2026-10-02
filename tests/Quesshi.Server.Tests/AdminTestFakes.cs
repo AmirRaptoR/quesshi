@@ -35,7 +35,7 @@ public sealed class FakeVotingQuestionGenerator : IVotingQuestionGenerator
     public bool IsConfigured => false;
 
     public Task<IReadOnlyList<GeneratedVotingQuestion>> GenerateAsync(Language lang,
-        VotingCategory category, VotingAnswerSource answerSource, int count,
+        Category category, VotingAnswerSource answerSource, int count,
         IReadOnlyCollection<string> avoid, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<GeneratedVotingQuestion>>([]);
 }

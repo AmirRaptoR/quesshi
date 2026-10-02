@@ -28,8 +28,8 @@ public sealed class MongoContext
 
     public IMongoCollection<QuestionDoc> Questions => Database.GetCollection<QuestionDoc>("questions");
     public IMongoCollection<CategoryDoc> Categories => Database.GetCollection<CategoryDoc>("categories");
+    public IMongoCollection<ContentSettingsDoc> ContentSettings => Database.GetCollection<ContentSettingsDoc>("content_settings");
     public IMongoCollection<VotingQuestionDoc> VotingQuestions => Database.GetCollection<VotingQuestionDoc>("voting_questions");
-    public IMongoCollection<VotingCategoryDoc> VotingCategories => Database.GetCollection<VotingCategoryDoc>("voting_categories");
     public IMongoCollection<PlayerDoc> Players => Database.GetCollection<PlayerDoc>("players");
     public IMongoCollection<MatchDoc> Matches => Database.GetCollection<MatchDoc>("matches");
     public IMongoCollection<GenerationRunDoc> GenerationRuns => Database.GetCollection<GenerationRunDoc>("generation_runs");
@@ -63,9 +63,9 @@ public sealed class MongoContext
         await VotingQuestions.Indexes.CreateManyAsync(
         [
             new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
-                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.VotingCategoryId)),
+                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.CategoryId)),
             new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
-                .Ascending(q => q.VotingCategoryId)),
+                .Ascending(q => q.CategoryId)),
             // A topic is unique only within a language. Null topics are intentionally left out so
             // questions without a deduplication key can coexist.
             new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys

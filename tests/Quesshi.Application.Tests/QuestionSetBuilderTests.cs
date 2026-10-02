@@ -3,294 +3,151 @@ using Quesshi.Domain;
 
 namespace Quesshi.Application.Tests;
 
-public class QuestionSetBuilderTests
+public sealed class QuestionSetBuilderTests
 {
-    private static readonly DateTimeOffset T0 = new(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Now = DateTimeOffset.UnixEpoch;
     private readonly InMemoryQuestions _questions = new();
-    private readonly InMemoryCategories _categories = new();
+    private QuestionSetBuilder Sut() => new(_questions);
 
-    private QuestionSetBuilder Sut() => new(_questions, _categories);
+    private async Task AddAsync(string id, string? category, Difficulty level = Difficulty.Easy)
+        => await _questions.UpsertAsync(Question.Create(id, Language.En, category, level, $"Prompt {id}",
+            ["a", "b", "c", "d"], 0, Now, status: QuestionStatus.Approved));
 
-    /// <summary>Fills every (category, level) bucket of <paramref name="lang"/> with n approved questions.</summary>
-    private void Stock(int perBucket, Language lang = Language.En, params string[] categories)
+    [Fact]
+    public async Task Null_scope_samples_categorized_and_uncategorized_content()
     {
-        foreach (var c in categories)
+        for (var i = 0; i < MatchRules.QuestionsPerMatch / 2; i++)
         {
-            _categories.UpsertAsync(new Category(c, c, c, "*", "#fff"));
-            foreach (var level in MatchRules.AllLevels)
-                for (var i = 0; i < perBucket; i++)
-                    _questions.UpsertAsync(Q($"{c}-{level}-{i}", lang, c, level));
+            await AddAsync($"uncategorized-{i}", null);
+            await AddAsync($"categorized-{i}", "topic");
         }
-    }
 
-    private static Question Q(string id, Language lang, string cat, Difficulty level, QuestionStatus status = QuestionStatus.Approved)
-        => Question.Create(id, lang, cat, level, $"prompt {id}", ["a", "b", "c", "d"], 0, T0, status: status);
+        var set = await Sut().BuildAsync(Language.En, ContentScope.All);
 
-    [Fact]
-    public async Task Builds_a_full_match_worth_of_questions()
-    {
-        Stock(3, Language.En, "geography", "movies", "history", "science");
-        var set = await Sut().BuildAsync(Language.En);
         Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
+        Assert.Contains(set, question => question.CategoryId is null);
+        Assert.Contains(set, question => question.CategoryId == "topic");
     }
 
     [Fact]
-    public async Task Never_repeats_a_question_inside_one_match()
+    public async Task Empty_scope_samples_none()
     {
-        Stock(3, Language.En, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.En);
-        Assert.Equal(set.Count, set.Select(q => q.Id).Distinct().Count());
+        await AddAsync("q", "topic");
+
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(() =>
+            Sut().BuildAsync(Language.En, new ContentScope([]), questionCount: 1));
     }
 
     [Fact]
-    public async Task Draws_from_three_categories()
+    public async Task Explicit_scope_never_falls_back_outside_supplied_categories()
     {
-        Stock(3, Language.En, "geography", "movies", "history", "science", "music");
-        var set = await Sut().BuildAsync(Language.En);
-        Assert.Equal(MatchRules.CategoriesPerMatch, set.Select(q => q.CategoryId).Distinct().Count());
+        await AddAsync("inside", "allowed");
+        for (var i = 0; i < 10; i++) await AddAsync($"outside-{i}", "outside");
+
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(() =>
+            Sut().BuildAsync(Language.En, new ContentScope(["allowed"]), questionCount: 2));
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["outside", "allowed"]), questionCount: 5);
+
+        Assert.All(set, question => Assert.Contains(question.CategoryId, new[] { "outside", "allowed" }));
+        Assert.Contains(set, question => question.CategoryId == "allowed");
     }
 
     [Fact]
-    public async Task Difficulty_follows_the_ramp()
+    public async Task Scoped_draws_spread_categories_and_keep_the_difficulty_ramp()
     {
-        Stock(3, Language.En, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.En);
+        foreach (var category in new[] { "a", "b" })
+            foreach (var level in MatchRules.AllLevels)
+                for (var i = 0; i < 3; i++) await AddAsync($"{category}-{level}-{i}", category, level);
 
-        Assert.Equal(
-            Enumerable.Range(0, MatchRules.QuestionsPerMatch).Select(slot => MatchRules.LevelForSlot(slot)),
-            set.Select(q => q.Level));
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["a", "b"]),
+            MatchRules.QuestionsPerMatch);
+
+        Assert.Contains(set, question => question.CategoryId == "a");
+        Assert.Contains(set, question => question.CategoryId == "b");
+        Assert.Equal(Enumerable.Range(0, set.Count)
+            .Select(slot => MatchRules.LevelForSlot(slot, set.Count, MatchRules.AllLevels)), set.Select(q => q.Level));
     }
 
     [Theory]
     [InlineData(10)]
     [InlineData(20)]
     [InlineData(100)]
-    public async Task Builds_a_match_of_the_requested_length(int count)
+    public async Task Builds_the_requested_length_without_repeats(int count)
     {
-        Stock(40, Language.En, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.En, questionCount: count);
+        foreach (var category in new[] { "a", "b", "c" })
+            foreach (var level in MatchRules.AllLevels)
+                for (var i = 0; i < count; i++) await AddAsync($"{category}-{level}-{i}", category, level);
+
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["a", "b", "c"]), count);
 
         Assert.Equal(count, set.Count);
         Assert.Equal(count, set.Select(q => q.Id).Distinct().Count());
-        Assert.Equal(
-            Enumerable.Range(0, count).Select(slot => MatchRules.LevelForSlot(slot, count)),
+        Assert.Equal(Enumerable.Range(0, count).Select(slot => MatchRules.LevelForSlot(slot, count, MatchRules.AllLevels)),
             set.Select(q => q.Level));
     }
 
     [Fact]
-    public async Task A_named_category_is_the_only_one_used()
+    public async Task Samples_only_approved_questions_in_the_requested_language()
     {
-        Stock(5, Language.En, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.En, ["history"]);
-
-        Assert.All(set, q => Assert.Equal("history", q.CategoryId));
-    }
-
-    [Fact]
-    public async Task An_unknown_category_falls_back_to_a_random_three()
-    {
-        Stock(5, Language.En, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.En, ["nonsense"]);
-
-        Assert.Equal(MatchRules.CategoriesPerMatch, set.Select(q => q.CategoryId).Distinct().Count());
-    }
-
-    [Fact]
-    public async Task Only_approved_questions_are_ever_served()
-    {
-        Stock(3, Language.En, "geography", "movies", "history");
-        await _questions.UpsertAsync(Q("pending-1", Language.En, "geography", Difficulty.Easy, QuestionStatus.Pending));
-        await _questions.UpsertAsync(Q("rejected-1", Language.En, "geography", Difficulty.Easy, QuestionStatus.Rejected));
-
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < MatchRules.QuestionsPerMatch; i++)
         {
-            var set = await Sut().BuildAsync(Language.En);
-            Assert.DoesNotContain(set, q => q.Id is "pending-1" or "rejected-1");
+            await AddAsync($"en-{i}", "topic");
+            await _questions.UpsertAsync(Question.Create($"fa-{i}", Language.Fa, "topic", MatchRules.LevelForSlot(i),
+                $"Prompt fa-{i}", ["a", "b", "c", "d"], 0, Now, status: QuestionStatus.Approved));
         }
-    }
+        await _questions.UpsertAsync(Question.Create("pending", Language.En, "topic", Difficulty.Easy,
+            "Pending", ["a", "b", "c", "d"], 0, Now, status: QuestionStatus.Pending));
 
-    [Fact]
-    public async Task Questions_are_all_in_the_requested_language()
-    {
-        Stock(3, Language.En, "geography", "movies", "history");
-        Stock(3, Language.Fa, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.Fa);
+        var set = await Sut().BuildAsync(Language.Fa, new ContentScope(["topic"]));
+
         Assert.All(set, q => Assert.Equal(Language.Fa, q.Lang));
+        Assert.DoesNotContain(set, q => q.Status != QuestionStatus.Approved);
     }
 
     [Fact]
-    public async Task An_empty_bucket_falls_back_to_another_level_rather_than_failing()
+    public async Task Empty_difficulty_buckets_fall_back_within_scope_but_never_outside_it()
     {
-        // geography has only easy questions; the hard slots must still be filled.
-        _categories.UpsertAsync(new Category("geography", "j", "geography", "*", "#fff"));
-        _categories.UpsertAsync(new Category("movies", "f", "movies", "*", "#fff"));
-        _categories.UpsertAsync(new Category("history", "t", "history", "*", "#fff"));
-        for (var i = 0; i < 10; i++)
-        {
-            await _questions.UpsertAsync(Q($"g{i}", Language.En, "geography", Difficulty.Easy));
-            await _questions.UpsertAsync(Q($"m{i}", Language.En, "movies", Difficulty.Easy));
-            await _questions.UpsertAsync(Q($"h{i}", Language.En, "history", Difficulty.Easy));
-        }
+        for (var i = 0; i < MatchRules.QuestionsPerMatch; i++)
+            await AddAsync($"inside-{i}", "inside", Difficulty.Easy);
+        for (var i = 0; i < MatchRules.QuestionsPerMatch * 2; i++)
+            await AddAsync($"outside-{i}", "outside", Difficulty.Easy);
 
-        var set = await Sut().BuildAsync(Language.En);
-        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["inside"]));
+
+        Assert.All(set, q => Assert.Equal("inside", q.CategoryId));
     }
 
     [Fact]
-    public async Task Refuses_to_build_a_match_it_cannot_fill()
+    public async Task Refuses_unavailable_levels_instead_of_substituting_outside_the_requested_levels()
     {
-        Stock(1, Language.En, "geography");
-        await Assert.ThrowsAsync<NotEnoughQuestionsException>(() => Sut().BuildAsync(Language.En));
+        for (var i = 0; i < MatchRules.QuestionsPerMatch; i++)
+            await AddAsync($"easy-{i}", "topic", Difficulty.VeryEasy);
+
+        await Assert.ThrowsAsync<NotEnoughQuestionsException>(() =>
+            Sut().BuildAsync(Language.En, new ContentScope(["topic"]), levels: [Difficulty.VeryHard]));
     }
 
-    [Fact]
-    public async Task Inactive_categories_are_not_drawn_from()
+    [Theory]
+    [InlineData(QuestionKind.Sort)]
+    [InlineData(QuestionKind.Map)]
+    public async Task Set_builder_accepts_supported_question_kinds_without_choice_assumptions(QuestionKind kind)
     {
-        Stock(3, Language.En, "geography", "movies", "history");
-        _categories.UpsertAsync(new Category("banned", "x", "banned", "*", "#fff", IsActive: false));
-        foreach (var level in new[] { Difficulty.Easy, Difficulty.Medium, Difficulty.Hard })
-            for (var i = 0; i < 5; i++)
-                await _questions.UpsertAsync(Q($"banned-{level}-{i}", Language.En, "banned", level));
+        for (var levelIndex = 0; levelIndex < MatchRules.AllLevels.Length; levelIndex++)
+            for (var i = 0; i < 3; i++)
+            {
+                var level = MatchRules.AllLevels[levelIndex];
+                var question = kind == QuestionKind.Sort
+                    ? Question.Create($"sort-{level}-{i}", Language.En, "topic", level, "Order these", ["a", "b", "c", "d"], 0,
+                        Now, status: QuestionStatus.Approved, kind: QuestionKind.Sort)
+                    : Question.Create($"map-{level}-{i}", Language.En, "topic", level, "Find the country", [], 0,
+                        Now, status: QuestionStatus.Approved, kind: QuestionKind.Map,
+                        target: MapTarget.Country("DE"), baseLayer: MapBaseLayer.Borders);
+                await _questions.UpsertAsync(question);
+            }
 
-        for (var i = 0; i < 20; i++)
-        {
-            var set = await Sut().BuildAsync(Language.En);
-            Assert.DoesNotContain(set, q => q.CategoryId == "banned");
-        }
-    }
+        var set = await Sut().BuildAsync(Language.En, new ContentScope(["topic"]));
 
-    [Fact]
-    public async Task Only_the_chosen_levels_are_served()
-    {
-        Stock(10, Language.En, "geography", "movies", "history");
-        var set = await Sut().BuildAsync(Language.En, questionCount: 10, levels: [Difficulty.Hard, Difficulty.VeryHard]);
-
-        Assert.All(set, q => Assert.Contains(q.Level, new[] { Difficulty.Hard, Difficulty.VeryHard }));
-    }
-
-    /// <summary>
-    /// The point of the confined fallback: asking for very hard and getting very easy would be a
-    /// worse answer than getting an error, because nothing on screen would say it happened.
-    /// </summary>
-    [Fact]
-    public async Task An_empty_chosen_level_refuses_rather_than_substituting_an_easier_one()
-    {
-        _categories.UpsertAsync(new Category("geography", "geography", "Geography", "*", "#fff"));
-        for (var i = 0; i < 20; i++)
-            await _questions.UpsertAsync(Q($"easy-{i}", Language.En, "geography", Difficulty.VeryEasy));
-
-        await Assert.ThrowsAsync<NotEnoughQuestionsException>(
-            () => Sut().BuildAsync(Language.En, questionCount: 10, levels: [Difficulty.VeryHard]));
-    }
-
-    /// <summary>
-    /// The bug this guards: a Persian profile picking the Dutch-only KNM category was handed ten
-    /// Persian questions about birds and DNA, because the last fallback ignored the choice and drew
-    /// from the whole bank. Asking for one category and getting another is a different duel wearing
-    /// the right label, and nothing on screen says so.
-    /// </summary>
-    [Fact]
-    public async Task A_named_category_with_nothing_in_your_language_refuses_rather_than_substituting()
-    {
-        Stock(10, Language.Fa, "geography", "nature", "science");
-        _categories.UpsertAsync(new Category("knm", "knm", "knm", "*", "#fff"));
-        foreach (var level in MatchRules.AllLevels)
-            for (var i = 0; i < 10; i++)
-                await _questions.UpsertAsync(Q($"nl-{level}-{i}", Language.Nl, "knm", level));
-
-        await Assert.ThrowsAsync<NotEnoughQuestionsException>(
-            () => Sut().BuildAsync(Language.Fa, ["knm"], questionCount: 10));
-    }
-
-    [Fact]
-    public async Task A_named_category_still_falls_back_within_the_ones_you_named()
-    {
-        Stock(10, Language.En, "geography", "movies");
-
-        // Nothing at all in "movies" at the very hardest level, so the run has to lean on geography
-        // — but never on a category the player did not ask for.
-        var set = await Sut().BuildAsync(Language.En, ["geography", "movies"], questionCount: 20);
-
-        Assert.Equal(20, set.Count);
-        Assert.All(set, q => Assert.Contains(q.CategoryId, new[] { "geography", "movies" }));
-    }
-
-    // ---- Kinds (issue #73) ----
-    //
-    // The spec's decision is "mixed into ordinary duels, and no quota": the proportion of each kind
-    // in a duel falls out of the bank's own proportions rather than a rule. That makes these tests
-    // the whole of the selection story — there is nothing to configure, so what has to be proved is
-    // that nothing in the builder quietly excludes the two new kinds, and that it never assumes the
-    // four choices a map question does not have.
-
-    /// <summary>Fills every level of one category with questions of one kind.</summary>
-    private void StockKind(int perBucket, string category, QuestionKind kind, Language lang = Language.En)
-    {
-        _categories.UpsertAsync(new Category(category, category, category, "*", "#fff"));
-        foreach (var level in MatchRules.AllLevels)
-            for (var i = 0; i < perBucket; i++)
-                _questions.UpsertAsync(OfKind($"{category}-{kind}-{level}-{i}", lang, category, level, kind));
-    }
-
-    private static Question OfKind(string id, Language lang, string cat, Difficulty level, QuestionKind kind)
-        => kind switch
-        {
-            QuestionKind.Sort => Question.Create(id, lang, cat, level, $"order {id}", ["a", "b", "c", "d"], 0, T0,
-                status: QuestionStatus.Approved, kind: QuestionKind.Sort),
-            QuestionKind.Map => Question.Create(id, lang, cat, level, $"find {id}", [], 0, T0,
-                status: QuestionStatus.Approved, kind: QuestionKind.Map,
-                target: MapTarget.Country("DE"), baseLayer: MapBaseLayer.Borders),
-            _ => Q(id, lang, cat, level)
-        };
-
-    [Fact]
-    public async Task A_bank_of_nothing_but_sorting_questions_still_builds_a_full_duel()
-    {
-        StockKind(3, "rivers", QuestionKind.Sort);
-
-        var set = await Sut().BuildAsync(Language.En, ["rivers"]);
-
-        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
-        Assert.All(set, q => Assert.Equal(QuestionKind.Sort, q.Kind));
-    }
-
-    /// <summary>
-    /// The one kind that could have caught a hidden four-choices assumption: a map question stores
-    /// no choices at all, so anything in the selection path that reached for <c>Choices[n]</c> or
-    /// counted them would fail here and nowhere else.
-    /// </summary>
-    [Fact]
-    public async Task A_bank_of_nothing_but_map_questions_still_builds_a_full_duel()
-    {
-        StockKind(3, "atlas", QuestionKind.Map);
-
-        var set = await Sut().BuildAsync(Language.En, ["atlas"]);
-
-        Assert.Equal(MatchRules.QuestionsPerMatch, set.Count);
-        Assert.All(set, q => Assert.Equal(QuestionKind.Map, q.Kind));
-        Assert.All(set, q => Assert.Empty(q.Choices));
-    }
-
-    /// <summary>
-    /// No quota, and none needed: a bank holding all three kinds in one category hands them all to
-    /// the same duel, because a sort or a map is eligible in exactly the place a choice question is.
-    /// A duel drawn from a bank of one kind proves eligibility; this proves they are not merely
-    /// eligible one at a time.
-    /// </summary>
-    [Fact]
-    public async Task A_mixed_bank_puts_all_three_kinds_in_one_duel()
-    {
-        // Every level of one category holds one of each kind, so whichever level a slot asks for,
-        // all three are on the table and only the sampler decides.
-        _categories.UpsertAsync(new Category("mixed", "mixed", "mixed", "*", "#fff"));
-        foreach (var level in MatchRules.AllLevels)
-            foreach (var kind in new[] { QuestionKind.Choice, QuestionKind.Sort, QuestionKind.Map })
-                for (var i = 0; i < 8; i++)
-                    await _questions.UpsertAsync(OfKind($"mixed-{kind}-{level}-{i}", Language.En, "mixed", level, kind));
-
-        var set = await Sut().BuildAsync(Language.En, ["mixed"], questionCount: 100);
-
-        Assert.Equal(100, set.Count);
-        Assert.Equal(3, set.Select(q => q.Kind).Distinct().Count());
+        Assert.All(set, q => Assert.Equal(kind, q.Kind));
+        if (kind == QuestionKind.Map) Assert.All(set, q => Assert.Empty(q.Choices));
     }
 }

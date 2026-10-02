@@ -13,10 +13,16 @@ public static class AdminEndpoints
 
     private static readonly Dictionary<string, MediaKind> AllowedMedia = new(StringComparer.OrdinalIgnoreCase)
     {
-        [".png"] = MediaKind.Image, [".jpg"] = MediaKind.Image, [".jpeg"] = MediaKind.Image,
-        [".webp"] = MediaKind.Image, [".gif"] = MediaKind.Image,
-        [".mp3"] = MediaKind.Audio, [".m4a"] = MediaKind.Audio, [".ogg"] = MediaKind.Audio,
-        [".mp4"] = MediaKind.Video, [".webm"] = MediaKind.Video
+        [".png"] = MediaKind.Image,
+        [".jpg"] = MediaKind.Image,
+        [".jpeg"] = MediaKind.Image,
+        [".webp"] = MediaKind.Image,
+        [".gif"] = MediaKind.Image,
+        [".mp3"] = MediaKind.Audio,
+        [".m4a"] = MediaKind.Audio,
+        [".ogg"] = MediaKind.Audio,
+        [".mp4"] = MediaKind.Video,
+        [".webm"] = MediaKind.Video
     };
 
     public static void MapAdmin(this IEndpointRouteBuilder app)
@@ -242,8 +248,6 @@ public static class AdminEndpoints
 
             var slug = Slugify(body.Id.Length > 0 ? body.Id : nameEn);
             if (slug.Length == 0) return Results.BadRequest(new { error = "bad_id" });
-            if (slug.StartsWith("m-", StringComparison.OrdinalIgnoreCase))
-                return Results.BadRequest(new { error = "reserved_prefix" });
             if (!EmojiIcon.TryNormalize(body.Icon, out var icon))
                 return Results.BadRequest(new { error = "bad_icon" });
 
@@ -257,14 +261,37 @@ public static class AdminEndpoints
             return Results.Ok();
         });
 
-        admin.MapDelete("/categories/{id}", async (string id, ICategoryRepository categories, IQuestionRepository questions) =>
+        admin.MapDelete("/categories/{id}", async (string id, ICategoryRepository categories, IQuestionRepository questions,
+            IVotingQuestionRepository votingQuestions) =>
         {
             // Deleting a category with questions behind it would orphan them; deactivate instead.
-            if (await questions.CountAsync(new QuestionFilter(CategoryId: id)) > 0)
+            if (await questions.CountAsync(new QuestionFilter(CategoryId: id)) > 0
+                || await votingQuestions.CountAsync(new VotingQuestionFilter(CategoryId: id)) > 0)
                 return Results.BadRequest(new { error = "category_in_use" });
 
             await categories.DeleteAsync(id);
             return Results.Ok();
+        });
+
+        admin.MapGet("/content-settings", async (ICategoryRepository categories,
+            IContentSettingsRepository settings) => new
+            {
+                Categories = (await categories.AllAsync()).Select(c => c.ToDto(Language.Fa)).ToList(),
+                Settings = ToDto(await settings.GetAsync())
+            });
+
+        admin.MapPut("/content-settings", async (ContentSettingsDto body, ICategoryRepository categories,
+            IContentSettingsRepository settings) =>
+        {
+            var known = (await categories.AllAsync()).Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+            var trivia = (body.TriviaCategoryIds ?? []).Distinct(StringComparer.Ordinal).ToList();
+            var voting = (body.VotingCategoryIds ?? []).Distinct(StringComparer.Ordinal).ToList();
+            if (trivia.Concat(voting).Any(id => !known.Contains(id)))
+                return Results.BadRequest(new { error = "unknown_category" });
+
+            var value = new ContentSettings(trivia, voting);
+            await settings.SaveAsync(value);
+            return Results.Ok(ToDto(value));
         });
 
         // --- users -------------------------------------------------------------------
@@ -358,6 +385,9 @@ public static class AdminEndpoints
 
     private static QuestionStatus? ParseStatus(string? value)
         => Enum.TryParse<QuestionStatus>(value, true, out var parsed) ? parsed : null;
+
+    private static ContentSettingsDto ToDto(ContentSettings value)
+        => new([.. value.TriviaCategoryIds], [.. value.VotingCategoryIds]);
 
     private static string Slugify(string value)
     {

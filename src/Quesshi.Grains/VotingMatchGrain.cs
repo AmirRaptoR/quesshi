@@ -101,7 +101,7 @@ public sealed class VotingMatchGrain(
         try
         {
             questions = await questionSetBuilder.BuildAsync((Language)state.State.Lang,
-                state.State.CategoryIds, state.State.QuestionCount);
+                new ContentScope(state.State.CategoryIds), state.State.QuestionCount);
         }
         catch (NotEnoughQuestionsException ex)
         {
@@ -431,7 +431,7 @@ public sealed class VotingMatchGrain(
             [.. _match.Participants.Select(id => new VotingParticipantView(id, _match.IsActiveParticipant(id)))],
             _match.CurrentSlotIndex, snapshot.Questions.Count, SlotView(current, includeAnswers: false),
             SlotView(closed, includeAnswers: true), AnswerView(playerId, own), _match.CreatedAt, _match.EndedAt,
-            results, null, [.. closedSnapshots.Select(slot => SlotView(slot, includeAnswers: true)!) ]);
+            results, null, [.. closedSnapshots.Select(slot => SlotView(slot, includeAnswers: true)!)]);
     }
 
     private static VotingResultsView ResultsView(VotingMatchSnapshot snapshot)
@@ -452,7 +452,7 @@ public sealed class VotingMatchGrain(
         return new VotingSlotView(slot.Slot, slot.QuestionId, slot.Prompt,
             [.. slot.Options.Select(o => new VotingOptionView((int)o.Kind, o.ParticipantId, o.ChoiceIndex, o.Text))],
             slot.ServedAt, [.. slot.Answers.Keys], includeAnswers
-                ? [.. slot.Answers.Select(answer => AnswerView(answer.Key, answer.Value)!) ]
+                ? [.. slot.Answers.Select(answer => AnswerView(answer.Key, answer.Value)!)]
                 : [], slot.Media is { Kind: not MediaKind.None } media
                     ? new VotingMediaView((int)media.Kind, media.Url, media.Attribution)
                     : null);

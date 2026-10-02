@@ -21,11 +21,22 @@ public static class VotingQuestionImportTemplates
 
         var row = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["lang"] = "en", ["categoryId"] = "m-partners",
+            ["lang"] = "en",
+            ["categoryId"] = "partners",
             ["prompt"] = "Who is most likely to leave the lights on?",
-            ["answerSource"] = "participants", ["choice1"] = "", ["choice2"] = "", ["choice3"] = "", ["choice4"] = "",
-            ["choice5"] = "", ["choice6"] = "", ["choice7"] = "", ["choice8"] = "",
-            ["mediaUrl"] = "", ["mediaKind"] = "", ["subject"] = "household", ["aspect"] = "lights",
+            ["answerSource"] = "participants",
+            ["choice1"] = "",
+            ["choice2"] = "",
+            ["choice3"] = "",
+            ["choice4"] = "",
+            ["choice5"] = "",
+            ["choice6"] = "",
+            ["choice7"] = "",
+            ["choice8"] = "",
+            ["mediaUrl"] = "",
+            ["mediaKind"] = "",
+            ["subject"] = "household",
+            ["aspect"] = "lights",
             ["status"] = "pending"
         };
 

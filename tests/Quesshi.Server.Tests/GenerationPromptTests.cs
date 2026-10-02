@@ -29,7 +29,7 @@ public class GenerationPromptTests
 {
     private static readonly QuestionPromptBuilder Prompts = new();
     private static readonly Category Geography = new("geography", "جغرافیا", "Geography", "*", "#fff");
-    private static readonly VotingCategory Friends = new("m-friends", "دوستان", "Friends", "*", "#fff");
+    private static readonly Category Friends = new("m-friends", "دوستان", "Friends", "*", "#fff");
 
     private static string Sort(Language lang = Language.En) => Prompts.Sort(lang, Geography, Difficulty.Medium, 5, []);
     private static string Map(Language lang = Language.En) => Prompts.Map(lang, Geography, Difficulty.Medium, 5, []);

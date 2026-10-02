@@ -15,7 +15,7 @@ public sealed class ScriptedVotingGenerator(params GeneratedVotingQuestion[] bat
     public IReadOnlyCollection<string> LastAvoid { get; private set; } = [];
 
     public Task<IReadOnlyList<GeneratedVotingQuestion>> GenerateAsync(Language lang,
-        VotingCategory category, VotingAnswerSource answerSource, int count,
+        Category category, VotingAnswerSource answerSource, int count,
         IReadOnlyCollection<string> avoid, CancellationToken ct = default)
     {
         Calls++;

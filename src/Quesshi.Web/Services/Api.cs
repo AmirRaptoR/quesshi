@@ -126,8 +126,8 @@ public sealed class Api(HttpClient http)
     public Task<VotingViewDto?> VotingByCodeAsync(string code)
         => GetAsync<VotingViewDto>($"api/voting/by-code/{Uri.EscapeDataString(Code(code))}");
 
-    public Task<List<VotingCategoryDto>?> VotingCategoriesAsync(string? lang = null)
-        => GetAsync<List<VotingCategoryDto>>($"api/voting/categories?lang={Uri.EscapeDataString(lang ?? "")}");
+    public Task<List<CategoryDto>?> VotingCategoriesAsync(string? lang = null)
+        => GetAsync<List<CategoryDto>>($"api/voting/categories?lang={Uri.EscapeDataString(lang ?? "")}");
 
     public Task<VotingViewDto?> VotingAsync(string id)
         => GetAsync<VotingViewDto>($"api/voting/{Uri.EscapeDataString(id)}");

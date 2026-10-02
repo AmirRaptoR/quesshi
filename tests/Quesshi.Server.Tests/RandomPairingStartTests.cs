@@ -58,12 +58,12 @@ public class RandomPairingStartTests(ClusterFixture fixture) : IAsyncDisposable
         var first = ClientFor($"rps-p1-{tag}");
         var second = ClientFor($"rps-p2-{tag}");
 
-        var firstResponse = await first.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", [], null, null));
+        var firstResponse = await first.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", null, null, null));
         firstResponse.EnsureSuccessStatusCode();
         var firstSummary = (await firstResponse.Content.ReadFromJsonAsync<MatchSummaryDto>())!;
         Assert.Equal("awaitingopponent", firstSummary.State); // queued, nobody to pair with yet
 
-        var secondResponse = await second.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", [], null, null));
+        var secondResponse = await second.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", null, null, null));
         secondResponse.EnsureSuccessStatusCode();
         var secondSummary = (await secondResponse.Content.ReadFromJsonAsync<MatchSummaryDto>())!;
 
