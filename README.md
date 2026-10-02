@@ -326,10 +326,12 @@ using.** See `docs/match-list-measurement.md` for what each figure means and how
 
 ## Deployment
 
-The same `compose.yaml`, with a different `.env`. `deploy/deploy.sh` runs the tests, rsyncs the
-working tree, builds the image **on the server** and switches over; a failed health check rolls back
-to the previous image on its own. Building there rather than here needs no registry, no
-cross-compilation and nothing pushed anywhere — the trade is a slower deploy on modest hardware.
+Production deploys automatically after the existing Build and test job succeeds for a push to
+`main`. GitHub Actions transfers that exact tested commit to the server, where its
+`deploy/deploy.sh` builds and switches the app with the existing Compose model. The server-side
+script does not run tests or rsync a working tree; it checks application health and restores the
+previous release if switching fails. See [the deployment guide](docs/deployment.md) for required
+GitHub secrets, server setup, persistent paths, diagnosis, and recovery instructions.
 
 Databases, uploaded media and `appsettings.Production.json` are named in the server's `.env` and live
 outside the source tree, so a deploy never touches them. The volume names are pinned literally rather
