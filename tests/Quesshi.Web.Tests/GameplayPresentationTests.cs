@@ -5,7 +5,7 @@ public sealed class GameplayPresentationTests
     [Fact]
     public void Every_gameplay_page_uses_the_shared_game_shell_and_stage()
     {
-        foreach (var page in new[] { "Play.razor", "Live.razor", "Matching.razor" })
+        foreach (var page in new[] { "Play.razor", "Live.razor", "Voting.razor" })
         {
             var source = File.ReadAllText(Page(page));
             Assert.Contains("game-shell", source);
@@ -34,7 +34,7 @@ public sealed class GameplayPresentationTests
 
         Assert.Contains("\"/play/\"", layout);
         Assert.Contains("\"/live/\"", layout);
-        Assert.Contains("\"/matching/\"", layout);
+        Assert.Contains("\"/voting/\"", layout);
     }
 
     private static string Page(string name) => Source($"Pages/{name}");

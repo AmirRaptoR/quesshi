@@ -33,8 +33,8 @@ public sealed record DuelSettings(
             throw new ArgumentException(
                 $"A duel needs one of {string.Join(", ", MatchRules.QuestionCountChoices)} questions, got {questionCount}.", nameof(questionCount));
 
-        if (mode == GameMode.Matching && levels.Count > 0)
-            throw new ArgumentException("Matching duels do not support difficulty levels.", nameof(levels));
+        if (mode == GameMode.Voting && levels.Count > 0)
+            throw new ArgumentException("Voting duels do not support difficulty levels.", nameof(levels));
 
         return new DuelSettings(language, questionCount, categoryIds, levels, mode);
     }

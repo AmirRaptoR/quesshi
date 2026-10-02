@@ -75,12 +75,12 @@
                 else
                 {
                     <div class="home-choice" role="group" aria-label="@L["home.duelMode"]">
-                        <button type="button" class="home-choice__option @(!_matchingMode ? "is-on" : null)"
-                                aria-pressed="@(!_matchingMode).ToString().ToLowerInvariant()"
-                                @onclick="() => _matchingMode = false">@L["home.modeTrivia"]</button>
-                        <button type="button" class="home-choice__option @(_matchingMode ? "is-on" : null)"
-                                aria-pressed="@_matchingMode.ToString().ToLowerInvariant()"
-                                @onclick="() => _matchingMode = true">@L["home.modeMatching"]</button>
+                        <button type="button" class="home-choice__option @(!_votingMode ? "is-on" : null)"
+                                aria-pressed="@(!_votingMode).ToString().ToLowerInvariant()"
+                                @onclick="() => _votingMode = false">@L["home.modeTrivia"]</button>
+                        <button type="button" class="home-choice__option @(_votingMode ? "is-on" : null)"
+                                aria-pressed="@_votingMode.ToString().ToLowerInvariant()"
+                                @onclick="() => _votingMode = true">@L["home.modeVoting"]</button>
                     </div>
                     <button type="button" class="home-primary" disabled="@_busy" @onclick="() => RunAsync(HomeEntry.CreateLobby)">
                         @* A room with seats along its sides: the one drawing that says "more than two
@@ -256,7 +256,7 @@
     /// </summary>
     private RenderFragment SettingsLine() =>
         @<button type="button" class="home-settings" @onclick="OpenSettings">
-            <span class="home-settings__text">@(MatchingSelected ? L["matching.settings.summary"] : DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L))</span>
+            <span class="home-settings__text">@(VotingSelected ? L["voting.settings.summary"] : DuelSettingsLine.Text(DuelSettingsSummary.From(State.LastDuelSettings), L))</span>
             <span class="home-settings__change">@L["home.settingsChange"]</span>
         </button>;
 
@@ -320,8 +320,8 @@
     /// tab revealed it: the field is the same field on both, so the state is too.</summary>
     private bool _codeOpen;
     private bool _opponent;
-    private bool _matchingMode;
-    private bool MatchingSelected => IsLive && _matchingMode;
+    private bool _votingMode;
+    private bool VotingSelected => IsLive && _votingMode;
 
     private string _code = "";
     private string? _error;
@@ -400,12 +400,12 @@
         {
             case HomeCall.CreateLiveLobby:
                 _busy = true;
-                if (MatchingSelected)
+                if (VotingSelected)
                 {
                     _busy = false;
-                    // Matching has its own category picker and must never consume the saved trivia
+                    // Voting has its own category picker and must never consume the saved trivia
                     // topics or difficulty range. Creation happens after that picker commits.
-                    Nav.NavigateTo("/play/matching");
+                    Nav.NavigateTo("/play/voting");
                     break;
                 }
                 await State.SetLastDuelSettingsAsync(settings);
@@ -502,14 +502,14 @@
     {
         _busy = true;
 
-        // Matching codes live in their own archive namespace. Trying this read first lets invite
-        // links and the home code field land in the matching lobby without exposing matching DTOs
+        // Voting codes live in their own archive namespace. Trying this read first lets invite
+        // links and the home code field land in the voting lobby without exposing voting DTOs
         // through the trivia invite contract.
-        if (await Api.MatchingByCodeAsync(_code) is { Code: { Length: > 0 } matchingCode })
+        if (await Api.VotingByCodeAsync(_code) is { Code: { Length: > 0 } votingCode })
         {
-            var matching = await Api.JoinMatchingAsync(matchingCode);
+            var voting = await Api.JoinVotingAsync(votingCode);
             _busy = false;
-            if (matching is not null) Nav.NavigateTo($"/matching/lobby/{matching.Code}");
+            if (voting is not null) Nav.NavigateTo($"/voting/lobby/{voting.Code}");
             else _error = L["common.error"];
             return;
         }
@@ -590,7 +590,7 @@
         return L.Num(L.Lang == "fa" ? grouped.Replace(',', '٬') : grouped);
     }
 
-    private void OpenSettings() => Nav.NavigateTo(MatchingSelected ? "/play/matching" : "/play/questions");
+    private void OpenSettings() => Nav.NavigateTo(VotingSelected ? "/play/voting" : "/play/questions");
 
     private string Selected(string tab) => (_tab == tab).ToString().ToLowerInvariant();
 

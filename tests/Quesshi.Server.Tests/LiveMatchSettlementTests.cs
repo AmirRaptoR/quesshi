@@ -15,7 +15,7 @@ public class LiveMatchSettlementTests(ClusterFixture fixture)
 {
     private LiveMatchSettlement Sut => new(fixture.Cluster.GrainFactory, Shared.Questions, Shared.Archive);
 
-    /// <summary>Ten questions where the correct answer is always index 0, matching MatchGrainTests' own bank.</summary>
+    /// <summary>Ten questions where the correct answer is always index 0, voting MatchGrainTests' own bank.</summary>
     private static List<string> SeedQuestions(string prefix)
     {
         var ids = new List<string>();

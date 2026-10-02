@@ -163,14 +163,14 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     /// lobby just to enforce it a second time.
     /// </summary>
     public Task<int> InviteToLobby(string targetId, string lobbyId)
-        => InviteToLobbyAsync(targetId, lobbyId, matching: false);
+        => InviteToLobbyAsync(targetId, lobbyId, voting: false);
 
-    /// <summary>Matching counterpart used by the shared lobby renderer. Authentication, friendship
+    /// <summary>Voting counterpart used by the shared lobby renderer. Authentication, friendship
     /// and guest-target rules are identical; only the grain that owns the destination lobby differs.</summary>
-    public Task<int> InviteToMatchingLobby(string targetId, string lobbyId)
-        => InviteToLobbyAsync(targetId, lobbyId, matching: true);
+    public Task<int> InviteToVotingLobby(string targetId, string lobbyId)
+        => InviteToLobbyAsync(targetId, lobbyId, voting: true);
 
-    private async Task<int> InviteToLobbyAsync(string targetId, string lobbyId, bool matching)
+    private async Task<int> InviteToLobbyAsync(string targetId, string lobbyId, bool voting)
     {
         if (RequirePlayer() is not { } inviterId) return (int)LiveChallengeResult.NotFound;
         if (inviterId == targetId) return (int)LiveChallengeResult.SelfChallenge;
@@ -182,8 +182,8 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         var target = await players.GetAsync(targetId);
         if (target is null || target.IsGuest) return (int)LiveChallengeResult.NotFound;
 
-        return matching
-            ? await Matchmaking.ChallengeMatchingAsync(ids.NewId(), inviterId, targetId, lobbyId)
+        return voting
+            ? await Matchmaking.ChallengeVotingAsync(ids.NewId(), inviterId, targetId, lobbyId)
             : await Matchmaking.ChallengeAsync(ids.NewId(), inviterId, targetId, lobbyId);
     }
 
@@ -224,5 +224,5 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     }
 
     private static LiveChallengeNotice ToNotice(LiveChallengeView c)
-        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt, c.Matching);
+        => new(c.ChallengeId, c.ChallengerId, c.LobbyId, c.LobbyCode, c.ExpiresAt, c.Voting);
 }

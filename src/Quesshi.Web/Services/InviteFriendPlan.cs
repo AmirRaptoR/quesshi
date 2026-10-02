@@ -28,7 +28,7 @@ public static class InviteFriendPlan
     public static bool NeedsLobby(int capacity, bool isLive) => isLive || capacity > 2;
 
     /// <summary>Where a capacity-2, async create sends its owner — exactly what Home.razor always
-    /// computed inline before this: CanPlay is true only when CreateMatchAsync's own random-matching
+    /// computed inline before this: CanPlay is true only when CreateMatchAsync's own random-voting
     /// already paired them with a waiting opponent, so there is already a card to answer.</summary>
     public static string Route(MatchSummaryDto match) => match.CanPlay ? $"/play/{match.Id}" : $"/duel/{match.Id}";
 

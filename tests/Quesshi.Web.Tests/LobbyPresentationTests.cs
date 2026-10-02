@@ -28,10 +28,10 @@ public class LobbyPresentationTests
             Participants: participants, Capacity: capacity,
             Settings: new DuelSettingsDto("en", questionCount, [], []), SettingsLocked: settingsLocked);
 
-    private static MatchingViewDto MatchingSample(List<LiveParticipantDto> participants, int capacity = 4,
+    private static VotingViewDto VotingSample(List<LiveParticipantDto> participants, int capacity = 4,
         string state = "awaitingopponent", int questionCount = 6, List<string>? categories = null)
-        => new("matching-1", "MATCH1", "matching", "en", capacity, state,
-            [.. participants.Select(p => new MatchingParticipantDto(p.PlayerId, p.Name, true, p.IsGuest, p.Avatar))],
+        => new("voting-1", "MATCH1", "voting", "en", capacity, state,
+            [.. participants.Select(p => new VotingParticipantDto(p.PlayerId, p.Name, true, p.IsGuest, p.Avatar))],
             null, questionCount, null, null, null, DateTimeOffset.UtcNow, null,
             CategoryIds: categories ?? []);
 
@@ -199,18 +199,18 @@ public class LobbyPresentationTests
     }
 
     [Fact]
-    public void Matching_projects_into_the_same_lobby_snapshot_with_its_own_categories()
+    public void Voting_projects_into_the_same_lobby_snapshot_with_its_own_categories()
     {
-        var snapshot = LobbyPresentation.From(MatchingSample([P("amir"), P("sara")],
+        var snapshot = LobbyPresentation.From(VotingSample([P("amir"), P("sara")],
             questionCount: 12, categories: ["friends", "family"]));
 
-        Assert.True(snapshot.IsMatching);
+        Assert.True(snapshot.IsVoting);
         Assert.False(snapshot.IsLive);
         Assert.True(snapshot.Waiting);
         Assert.Equal(12, snapshot.Settings.QuestionCount);
         Assert.Equal(["friends", "family"], snapshot.Settings.CategoryIds);
         Assert.True(LobbyPresentation.CanStart(snapshot, "amir"));
-        Assert.Equal("/matching/matching-1", LobbyPresentation.TargetRoute(snapshot));
+        Assert.Equal("/voting/voting-1", LobbyPresentation.TargetRoute(snapshot));
     }
 
     [Fact]

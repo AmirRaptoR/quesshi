@@ -14,7 +14,7 @@ public sealed class SignalRLobbyNotifier(IHubContext<LobbyHub> hub, IPlayerRepos
         var challenger = await players.GetAsync(challenge.ChallengerId, ct);
         var dto = new LiveChallengeDto(challenge.ChallengeId, challenge.ChallengerId,
             challenger?.DisplayName ?? "—", challenger?.AvatarSeed ?? challenge.ChallengerId,
-            challenge.LobbyId, challenge.LobbyCode, challenge.ExpiresAt, challenge.Matching);
+            challenge.LobbyId, challenge.LobbyCode, challenge.ExpiresAt, challenge.Voting);
 
         await hub.Clients.Group(Group(targetId)).SendAsync("ChallengeReceived", dto, ct);
     }
@@ -28,9 +28,9 @@ public sealed class SignalRLobbyNotifier(IHubContext<LobbyHub> hub, IPlayerRepos
     public Task DuelReadyAsync(string playerId, string matchId, CancellationToken ct = default)
         => hub.Clients.Group(Group(playerId)).SendAsync("DuelReady", matchId, ct);
 
-    public Task MatchingReadyAsync(string playerId, string matchId, string lobbyCode,
+    public Task VotingReadyAsync(string playerId, string matchId, string lobbyCode,
         CancellationToken ct = default)
-        => hub.Clients.Group(Group(playerId)).SendAsync("MatchingReady", matchId, lobbyCode, ct);
+        => hub.Clients.Group(Group(playerId)).SendAsync("VotingReady", matchId, lobbyCode, ct);
 
     public Task ChallengeFailedAsync(string playerId, string challengeId, CancellationToken ct = default)
         => hub.Clients.Group(Group(playerId)).SendAsync("ChallengeFailed", challengeId, ct);

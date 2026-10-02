@@ -16,4 +16,4 @@ public sealed record LiveChallengeView(
     [property: Id(4)] string LobbyCode,
     [property: Id(5)] DateTimeOffset SentAt,
     [property: Id(6)] DateTimeOffset ExpiresAt,
-    [property: Id(7)] bool Matching = false);
+    [property: Id(7)] bool Voting = false);

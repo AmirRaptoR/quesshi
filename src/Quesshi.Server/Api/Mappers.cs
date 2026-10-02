@@ -60,15 +60,15 @@ public static class Mappers
         [.. q.Reports.Select(r => new QuestionReportDto(r.PlayerId, "", r.Reason.ToString().ToLowerInvariant(), r.At))],
         q.Kind.ToString().ToLowerInvariant(), q.Target.ToDto(), q.BaseLayer?.ToString().ToLowerInvariant());
 
-    public static MatchingQuestionDto ToAdminDto(this MatchingQuestion q) => new(
-        q.Id, q.Lang.Code(), q.MatchingCategoryId, q.Prompt,
+    public static VotingQuestionDto ToAdminDto(this VotingQuestion q) => new(
+        q.Id, q.Lang.Code(), q.VotingCategoryId, q.Prompt,
         q.AnswerSource.ToString().ToLowerInvariant(), [.. q.FixedChoices],
         q.Status.ToString().ToLowerInvariant(), q.Source.ToString().ToLowerInvariant(),
         q.Media.Kind == MediaKind.None ? null : new MediaDto(
             q.Media.Kind.ToString().ToLowerInvariant(), q.Media.Url, q.Media.Attribution),
         q.Topic, q.CreatedAt, q.UpdatedAt, q.TimesServed);
 
-    public static MatchingCategoryDto ToDto(this MatchingCategory c, Language lang) => new(
+    public static VotingCategoryDto ToDto(this VotingCategory c, Language lang) => new(
         c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl);
 
     /// <summary>
@@ -88,7 +88,7 @@ public static class Mappers
     public static GenerationRunDto ToDto(this GenerationRun r)
         => new(r.Id, r.StartedAt, r.FinishedAt, r.Requested, r.Inserted, r.Rejected, r.Error);
 
-    public static MatchingGenerationRunDto ToDto(this MatchingGenerationRun r)
+    public static VotingGenerationRunDto ToDto(this VotingGenerationRun r)
         => new(r.Id, r.StartedAt, r.FinishedAt, r.Lang.Code(), r.CategoryId,
             r.AnswerSource.ToString().ToLowerInvariant(), r.Requested, r.Inserted, r.Rejected, r.Error);
 
@@ -114,23 +114,23 @@ public static class Mappers
         var theirRun = otherId is null ? null : v.Runs.FirstOrDefault(r => r.PlayerId == otherId);
 
         var (myName, myAvatar, _) = lookup(me);
-        var matching = (GameMode)v.Mode == GameMode.Matching;
-        var mine = new PlayerSideDto(me, myName, myAvatar, matching ? null : myRun?.Score ?? 0,
-            matching ? 0 : myRun?.Correct ?? 0, matching ? 0 : myRun?.Answered ?? 0, myRun?.Finished ?? false);
+        var voting = (GameMode)v.Mode == GameMode.Voting;
+        var mine = new PlayerSideDto(me, myName, myAvatar, voting ? null : myRun?.Score ?? 0,
+            voting ? 0 : myRun?.Correct ?? 0, voting ? 0 : myRun?.Answered ?? 0, myRun?.Finished ?? false);
 
         PlayerSideDto? theirs = null;
         if (otherId is not null)
         {
             var (name, avatar, _) = lookup(otherId);
-            theirs = new PlayerSideDto(otherId, name, avatar, matching ? null : theirRun?.Score ?? 0,
-                matching ? 0 : theirRun?.Correct ?? 0, matching ? 0 : theirRun?.Answered ?? 0, theirRun?.Finished ?? false);
+            theirs = new PlayerSideDto(otherId, name, avatar, voting ? null : theirRun?.Score ?? 0,
+                voting ? 0 : theirRun?.Correct ?? 0, voting ? 0 : theirRun?.Answered ?? 0, theirRun?.Finished ?? false);
         }
 
         var state = (MatchState)v.State;
         var over = state is MatchState.Resolved or MatchState.Forfeited;
         var canReveal = mine.Finished || over;
 
-        var outcome = matching ? null : !over ? "pending" : OutcomeFor(me, v.Runs);
+        var outcome = voting ? null : !over ? "pending" : OutcomeFor(me, v.Runs);
 
         // Issue #53's lobby page addition: the whole roster, in join order, plus the settings the
         // owner picked (or, for a legacy pre-drawn record, reconstructed with empty categories/levels
@@ -144,10 +144,10 @@ public static class Mappers
         var settings = new DuelSettingsDto(((Language)v.Lang).Code(), v.QuestionCount, v.CategoryIds ?? [], v.Levels ?? []);
 
         return new MatchSummaryDto(v.Id, v.Code, ((Language)v.Lang).Code(), state.ToString().ToLowerInvariant(),
-            mine, theirs, v.WinnerId, matching ? null : v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
+            mine, theirs, v.WinnerId, voting ? null : v.IsDraw, v.CreatedAt, !over && !mine.Finished, canReveal, outcome,
             v.QuestionIds.Count, IsLive: false, Participants: participants, Capacity: v.Capacity,
             Settings: settings, SettingsLocked: v.QuestionIds.Count > 0,
-            Mode: matching ? "matching" : null);
+            Mode: voting ? "voting" : null);
     }
 
     /// <summary>
@@ -189,7 +189,7 @@ public static class Mappers
         // still names only a single "opponent" — this DTO's two-sided shape is issue #53's rework, not
         // this one's — but it is now picked from Results, the one place that lists every real seat, so
         // it can never coincide with `me`.
-        var matching = m.Mode == GameMode.Matching;
+        var voting = m.Mode == GameMode.Voting;
         var myScore = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Score ?? 0;
         var otherId = m.Results.Select(r => r.PlayerId).FirstOrDefault(id => id != me);
         var otherScore = otherId is null ? 0 : m.Results.FirstOrDefault(r => r.PlayerId == otherId)?.Score ?? 0;
@@ -197,13 +197,13 @@ public static class Mappers
         var over = m.State is MatchState.Resolved or MatchState.Abandoned or MatchState.NoContest;
 
         var (myName, myAvatar, _) = lookup(me);
-        var mine = new PlayerSideDto(me, myName, myAvatar, matching ? null : myScore, matching ? 0 : 0, 0, over);
+        var mine = new PlayerSideDto(me, myName, myAvatar, voting ? null : myScore, voting ? 0 : 0, 0, over);
 
         PlayerSideDto? theirs = null;
         if (otherId is not null)
         {
             var (name, avatar, _) = lookup(otherId);
-            theirs = new PlayerSideDto(otherId, name, avatar, matching ? null : otherScore, 0, 0, over);
+            theirs = new PlayerSideDto(otherId, name, avatar, voting ? null : otherScore, 0, 0, over);
         }
 
         // Every per-player outcome reads Results — the real per-participant Standing this archive row
@@ -215,7 +215,7 @@ public static class Mappers
         // only the unranked Loss placeholder (see ParticipantResult's own remarks) rather than a real
         // Standing, and "draw" — nobody won, not "everybody lost" — is the honest reading of that.
         string? outcome;
-        if (matching) outcome = null;
+        if (voting) outcome = null;
         else if (!over) outcome = "pending";
         else if (m.State == MatchState.NoContest) outcome = "draw";
         else outcome = m.Results.FirstOrDefault(r => r.PlayerId == me)?.Outcome switch
@@ -226,14 +226,14 @@ public static class Mappers
         };
 
         return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), m.State.ToString().ToLowerInvariant(),
-            mine, theirs, m.WinnerId, matching ? null : m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
-            m.QuestionIds.Count, IsLive: true, Mode: matching ? "matching" : null);
+            mine, theirs, m.WinnerId, voting ? null : m.IsDraw, m.CreatedAt, CanPlay: false, CanReveal: over, outcome,
+            m.QuestionIds.Count, IsLive: true, Mode: voting ? "voting" : null);
     }
 
-    /// <summary>Matching rows are intentionally scoreless and are already complete enough for the
-    /// match list; activating a matching grain here would turn a cheap archive read into one grain
-    /// call per row. The detail/play routes use the matching grain for the full redacted view.</summary>
-    public static MatchSummaryDto ToMatchingSummary(this ArchivedMatch m, string me,
+    /// <summary>Voting rows are intentionally scoreless and are already complete enough for the
+    /// match list; activating a voting grain here would turn a cheap archive read into one grain
+    /// call per row. The detail/play routes use the voting grain for the full redacted view.</summary>
+    public static MatchSummaryDto ToVotingSummary(this ArchivedMatch m, string me,
         Func<string, (string Name, string Avatar, bool IsGuest)> lookup)
     {
         var state = m.State.ToString().ToLowerInvariant();
@@ -251,7 +251,7 @@ public static class Mappers
         var over = m.State is MatchState.Resolved or MatchState.NoContest;
         return new MatchSummaryDto(m.Id, m.Code, m.Lang.Code(), state, mine, theirs, null, null,
             m.CreatedAt, !over, false, null, m.QuestionIds.Count, false, participants, participants.Count,
-            new DuelSettingsDto(m.Lang.Code(), m.QuestionIds.Count, [], []), m.QuestionIds.Count > 0, "matching");
+            new DuelSettingsDto(m.Lang.Code(), m.QuestionIds.Count, [], []), m.QuestionIds.Count > 0, "voting");
     }
 
     /// <summary>

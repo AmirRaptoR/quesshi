@@ -34,6 +34,6 @@ public sealed class ProfileHistoryTests
 
         Assert.Equal("/duel/async", ProfileHistory.Route(Match("async", "finished", now)));
         Assert.Equal("/live/live", ProfileHistory.Route(Match("live", "finished", now, live: true)));
-        Assert.Equal("/matching/matching", ProfileHistory.Route(Match("matching", "finished", now, mode: "matching")));
+        Assert.Equal("/voting/voting", ProfileHistory.Route(Match("voting", "finished", now, mode: "voting")));
     }
 }

@@ -13,7 +13,7 @@ namespace Quesshi.Server.Seed;
 public sealed class Seeder(
     IQuestionRepository questions,
     ICategoryRepository categories,
-    IMatchingCategoryRepository matchingCategories,
+    IVotingCategoryRepository votingCategories,
     IClock clock,
     ILogger<Seeder> logger)
 {
@@ -27,13 +27,13 @@ public sealed class Seeder(
             if (await categories.GetAsync(row.Id, ct) is null)
                 await categories.UpsertAsync(new Category(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
 
-        // Matching categories live in their own collection and are insert-only by design. An admin
+        // Voting categories live in their own collection and are insert-only by design. An admin
         // may rename one after installation; unlike seeded questions, a redeploy must not overwrite
         // that edit.
-        foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "matching_categories.json"), ct))
-            if (await matchingCategories.GetAsync(row.Id, ct) is null)
-                await matchingCategories.UpsertAsync(
-                    new MatchingCategory(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
+        foreach (var row in await ReadAsync<SeedCategory>(Path.Combine(folder, "voting_categories.json"), ct))
+            if (await votingCategories.GetAsync(row.Id, ct) is null)
+                await votingCategories.UpsertAsync(
+                    new VotingCategory(row.Id, row.NameFa, row.NameEn, row.Icon, row.Color, true, row.SortOrder, row.NameNl), ct);
 
         var inserted = 0;
 

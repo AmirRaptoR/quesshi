@@ -4,5 +4,5 @@ namespace Quesshi.Domain;
 public enum GameMode
 {
     Trivia = 0,
-    Matching = 1
+    Voting = 1
 }

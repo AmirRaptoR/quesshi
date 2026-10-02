@@ -12,13 +12,13 @@ public static class ProfileHistory
             .OrderByDescending(match => match.CreatedAt).Take(take)];
 
     public static string Route(MatchSummaryDto match)
-        => string.Equals(match.Mode, "matching", StringComparison.OrdinalIgnoreCase)
-            ? $"/matching/{match.Id}"
+        => string.Equals(match.Mode, "voting", StringComparison.OrdinalIgnoreCase)
+            ? $"/voting/{match.Id}"
             : match.IsLive ? $"/live/{match.Id}" : $"/duel/{match.Id}";
 
     public static string ModeKey(MatchSummaryDto match)
-        => string.Equals(match.Mode, "matching", StringComparison.OrdinalIgnoreCase)
-            ? "home.modeMatching"
+        => string.Equals(match.Mode, "voting", StringComparison.OrdinalIgnoreCase)
+            ? "home.modeVoting"
             : match.IsLive ? "home.live" : "home.modeTrivia";
 
     public static string OutcomeKey(MatchSummaryDto match) => match.Outcome switch

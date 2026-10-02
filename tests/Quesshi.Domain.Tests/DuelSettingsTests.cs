@@ -15,6 +15,7 @@ public class DuelSettingsTests
     public void Trivia_is_the_zero_value_and_legacy_json_without_mode_reads_as_trivia()
     {
         Assert.Equal(0, (int)GameMode.Trivia);
+        Assert.Equal(1, (int)GameMode.Voting);
         var settings = System.Text.Json.JsonSerializer.Deserialize<DuelSettings>(
             "{\"Language\":0,\"QuestionCount\":10,\"CategoryIds\":[],\"Levels\":[]}");
 
@@ -26,16 +27,16 @@ public class DuelSettingsTests
     public void Mode_participates_in_value_equality()
     {
         var trivia = DuelSettings.Create(Language.En, 10, [], []);
-        var matching = DuelSettings.Create(Language.En, 10, [], [], GameMode.Matching);
+        var voting = DuelSettings.Create(Language.En, 10, [], [], GameMode.Voting);
 
-        Assert.NotEqual(trivia, matching);
-        Assert.NotEqual(trivia.GetHashCode(), matching.GetHashCode());
+        Assert.NotEqual(trivia, voting);
+        Assert.NotEqual(trivia.GetHashCode(), voting.GetHashCode());
     }
 
     [Fact]
-    public void Matching_rejects_difficulty_levels()
+    public void Voting_rejects_difficulty_levels()
         => Assert.Throws<ArgumentException>(() =>
-            DuelSettings.Create(Language.En, 10, [], [Difficulty.Easy], GameMode.Matching));
+            DuelSettings.Create(Language.En, 10, [], [Difficulty.Easy], GameMode.Voting));
 
     [Fact]
     public void Two_instances_with_the_same_content_but_different_list_references_are_equal()

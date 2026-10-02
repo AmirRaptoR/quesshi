@@ -5,7 +5,7 @@ public sealed class AdminUsabilitySurfaceTests
     [Fact]
     public void Both_category_editors_expose_a_plain_emoji_text_field()
     {
-        foreach (var page in new[] { "Categories.razor", "MatchingCategories.razor" })
+        foreach (var page in new[] { "Categories.razor", "VotingCategories.razor" })
         {
             var source = File.ReadAllText(Page(page));
             Assert.Contains("admin.icon", source);
@@ -16,7 +16,7 @@ public sealed class AdminUsabilitySurfaceTests
 
     [Theory]
     [InlineData("Questions.razor")]
-    [InlineData("MatchingQuestions.razor")]
+    [InlineData("VotingQuestions.razor")]
     public void Question_pages_put_generation_import_and_editing_in_shared_modals(string name)
     {
         var page = File.ReadAllText(Page(name));
@@ -30,7 +30,7 @@ public sealed class AdminUsabilitySurfaceTests
 
     [Theory]
     [InlineData("Categories.razor")]
-    [InlineData("MatchingCategories.razor")]
+    [InlineData("VotingCategories.razor")]
     public void Category_pages_use_the_shared_admin_table_and_modal_editor(string name)
     {
         var page = File.ReadAllText(Page(name));

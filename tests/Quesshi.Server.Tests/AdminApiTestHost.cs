@@ -26,7 +26,7 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
     public TokenIssuer PlayerTokenIssuer { get; } = new(new JwtOptions { Key = PlayerSigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 });
     public AdminTokenIssuer AdminTokenIssuer { get; } = new(new AdminAuthOptions { Key = AdminSigningKey, Issuer = "quesshi" });
 
-    /// <summary>Its own disjoint id range — see <see cref="LiveApiTestHost"/>'s matching field for why a
+    /// <summary>Its own disjoint id range — see <see cref="LiveApiTestHost"/>'s voting field for why a
     /// zero-seeded <c>FakeIdFactory</c> per host is not safe once more than one host exists.</summary>
     private static int _idSeed = 10_000_000;
 
@@ -53,28 +53,28 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton(cluster.GrainFactory);
                 services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
                 services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
-                // Matching content has its own persistence boundary and fake store, just like the
+                // Voting content has its own persistence boundary and fake store, just like the
                 // production server registers separate Mongo repositories. Keeping both here lets
                 // admin endpoint tests resolve the complete admin dependency graph without mixing
-                // matching rows into the trivia fakes.
-                services.AddSingleton<IMatchingQuestionRepository, FakeMatchingQuestions>();
-                services.AddSingleton<IMatchingCategoryRepository, FakeMatchingCategories>();
+                // voting rows into the trivia fakes.
+                services.AddSingleton<IVotingQuestionRepository, FakeVotingQuestions>();
+                services.AddSingleton<IVotingCategoryRepository, FakeVotingCategories>();
                 services.AddSingleton<IMatchArchive>(LiveShared.Archive);
                 services.AddSingleton<IPlayerRepository>(LiveShared.Players);
                 services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
                 services.AddSingleton<IClock>(new TimeProviderClock(LiveShared.TimeProvider));
                 services.AddSingleton<IIdFactory>(new FakeIdFactory(Interlocked.Add(ref _idSeed, 100_000)));
                 services.AddSingleton<IGenerationLog, FakeGenerationLog>();
-                services.AddSingleton<IMatchingGenerationLog, FakeMatchingGenerationLog>();
+                services.AddSingleton<IVotingGenerationLog, FakeVotingGenerationLog>();
                 services.AddSingleton<IAiSpendLog, FakeAiSpendLog>();
                 services.AddSingleton<IQuestionGenerator, FakeQuestionGenerator>();
-                services.AddSingleton<IMatchingQuestionGenerator, FakeMatchingQuestionGenerator>();
+                services.AddSingleton<IVotingQuestionGenerator, FakeVotingQuestionGenerator>();
                 services.AddSingleton(new TopUpOptions());
-                services.AddSingleton(new MatchingGenerationOptions());
+                services.AddSingleton(new VotingGenerationOptions());
                 services.AddSingleton(new OpenRouterOptions());
                 services.AddSingleton<QuestionSetBuilder>();
                 services.AddSingleton<TopUpQuestionBank>();
-                services.AddSingleton<GenerateMatchingQuestions>();
+                services.AddSingleton<GenerateVotingQuestions>();
                 services.AddLogging();
             });
             web.Configure(app =>

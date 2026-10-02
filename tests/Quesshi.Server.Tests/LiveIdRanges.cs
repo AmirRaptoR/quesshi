@@ -15,7 +15,7 @@ public static class LiveIdRanges
 {
     /// <summary>Reserved for <see cref="LiveShared.Ids"/> — the one factory registered into the silo's
     /// DI container, resolved by every grain in the collection (today only
-    /// <c>LiveMatchmakingGrain.BuildDuelAsync</c>, matching two queued players into a duel). One
+    /// <c>LiveMatchmakingGrain.BuildDuelAsync</c>, voting two queued players into a duel). One
     /// instance for the whole collection's lifetime, so this must stay wide enough for every match the
     /// random queue ever forms across every test in <see cref="LiveMatchmakingGrainTests"/>.</summary>
     public const int SharedIdsStart = 0;

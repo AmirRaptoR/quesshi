@@ -32,15 +32,15 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<IClock>(new TimeProviderClock(LiveShared.TimeProvider));
             services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
             services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
-            services.AddSingleton<IMatchingQuestionRepository>(Shared.MatchingQuestions);
-            services.AddSingleton<IMatchingCategoryRepository>(Shared.MatchingCategories);
+            services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
+            services.AddSingleton<IVotingCategoryRepository>(Shared.VotingCategories);
             services.AddSingleton<ILiveNotifier>(LiveShared.Notifier);
-            services.AddSingleton<IMatchingNotifier>(Shared.MatchingNotifier);
+            services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
             services.AddSingleton<ILobbyNotifier>(LiveShared.LobbyNotifier);
             services.AddSingleton<IMatchArchive>(LiveShared.Archive);
             services.AddSingleton<IIdFactory>(LiveShared.Ids);
             services.AddSingleton<QuestionSetBuilder>();
-            services.AddSingleton<MatchingQuestionSetBuilder>();
+            services.AddSingleton<VotingQuestionSetBuilder>();
             services.AddSingleton<ILiveDirectory>(LiveShared.Directory);
 
             // Settlement's own dependencies — LiveMatchGrain now calls into IPlayerGrain, which needs

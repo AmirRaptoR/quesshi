@@ -18,16 +18,16 @@ public sealed class QuestionPromptBuilder
         "You write trivia questions for a two-player quiz game. " +
         "You answer only with JSON matching the requested schema, and never with commentary.";
 
-    public string MatchingSystem() =>
-        "You write respectful questions for a social matching game with no correct answers. " +
+    public string VotingSystem() =>
+        "You write respectful questions for a social voting game with no correct answers. " +
         "You answer only with JSON matching the requested schema, and never with commentary.";
 
     /// <summary>Questions whose value comes from comparing participants' answers, never grading them.</summary>
-    public string Matching(Language lang, MatchingCategory category, MatchingAnswerSource answerSource,
+    public string Voting(Language lang, VotingCategory category, VotingAnswerSource answerSource,
         int count, IReadOnlyCollection<string> avoid)
     {
         var language = Name(lang);
-        var shape = answerSource == MatchingAnswerSource.Participants
+        var shape = answerSource == VotingAnswerSource.Participants
             ? """
               Each question is answered by selecting one of the people in the match.
               Do not write participant names or choices: the game inserts the current roster when
@@ -35,14 +35,14 @@ public sealed class QuestionPromptBuilder
               likely to do something or who best fits a light-hearted description.
               """
             : $"""
-              Each question has between {MatchingRules.MinFixedChoices} and
-              {MatchingRules.MaxFixedChoices} authored choices. There is no correct choice. Make the
+              Each question has between {VotingRules.MinFixedChoices} and
+              {VotingRules.MaxFixedChoices} authored choices. There is no correct choice. Make the
               choices mutually distinct, similarly specific, and collectively useful answers to the
               prompt. Do not add "not applicable" or "no answer"; the game appends that option.
               """;
 
         return $"""
-        Write {count} questions for a social matching game.
+        Write {count} questions for a social voting game.
 
         Group/category: {category.NameFor(lang)}
         Language: write the prompt and every authored choice in {language}

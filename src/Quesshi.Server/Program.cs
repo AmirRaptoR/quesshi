@@ -94,8 +94,8 @@ var adminAuthOptions = builder.Configuration.GetSection("AdminAuth").Get<AdminAu
 var smtpOptions = builder.Configuration.GetSection("Smtp").Get<SmtpOptions>() ?? new SmtpOptions();
 var openRouterOptions = builder.Configuration.GetSection("OpenRouter").Get<OpenRouterOptions>() ?? new OpenRouterOptions();
 var topUpOptions = builder.Configuration.GetSection("Generation").Get<TopUpOptions>() ?? new TopUpOptions();
-var matchingGenerationOptions = builder.Configuration.GetSection("MatchingGeneration")
-    .Get<MatchingGenerationOptions>() ?? new MatchingGenerationOptions();
+var votingGenerationOptions = builder.Configuration.GetSection("VotingGeneration")
+    .Get<VotingGenerationOptions>() ?? new VotingGenerationOptions();
 
 builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddSingleton(authOptions);
@@ -103,7 +103,7 @@ builder.Services.AddSingleton(adminAuthOptions);
 builder.Services.AddSingleton(smtpOptions);
 builder.Services.AddSingleton(openRouterOptions);
 builder.Services.AddSingleton(topUpOptions);
-builder.Services.AddSingleton(matchingGenerationOptions);
+builder.Services.AddSingleton(votingGenerationOptions);
 builder.Services.AddSingleton(mongoOptions);
 var tenantOptions = builder.Configuration.GetSection("Tenants").Get<TenantOptions>() ?? new TenantOptions();
 var tenantRegistry = new TenantRegistry(tenantOptions);
@@ -120,7 +120,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 // nothing to add to the configuration table. LiveHub and its notifier are #13's.
 builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
 builder.Services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
-builder.Services.AddSingleton<IMatchingNotifier, SignalRMatchingNotifier>();
+builder.Services.AddSingleton<IVotingNotifier, SignalRVotingNotifier>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ITranslator>(sp => new JsonFileTranslator(
@@ -130,15 +130,15 @@ builder.Services.AddSingleton<IIdFactory, IdFactory>();
 builder.Services.AddSingleton<ILobbyNotifier, Quesshi.Server.Live.SignalRLobbyNotifier>();
 builder.Services.AddSingleton<IQuestionRepository, MongoQuestionRepository>();
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
-builder.Services.AddSingleton<IMatchingQuestionRepository, MongoMatchingQuestionRepository>();
-builder.Services.AddSingleton<IMatchingCategoryRepository, MongoMatchingCategoryRepository>();
+builder.Services.AddSingleton<IVotingQuestionRepository, MongoVotingQuestionRepository>();
+builder.Services.AddSingleton<IVotingCategoryRepository, MongoVotingCategoryRepository>();
 builder.Services.AddSingleton<IPlayerRepository, MongoPlayerRepository>();
 builder.Services.AddSingleton<IAdminUserRepository, MongoAdminUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
 builder.Services.AddSingleton<IResetTokenStore, RedisResetTokenStore>();
 builder.Services.AddSingleton<IMatchArchive, MongoMatchArchive>();
 builder.Services.AddSingleton<IGenerationLog, MongoGenerationLog>();
-builder.Services.AddSingleton<IMatchingGenerationLog, MongoMatchingGenerationLog>();
+builder.Services.AddSingleton<IVotingGenerationLog, MongoVotingGenerationLog>();
 builder.Services.AddSingleton<IAiSpendLog, MongoAiSpendLog>();
 builder.Services.AddSingleton<ILeaderboard, RedisLeaderboard>();
 builder.Services.AddSingleton<ILiveDirectory, RedisLiveDirectory>();
@@ -147,7 +147,7 @@ builder.Services.AddSingleton<IPresence, RedisPresence>();
 builder.Services.AddSingleton<QuestionPromptBuilder>();
 builder.Services.AddSingleton<OpenRouterQuestionGenerator>();
 builder.Services.AddSingleton<IQuestionGenerator>(sp => sp.GetRequiredService<OpenRouterQuestionGenerator>());
-builder.Services.AddSingleton<IMatchingQuestionGenerator>(sp => sp.GetRequiredService<OpenRouterQuestionGenerator>());
+builder.Services.AddSingleton<IVotingQuestionGenerator>(sp => sp.GetRequiredService<OpenRouterQuestionGenerator>());
 
 var imageOptions = builder.Configuration.GetSection("Images").Get<WikipediaImageOptions>() ?? new WikipediaImageOptions();
 // Pictures are written under the web root so they are served like any other static file.
@@ -187,12 +187,12 @@ switch (smtpOptions.Delivery(builder.Environment.IsDevelopment()))
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton<AdminAuthService>();
 builder.Services.AddSingleton<QuestionSetBuilder>();
-builder.Services.AddSingleton<MatchingQuestionSetBuilder>();
+builder.Services.AddSingleton<VotingQuestionSetBuilder>();
 // LiveMatchGrain's one settlement call site — see LiveMatchSettlement's own remarks for why it is a
 // plain injected class rather than a method on the grain, the way MatchGrain's own settlement is.
 builder.Services.AddSingleton<LiveMatchSettlement>();
 builder.Services.AddSingleton<TopUpQuestionBank>();
-builder.Services.AddSingleton<GenerateMatchingQuestions>();
+builder.Services.AddSingleton<GenerateVotingQuestions>();
 builder.Services.AddSingleton<Seeder>();
 builder.Services.AddSingleton<TokenIssuer>();
 
@@ -251,7 +251,7 @@ app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
 app.MapLive();
-app.MapMatching();
+app.MapVoting();
 app.MapHub<LiveHub>("/hub/live");
 app.MapAdminAuth();
 app.MapAdminAccounts();
@@ -273,7 +273,7 @@ using (var scope = app.Services.CreateScope())
             }
             catch (Exception ex)
             {
-                // Required indexes include the unique matching code/topic constraints. Running without
+                // Required indexes include the unique voting code/topic constraints. Running without
                 // them changes correctness (not merely performance), so do not advertise a healthy app
                 // after an incomplete migration or an unavailable Mongo instance.
                 logger.LogCritical(ex, "Required Mongo indexes could not be created for tenant {TenantId}; stopping startup.", tenant.Id);

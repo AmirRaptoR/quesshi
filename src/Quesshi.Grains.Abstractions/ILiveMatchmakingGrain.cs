@@ -54,10 +54,10 @@ public interface ILiveMatchmakingGrain : IGrainWithIntegerCompoundKey
     [Alias("ChallengeAsync")]
     Task<int> ChallengeAsync(string challengeId, string challengerId, string targetId, string lobbyId);
 
-    /// <summary>Matching-lobby counterpart to <see cref="ChallengeAsync"/>. Kept as a separate
+    /// <summary>Voting-lobby counterpart to <see cref="ChallengeAsync"/>. Kept as a separate
     /// Orleans method so the established trivia wire contract and saved challenges remain valid.</summary>
-    [Alias("ChallengeMatchingAsync")]
-    Task<int> ChallengeMatchingAsync(string challengeId, string challengerId, string targetId, string lobbyId);
+    [Alias("ChallengeVotingAsync")]
+    Task<int> ChallengeVotingAsync(string challengeId, string challengerId, string targetId, string lobbyId);
 
     /// <summary>
     /// By the target: joins the lobby the challenge points at, via <c>ILiveMatchGrain.JoinAsync</c>.

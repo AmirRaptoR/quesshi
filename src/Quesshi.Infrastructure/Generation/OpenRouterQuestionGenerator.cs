@@ -19,7 +19,7 @@ public sealed class OpenRouterQuestionGenerator(
     IAiSpendLog spend,
     IIdFactory ids,
     IClock clock,
-    ILogger<OpenRouterQuestionGenerator> logger) : IQuestionGenerator, IMatchingQuestionGenerator
+    ILogger<OpenRouterQuestionGenerator> logger) : IQuestionGenerator, IVotingQuestionGenerator
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -46,11 +46,11 @@ public sealed class OpenRouterQuestionGenerator(
         int count, IReadOnlyCollection<string> avoid, CancellationToken ct = default)
         => AskAsync(prompts.Map(lang, category, level, count, avoid), MapSchema.ResponseFormat, "map", lang, category, level, QuestionKind.Map, ct);
 
-    Task<IReadOnlyList<GeneratedMatchingQuestion>> IMatchingQuestionGenerator.GenerateAsync(Language lang,
-        MatchingCategory category, MatchingAnswerSource answerSource, int count,
+    Task<IReadOnlyList<GeneratedVotingQuestion>> IVotingQuestionGenerator.GenerateAsync(Language lang,
+        VotingCategory category, VotingAnswerSource answerSource, int count,
         IReadOnlyCollection<string> avoid, CancellationToken ct)
-        => AskMatchingAsync(prompts.Matching(lang, category, answerSource, count, avoid),
-            MatchingQuestionSchema.ResponseFormat(answerSource), lang, category, answerSource, ct);
+        => AskVotingAsync(prompts.Voting(lang, category, answerSource, count, avoid),
+            VotingQuestionSchema.ResponseFormat(answerSource), lang, category, answerSource, ct);
 
     private async Task<IReadOnlyList<GeneratedQuestion>> AskAsync(string userPrompt, object schema, string purpose,
         Language lang, Category category, Difficulty level, QuestionKind kind, CancellationToken ct)
@@ -65,22 +65,22 @@ public sealed class OpenRouterQuestionGenerator(
         return Parse(content, lang, category, level, kind);
     }
 
-    private async Task<IReadOnlyList<GeneratedMatchingQuestion>> AskMatchingAsync(string userPrompt,
-        object schema, Language lang, MatchingCategory category, MatchingAnswerSource answerSource,
+    private async Task<IReadOnlyList<GeneratedVotingQuestion>> AskVotingAsync(string userPrompt,
+        object schema, Language lang, VotingCategory category, VotingAnswerSource answerSource,
         CancellationToken ct)
     {
-        var purpose = answerSource == MatchingAnswerSource.Fixed
-            ? "matching-fixed"
-            : "matching-participants";
-        var content = await RequestAsync(prompts.MatchingSystem(), userPrompt, schema, purpose, ct);
+        var purpose = answerSource == VotingAnswerSource.Fixed
+            ? "voting-fixed"
+            : "voting-participants";
+        var content = await RequestAsync(prompts.VotingSystem(), userPrompt, schema, purpose, ct);
         if (string.IsNullOrWhiteSpace(content))
         {
-            logger.LogWarning("OpenRouter returned no matching content for {Lang}/{Category}/{AnswerSource}",
+            logger.LogWarning("OpenRouter returned no voting content for {Lang}/{Category}/{AnswerSource}",
                 lang, category.Id, answerSource);
             return [];
         }
 
-        return ParseMatching(content, lang, category, answerSource);
+        return ParseVoting(content, lang, category, answerSource);
     }
 
     private async Task<string?> RequestAsync(string systemPrompt, string userPrompt, object schema,
@@ -146,23 +146,23 @@ public sealed class OpenRouterQuestionGenerator(
         }
     }
 
-    private IReadOnlyList<GeneratedMatchingQuestion> ParseMatching(string content, Language lang,
-        MatchingCategory category, MatchingAnswerSource answerSource)
+    private IReadOnlyList<GeneratedVotingQuestion> ParseVoting(string content, Language lang,
+        VotingCategory category, VotingAnswerSource answerSource)
     {
         try
         {
             var batch = JsonSerializer.Deserialize<Batch>(Unwrap(content), Json);
             return batch?.Questions is null
                 ? []
-                : [.. batch.Questions.Select(q => new GeneratedMatchingQuestion(
+                : [.. batch.Questions.Select(q => new GeneratedVotingQuestion(
                     q.Prompt ?? "",
-                    answerSource == MatchingAnswerSource.Fixed ? q.Choices ?? [] : [],
+                    answerSource == VotingAnswerSource.Fixed ? q.Choices ?? [] : [],
                     q.Subject,
                     q.Aspect))];
         }
         catch (JsonException ex)
         {
-            logger.LogError(ex, "OpenRouter returned malformed matching JSON for {Lang}/{Category}/{AnswerSource}",
+            logger.LogError(ex, "OpenRouter returned malformed voting JSON for {Lang}/{Category}/{AnswerSource}",
                 lang, category.Id, answerSource);
             return [];
         }

@@ -2140,9 +2140,9 @@ input[type='range'] { accent-color: var(--firouzeh); }
   background: linear-gradient(180deg, rgb(9 14 34 / 0), var(--shab) 45%);
 }
 
-/* Matching deliberately has no clock, score ring, correctness colours or sound affordance. These
+/* Voting deliberately has no clock, score ring, correctness colours or sound affordance. These
    small roster tiles keep presence visible while the answer surface remains ordinary answer buttons. */
-.matching-players {
+.voting-players {
   display:flex;
   flex-wrap:wrap;
   justify-content:center;
@@ -2154,7 +2154,7 @@ input[type='range'] { accent-color: var(--firouzeh); }
   background:rgb(9 14 34 / .46);
   backdrop-filter:blur(10px);
 }
-.matching-player {
+.voting-player {
   display:flex;
   align-items:center;
   gap:.4rem;
@@ -2166,11 +2166,11 @@ input[type='range'] { accent-color: var(--firouzeh); }
   box-shadow:0 8px 18px -15px rgb(0 0 0 / .9);
   animation:answer-deal .4s var(--ease) backwards;
 }
-:root[dir="rtl"] .matching-player { padding:.3rem .35rem .3rem .65rem; }
-.matching-player.is-left { opacity:.58; }
-.matching-player__name { font-size:var(--step--1); font-weight:700; }
-.matching-distribution { margin-top:.8rem; border-top:1px solid var(--line); padding-top:.55rem; }
-.matching-distribution__row { padding:.25rem 0; font-size:var(--step--1); }
+:root[dir="rtl"] .voting-player { padding:.3rem .35rem .3rem .65rem; }
+.voting-player.is-left { opacity:.58; }
+.voting-player__name { font-size:var(--step--1); font-weight:700; }
+.voting-distribution { margin-top:.8rem; border-top:1px solid var(--line); padding-top:.55rem; }
+.voting-distribution__row { padding:.25rem 0; font-size:var(--step--1); }
 
 /* ---- admin workspace ---------------------------------------------------- */
 .admin-shell { max-width: 78rem; }

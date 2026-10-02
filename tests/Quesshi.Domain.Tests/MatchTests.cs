@@ -448,9 +448,9 @@ public class MatchTests
     public void UpdateSettings_cannot_change_the_game_mode()
     {
         var m = Match.Create("m", "C", Challenger, NewSettings(), 3, T0);
-        var matching = DuelSettings.Create(Language.En, 10, [], [], GameMode.Matching);
+        var voting = DuelSettings.Create(Language.En, 10, [], [], GameMode.Voting);
 
-        Assert.False(m.UpdateSettings(Challenger, matching));
+        Assert.False(m.UpdateSettings(Challenger, voting));
         Assert.Equal(GameMode.Trivia, m.Settings.Mode);
     }
 

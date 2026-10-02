@@ -1,0 +1,335 @@
+@page "/admin/voting/questions"
+@inherits AdminPageBase
+@inject IJSRuntime Js
+
+<PageTitle>@L["admin.voting.questions"] · @L["app.name"]</PageTitle>
+
+<AdminShell Title="@L["admin.voting.questions"]">
+    @if (_dialog == "generate")
+    {
+        <AdminModal Title="@L["admin.askAi"]" OnClose="CloseDialog">
+            <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.9rem">
+                <select class="select" style="width:auto" @bind="_generate.Lang">
+                    <option value="fa">@L["lang.fa"]</option>
+                    <option value="en">@L["lang.en"]</option>
+                    <option value="nl">@L["lang.nl"]</option>
+                </select>
+                <select class="select" style="width:auto" @bind="_generate.CategoryId">
+                    @foreach (var category in _categories.Where(c => c.IsActive))
+                    {
+                        <option value="@category.Id">@CategoryName(category)</option>
+                    }
+                </select>
+                <select class="select" style="width:auto" @bind="_generate.AnswerSource">
+                    <option value="participants">@L["admin.voting.participants"]</option>
+                    <option value="fixed">@L["admin.voting.fixed"]</option>
+                </select>
+                <input class="input" style="width:5.5rem" type="number" min="1" max="20"
+                       @bind="_generate.Count" aria-label="@L["admin.count"]" />
+                <button class="btn" disabled="@(_generating || !_generatorReady || string.IsNullOrWhiteSpace(_generate.CategoryId))"
+                        @onclick="GenerateVotingAsync">
+                    @(_generating ? L["admin.generating"] : L["admin.askAi"])
+                </button>
+            </div>
+            <p class="faint" style="margin:.7rem 0 0;font-size:var(--step--1)">@L["admin.voting.generateHint"]</p>
+            @if (!_generatorReady)
+            {
+                <div class="notice" style="margin-top:.7rem">@L["admin.noKey"]</div>
+            }
+            @if (_lastGeneration is { } run)
+            {
+                <div class="notice @(run.Error is null && run.Inserted > 0 ? "notice--good" : "notice--bad")" style="margin-top:.7rem">
+                    @if (run.Error is not null)
+                    {
+                        @L.Or("admin.err." + run.Error, L["common.error"])
+                    }
+                    else if (run.Inserted == 0)
+                    {
+                        @L["admin.generatedNone"]
+                    }
+                    else
+                    {
+                        @L.Format("admin.generated", L.Num(run.Inserted), L.Num(run.Rejected))
+                        <button class="btn btn--ghost btn--sm" style="margin-inline-start:.6rem"
+                                @onclick="ShowGeneratedAsync">@L["admin.reviewPending"]</button>
+                    }
+                </div>
+            }
+        </AdminModal>
+    }
+
+    @if (_dialog == "import")
+    {
+        <AdminModal Title="@L["admin.import"]" OnClose="CloseDialog">
+            <div class="row" style="flex-wrap:wrap;gap:.5rem;margin-top:.6rem">
+                <select class="select" style="width:auto" @bind="_import.Format">
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                </select>
+                <button class="btn btn--ghost btn--sm" @onclick="DownloadVotingTemplateAsync">@L["admin.import.template"]</button>
+                <InputFile OnChange="PickVotingImportFileAsync" />
+                <button class="btn btn--sm" disabled="@(_import.File is null || _importing)" @onclick="DryRunVotingImportAsync">
+                    @(_importing ? L["admin.import.working"] : L["admin.import.dryRun"])
+                </button>
+                @if (_importReport is { DryRun: true, Accepted: > 0 })
+                {
+                    <button class="btn btn--gold btn--sm" disabled="@_importing" @onclick="CommitVotingImportAsync">@L["admin.import.commit"]</button>
+                }
+            </div>
+            <p class="faint" style="margin:.5rem 0 0;font-size:var(--step--1)">@L["admin.import.hint"]</p>
+            @if (_importReport is { } report)
+            {
+                <div class="notice @(report is { DryRun: false, Rejected: 0 } ? "notice--good" : null)" style="margin-top:.7rem">
+                    @L.Format("admin.import.summary", L.Num(report.Total), L.Num(report.Accepted), L.Num(report.Rejected))
+                    @(report.DryRun ? "" : " · " + L["admin.import.committed"])
+                </div>
+                @if (report.Rows.Any(r => !r.Accepted))
+                {
+                    <table class="table" style="margin-top:.5rem">
+                        <thead><tr><th>#</th><th>@L["admin.prompt"]</th><th>@L["admin.import.error"]</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in report.Rows.Where(r => !r.Accepted))
+                            {
+                                <tr><td>@row.Row</td><td>@(row.Prompt ?? "—")</td><td dir="ltr">@row.Error</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            }
+        </AdminModal>
+    }
+
+    <AdminToolbar Label="@L["admin.filters"]">
+        <Filters>
+                <select class="select" style="width:auto" @bind="_lang" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.language"]: @L["admin.all"]</option>
+                    <option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option>
+                </select>
+                <select class="select" style="width:auto" @bind="_category" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.category"]: @L["admin.all"]</option>
+                    @foreach (var category in _categories) { <option value="@category.Id">@CategoryName(category)</option> }
+                </select>
+                <select class="select" style="width:auto" @bind="_status" @bind:after="ReloadAsync">
+                    <option value="">@L["admin.status"]: @L["admin.all"]</option>
+                    <option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option>
+                </select>
+                <input class="input grow" style="min-width:12rem" placeholder="@L["admin.search"]" @bind="_text" @bind:event="oninput" @onkeydown="OnSearchKey" />
+        </Filters>
+        <Actions>
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="OpenGenerate">@L["admin.askAi"]</button>
+            <button type="button" class="btn btn--ghost btn--sm" @onclick="OpenImport">@L["admin.import"]</button>
+            <button type="button" class="btn btn--sm" @onclick="StartNew">@L["admin.new"]</button>
+        </Actions>
+    </AdminToolbar>
+
+    @if (_editing is not null)
+    {
+        <AdminModal Title="@(_editing.IsEditing ? L["admin.edit"] : L["admin.new"])" OnClose="CloseEditor">
+                <div class="stack" style="margin-top:.9rem">
+                    <div class="row" style="flex-wrap:wrap;gap:.5rem">
+                        <select class="select" style="width:auto" @bind="_editing.Lang"><option value="fa">@L["lang.fa"]</option><option value="en">@L["lang.en"]</option><option value="nl">@L["lang.nl"]</option></select>
+                        <select class="select" style="width:auto" @bind="_editing.VotingCategoryId">
+                            <option value="">@L["admin.voting.chooseCategory"]</option>
+                            @foreach (var category in EditableCategories) { <option value="@category.Id">@CategoryName(category)@(category.IsActive ? "" : " · " + L["admin.inactive"])</option> }
+                        </select>
+                        <select class="select" style="width:auto" @bind="_editing.Status"><option value="pending">@L["admin.pending"]</option><option value="approved">@L["admin.approved"]</option><option value="rejected">@L["admin.rejected"]</option></select>
+                    </div>
+                    <div class="field"><label>@L["admin.prompt"]</label><textarea class="textarea" rows="3" @bind="_editing.Prompt"></textarea></div>
+                    <div class="grid-2">
+                        <div class="field"><label>@L["admin.voting.subject"]</label><input class="input" @bind="_editing.Subject" /></div>
+                        <div class="field"><label>@L["admin.voting.aspect"]</label><input class="input" @bind="_editing.Aspect" /></div>
+                    </div>
+                    <label class="row" style="gap:.5rem"><input type="checkbox" @bind="_editing.UseParticipants" /> @L["admin.voting.participantAnswers"]</label>
+
+                    @if (!_editing.UseParticipants)
+                    {
+                        <div class="field">
+                            <label>@L["admin.voting.choices"]</label>
+                            @for (var i = 0; i < _editing.Choices.Count; i++)
+                            {
+                                var index = i;
+                                <div class="row" style="gap:.4rem;margin-bottom:.4rem">
+                                    <input class="input grow" @bind="_editing.Choices[index]" aria-label="@L.Format("admin.voting.choiceNumber", index + 1)" />
+                                    <button type="button" class="btn btn--ghost btn--sm btn--icon" disabled="@(_editing.Choices.Count <= VotingQuestionForm.MinChoices)" aria-label="@L["admin.voting.removeChoice"]" title="@L["admin.voting.removeChoice"]" @onclick="() => _editing.RemoveChoice(index)">−</button>
+                                </div>
+                            }
+                            <button type="button" class="btn btn--ghost btn--sm" disabled="@(_editing.Choices.Count >= VotingQuestionForm.MaxChoices)" @onclick="_editing.AddChoice">+ @L["admin.voting.addChoice"]</button>
+                        </div>
+                    }
+                    <div class="field"><label>@L["admin.media"]</label><InputFile OnChange="UploadAsync" accept="image/*,audio/*,video/*" /></div>
+                    @if (!string.IsNullOrWhiteSpace(_editing.MediaUrl)) { <div class="row"><span class="chip">@_editing.MediaKind</span><button class="btn btn--ghost btn--sm" @onclick="ClearMedia">@L["admin.removeMedia"]</button></div> }
+                    @if (_error is not null) { <div class="notice notice--bad">@_error</div> }
+                    <div class="row"><button class="btn" disabled="@_busy" @onclick="SaveAsync">@L["admin.save"]</button><button class="btn btn--ghost" @onclick="CloseEditor">@L["admin.cancel"]</button></div>
+                </div>
+        </AdminModal>
+    }
+
+    @if (Unconfirmed)
+    {
+        <SessionUnconfirmed Busy="Admin.Retrying" OnRetry="RetrySessionAsync" />
+    }
+    else if (Loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else
+    {
+        @if (_results is { Items.Count: 0 }) { <p class="empty">@L["admin.noResults"]</p> }
+        else
+        {
+            <div class="stack" style="margin-top:.75rem">
+                @foreach (var question in _results?.Items ?? [])
+                {
+                    <AdminVotingQuestionCard Question="question" CategoryName="@CategoryName(question.VotingCategoryId)"
+                        Approve="ApproveAsync" Reject="RejectAsync" Edit="Edit" Delete="DeleteAsync" />
+                }
+            </div>
+            <Pager Total="_results?.Total ?? 0" Page="_page" PageSize="_size" PageChanged="GoToPageAsync" PageSizeChanged="SetPageSizeAsync" />
+        }
+    }
+</AdminShell>
+
+@code {
+    private AdminVotingQuestionPageDto? _results;
+    private List<VotingCategoryDto> _categories = [];
+    private VotingQuestionForm? _editing;
+    private string _lang = "", _category = "", _status = "", _text = "";
+    private int _page = 1, _size = 25;
+    private bool _busy;
+    private string? _error;
+    private readonly ImportForm _import = new() { Kind = "voting" };
+    private ImportReportDto? _importReport;
+    private bool _importing;
+    private bool _generatorReady;
+    private bool _generating;
+    private readonly VotingGenerateForm _generate = new();
+    private VotingGenerationRunDto? _lastGeneration;
+    private string? _dialog;
+
+    private IEnumerable<VotingCategoryDto> EditableCategories => _editing is { } form && _categories.Any(c => c.Id == form.VotingCategoryId && !c.IsActive)
+        ? _categories.Where(c => c.IsActive || c.Id == form.VotingCategoryId) : _categories.Where(c => c.IsActive);
+
+    private string CategoryName(VotingCategoryDto c) => L.Lang switch { "fa" => Pick(c.NameFa, c.NameEn), "nl" => Pick(c.NameNl, c.NameEn), _ => Pick(c.NameEn, c.NameFa) };
+    private string CategoryName(string id) => _categories.FirstOrDefault(c => c.Id == id) is { } c ? CategoryName(c) : id;
+    private static string Pick(string first, string second) => string.IsNullOrWhiteSpace(first) ? second : first;
+    private void OpenGenerate() => _dialog = "generate";
+    private void OpenImport() => _dialog = "import";
+    private void CloseDialog() { _dialog = null; _error = null; }
+
+    protected override async Task LoadAsync()
+    {
+        _categories = await Api.AdminVotingCategoriesAsync() ?? [];
+        _generate.CategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "";
+        _generatorReady = (await Api.DashboardAsync())?.GeneratorConfigured ?? false;
+        _lang = QueryState.Read(Nav, "lang"); _category = QueryState.Read(Nav, "category"); _status = QueryState.Read(Nav, "status"); _text = QueryState.Read(Nav, "q");
+        _page = Math.Max(1, QueryState.ReadInt(Nav, "page", 1)); _size = QueryState.ReadInt(Nav, "size", 25) is var size && size is 25 or 50 or 100 ? size : 25;
+        await FetchAsync();
+    }
+
+    private string Query() { var p = new List<string> { $"skip={(_page - 1) * _size}", $"take={_size}" }; if (_lang.Length > 0) p.Add($"lang={_lang}"); if (_category.Length > 0) p.Add($"category={_category}"); if (_status.Length > 0) p.Add($"status={_status}"); if (_text.Trim().Length > 0) p.Add($"text={Uri.EscapeDataString(_text.Trim())}"); return string.Join('&', p); }
+    private async Task FetchAsync() { QueryState.Write(Nav, new Dictionary<string, string?> { ["lang"] = _lang, ["category"] = _category, ["status"] = _status, ["q"] = _text.Trim(), ["page"] = _page == 1 ? null : _page.ToString(), ["size"] = _size == 25 ? null : _size.ToString() }); _results = await Api.AdminVotingQuestionsAsync(Query()); }
+    private async Task ReloadAsync() { _page = 1; await FetchAsync(); }
+
+    private async Task GenerateVotingAsync()
+    {
+        _generating = true;
+        _lastGeneration = null;
+        var result = await Api.GenerateVotingAsync(new GenerateVotingRequestDto(
+            _generate.Lang, _generate.CategoryId, _generate.AnswerSource, _generate.Count));
+        _lastGeneration = result.Run
+            ?? new VotingGenerationRunDto("", DateTimeOffset.Now, DateTimeOffset.Now,
+                _generate.Lang, _generate.CategoryId, _generate.AnswerSource, 0, 0, 0,
+                result.Error ?? "generation_failed");
+        _generating = false;
+        await FetchAsync();
+    }
+
+    private async Task ShowGeneratedAsync()
+    {
+        _lang = _generate.Lang;
+        _category = _generate.CategoryId;
+        _status = "pending";
+        _dialog = null;
+        await ReloadAsync();
+    }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await ReloadAsync(); }
+    private async Task GoToPageAsync(int page) { _page = page; await FetchAsync(); }
+    private async Task SetPageSizeAsync(int size) { _size = size; _page = 1; await FetchAsync(); }
+    private void StartNew() { _error = null; _editing = new VotingQuestionForm { VotingCategoryId = _categories.FirstOrDefault(c => c.IsActive)?.Id ?? "" }; }
+    private void Edit(string id)
+    {
+        var question = _results?.Items.FirstOrDefault(q => q.Id == id);
+        if (question is null) return;
+        _error = null;
+        _editing = VotingQuestionForm.From(question);
+    }
+    private void CloseEditor() { _editing = null; _error = null; }
+    private void ClearMedia() { if (_editing is not null) { _editing.MediaKind = null; _editing.MediaUrl = null; _editing.MediaAttribution = null; } }
+
+    private void PickVotingImportFileAsync(InputFileChangeEventArgs e)
+    {
+        _import.File = e.File;
+        _importReport = null;
+    }
+
+    private async Task DownloadVotingTemplateAsync()
+    {
+        if (await Api.DownloadVotingImportTemplateAsync(_import.Format) is not { } file)
+        {
+            _error = L["common.error"];
+            return;
+        }
+
+        var contentType = _import.Format == "json" ? "application/json" : "text/csv";
+        await Js.InvokeVoidAsync("quesshi.download", file.FileName, contentType, Convert.ToBase64String(file.Bytes));
+    }
+
+    private Task DryRunVotingImportAsync() => RunVotingImportAsync(dryRun: true);
+    private Task CommitVotingImportAsync() => RunVotingImportAsync(dryRun: false);
+
+    private async Task RunVotingImportAsync(bool dryRun)
+    {
+        if (_import.File is not { } file) return;
+
+        _importing = true;
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
+        _importReport = await Api.ImportVotingQuestionsAsync(_import.Format, dryRun, content);
+        _importing = false;
+
+        if (_importReport is null)
+        {
+            _error = L["common.error"];
+            return;
+        }
+
+        if (!dryRun) await FetchAsync();
+    }
+    private async Task SaveAsync()
+    {
+        if (_editing is null) return;
+        _error = null;
+        if (!_editing.TryToDto(out var dto, out var errors)) { _error = L.Or("admin.err." + errors[0], L["common.error"]); return; }
+        _busy = true; var result = await Api.TrySaveVotingQuestionAsync(dto); _busy = false;
+        if (result.Saved is null) { _error = L.Or("admin.err." + (result.Error ?? "common.error"), L["common.error"]); return; }
+        CloseEditor(); await FetchAsync();
+    }
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        if (_editing is null) return;
+        using var content = new MultipartFormDataContent(); content.Add(new StreamContent(e.File.OpenReadStream(20 * 1024 * 1024)), "file", e.File.Name);
+        var media = await Api.UploadAsync(content); if (media is null) { _error = L["common.error"]; return; }
+        _editing.MediaKind = media.Kind; _editing.MediaUrl = media.Url;
+    }
+    private async Task ApproveAsync(string id) { await Api.ApproveVotingAsync(id); await FetchAsync(); }
+    private async Task RejectAsync(string id) { await Api.RejectVotingAsync(id); await FetchAsync(); }
+    private async Task DeleteAsync(string id) { await Api.DeleteVotingQuestionAsync(id); await FetchAsync(); }
+
+    private sealed class VotingGenerateForm
+    {
+        public string Lang { get; set; } = "fa";
+        public string CategoryId { get; set; } = "";
+        public string AnswerSource { get; set; } = "participants";
+        public int Count { get; set; } = 10;
+    }
+}

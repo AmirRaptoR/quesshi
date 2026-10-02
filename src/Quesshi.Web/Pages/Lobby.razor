@@ -1,5 +1,5 @@
 @page "/lobby/{Code}"
-@page "/matching/lobby/{Code}"
+@page "/voting/lobby/{Code}"
 @inherits PageBase
 @implements IAsyncDisposable
 @inject IJSRuntime Js
@@ -323,7 +323,7 @@
     private bool _copied, _busy, _savingIdentity, _identitySaved;
     private int _capacityDraft;
     private int _maxCapacity = LobbyLimitsDto.DefaultMaxCapacity;
-    private int MaxCapacity => _snapshot?.IsMatching == true ? LobbyLimitsDto.MatchingMaxCapacity : _maxCapacity;
+    private int MaxCapacity => _snapshot?.IsVoting == true ? LobbyLimitsDto.VotingMaxCapacity : _maxCapacity;
     private int CapacityInputMax => Math.Max(_snapshot?.Capacity ?? 0, MaxCapacity);
     private string? _error, _identityError;
 
@@ -379,9 +379,9 @@
     /// </summary>
     private static string SettingsSheet(LobbySnapshot snapshot)
         => QuestionsDraft.From(snapshot.Settings,
-                snapshot.IsMatching ? $"/matching/lobby/{snapshot.Code}" : $"/lobby/{snapshot.Code}",
+                snapshot.IsVoting ? $"/voting/lobby/{snapshot.Code}" : $"/lobby/{snapshot.Code}",
                 snapshot.MatchId, snapshot.IsLive)
-            .LinkTo(snapshot.IsMatching ? "/play/matching" : "/play/questions");
+            .LinkTo(snapshot.IsVoting ? "/play/voting" : "/play/questions");
 
     private string SettingsLine => _snapshot is null ? ""
         : L.Format("lobby.settingsLine", L.Num(_snapshot.Settings.QuestionCount), L["lang." + _snapshot.Settings.Lang]);
@@ -417,9 +417,9 @@
         if (State.IsGuest && State.GuestMatchId is { Length: > 0 } mine)
         {
             var invite = await Api.InviteAsync(Code);
-            var inviteIsMatching = invite?.Mode == "matching";
+            var inviteIsVoting = invite?.Mode == "voting";
             if (invite is null || invite.Live != State.GuestMatchIsLive
-                || inviteIsMatching != State.GuestMatchIsMatching || !await BelongsToMeAsync(mine))
+                || inviteIsVoting != State.GuestMatchIsVoting || !await BelongsToMeAsync(mine))
             {
                 Nav.NavigateTo(State.GuestMatchRoute(mine), replace: true);
                 return;
@@ -463,8 +463,8 @@
             // LobbyClient.InviteToLobbyAsync's own remarks), so the one value this page acts on is
             // named here instead of shared as a type.
             const int sent = 0;
-            var result = _snapshot.IsMatching
-                ? await LobbyConnection.InviteToMatchingLobbyAsync(friendId, _snapshot.MatchId)
+            var result = _snapshot.IsVoting
+                ? await LobbyConnection.InviteToVotingLobbyAsync(friendId, _snapshot.MatchId)
                 : await LobbyConnection.InviteToLobbyAsync(friendId, _snapshot.MatchId);
             if (result == sent) _invited.Add(friendId);
             else _inviteError = L["common.error"];
@@ -480,10 +480,10 @@
     /// live in different namespaces.</summary>
     private async Task<bool> BelongsToMeAsync(string myMatchId)
     {
-        if (State.GuestMatchIsMatching)
+        if (State.GuestMatchIsVoting)
         {
-            var matching = await Api.MatchingAsync(myMatchId);
-            return matching?.Code == Code;
+            var voting = await Api.VotingAsync(myMatchId);
+            return voting?.Code == Code;
         }
 
         if (State.GuestMatchIsLive)
@@ -506,23 +506,23 @@
     /// </summary>
     private async Task<bool> ReadAsync()
     {
-        bool isLive, isMatching;
+        bool isLive, isVoting;
         if (_snapshot is { } known)
         {
             isLive = known.IsLive;
-            isMatching = known.IsMatching;
+            isVoting = known.IsVoting;
         }
         else
         {
             var invite = await Api.InviteAsync(Code);
             if (invite is null) return false;
             isLive = invite.Live;
-            isMatching = invite.Mode == "matching";
+            isVoting = invite.Mode == "voting";
         }
 
-        if (isMatching)
+        if (isVoting)
         {
-            var view = await Api.MatchingByCodeAsync(Code);
+            var view = await Api.VotingByCodeAsync(Code);
             if (view is null) return false;
             _snapshot = LobbyPresentation.From(view);
         }
@@ -540,7 +540,7 @@
         }
 
         _capacityDraft = _snapshot.Capacity;
-        if (!_snapshot.IsMatching)
+        if (!_snapshot.IsVoting)
             _maxCapacity = (await Api.LobbyLimitsAsync())?.MaxCapacity ?? LobbyLimitsDto.DefaultMaxCapacity;
 
         return true;
@@ -570,7 +570,7 @@
         if (_snapshot is null || _busy) return;
 
         _busy = true;
-        if (_snapshot.IsMatching) await Api.JoinMatchingAsync(_snapshot.Code);
+        if (_snapshot.IsVoting) await Api.JoinVotingAsync(_snapshot.Code);
         else if (_snapshot.IsLive) await Api.JoinLiveAsync(_snapshot.Code);
         else await Api.JoinAsync(_snapshot.Code);
         await RefreshAsync();
@@ -584,12 +584,12 @@
 
         _client = ClientFactory("/hub/live");
         _client.LobbyUpdated += OnLobbyUpdated;
-        _client.MatchingRosterChanged += OnLobbyUpdated;
+        _client.VotingRosterChanged += OnLobbyUpdated;
 
         try
         {
             await _client.StartAsync();
-            if (_snapshot.IsMatching) await _client.JoinAsyncLobbyAsync(_snapshot.MatchId);
+            if (_snapshot.IsVoting) await _client.JoinAsyncLobbyAsync(_snapshot.MatchId);
             else if (_snapshot.IsLive) await _client.JoinAsync(_snapshot.MatchId);
             else await _client.JoinAsyncLobbyAsync(_snapshot.MatchId);
         }
@@ -614,12 +614,12 @@
         if (_snapshot is null || _busy) return;
 
         _busy = true; _error = null;
-        if (_snapshot.IsMatching)
+        if (_snapshot.IsVoting)
         {
-            var result = await Api.StartMatchingAsync(_snapshot.MatchId);
+            var result = await Api.StartVotingAsync(_snapshot.MatchId);
             if (result.Started) await RefreshAsync();
             else _error = result.Error == "not_enough_questions"
-                ? L["matching.lobby.notEnoughQuestions"]
+                ? L["voting.lobby.notEnoughQuestions"]
                 : L["common.error"];
         }
         else
@@ -635,7 +635,7 @@
         if (_snapshot is null || _busy) return;
 
         _busy = true;
-        if (_snapshot.IsMatching) await Api.LeaveMatchingAsync(_snapshot.MatchId);
+        if (_snapshot.IsVoting) await Api.LeaveVotingAsync(_snapshot.MatchId);
         else await Api.LeaveLobbyAsync(_snapshot.MatchId, _snapshot.IsLive);
         Nav.NavigateTo("/");
     }
@@ -661,8 +661,8 @@
 
         _busy = true; _error = null;
         var settings = _snapshot.Settings;
-        var ok = _snapshot.IsMatching
-            ? await Api.UpdateMatchingSettingsAsync(_snapshot.MatchId, next, settings.Lang,
+        var ok = _snapshot.IsVoting
+            ? await Api.UpdateVotingSettingsAsync(_snapshot.MatchId, next, settings.Lang,
                 settings.CategoryIds, settings.QuestionCount)
             : await Api.UpdateLobbySettingsAsync(_snapshot.MatchId, _snapshot.IsLive,
                 new UpdateDuelSettingsDto(settings.Lang, settings.CategoryIds, settings.QuestionCount, settings.Levels, next));
@@ -754,7 +754,7 @@
         if (_client is null) return;
 
         _client.LobbyUpdated -= OnLobbyUpdated;
-        _client.MatchingRosterChanged -= OnLobbyUpdated;
+        _client.VotingRosterChanged -= OnLobbyUpdated;
         try { await _client.LeaveAsync(); } catch { /* the connection may already be gone */ }
         await _client.DisposeAsync();
     }

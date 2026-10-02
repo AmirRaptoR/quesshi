@@ -83,7 +83,7 @@ public class GuestUpgradeEndpointTests(ClusterFixture fixture) : IAsyncDisposabl
 
         // The friendship from before the upgrade is still on record, same id, same row. Read from the
         // repository directly rather than through GET /api/me's FriendsOfAsync, which silently drops
-        // any friend id with no matching player record — "someone-else" is a stand-in id, not a real
+        // any friend id with no voting player record — "someone-else" is a stand-in id, not a real
         // registered player, so this is the one place worth checking the raw Friends set instead.
         var stored = await Shared.Players.GetAsync(guest.Id);
         Assert.Contains("someone-else", stored!.Friends);
