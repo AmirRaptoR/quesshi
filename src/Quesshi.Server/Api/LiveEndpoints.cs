@@ -3,6 +3,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Shared;
+using Quesshi.Server.Tenants;
 
 namespace Quesshi.Server.Api;
 
@@ -31,6 +32,7 @@ public static class LiveEndpoints
     public static void MapLive(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api/live").RequireAuthorization();
+        api.AddEndpointFilter(new TenantModeFilter("live"));
 
         api.AddEndpointFilter(static async (context, next) =>
         {

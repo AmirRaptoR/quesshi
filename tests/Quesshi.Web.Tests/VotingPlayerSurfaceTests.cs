@@ -85,6 +85,19 @@ public sealed class VotingPlayerSurfaceTests
     }
 
     [Fact]
+    public void Home_reads_tenant_modes_and_only_renders_enabled_game_choices()
+    {
+        var home = File.ReadAllText(Source("Pages/Home.razor"));
+        var api = File.ReadAllText(Source("Services/Api.cs"));
+
+        Assert.Contains("TenantModesAsync()", home);
+        Assert.Contains("HasAsyncMode", home);
+        Assert.Contains("HasLiveMode", home);
+        Assert.Contains("HasVotingMode", home);
+        Assert.Contains("TenantModesAsync()", api);
+    }
+
+    [Fact]
     public void Voting_translation_keys_are_present_in_all_browser_languages()
     {
         var root = Path.Combine(AppContext.BaseDirectory, "i18n");

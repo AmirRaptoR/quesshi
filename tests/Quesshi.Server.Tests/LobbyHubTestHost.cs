@@ -59,6 +59,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                 web.Configure(app =>
                 {
                     app.UseRouting();
+                    app.UseAllModes();
                     app.UseAuthentication();
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints => endpoints.MapHub<LobbyHub>("/hub/lobby"));

@@ -82,6 +82,7 @@ public sealed class GameApiTestHost : IAsyncDisposable
                 web.Configure(app =>
                 {
                     app.UseRouting();
+                    app.UseAllModes();
                     app.UseAuthentication();
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints => endpoints.MapGame());

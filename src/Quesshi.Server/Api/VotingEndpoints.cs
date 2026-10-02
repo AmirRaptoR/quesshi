@@ -3,6 +3,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Shared;
+using Quesshi.Server.Tenants;
 
 namespace Quesshi.Server.Api;
 
@@ -14,6 +15,7 @@ public static class VotingEndpoints
     public static void MapVoting(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api/voting").RequireAuthorization();
+        api.AddEndpointFilter(new TenantModeFilter("voting"));
         api.AddEndpointFilter(static async (context, next) =>
         {
             var open = context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<AllowGuest>() is not null;

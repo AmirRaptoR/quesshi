@@ -76,6 +76,7 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
             web.Configure(app =>
             {
                 app.UseRouting();
+                app.UseAllModes();
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.UseEndpoints(endpoints =>

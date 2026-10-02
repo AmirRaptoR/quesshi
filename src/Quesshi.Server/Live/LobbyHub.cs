@@ -6,6 +6,7 @@ using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Infrastructure;
 using Quesshi.Server.Api;
+using Quesshi.Server.Tenants;
 
 namespace Quesshi.Server.Live;
 
@@ -56,8 +57,10 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         // longer a fixed 45 seconds, and no longer just one: with exclusivity gone (see
         // ILiveMatchmakingGrain's own remarks) a player can hold several pending invitations at once,
         // so every one PendingForAsync returns is delivered, not just the first.
+        if (!ModeEnabled("live")) await Matchmaking.LeaveAsync(playerId);
         foreach (var challenge in await Matchmaking.PendingForAsync(playerId))
-            await notifier.ChallengeReceivedAsync(playerId, ToNotice(challenge));
+            if (ModeEnabled(challenge.Voting ? "voting" : "live"))
+                await notifier.ChallengeReceivedAsync(playerId, ToNotice(challenge));
 
         await base.OnConnectedAsync();
     }
@@ -84,7 +87,7 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     {
         var playerId = Context.User!.PlayerId()!;
         await presence.MarkOnlineAsync(playerId, PresenceTtl);
-        await Matchmaking.HeartbeatAsync(playerId);
+        if (ModeEnabled("live")) await Matchmaking.HeartbeatAsync(playerId);
     }
 
     /// <summary>
@@ -97,7 +100,9 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     public Task<string?> QueueRandom(int lang, int questionCount, List<string> categories, List<int> levels)
         => Context.User!.IsGuest()
             ? throw new HubException("guests cannot queue")
-            : Matchmaking.EnqueueAsync(Context.User!.PlayerId()!, lang, questionCount, categories, levels);
+            : ModeEnabled("live")
+                ? Matchmaking.EnqueueAsync(Context.User!.PlayerId()!, lang, questionCount, categories, levels)
+                : throw new HubException("live mode disabled");
 
     public Task LeaveQueue()
         => Context.User!.IsGuest()
@@ -124,6 +129,7 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     /// </summary>
     public async Task<int> Challenge(string targetId, string? lang, int questionCount, List<string> categoryIds, List<int> levels)
     {
+        if (!ModeEnabled("live")) return (int)LiveChallengeResult.NotFound;
         if (RequirePlayer() is not { } challengerId) return (int)LiveChallengeResult.NotFound;
         if (challengerId == targetId) return (int)LiveChallengeResult.SelfChallenge;
 
@@ -172,6 +178,7 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
 
     private async Task<int> InviteToLobbyAsync(string targetId, string lobbyId, bool voting)
     {
+        if (!ModeEnabled(voting ? "voting" : "live")) return (int)LiveChallengeResult.NotFound;
         if (RequirePlayer() is not { } inviterId) return (int)LiveChallengeResult.NotFound;
         if (inviterId == targetId) return (int)LiveChallengeResult.SelfChallenge;
 
@@ -188,14 +195,24 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     }
 
     public Task<LiveChallengeAcceptResult> Accept(string challengeId)
-        => RequirePlayer() is { } me
-            ? Matchmaking.AcceptAsync(challengeId, me)
-            : Task.FromResult(new LiveChallengeAcceptResult((int)LiveChallengeResult.NotFound, null, null));
+        => AcceptAsync(challengeId);
+
+    private async Task<LiveChallengeAcceptResult> AcceptAsync(string challengeId)
+    {
+        if (RequirePlayer() is not { } me)
+            return new LiveChallengeAcceptResult((int)LiveChallengeResult.NotFound, null, null);
+        var challenge = (await Matchmaking.PendingForAsync(me)).FirstOrDefault(c => c.ChallengeId == challengeId);
+        if (challenge is null || !ModeEnabled(challenge.Voting ? "voting" : "live"))
+            return new LiveChallengeAcceptResult((int)LiveChallengeResult.NotFound, null, null);
+        return await Matchmaking.AcceptAsync(challengeId, me);
+    }
 
     public Task<int> Decline(string challengeId)
         => RequirePlayer() is { } me ? Matchmaking.DeclineAsync(challengeId, me) : Task.FromResult((int)LiveChallengeResult.NotFound);
 
     private string? RequirePlayer() => Context.User is null || Context.User.IsGuest() ? null : Context.User.PlayerId();
+
+    private bool ModeEnabled(string mode) => TenantModeFilter.IsEnabled(Context.GetHttpContext(), mode);
 
     /// <summary>
     /// The one friendship gate both <see cref="Challenge"/> and <see cref="InviteToLobby"/> apply,

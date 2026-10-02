@@ -51,6 +51,8 @@ public sealed class Api(HttpClient http)
         catch { return (null, null); }
     }
     public Task<List<CategoryDto>?> CategoriesAsync() => GetAsync<List<CategoryDto>>("api/categories");
+    public async Task<List<string>?> TenantModesAsync()
+        => (await GetAsync<TenantModesDto>("api/tenant/modes"))?.EnabledModes.ToList();
     public Task<LobbyLimitsDto?> LobbyLimitsAsync() => GetAsync<LobbyLimitsDto>("api/lobby-limits");
     public Task<List<FriendDto>?> SearchPlayersAsync(string q) => GetAsync<List<FriendDto>>($"api/players/search?q={Uri.EscapeDataString(q)}");
     public Task<bool> AddFriendAsync(string id) => SendAsync(HttpMethod.Post, $"api/friends/{id}");

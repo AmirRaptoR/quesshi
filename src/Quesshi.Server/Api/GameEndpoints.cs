@@ -4,6 +4,7 @@ using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Auth;
+using Quesshi.Server.Tenants;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Api;
@@ -20,6 +21,8 @@ public static class GameEndpoints
     public static void MapGame(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api").RequireAuthorization();
+        var matches = api.MapGroup("/matches");
+        matches.AddEndpointFilter(new TenantModeFilter("async"));
 
         api.AddEndpointFilter(static async (context, next) =>
         {
@@ -148,7 +151,7 @@ public static class GameEndpoints
         });
 
         // --- matches -----------------------------------------------------------------
-        api.MapPost("/matches", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains,
+        matches.MapPost("", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains,
             QuestionSetBuilder builder, IIdFactory ids, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
@@ -201,7 +204,7 @@ public static class GameEndpoints
             return Results.Ok(await SummaryAsync(grain, meId, players));
         });
 
-        api.MapPost("/matches/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+        matches.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
             await JoinMatchAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
@@ -209,7 +212,7 @@ public static class GameEndpoints
         // No side effects: nothing is joined, started, drawn or written. A participant may read at
         // any phase; a non-participant only while the lobby is still open, so a duel already in
         // progress cannot be inspected by code alone (see ByCodeAsync's own remarks).
-        api.MapGet("/matches/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
+        matches.MapGet("/by-code/{code}", async (string code, HttpContext ctx, IGrainFactory grains,
             IMatchArchive archive, IPlayerRepository players) =>
             await ByCodeAsync(code, ctx.User.PlayerId()!, grains, archive, players))
             .WithMetadata(new AllowGuest());
@@ -218,20 +221,20 @@ public static class GameEndpoints
         // Join is deliberately not repeated here: /matches/join/{code} above already calls the same
         // capacity-aware IMatchGrain.JoinAsync a multi-seat lobby needs, so an N-player async lobby is
         // joined exactly as a 1v1 always was.
-        api.MapPost("/matches/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
+        matches.MapPost("/lobby", async (CreateLobbyDto body, HttpContext ctx, IGrainFactory grains, IIdFactory ids, IPlayerRepository players) =>
             await CreateLobbyAsync(body, ctx.User.PlayerId()!, grains, ids, players));
 
-        api.MapPost("/matches/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
+        matches.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await grains.GetTenantGrain<IMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
-        api.MapPost("/matches/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
+        matches.MapPost("/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
             await grains.GetTenantGrain<IMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_start" }));
 
-        api.MapPut("/matches/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
+        matches.MapPut("/{id}/settings", async (string id, UpdateDuelSettingsDto body, HttpContext ctx, IGrainFactory grains, IPlayerRepository players) =>
             await UpdateSettingsAsync(id, body, ctx.User.PlayerId()!, grains, players));
 
         // Reporting is the whole moderation model now, so it has to be hard to abuse: you may only
@@ -240,11 +243,11 @@ public static class GameEndpoints
             IQuestionRepository questions, IMatchArchive archive, IClock clock) =>
             await ReportAsync(body, ctx.User.PlayerId()!, questions, archive, clock));
 
-        api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
+        matches.MapGet("", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
             IGrainFactory grains, bool? active, int? take) =>
             await ListMatchesAsync(ctx.User.PlayerId()!, active ?? false, take, archive, players, grains));
 
-        api.MapGet("/matches/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
+        matches.MapGet("/{id}", async (string id, HttpContext ctx, IGrainFactory grains,
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
@@ -260,7 +263,7 @@ public static class GameEndpoints
             return Results.Ok(new MatchDetailDto(summary, reveal, standings));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPost("/matches/{id}/next", async (string id, HttpContext ctx, IGrainFactory grains,
+        matches.MapPost("/{id}/next", async (string id, HttpContext ctx, IGrainFactory grains,
             IQuestionRepository questions, ICategoryRepository categories, IPlayerRepository players) =>
         {
             var meId = ctx.User.PlayerId()!;
@@ -284,7 +287,7 @@ public static class GameEndpoints
             return Results.Ok(BuildCard(id, served, question, category, participantNames));
         }).WithMetadata(new AllowGuest());
 
-        api.MapPost("/matches/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
+        matches.MapPost("/{id}/answer", async (string id, AnswerDto body, HttpContext ctx, IGrainFactory grains) =>
         {
             var meId = ctx.User.PlayerId()!;
             // -1 is the timeout: the player ran out of clock, and the run still has to move on. It is
