@@ -43,6 +43,7 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                     services.AddRouting();
                     services.AddAuthorization();
                     services.AddSignalR();
+                    services.AddSingleton<TenantContext>();
                     services.AddQuesshiAuthentication(
                         new JwtOptions { Key = SigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 },
                         new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" },

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Orleans.TestingHost;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Hubs;
@@ -45,6 +46,7 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
             {
                 services.AddRouting();
                 services.AddAuthorization();
+                services.AddSingleton<TenantContext>();
                 services.AddQuesshiAuthentication(
                     new JwtOptions { Key = SigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 },
                     new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" },
