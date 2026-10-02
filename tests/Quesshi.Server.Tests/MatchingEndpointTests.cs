@@ -110,10 +110,12 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         var create = await client.PostAsJsonAsync("/api/matching/lobby",
             new CreateMatchingLobbyDto("en", 10, [category], [], 2, "matching"));
         var lobby = await create.Content.ReadFromJsonAsync<MatchingViewDto>();
+        Assert.NotNull(lobby);
 
         await using var connection = host.NewHubConnection(host.TokenIssuer.Issue(stranger));
         await connection.StartAsync();
-        await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("JoinAsyncLobby", lobby!.Id));
+        var error = await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("JoinAsyncLobby", lobby!.Id));
+        Assert.Equal("not_a_participant", error.Message);
 
         await using var seated = host.NewHubConnection(host.TokenIssuer.Issue(owner));
         await seated.StartAsync();
