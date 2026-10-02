@@ -98,7 +98,7 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         // own constructor still spelled out ChallengerId/OpponentId by hand.
         Assert.Equal([Amir, Sara, Vahid], view.Participants);
 
-        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        Advance(LiveRules.StartCountdown);
         var opened = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Question && v.RoundIndex == 0);
 
         // The round's own answer list is every seated player, not just the first two.
@@ -122,21 +122,23 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         await grain.JoinAsync(Vahid);
         Assert.True(await grain.StartAsync(Amir));
 
-        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        Advance(LiveRules.StartCountdown);
 
         for (var slot = 0; slot < MatchRules.QuestionsPerMatch; slot++)
         {
             var question = await WaitForAsync(grain, Amir,
                 v => v.Phase == (int)LivePhase.Question && v.RoundIndex == slot);
+            LiveShared.TimeProvider.SetUtcNow(question.PhaseEndsAt!.Value - MatchRules.QuestionTime + TimeSpan.FromTicks(1));
             Assert.True(LiveShared.TimeProvider.GetUtcNow() < question.PhaseEndsAt!.Value);
 
-            Assert.True(await grain.AnswerAsync(Amir, slot, 0));
-            Assert.True(await grain.AnswerAsync(Sara, slot, 1));
-            Assert.True(await grain.AnswerAsync(Vahid, slot, 1));
+            Assert.True(await grain.AnswerAsync(Amir, slot, 0), $"Amir's answer for slot {slot} was refused at {LiveShared.TimeProvider.GetUtcNow():O}, before {question.PhaseEndsAt:O}.");
+            Assert.True(await grain.AnswerAsync(Sara, slot, 1), $"Sara's answer for slot {slot} was refused.");
+            Assert.True(await grain.AnswerAsync(Vahid, slot, 1), $"Vahid's answer for slot {slot} was refused.");
 
             await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Reveal || v.State != (int)MatchState.InProgress);
 
-            Advance(LiveRules.RevealTime + TimeSpan.FromMilliseconds(50));
+            var reveal = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Reveal);
+            LiveShared.TimeProvider.SetUtcNow(reveal.PhaseEndsAt!.Value + TimeSpan.FromTicks(1));
         }
 
         var final = await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.Resolved, timeoutMs: 10_000);
@@ -172,7 +174,7 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         await grain.JoinAsync(Vahid);
         Assert.True(await grain.StartAsync(Amir));
 
-        Advance(LiveRules.StartCountdown + TimeSpan.FromMilliseconds(50));
+        Advance(LiveRules.StartCountdown);
 
         // Amir never answers, in any of the next three rounds. Sara and Vahid always do, so the
         // round can only ever close by the clock running out, not by the third answer arriving —
@@ -195,7 +197,7 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
             var revealed = await WaitForAsync(grain, Amir, v => v.Phase == (int)LivePhase.Reveal);
 
             if (slot < LiveRules.MissesBeforeAbandon - 1)
-                LiveShared.TimeProvider.SetUtcNow(revealed.PhaseEndsAt!.Value + TimeSpan.FromMilliseconds(50));
+                LiveShared.TimeProvider.SetUtcNow(revealed.PhaseEndsAt!.Value + TimeSpan.FromTicks(1));
         }
 
         await WaitForEventAsync(id, "PlayerEliminated", 1);

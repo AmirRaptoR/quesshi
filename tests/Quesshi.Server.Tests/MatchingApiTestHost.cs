@@ -42,7 +42,7 @@ public sealed class MatchingApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<IIdFactory>(new FakeIdFactory(Interlocked.Increment(ref _seed) * 10_000));
                 services.AddSingleton<IQuestionRepository>(Shared.Questions);
                 services.AddSingleton<ICategoryRepository>(Shared.Categories);
-                services.AddSignalR();
+                services.AddSignalR(options => options.EnableDetailedErrors = true);
                 services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
                 services.AddSingleton<IMatchingCategoryRepository>(Shared.MatchingCategories);
                 services.AddSingleton<IMatchingQuestionRepository>(Shared.MatchingQuestions);
