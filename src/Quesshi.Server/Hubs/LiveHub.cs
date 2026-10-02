@@ -59,12 +59,15 @@ public sealed class LiveHub(
     public async Task JoinAsyncLobby(string matchId)
     {
         var meId = Context.User!.PlayerId() ?? throw new HubException("unauthenticated");
-        var view = await grains.GetTenantGrain<IMatchGrain>(matchId).GetAsync(meId);
-        if (view is null)
+        var matching = await grains.GetTenantGrain<IMatchingMatchGrain>(matchId).GetAsync(meId);
+        if (matching is not null)
         {
-            var matching = await grains.GetTenantGrain<IMatchingMatchGrain>(matchId).GetAsync(meId);
-            if (matching is null || matching.Participants.All(participant => participant.Id != meId))
+            if (matching.Participants.All(participant => participant.Id != meId))
                 throw new HubException("not_a_participant");
+        }
+        else if (await grains.GetTenantGrain<IMatchGrain>(matchId).GetAsync(meId) is null)
+        {
+            throw new HubException("not_a_participant");
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(matchId, tenant.Id));
