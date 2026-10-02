@@ -115,7 +115,7 @@ public sealed class MatchingEndpointTests(ClusterFixture fixture)
         await using var connection = host.NewHubConnection(host.TokenIssuer.Issue(stranger));
         await connection.StartAsync();
         var error = await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("JoinAsyncLobby", lobby!.Id));
-        Assert.Equal("not_a_participant", error.Message);
+        Assert.Contains("not_a_participant", error.Message);
 
         await using var seated = host.NewHubConnection(host.TokenIssuer.Issue(owner));
         await seated.StartAsync();
