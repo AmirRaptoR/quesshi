@@ -151,3 +151,21 @@ jq -n --arg commit "$commit" --arg previous_commit "$state_previous_commit" \
 chmod 600 "$state_tmp"
 mv -f "$state_tmp" "$state_file"
 printf 'Commit %s is healthy and deployed.\n' "$commit"
+
+# Keep only what a rollback can still use: this release and the one recorded as previous. Anything
+# else is a full source tree plus an image on a disk shared with other apps. Hand-tagged images
+# (timestamps, "local") and in-flight .incoming transfers are not ours to remove. A failed prune
+# leaves extra files behind but never fails a release that is already live.
+is_kept() {
+    [[ "$1" == "$commit" || ( -n "$state_previous_commit" && "$1" == "$state_previous_commit" ) ]]
+}
+for old_release in "$deploy_root"/releases/*; do
+    name="$(basename "$old_release")"
+    [[ -d "$old_release" && "$name" =~ ^[0-9a-f]{40,64}$ ]] || continue
+    is_kept "$name" || rm -rf -- "$old_release" || printf 'Could not remove old release %s.\n' "$name" >&2
+done
+while read -r tag; do
+    [[ "$tag" =~ ^(rollback-)?([0-9a-f]{40,64})$ ]] || continue
+    [[ -z "${BASH_REMATCH[1]}" ]] && is_kept "${BASH_REMATCH[2]}" && continue
+    docker image rm "quesshi:$tag" >/dev/null || printf 'Could not remove old image quesshi:%s.\n' "$tag" >&2
+done < <(docker image ls quesshi --format '{{.Tag}}' || true)

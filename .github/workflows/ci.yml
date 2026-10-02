@@ -96,7 +96,7 @@ jobs:
           set -euo pipefail
           : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
           : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
-          ssh_options=(-i "$HOME/.ssh/quesshi_deploy" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          ssh_options=(-i "$HOME/.ssh/quesshi_deploy" -o BatchMode=yes -o AddressFamily=inet -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           release="/opt/quesshi/releases/$GITHUB_SHA"
           incoming="$release.incoming-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT"
           git archive --format=tar "$GITHUB_SHA" \

@@ -66,6 +66,7 @@ class DeploymentTests(unittest.TestCase):
             "  'volume inspect '*) [[ \"${FAKE_MISSING_VOLUME:-}\" != \"${*:3}\" ]] ;;\n"
             "  'inspect --format {{.Image}} quesshi-app') echo sha256:previous ;;\n"
             "  'inspect --format {{.State.Health.Status}} quesshi-app') if [[ \"${TAG:-}\" == rollback-* ]]; then echo healthy; else echo \"${FAKE_HEALTH_STATUS:-healthy}\"; fi ;;\n"
+            "  'image ls quesshi --format {{.Tag}}') [[ -z \"${FAKE_IMAGE_TAGS:-}\" ]] || printf '%s\\n' ${FAKE_IMAGE_TAGS} ;;\n"
             "  *' build app') [[ \"${FAKE_BUILD_FAILURE:-0}\" != 1 ]] ;;\n"
             "  *' up -d --no-deps app'*) [[ \"${TAG:-}\" == rollback-* || \"${FAKE_SWITCH_FAILURE:-0}\" != 1 ]] ;;\n"
             "  *) exit 0 ;;\n"
@@ -262,6 +263,43 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("stale run", result.stderr)
         self.assertFalse(any("build app" in call for call in self.calls()))
+
+    def test_success_prunes_releases_and_images_older_than_the_rollback_target(self):
+        previous_commit = "b" * 40
+        older = ["c" * 40, "d" * 40]
+        (self.root / ".deployment-state").write_text(
+            json.dumps({"commit": previous_commit, "run_number": 9, "run_attempt": 1})
+        )
+        self.install_previous_release(previous_commit)
+        current_release = self.install_previous_release(COMMIT)
+        for commit in older:
+            self.install_previous_release(commit)
+        incoming = self.root / "releases" / f"{'e' * 40}.incoming-11-1"
+        incoming.mkdir()
+        tags = [COMMIT, previous_commit, *older, f"rollback-{'c' * 40}", "20260919-212003-62820c9", "local"]
+
+        result = self.run_deploy(FAKE_IMAGE_TAGS=" ".join(tags))
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        releases = {path.name for path in (self.root / "releases").iterdir()}
+        self.assertEqual({COMMIT, previous_commit, incoming.name}, releases)
+        self.assertTrue((current_release / "compose.yaml").is_file())
+        removed = sorted(call.split()[2] for call in self.calls() if call.startswith("image rm "))
+        self.assertEqual(sorted(f"quesshi:{tag}" for tag in [*older, f"rollback-{'c' * 40}"]), removed)
+
+    def test_failed_release_prunes_nothing(self):
+        previous_commit = "b" * 40
+        (self.root / ".deployment-state").write_text(
+            json.dumps({"commit": previous_commit, "run_number": 9, "run_attempt": 1})
+        )
+        self.install_previous_release(previous_commit)
+        older_release = self.install_previous_release("c" * 40)
+
+        result = self.run_deploy(FAKE_HEALTH_STATUS="unhealthy", FAKE_IMAGE_TAGS="c" * 40)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertTrue(older_release.is_dir())
+        self.assertFalse(any(call.startswith("image ") for call in self.calls()))
 
 
 if __name__ == "__main__":

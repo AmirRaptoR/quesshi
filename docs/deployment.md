@@ -17,7 +17,9 @@ Add these four repository secrets before enabling deployment:
 | `DEPLOY_SSH_KEY` | Private key for that account. Use a dedicated key restricted to this server. |
 | `DEPLOY_KNOWN_HOSTS` | The server's pinned `known_hosts` line, obtained and verified through a trusted channel. |
 
-The workflow uses `StrictHostKeyChecking=yes`; it never discovers and trusts a host key at deploy
+The workflow connects over IPv4 only (`AddressFamily=inet`): GitHub-hosted runners have no IPv6
+route, so trying a server's AAAA record first only delays or breaks the connection. It uses
+`StrictHostKeyChecking=yes`; it never discovers and trusts a host key at deploy
 time. Rotate the pinned line when the server's SSH host key is intentionally changed. Secrets are
 only available to the main-branch deployment job and are not printed by the workflow.
 
@@ -62,7 +64,11 @@ or removes a named volume.
 The deployment builds the tested commit as `quesshi:<commit-sha>`, switches only the app container,
 and waits for the Compose `/health` check to become healthy before recording success. A build error
 leaves the current app untouched. If the switch or health check fails, the script restores the
-previous running image and exits nonzero. Previous commit images and release archives are retained.
+previous running image and exits nonzero. After a successful release, the script keeps the release
+archives and `quesshi:<sha>` images for the deployed commit and the previous commit, which is the
+rollback target. It removes older `releases/<sha>` directories and older `quesshi:<sha>` and
+`quesshi:rollback-<sha>` tags, so a shared server's disk does not fill up one release at a time.
+Images tagged by hand, such as timestamps or `local`, are left alone. A failed release removes nothing.
 
 Diagnose a failed run in the GitHub Actions job log first. On the server, inspect
 `/opt/quesshi/.deployment-state`, check the app with `docker compose logs app`, and fix any reported
