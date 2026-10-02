@@ -23,7 +23,7 @@ namespace Quesshi.Server.Tests;
 /// WebApplicationFactory is still unusable (Redis clustering), so this builds its own host, the same
 /// way <see cref="AuthTestHost"/> does for auth.
 /// </summary>
-public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
+public sealed class LiveApiTestHost(TestCluster cluster, params string[] enabledModes) : IAsyncDisposable
 {
     public const string SigningKey = "a-live-endpoint-test-signing-key-long-enough";
 
@@ -76,7 +76,7 @@ public sealed class LiveApiTestHost(TestCluster cluster) : IAsyncDisposable
             web.Configure(app =>
             {
                 app.UseRouting();
-                app.UseAllModes();
+                app.UseModes(enabledModes.Length == 0 ? ["async", "live", "voting"] : enabledModes);
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.UseEndpoints(endpoints =>

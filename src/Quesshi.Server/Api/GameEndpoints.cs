@@ -243,7 +243,9 @@ public static class GameEndpoints
             IQuestionRepository questions, IMatchArchive archive, IClock clock) =>
             await ReportAsync(body, ctx.User.PlayerId()!, questions, archive, clock));
 
-        matches.MapGet("", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
+        // The list combines async, live and voting rows. Keep it on the shared API group so a
+        // tenant with only one mode can still resume and review every game it is allowed to see.
+        api.MapGet("/matches", async (HttpContext ctx, IMatchArchive archive, IPlayerRepository players,
             IGrainFactory grains, bool? active, int? take) =>
             await ListMatchesAsync(ctx.User.PlayerId()!, active ?? false, take, archive, players, grains));
 

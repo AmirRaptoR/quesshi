@@ -39,7 +39,7 @@ public sealed class GameApiTestHost : IAsyncDisposable
 
     private readonly IHost _host;
 
-    public GameApiTestHost(TestCluster cluster)
+    public GameApiTestHost(TestCluster cluster, params string[] enabledModes)
     {
         Otps = new FakeOtpStore();
 
@@ -51,6 +51,7 @@ public sealed class GameApiTestHost : IAsyncDisposable
                 {
                     services.AddRouting();
                     services.AddAuthorization();
+                    services.AddHttpClient();
                     services.AddQuesshiAuthentication(
                         new JwtOptions { Key = SigningKey, Issuer = "quesshi", Audience = "quesshi", Days = 1 },
                         new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" },
@@ -78,14 +79,24 @@ public sealed class GameApiTestHost : IAsyncDisposable
                     services.AddSingleton<IOtpStore>(Otps);
                     services.AddSingleton<IOtpSender, FakeOtpSender>();
                     services.AddSingleton<AuthService>();
+                    services.AddSingleton<AuthOptions>();
+                    services.AddSingleton<IVotingCategoryRepository>(Shared.VotingCategories);
+                    services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
+                    services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
+                    services.AddSingleton<VotingQuestionSetBuilder>();
                 });
                 web.Configure(app =>
                 {
                     app.UseRouting();
-                    app.UseAllModes();
+                    app.UseModes(enabledModes.Length == 0 ? ["async", "live", "voting"] : enabledModes);
                     app.UseAuthentication();
                     app.UseAuthorization();
-                    app.UseEndpoints(endpoints => endpoints.MapGame());
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapGame();
+                        endpoints.MapVoting();
+                        endpoints.MapAuth();
+                    });
                 });
             })
             .Start();
