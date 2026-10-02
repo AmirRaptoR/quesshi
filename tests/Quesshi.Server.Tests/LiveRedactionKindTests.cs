@@ -22,8 +22,16 @@ namespace Quesshi.Server.Tests;
 /// </para>
 /// </summary>
 [Collection(nameof(LiveClusterCollection))]
-public class LiveRedactionKindTests(LiveClusterFixture fixture)
+public class LiveRedactionKindTests(LiveClusterFixture fixture) : IDisposable
 {
+    // The Sort and Map questions this class seeds are Approved, English and in the shared "geography"
+    // category, so any other live test drawing a question set by category could pick one up and then
+    // fail answering it with a bare choice index. This class starts its duels from explicit question
+    // ids, so it removes its questions from the shared pool once each test is done.
+    private readonly List<string> _seeded = [];
+
+    public void Dispose() => LiveShared.Questions.Items.RemoveAll(q => _seeded.Contains(q.Id));
+
     private const string Amir = "lrk-amir";
     private const string Sara = "lrk-sara";
 
@@ -78,6 +86,7 @@ public class LiveRedactionKindTests(LiveClusterFixture fixture)
     {
         var id = NewShuffledId();
         var questionIds = SeedMixed(id);
+        _seeded.AddRange(questionIds);
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id);
 
         await grain.CreateAsync(id[..8].ToUpperInvariant(), (int)Language.En, Amir, questionIds);
