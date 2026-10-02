@@ -62,7 +62,7 @@ public class MatchGrainTests(ClusterFixture fixture)
     [Fact]
     public async Task Lowered_runtime_limit_grandfathers_capacity_but_blocks_later_increases()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(30);
         try
         {
@@ -87,7 +87,7 @@ public class MatchGrainTests(ClusterFixture fixture)
     [Fact]
     public async Task Idempotent_create_returns_a_grandfathered_lobby_after_the_limit_is_lowered()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(30);
         try
         {
@@ -113,7 +113,7 @@ public class MatchGrainTests(ClusterFixture fixture)
     [Fact]
     public async Task Capacity_and_limit_mutations_observe_committed_order()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(30);
         try
         {
@@ -137,7 +137,7 @@ public class MatchGrainTests(ClusterFixture fixture)
     [Fact]
     public async Task Players_question_preserves_a_participant_selection_beyond_index_nineteen()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(21);
         try
         {

@@ -17,6 +17,7 @@ using Quesshi.Server.Hubs;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Seed;
+using Quesshi.Server.Tenants;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +34,7 @@ var mongoOptions = new MongoOptions
 // through the repositories rather than through an Orleans provider.
 builder.UseOrleans(silo =>
 {
+    silo.AddIncomingGrainCallFilter<TenantGrainCallFilter>();
     silo.Configure<ClusterOptions>(options =>
     {
         options.ClusterId = builder.Configuration["Orleans:ClusterId"] ?? "quesshi";
@@ -46,16 +48,43 @@ builder.UseOrleans(silo =>
     // A startup task runs once the silo is actually up; a plain Task.Run races it and throws.
     var nightly = builder.Configuration.GetValue("Generation:Nightly", false);
     silo.AddStartupTask(async (services, ct) =>
-        await services.GetRequiredService<IGrainFactory>().GetGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly));
+    {
+        var tenants = services.GetRequiredService<TenantOptions>();
+        var tenantContext = services.GetRequiredService<TenantContext>();
+        var grains = services.GetRequiredService<IGrainFactory>();
+        foreach (var tenant in tenants.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await grains.GetTenantGrain<IQuestionGeneratorGrain>(0).ApplyScheduleAsync(nightly);
+        }
+    });
 
     // Seeds, never overwrites: a runtime toggle through POST /api/admin/live/enabled must survive
     // the next restart, so this only ever writes into a grain that has never persisted a value.
     var liveEnabled = builder.Configuration.GetValue("Live:Enabled", true);
     silo.AddStartupTask(async (services, ct) =>
-        await services.GetRequiredService<IGrainFactory>().GetGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled));
+    {
+        var tenants = services.GetRequiredService<TenantOptions>();
+        var tenantContext = services.GetRequiredService<TenantContext>();
+        var grains = services.GetRequiredService<IGrainFactory>();
+        foreach (var tenant in tenants.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await grains.GetTenantGrain<ILiveSettingsGrain>(0).SeedAsync(liveEnabled);
+        }
+    });
     var maxLobbyCapacity = builder.Configuration.GetValue("Lobby:MaxCapacity", MatchRules.DefaultMaxParticipants);
     silo.AddStartupTask(async (services, ct) =>
-        await services.GetRequiredService<IGrainFactory>().GetGrain<ILobbySettingsGrain>(0).SeedAsync(maxLobbyCapacity));
+    {
+        var tenants = services.GetRequiredService<TenantOptions>();
+        var tenantContext = services.GetRequiredService<TenantContext>();
+        var grains = services.GetRequiredService<IGrainFactory>();
+        foreach (var tenant in tenants.Tenants)
+        {
+            using (tenantContext.Enter(tenant.Id))
+                await grains.GetTenantGrain<ILobbySettingsGrain>(0).SeedAsync(maxLobbyCapacity);
+        }
+    });
 });
 
 // --- configuration objects -----------------------------------------------------------
@@ -76,6 +105,12 @@ builder.Services.AddSingleton(openRouterOptions);
 builder.Services.AddSingleton(topUpOptions);
 builder.Services.AddSingleton(matchingGenerationOptions);
 builder.Services.AddSingleton(mongoOptions);
+var tenantOptions = builder.Configuration.GetSection("Tenants").Get<TenantOptions>() ?? new TenantOptions();
+var tenantRegistry = new TenantRegistry(tenantOptions);
+builder.Services.AddSingleton(tenantOptions);
+builder.Services.AddSingleton(tenantRegistry);
+var tenantContext = new TenantContext();
+builder.Services.AddSingleton(tenantContext);
 
 // --- infrastructure ------------------------------------------------------------------
 builder.Services.AddHttpClient();
@@ -162,8 +197,8 @@ builder.Services.AddSingleton<Seeder>();
 builder.Services.AddSingleton<TokenIssuer>();
 
 // --- auth ----------------------------------------------------------------------------
-var tokenIssuer = new TokenIssuer(jwtOptions);
-var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions);
+var tokenIssuer = new TokenIssuer(jwtOptions, tenantContext);
+var adminTokenIssuer = new AdminTokenIssuer(adminAuthOptions, tenantContext);
 builder.Services.AddSingleton(tokenIssuer);
 builder.Services.AddSingleton(adminTokenIssuer);
 
@@ -182,6 +217,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
 
 var app = builder.Build();
+
+app.UseMiddleware<TenantResolutionMiddleware>();
 
 if (smtpOptions.Delivery(app.Environment.IsDevelopment()) == MailDelivery.Log)
 {
@@ -209,6 +246,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapTenantSettings();
 app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();
 app.MapGame();
@@ -224,58 +262,63 @@ app.MapFallbackToFile("index.html");
 using (var scope = app.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    try
+    var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
+    foreach (var tenant in tenantOptions.Tenants)
     {
-        await scope.ServiceProvider.GetRequiredService<MongoContext>().EnsureIndexesAsync();
-    }
-    catch (Exception ex)
-    {
-        // Required indexes include the unique matching code/topic constraints. Running without
-        // them changes correctness (not merely performance), so do not advertise a healthy app
-        // after an incomplete migration or an unavailable Mongo instance.
-        logger.LogCritical(ex, "Required Mongo indexes could not be created; stopping startup.");
-        throw;
-    }
-
-    try
-    {
-        await scope.ServiceProvider.GetRequiredService<Seeder>().RunAsync(app.Environment.ContentRootPath);
-
-        // Bootstrap: an install with no administrator has no way in, so make one and say so loudly.
-        var admins = scope.ServiceProvider.GetRequiredService<IAdminUserRepository>();
-        if (await admins.CountAsync() == 0)
+        using (tenantContext.Enter(tenant.Id))
         {
-            var generated = string.IsNullOrWhiteSpace(adminAuthOptions.BootstrapPassword);
-            var password = generated
-                ? "quesshi-" + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)).ToLowerInvariant()
-                : adminAuthOptions.BootstrapPassword!;
+            try
+            {
+                await mongo.EnsureIndexesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Required indexes include the unique matching code/topic constraints. Running without
+                // them changes correctness (not merely performance), so do not advertise a healthy app
+                // after an incomplete migration or an unavailable Mongo instance.
+                logger.LogCritical(ex, "Required Mongo indexes could not be created for tenant {TenantId}; stopping startup.", tenant.Id);
+                throw;
+            }
 
-            await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
-                .CreateAsync(adminAuthOptions.BootstrapUsername, adminAuthOptions.BootstrapEmail, password, mustChangePassword: generated);
+            try
+            {
+                // Each tenant gets the same idempotent starter content in its own database.
+                await scope.ServiceProvider.GetRequiredService<Seeder>().RunAsync(app.Environment.ContentRootPath);
 
-            if (generated)
-                logger.LogWarning("Created the first administrator: username \"{Username}\", password \"{Password}\" — sign in at /admin and change it.",
-                    adminAuthOptions.BootstrapUsername, password);
-            else
-                logger.LogInformation("Created the first administrator \"{Username}\" from configuration.", adminAuthOptions.BootstrapUsername);
+                // Bootstrap an administrator independently in every tenant database.
+                var admins = scope.ServiceProvider.GetRequiredService<IAdminUserRepository>();
+                await TenantAdminBootstrapper.EnsureFirstAdminAsync(tenant.Id, tenantContext, admins,
+                    scope.ServiceProvider.GetRequiredService<AdminAuthService>(), adminAuthOptions, logger);
+
+                // A placeholder address cannot receive a reset link, which only matters once you need one.
+                foreach (var stranded in (await admins.AllAsync()).Where(a => !EmailAddress.LooksValid(a.Email) || IsPlaceholderDomain(a.Email)))
+                    logger.LogWarning("Admin \"{Username}\" in tenant {TenantId} has an unreachable email ({Email}); password reset cannot get to it. Change it under Admin -> Change password.",
+                        stranded.Username, tenant.Id, stranded.Email);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Start-up seeding/bootstrap failed for tenant {TenantId}; the app will keep going with diagnostics above.", tenant.Id);
+            }
         }
-
-        // A placeholder address cannot receive a reset link, which only matters once you need one.
-        foreach (var stranded in (await admins.AllAsync()).Where(a => !EmailAddress.LooksValid(a.Email) || IsPlaceholderDomain(a.Email)))
-            logger.LogWarning("Admin \"{Username}\" has an unreachable email ({Email}); password reset cannot get to it. Change it under Admin -> Change password.",
-                stranded.Username, stranded.Email);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Start-up seeding/bootstrap failed; the app will keep going with diagnostics above.");
     }
 }
 
-// `dotnet run --project src/Quesshi.Server -- add-admin <username> <email> <password>`
+// `dotnet run --project src/Quesshi.Server -- add-admin [--tenant <id>] <username> <email> <password>`
 // Creating an administrator otherwise requires being signed in as one, so this is the way back in
 // when every password is lost. The silo only starts on app.Run, so this costs one Mongo round trip.
-if (args is ["add-admin", var newUsername, var newEmail, var newPassword, ..])
+if (args.Length > 0 && args[0] == "add-admin")
 {
+    if (!TenantCommandArguments.TryParse(args[1..], tenantRegistry, out var command, out var error)
+        || command.Remaining.Length != 3)
+    {
+        Console.Error.WriteLine(error ?? "Usage: add-admin [--tenant <id>] <username> <email> <password>");
+        return 1;
+    }
+
+    var newUsername = command.Remaining[0];
+    var newEmail = command.Remaining[1];
+    var newPassword = command.Remaining[2];
+    using var tenant = tenantContext.Enter(command.TenantId);
     using var scope = app.Services.CreateScope();
     var admins = scope.ServiceProvider.GetRequiredService<IAdminUserRepository>();
 
@@ -301,15 +344,23 @@ if (args is ["add-admin", var newUsername, var newEmail, var newPassword, ..])
     await scope.ServiceProvider.GetRequiredService<AdminAuthService>()
         .CreateAsync(newUsername, newEmail, newPassword, mustChangePassword: true);
 
-    Console.WriteLine($"Created administrator \"{newUsername}\". It must change its password on first sign-in.");
+    Console.WriteLine($"Created administrator \"{newUsername}\" for tenant \"{command.TenantId}\". It must change its password on first sign-in.");
     return 0;
 }
 
-// `dotnet run --project src/Quesshi.Server -- approve-ai`
+// `dotnet run --project src/Quesshi.Server -- approve-ai [--tenant <id>]`
 // Publishes the backlog of generated questions that were parked for review under the old
 // review-everything-first policy. Questions an admin explicitly rejected are left rejected.
-if (args is ["approve-ai", ..])
+if (args.Length > 0 && args[0] == "approve-ai")
 {
+    if (!TenantCommandArguments.TryParse(args[1..], tenantRegistry, out var command, out var error)
+        || command.Remaining.Length != 0)
+    {
+        Console.Error.WriteLine(error ?? "Usage: approve-ai [--tenant <id>]");
+        return 1;
+    }
+
+    using var tenant = tenantContext.Enter(command.TenantId);
     using var scope = app.Services.CreateScope();
     var questions = scope.ServiceProvider.GetRequiredService<IQuestionRepository>();
 
@@ -328,7 +379,7 @@ if (args is ["approve-ai", ..])
         if (generated.Count < batch.Count) break;
     }
 
-    Console.WriteLine($"Approved {approved} generated questions.");
+    Console.WriteLine($"Approved {approved} generated questions for tenant \"{command.TenantId}\".");
     return 0;
 }
 

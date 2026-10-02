@@ -119,7 +119,7 @@ public class AsyncLobbyEndpointsTests(ClusterFixture fixture)
     [Fact]
     public async Task Create_refuses_a_capacity_outside_the_configured_range()
     {
-        await Grains.GetGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
+        await Grains.GetTenantGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         var tooSmall = await GameEndpoints.CreateLobbyAsync(new CreateLobbyDto(1, "en", [Category], null, null), Amir, Grains, Ids, Shared.Players);
         Assert.Equal(400, CrossTypeCodeTests.StatusOf(tooSmall));
         Assert.Equal("bad_capacity", CrossTypeCodeTests.ErrorOf(tooSmall));

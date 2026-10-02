@@ -1,4 +1,5 @@
 using Quesshi.Infrastructure.Redis;
+using Quesshi.Infrastructure;
 using StackExchange.Redis;
 
 namespace Quesshi.Server.Tests;
@@ -42,7 +43,7 @@ public class RedisLeaderboardSetTests
         var db = redis.GetDatabase();
         try
         {
-            var board = new RedisLeaderboard(redis);
+            var board = new RedisLeaderboard(redis, new TenantContext());
 
             await board.SetAsync(id, 500);
             Assert.Equal(500, await db.SortedSetScoreAsync(Key, id));

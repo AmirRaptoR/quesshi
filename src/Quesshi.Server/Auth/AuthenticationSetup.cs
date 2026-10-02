@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Quesshi.Application.Ports;
+using Quesshi.Server.Tenants;
 
 namespace Quesshi.Server.Auth;
 
@@ -33,6 +35,17 @@ public static class AuthenticationSetup
                 // paths under /hub — the only place a socket is ever negotiated.
                 options.Events = new JwtBearerEvents
                 {
+                    OnTokenValidated = context =>
+                    {
+                        var tenant = ResolveTenant(context.HttpContext);
+                        var tokenTenant = context.Principal?.FindFirst(TokenIssuer.TenantClaim)?.Value;
+                        // Pre-tenant Quesshi tokens remain valid only on Quesshi. A tenant identity
+                        // is mandatory everywhere else, and tenant claims never cross host mappings.
+                        if (tenant is null || (tokenTenant != tenant.Id &&
+                            !(tenant.Id == "quesshi" && tokenTenant is null)))
+                            context.Fail("The token belongs to a different tenant.");
+                        return Task.CompletedTask;
+                    },
                     OnMessageReceived = context =>
                     {
                         var accessToken = context.Request.Query["access_token"];
@@ -43,13 +56,42 @@ public static class AuthenticationSetup
                     }
                 };
             })
-            .AddJwtBearer(AdminTokenIssuer.Scheme, options => options.TokenValidationParameters = new TokenValidationParameters
+            .AddJwtBearer(AdminTokenIssuer.Scheme, options =>
             {
-                ValidIssuer = adminAuthOptions.Issuer,
-                ValidAudience = AdminTokenIssuer.Audience,
-                IssuerSigningKey = adminTokenIssuer.SigningKey,
-                ValidateIssuerSigningKey = true,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(1)
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidIssuer = adminAuthOptions.Issuer,
+                    ValidAudience = AdminTokenIssuer.Audience,
+                    IssuerSigningKey = adminTokenIssuer.SigningKey,
+                    ValidateIssuerSigningKey = true,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.FromMinutes(1)
+                };
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = context =>
+                    {
+                        var tenant = ResolveTenant(context.HttpContext);
+                        var tokenTenant = context.Principal?.FindFirst(TokenIssuer.TenantClaim)?.Value;
+                        if (tenant is null || (tokenTenant != tenant.Id &&
+                            !(tenant.Id == "quesshi" && tokenTenant is null)))
+                            context.Fail("The token belongs to a different tenant.");
+                        return Task.CompletedTask;
+                    }
+                };
             });
+
+    private static TenantSettingsDto? ResolveTenant(HttpContext context)
+    {
+        if (context.Items[typeof(TenantSettingsDto)] is TenantSettingsDto selected) return selected;
+        if (context.RequestServices.GetService<TenantRegistry>() is { } registry)
+            return registry.TryResolve(context.Request.Host.Host, out var resolved) ? resolved : null;
+
+        // Authentication-only test hosts predate tenant middleware and use TestServer's localhost.
+        // A deployment always registers TenantRegistry and must resolve through its explicit host map.
+        return context.Request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            ? new TenantSettingsDto("quesshi", "Quesshi", new TenantBrandSettingsDto("quesshi",
+                new Dictionary<string, string>(), [], [], new Dictionary<string, string>()))
+            : null;
+    }
 }

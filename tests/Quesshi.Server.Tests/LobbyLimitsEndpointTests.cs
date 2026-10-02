@@ -15,7 +15,7 @@ public sealed class LobbyLimitsEndpointTests(ClusterFixture fixture) : IAsyncDis
     [Fact]
     public async Task Authenticated_guest_can_read_the_current_limit_without_admin_access()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(42);
         try
         {
@@ -36,7 +36,7 @@ public sealed class LobbyLimitsEndpointTests(ClusterFixture fixture) : IAsyncDis
 
     public async ValueTask DisposeAsync()
     {
-        await fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0)
+        await fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0)
             .SetMaxCapacityAsync(MatchRules.DefaultMaxParticipants);
         await _host.DisposeAsync();
     }

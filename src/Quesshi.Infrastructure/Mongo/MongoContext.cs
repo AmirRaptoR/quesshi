@@ -4,31 +4,38 @@ namespace Quesshi.Infrastructure.Mongo;
 
 public sealed class MongoContext
 {
-    public MongoContext(MongoOptions options)
+    private readonly MongoClient client;
+    private readonly MongoOptions options;
+    private readonly TenantContext? tenantContext;
+
+    public MongoContext(MongoOptions options, TenantContext? tenantContext = null)
     {
-        var db = new MongoClient(options.ConnectionString).GetDatabase(options.Database);
-        Questions = db.GetCollection<QuestionDoc>("questions");
-        Categories = db.GetCollection<CategoryDoc>("categories");
-        MatchingQuestions = db.GetCollection<MatchingQuestionDoc>("matching_questions");
-        MatchingCategories = db.GetCollection<MatchingCategoryDoc>("matching_categories");
-        Players = db.GetCollection<PlayerDoc>("players");
-        Matches = db.GetCollection<MatchDoc>("matches");
-        GenerationRuns = db.GetCollection<GenerationRunDoc>("generation_runs");
-        MatchingGenerationRuns = db.GetCollection<MatchingGenerationRunDoc>("matching_generation_runs");
-        AdminUsers = db.GetCollection<AdminUserDoc>("admin_users");
-        AiCalls = db.GetCollection<AiCallDoc>("ai_calls");
+        this.options = options;
+        this.tenantContext = tenantContext;
+        client = new MongoClient(options.ConnectionString);
     }
 
-    public IMongoCollection<QuestionDoc> Questions { get; }
-    public IMongoCollection<CategoryDoc> Categories { get; }
-    public IMongoCollection<MatchingQuestionDoc> MatchingQuestions { get; }
-    public IMongoCollection<MatchingCategoryDoc> MatchingCategories { get; }
-    public IMongoCollection<PlayerDoc> Players { get; }
-    public IMongoCollection<MatchDoc> Matches { get; }
-    public IMongoCollection<GenerationRunDoc> GenerationRuns { get; }
-    public IMongoCollection<MatchingGenerationRunDoc> MatchingGenerationRuns { get; }
-    public IMongoCollection<AdminUserDoc> AdminUsers { get; }
-    public IMongoCollection<AiCallDoc> AiCalls { get; }
+    public string DatabaseName
+    {
+        get
+        {
+            var tenantId = tenantContext?.Id ?? "quesshi";
+            return tenantId == "quesshi" ? options.Database : $"{options.Database}_{tenantId}";
+        }
+    }
+
+    private IMongoDatabase Database => client.GetDatabase(DatabaseName);
+
+    public IMongoCollection<QuestionDoc> Questions => Database.GetCollection<QuestionDoc>("questions");
+    public IMongoCollection<CategoryDoc> Categories => Database.GetCollection<CategoryDoc>("categories");
+    public IMongoCollection<MatchingQuestionDoc> MatchingQuestions => Database.GetCollection<MatchingQuestionDoc>("matching_questions");
+    public IMongoCollection<MatchingCategoryDoc> MatchingCategories => Database.GetCollection<MatchingCategoryDoc>("matching_categories");
+    public IMongoCollection<PlayerDoc> Players => Database.GetCollection<PlayerDoc>("players");
+    public IMongoCollection<MatchDoc> Matches => Database.GetCollection<MatchDoc>("matches");
+    public IMongoCollection<GenerationRunDoc> GenerationRuns => Database.GetCollection<GenerationRunDoc>("generation_runs");
+    public IMongoCollection<MatchingGenerationRunDoc> MatchingGenerationRuns => Database.GetCollection<MatchingGenerationRunDoc>("matching_generation_runs");
+    public IMongoCollection<AdminUserDoc> AdminUsers => Database.GetCollection<AdminUserDoc>("admin_users");
+    public IMongoCollection<AiCallDoc> AiCalls => Database.GetCollection<AiCallDoc>("ai_calls");
 
     /// <summary>Indexes the queries the app actually makes: bucket sampling, email lookup, match history.</summary>
     public async Task EnsureIndexesAsync(CancellationToken ct = default)

@@ -6,9 +6,10 @@ using Quesshi.Domain;
 
 namespace Quesshi.Server.Auth;
 
-public sealed class TokenIssuer(JwtOptions options)
+public sealed class TokenIssuer(JwtOptions options, Quesshi.Infrastructure.TenantContext? tenantContext = null)
 {
     public const string GuestClaim = "guest";
+    public const string TenantClaim = "tenant_id";
 
     public SymmetricSecurityKey SigningKey { get; } = new(Encoding.UTF8.GetBytes(options.Key.PadRight(32, '.')));
 
@@ -19,7 +20,8 @@ public sealed class TokenIssuer(JwtOptions options)
         [
             new(JwtRegisteredClaimNames.Sub, player.Id),
             new(ClaimTypes.NameIdentifier, player.Id),
-            new("name", player.DisplayName)
+            new("name", player.DisplayName),
+            new(TenantClaim, tenantContext?.Id ?? "quesshi")
         ];
 
         if (player.IsGuest) claims.Add(new Claim(GuestClaim, "1"));

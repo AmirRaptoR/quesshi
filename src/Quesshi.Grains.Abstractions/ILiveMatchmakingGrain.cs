@@ -15,7 +15,7 @@ namespace Quesshi.Grains.Abstractions;
 /// this grain's own, and the lock genuinely covers it.
 /// </remarks>
 [Alias("Quesshi.Grains.Abstractions.ILiveMatchmakingGrain")]
-public interface ILiveMatchmakingGrain : IGrainWithIntegerKey
+public interface ILiveMatchmakingGrain : IGrainWithIntegerCompoundKey
 {
     /// <summary>
     /// Prunes, then looks for a waiting entry with the same language and question count belonging to

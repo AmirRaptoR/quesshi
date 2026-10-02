@@ -136,7 +136,7 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
 
         // The requester (now the lobby's owner) is not invited to their own lobby; the other
         // participant of the finished duel is.
-        var matchmaking = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var matchmaking = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
         var pending = await matchmaking.PendingForAsync(opponentId);
         Assert.Contains(pending, c => c.LobbyId == outcome.NewMatchId && c.ChallengerId == challengerId);
         Assert.Empty(await matchmaking.PendingForAsync(challengerId));
@@ -190,7 +190,7 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Rematch_clamps_a_grandfathered_capacity_to_the_current_limit()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0);
         await settings.SetMaxCapacityAsync(30);
         try
         {
@@ -254,7 +254,7 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Kill_switch_off_creates_no_lobby_and_notifies_the_finished_duels_group()
     {
-        var settings = fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(0);
+        var settings = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(0);
         var (grain, challengerId, _, matchId) = await NewFinishedDuelAsync();
 
         await settings.SetEnabledAsync(false);
@@ -307,7 +307,7 @@ public class LiveRematchGrainTests(LiveClusterFixture fixture)
         Assert.False(string.IsNullOrWhiteSpace(outcome.NewMatchCode));
 
         // No in-app invitation was ever minted for the guest.
-        var matchmaking = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var matchmaking = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
         var pending = await matchmaking.PendingForAsync(guestId);
         Assert.Empty(pending);
 

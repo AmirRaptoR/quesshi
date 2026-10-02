@@ -43,6 +43,7 @@ public sealed class LiveMatchmakingGrain(
     /// </summary>
     public override async Task OnActivateAsync(CancellationToken ct)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         foreach (var challenge in state.State.Challenges.ToList())
         {
             if (challenge.ExpiresAt <= clock.Now || string.IsNullOrEmpty(challenge.LobbyId))
@@ -131,7 +132,7 @@ public sealed class LiveMatchmakingGrain(
         // verifying is that the lobby being pointed at is real and still open for the invitation to
         // mean anything, and asking the lobby itself is the only way to know that without duplicating
         // its rules here.
-        var lobby = GrainFactory.GetGrain<ILiveMatchGrain>(lobbyId);
+        var lobby = GrainFactory.GetTenantGrain<ILiveMatchGrain>(lobbyId);
         var view = await lobby.GetAsync(challengerId);
         if (view is null || view.Phase != (int)LivePhase.Lobby) return (int)LiveChallengeResult.NotFound;
 
@@ -152,7 +153,7 @@ public sealed class LiveMatchmakingGrain(
     {
         if (challengerId == targetId) return (int)LiveChallengeResult.SelfChallenge;
 
-        var lobby = GrainFactory.GetGrain<IMatchingMatchGrain>(lobbyId);
+        var lobby = GrainFactory.GetTenantGrain<IMatchingMatchGrain>(lobbyId);
         var view = await lobby.GetAsync(challengerId);
         if (view is null || (MatchState)view.State != MatchState.AwaitingOpponent)
             return (int)LiveChallengeResult.NotFound;
@@ -192,7 +193,7 @@ public sealed class LiveMatchmakingGrain(
 
         if (challenge.Matching)
         {
-            var matching = GrainFactory.GetGrain<IMatchingMatchGrain>(challenge.LobbyId);
+            var matching = GrainFactory.GetTenantGrain<IMatchingMatchGrain>(challenge.LobbyId);
             var result = (MatchingJoinResult)await matching.JoinAsync(targetId);
             if (result is MatchingJoinResult.Joined or MatchingJoinResult.AlreadyIn)
             {
@@ -215,7 +216,7 @@ public sealed class LiveMatchmakingGrain(
             return new LiveChallengeAcceptResult((int)matchingReason, null, challenge.ChallengerId);
         }
 
-        var lobby = GrainFactory.GetGrain<ILiveMatchGrain>(challenge.LobbyId);
+        var lobby = GrainFactory.GetTenantGrain<ILiveMatchGrain>(challenge.LobbyId);
         var joinResult = (LiveJoinResult)await lobby.JoinAsync(targetId);
         if (joinResult is LiveJoinResult.Joined or LiveJoinResult.AlreadyIn)
         {
@@ -286,7 +287,7 @@ public sealed class LiveMatchmakingGrain(
             if (await archive.ByCodeAsync(code) is not null) continue;
 
             var matchId = ids.NewId();
-            var grain = GrainFactory.GetGrain<ILiveMatchGrain>(matchId);
+            var grain = GrainFactory.GetTenantGrain<ILiveMatchGrain>(matchId);
             await grain.CreateAsync(code, lang, challengerId, [.. set.Select(q => q.Id)]);
 
             var joinResult = (LiveJoinResult)await grain.JoinAsync(opponentId);
@@ -317,6 +318,7 @@ public sealed class LiveMatchmakingGrain(
 
     private async Task OnExpireAsync(string challengeId)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         var challenge = state.State.Challenges.FirstOrDefault(c => c.ChallengeId == challengeId);
         if (challenge is null) return; // already accepted, declined, or expired by another path
 
@@ -336,6 +338,7 @@ public sealed class LiveMatchmakingGrain(
 
     private async Task PruneTickAsync(CancellationToken ct)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         var buckets = state.State.Waiting.Select(w => (w.Lang, w.QuestionCount)).Distinct().ToList();
         if (!Prune()) return;
 

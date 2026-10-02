@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Quesshi.Domain;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Live;
 
 namespace Quesshi.Server.Tests;
@@ -183,7 +184,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
         await c1.InvokeAsync("QueueRandom", lang, count, new List<string> { cat.Id }, new List<int>());
         await c1.InvokeAsync("LeaveQueue");
 
-        var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var observer = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
         Assert.Equal(0, await observer.WaitingCountAsync("nobody", lang, count));
     }
 
@@ -202,7 +203,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
 
         await c1.DisposeAsync();
 
-        var observer = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchmakingGrain>(0);
+        var observer = fixture.Cluster.GrainFactory.GetTenantGrain<ILiveMatchmakingGrain>(0);
         await LobbyHubTestHost.WaitUntilAsync(
             async () => await observer.WaitingCountAsync("nobody", lang, count) == 0,
             SignalTimeout,
@@ -216,13 +217,13 @@ public class LobbyHubTests(LiveClusterFixture fixture)
     {
         var grains = fixture.Cluster.GrainFactory;
         var presence = new FakePresence();
-        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory(), new FakeArchive()) { Context = new FakeHubCallerContext(Guest("lhb-guest").Id, isGuest: true) };
+        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory(), new FakeArchive(), new TenantContext()) { Context = new FakeHubCallerContext(Guest("lhb-guest").Id, isGuest: true) };
         var lang = (int)Language.En;
         var count = 4010 + (int)Interlocked.Increment(ref _n);
 
         await Assert.ThrowsAsync<HubException>(() => hub.QueueRandom(lang, count, [], []));
 
-        var observer = grains.GetGrain<ILiveMatchmakingGrain>(0);
+        var observer = grains.GetTenantGrain<ILiveMatchmakingGrain>(0);
         Assert.Equal(0, await observer.WaitingCountAsync("nobody", lang, count));
     }
 
@@ -231,7 +232,7 @@ public class LobbyHubTests(LiveClusterFixture fixture)
     {
         var grains = fixture.Cluster.GrainFactory;
         var presence = new FakePresence();
-        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory(), new FakeArchive()) { Context = new FakeHubCallerContext(Guest("lhb-guest2").Id, isGuest: true) };
+        var hub = new LobbyHub(grains, presence, new FakeLobbyNotifier(), new FakePlayers(), new FakeIdFactory(), new FakeArchive(), new TenantContext()) { Context = new FakeHubCallerContext(Guest("lhb-guest2").Id, isGuest: true) };
 
         await Assert.ThrowsAsync<HubException>(() => hub.LeaveQueue());
     }

@@ -49,8 +49,8 @@ public static class AdminEndpoints
                 await live.ConnectedCountAsync(),
                 await live.QueueDepthAsync(),
                 await matches.CountLiveAsync(),
-                await grains.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync(),
-                await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync());
+                await grains.GetTenantGrain<ILiveSettingsGrain>(0).IsEnabledAsync(),
+                await grains.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync());
         });
 
         // --- live duels ----------------------------------------------------------------
@@ -90,18 +90,18 @@ public static class AdminEndpoints
         // ILiveMatchGrain.EndAsync already does nothing once the duel is over or never existed.
         admin.MapPost("/live/{id}/end", async (string id, IGrainFactory grains) =>
         {
-            await grains.GetGrain<ILiveMatchGrain>(id).EndAsync("ended by an administrator");
+            await grains.GetTenantGrain<ILiveMatchGrain>(id).EndAsync("ended by an administrator");
             return Results.Ok();
         });
 
         admin.MapPost("/live/enabled", async (bool value, IGrainFactory grains) =>
         {
-            await grains.GetGrain<ILiveSettingsGrain>(0).SetEnabledAsync(value);
+            await grains.GetTenantGrain<ILiveSettingsGrain>(0).SetEnabledAsync(value);
             return Results.Ok();
         });
 
         admin.MapPost("/lobby/max-capacity", async (int value, IGrainFactory grains) =>
-            await grains.GetGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(value)
+            await grains.GetTenantGrain<ILobbySettingsGrain>(0).SetMaxCapacityAsync(value)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "bad_capacity" }));
 
@@ -282,7 +282,7 @@ public static class AdminEndpoints
             if (id == ctx.User.PlayerId()) return Results.BadRequest(new { error = "cannot_ban_self" });
             if (await players.GetAsync(id) is null) return Results.NotFound();
 
-            return await grains.GetGrain<IPlayerGrain>(id).SetBannedAsync(value) ? Results.Ok() : Results.NotFound();
+            return await grains.GetTenantGrain<IPlayerGrain>(id).SetBannedAsync(value) ? Results.Ok() : Results.NotFound();
         });
 
         // --- generation --------------------------------------------------------------
@@ -291,7 +291,7 @@ public static class AdminEndpoints
         // moment queue behind each other instead of both calling the model.
         admin.MapPost("/generate", async (IGrainFactory grains, IGenerationLog log) =>
         {
-            var runId = await grains.GetGrain<IQuestionGeneratorGrain>(0).RunNowAsync();
+            var runId = await grains.GetTenantGrain<IQuestionGeneratorGrain>(0).RunNowAsync();
             var run = (await log.RecentAsync(20)).FirstOrDefault(r => r.Id == runId);
 
             return run is null ? Results.Accepted() : Results.Ok(run.ToDto());

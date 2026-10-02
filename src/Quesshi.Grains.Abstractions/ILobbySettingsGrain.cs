@@ -1,7 +1,7 @@
 namespace Quesshi.Grains.Abstractions;
 
 [Alias("Quesshi.Grains.Abstractions.ILobbySettingsGrain")]
-public interface ILobbySettingsGrain : IGrainWithIntegerKey
+public interface ILobbySettingsGrain : IGrainWithIntegerCompoundKey
 {
     [Alias("GetMaxCapacityAsync")] Task<int> GetMaxCapacityAsync();
     [Alias("SetMaxCapacityAsync")] Task<bool> SetMaxCapacityAsync(int value);

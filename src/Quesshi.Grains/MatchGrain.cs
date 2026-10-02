@@ -33,6 +33,7 @@ public sealed class MatchGrain(
 
     public override async Task OnActivateAsync(CancellationToken ct)
     {
+        using var tenant = TenantGrainAddress.Enter(this.GetPrimaryKeyString());
         if (!string.IsNullOrEmpty(state.State.Json))
             _match = Match.FromSnapshot(JsonSerializer.Deserialize<MatchSnapshot>(state.State.Json)!);
 
@@ -60,7 +61,7 @@ public sealed class MatchGrain(
         // capacity-2 lobby whose set is already drawn, built through the settings-aware constructor so
         // the domain itself never has to carry a second, N-unaware way to come into being.
         var settings = DuelSettings.Create((Language)lang, questionIds.Count, [], []);
-        _match = Match.Create(this.GetPrimaryKeyString(), code, challengerId, settings, capacity: 2, clock.Now);
+        _match = Match.Create(TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()), code, challengerId, settings, capacity: 2, clock.Now);
         _match.DrawQuestions(questionIds);
         await SaveAsync();
         await IndexAsync();
@@ -76,11 +77,11 @@ public sealed class MatchGrain(
         List<string> categoryIds, List<int> levels, int capacity)
     {
         if (_match is not null) return View(_match, ownerId);
-        if (capacity > await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync())
+        if (capacity > await GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync())
             throw new ArgumentOutOfRangeException(nameof(capacity));
 
         var settings = DuelSettings.Create((Language)lang, questionCount, categoryIds, [.. levels.Select(l => (Difficulty)l)]);
-        _match = Match.Create(this.GetPrimaryKeyString(), code, ownerId, settings, capacity, clock.Now);
+        _match = Match.Create(TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()), code, ownerId, settings, capacity, clock.Now);
         await SaveAsync();
         await IndexAsync();
 
@@ -196,7 +197,7 @@ public sealed class MatchGrain(
 
         var settingsChanged = settings != _match.Settings;
         var settingsOk = !settingsChanged || (playerId == _match.OwnerId && _match.QuestionIds.Count == 0);
-        var configuredMax = await GrainFactory.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        var configuredMax = await GrainFactory.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
         var capacityOk = capacity is not { } newCapacity || _match.CanSetCapacity(playerId, newCapacity)
             && (newCapacity <= _match.Capacity || newCapacity <= configuredMax);
 
@@ -254,7 +255,7 @@ public sealed class MatchGrain(
         }
         catch (InvalidOperationException ex)
         {
-            logger.LogDebug(ex, "ServeNext refused for {Player} on {Match}", playerId, this.GetPrimaryKeyString());
+            logger.LogDebug(ex, "ServeNext refused for {Player} on {Match}", playerId, TenantGrainAddress.LogicalStringKey(this.GetPrimaryKeyString()));
             return null;
         }
     }
@@ -391,7 +392,7 @@ public sealed class MatchGrain(
                 // straight out of SettleAsync without touching `settled` or the checkpoint below, so a
                 // retry (the next reminder tick, or the next activation) attempts this exact player again
                 // rather than silently skipping them as done.
-                await GrainFactory.GetGrain<IPlayerGrain>(playerId).SettleMatchAsync(m.Id, (int)outcome, run.Score, answeredCategories, correct, null);
+                await GrainFactory.GetTenantGrain<IPlayerGrain>(playerId).SettleMatchAsync(m.Id, (int)outcome, run.Score, answeredCategories, correct, null);
 
                 settled.Add(playerId);
 

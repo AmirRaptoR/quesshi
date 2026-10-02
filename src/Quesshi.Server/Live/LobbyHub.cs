@@ -4,6 +4,7 @@ using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
 using Quesshi.Domain;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Infrastructure;
 using Quesshi.Server.Api;
 
 namespace Quesshi.Server.Live;
@@ -20,7 +21,7 @@ namespace Quesshi.Server.Live;
 /// </summary>
 [Authorize]
 public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNotifier notifier,
-    IPlayerRepository players, IIdFactory ids, IMatchArchive archive) : Hub
+    IPlayerRepository players, IIdFactory ids, IMatchArchive archive, TenantContext tenant) : Hub
 {
     /// <summary>Three heartbeats' worth, so two dropped beats don't flicker an online player offline.</summary>
     public static readonly TimeSpan PresenceTtl = TimeSpan.FromSeconds(60);
@@ -34,7 +35,7 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     /// </summary>
     private const int CoParticipantLookback = 20;
 
-    private ILiveMatchmakingGrain Matchmaking => grains.GetGrain<ILiveMatchmakingGrain>(0);
+    private ILiveMatchmakingGrain Matchmaking => grains.GetTenantGrain<ILiveMatchmakingGrain>(0);
 
     public override async Task OnConnectedAsync()
     {
@@ -49,7 +50,7 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
 
         var playerId = Context.User.PlayerId()!;
         await presence.MarkOnlineAsync(playerId, PresenceTtl);
-        await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, tenant.Key(playerId));
 
         // Every invitation still within its lobby's own lifetime survives a brief reconnect — no
         // longer a fixed 45 seconds, and no longer just one: with exclusivity gone (see
@@ -131,7 +132,7 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
         if (!await CanReachAsync(me, targetId)) return (int)LiveChallengeResult.NotFound;
 
         var resolvedLang = string.IsNullOrWhiteSpace(lang) ? me.Lang : lang.ToLanguage();
-        var lobby = grains.GetGrain<ILiveMatchGrain>(ids.NewId());
+        var lobby = grains.GetTenantGrain<ILiveMatchGrain>(ids.NewId());
         var view = await lobby.CreateLobbyAsync(ids.NewMatchCode(), challengerId, (int)resolvedLang, questionCount, categoryIds, levels, capacity: 2);
 
         return await Matchmaking.ChallengeAsync(ids.NewId(), challengerId, targetId, view.Id);

@@ -46,7 +46,7 @@ public static class LiveEndpoints
             if (!gated) return await next(context);
 
             var grains = context.HttpContext.RequestServices.GetRequiredService<IGrainFactory>();
-            var enabled = await grains.GetGrain<ILiveSettingsGrain>(0).IsEnabledAsync();
+            var enabled = await grains.GetTenantGrain<ILiveSettingsGrain>(0).IsEnabledAsync();
             return enabled ? await next(context) : Results.Json(new { error = "live_disabled" }, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
 
@@ -87,12 +87,12 @@ public static class LiveEndpoints
             .WithMetadata(new RequiresLiveEnabled());
 
         api.MapPost("/{id}/leave", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetGrain<ILiveMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
+            await grains.GetTenantGrain<ILiveMatchGrain>(id).LeaveAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_leave" }));
 
         api.MapPost("/{id}/start", async (string id, HttpContext ctx, IGrainFactory grains) =>
-            await grains.GetGrain<ILiveMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
+            await grains.GetTenantGrain<ILiveMatchGrain>(id).StartAsync(ctx.User.PlayerId()!)
                 ? Results.Ok()
                 : Results.BadRequest(new { error = "cannot_start" }));
 
@@ -114,7 +114,7 @@ public static class LiveEndpoints
         IIdFactory ids, IMatchArchive archive, IPlayerRepository players, IQuestionRepository questions,
         ICategoryRepository categories, IClock clock)
     {
-        var maxCapacity = await grains.GetGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
+        var maxCapacity = await grains.GetTenantGrain<ILobbySettingsGrain>(0).GetMaxCapacityAsync();
         if (body.Capacity < 2 || body.Capacity > maxCapacity) return Results.BadRequest(new { error = "bad_capacity" });
 
         var me = await players.GetAsync(meId);
@@ -130,7 +130,7 @@ public static class LiveEndpoints
             if (await archive.ByCodeAsync(code) is not null) continue;
 
             var matchId = ids.NewId();
-            var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
+            var grain = grains.GetTenantGrain<ILiveMatchGrain>(matchId);
             LiveView view;
             try { view = await grain.CreateLobbyAsync(code, meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity); }
             catch (ArgumentOutOfRangeException) { return Results.BadRequest(new { error = "bad_capacity" }); }
@@ -154,7 +154,7 @@ public static class LiveEndpoints
         var count = CoerceQuestionCount(body.Questions);
         var levels = CoerceLevels(body.Levels);
 
-        var ok = await grains.GetGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
+        var ok = await grains.GetTenantGrain<ILiveMatchGrain>(id).UpdateSettingsAsync(meId, (int)lang, count, body.Categories ?? [], levels, body.Capacity);
         return ok ? Results.Ok() : Results.BadRequest(new { error = "cannot_update_settings" });
     }
 
@@ -214,7 +214,7 @@ public static class LiveEndpoints
             if (await archive.ByCodeAsync(code) is not null) continue;
 
             var matchId = ids.NewId();
-            var grain = grains.GetGrain<ILiveMatchGrain>(matchId);
+            var grain = grains.GetTenantGrain<ILiveMatchGrain>(matchId);
             var view = await grain.CreateAsync(code, (int)lang, meId, [.. set.Select(q => q.Id)]);
             var lookup = await players.LiveLookupAsync(view);
             return Results.Ok(await view.ToLiveDtoAsync(clock.Now, questions, categories, lookup));
@@ -230,7 +230,7 @@ public static class LiveEndpoints
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
         if (!found.IsLive) return Results.BadRequest(new { error = "not_a_live_code" });
 
-        var grain = grains.GetGrain<ILiveMatchGrain>(found.Id);
+        var grain = grains.GetTenantGrain<ILiveMatchGrain>(found.Id);
         var result = (LiveJoinResult)await grain.JoinAsync(meId);
 
         if (result is not (LiveJoinResult.Joined or LiveJoinResult.AlreadyIn))
@@ -249,7 +249,7 @@ public static class LiveEndpoints
     internal static async Task<IResult> GetAsync(string id, string meId, IGrainFactory grains,
         IPlayerRepository players, IQuestionRepository questions, ICategoryRepository categories, IClock clock)
     {
-        var view = await grains.GetGrain<ILiveMatchGrain>(id).GetAsync(meId);
+        var view = await grains.GetTenantGrain<ILiveMatchGrain>(id).GetAsync(meId);
         if (view is null) return Results.NotFound();
 
         var lookup = await players.LiveLookupAsync(view);
@@ -269,7 +269,7 @@ public static class LiveEndpoints
         if (found is null) return Results.NotFound(new { error = "no_such_code" });
         if (!found.IsLive) return Results.BadRequest(new { error = "not_a_live_code" });
 
-        var view = await grains.GetGrain<ILiveMatchGrain>(found.Id).LobbyViewAsync(meId);
+        var view = await grains.GetTenantGrain<ILiveMatchGrain>(found.Id).LobbyViewAsync(meId);
         if (view is null) return Results.NotFound(new { error = "no_such_code" });
 
         var lookup = await players.LiveLookupAsync(view);
@@ -277,7 +277,7 @@ public static class LiveEndpoints
     }
 
     internal static async Task<IResult> CancelAsync(string id, string meId, IGrainFactory grains)
-        => await grains.GetGrain<ILiveMatchGrain>(id).CancelAsync(meId)
+        => await grains.GetTenantGrain<ILiveMatchGrain>(id).CancelAsync(meId)
             ? Results.Ok()
             : Results.BadRequest(new { error = "cannot_cancel" });
 }

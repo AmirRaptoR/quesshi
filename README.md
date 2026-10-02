@@ -118,6 +118,15 @@ anywhere else until you replace it. Locked out of every account?
 dotnet run --project src/Quesshi.Server -- add-admin someone someone@example.com "a long passphrase"
 ```
 
+The maintenance commands target `quesshi` by default. Select another configured tenant with
+`--tenant <id>`; the tenant ID is the stable ID from the `Tenants` configuration, not its host or
+display name. For example, recover an administrator or approve generated questions for `quessher`:
+
+```bash
+dotnet run --project src/Quesshi.Server -- add-admin --tenant quessher someone someone@example.com "a long passphrase"
+dotnet run --project src/Quesshi.Server -- approve-ai --tenant quessher
+```
+
 ## How it is built
 
 ```

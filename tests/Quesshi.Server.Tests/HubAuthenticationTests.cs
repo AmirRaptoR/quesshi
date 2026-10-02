@@ -81,6 +81,85 @@ public class HubAuthenticationTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Fact]
+    public async Task A_player_token_is_bound_to_the_tenant_that_issued_it()
+    {
+        await using var host = new AuthTestHost();
+        string token;
+        using (host.EnterTenant("brand-a"))
+            token = host.TokenIssuer.Issue(Player.Register("p1", "amir@example.com", "Amir", Language.En, T0));
+
+        using var brandRequest = new HttpRequestMessage(HttpMethod.Get, "/api/probe");
+        brandRequest.Headers.Host = "brand-a.test";
+        brandRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.SendAsync(brandRequest)).StatusCode);
+
+        using var quesshiRequest = new HttpRequestMessage(HttpMethod.Get, "/api/probe");
+        quesshiRequest.Headers.Host = "localhost";
+        quesshiRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(quesshiRequest)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_guest_token_cannot_cross_tenants_on_http_or_hub_connections()
+    {
+        await using var host = new AuthTestHost();
+        string token;
+        using (host.EnterTenant("brand-a"))
+            token = host.TokenIssuer.Issue(Player.Guest("guest-1", "Guest", Language.En, T0));
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, "/api/probe");
+        httpRequest.Headers.Host = "localhost";
+        httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(httpRequest)).StatusCode);
+
+        using var hubRequest = new HttpRequestMessage(HttpMethod.Get, $"/hub/live/probe?access_token={token}");
+        hubRequest.Headers.Host = "localhost";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(hubRequest)).StatusCode);
+    }
+
+    [Fact]
+    public async Task An_admin_token_cannot_cross_tenants()
+    {
+        await using var host = new AuthTestHost();
+        string token;
+        using (host.EnterTenant("brand-a"))
+            token = host.AdminTokenIssuer.Issue(AdminUser.Create("admin-1", "admin", "admin@example.com", "hash", T0));
+
+        using var brandRequest = new HttpRequestMessage(HttpMethod.Get, "/api/admin/probe");
+        brandRequest.Headers.Host = "brand-a.test";
+        brandRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.SendAsync(brandRequest)).StatusCode);
+
+        using var quesshiRequest = new HttpRequestMessage(HttpMethod.Get, "/api/admin/probe");
+        quesshiRequest.Headers.Host = "localhost";
+        quesshiRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(quesshiRequest)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Public_settings_return_only_the_selected_tenants_display_configuration()
+    {
+        await using var host = new AuthTestHost();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/tenant/settings");
+        request.Headers.Host = "brand-a.test";
+
+        var response = await host.Client.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Brand A", json);
+        Assert.Contains("blue", json);
+        Assert.Contains("Brand welcome", json);
+        Assert.Contains("fa", json);
+        Assert.Contains("en", json);
+        Assert.Contains("nl", json);
+        Assert.Contains("live", json);
+        Assert.Contains("maxPlayers", json);
+        Assert.DoesNotContain("Quesshi", json);
+        Assert.DoesNotContain("red", json);
+    }
+
     /// <summary>The one rule this whole hook exists to enforce: query-string tokens are for /hub only.</summary>
     [Fact]
     public async Task A_token_in_the_query_string_of_a_non_hub_path_is_ignored()

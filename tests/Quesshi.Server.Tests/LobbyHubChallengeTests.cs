@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Infrastructure;
+using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Live;
 
 namespace Quesshi.Server.Tests;
@@ -46,13 +47,13 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
         players.Items.Add(Player.Register("friend-1", "f@example.com", "Friend", Language.En, DateTimeOffset.UtcNow));
         players.Items[0].AddFriend("friend-1");
 
-        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: false), new FakeLobbyNotifier(), players, new IdFactory(), new FakeArchive());
+        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: false), new FakeLobbyNotifier(), players, new IdFactory(), new FakeArchive(), new TenantContext());
         hub.Context = new FakeHubCallerContext(PlayerUser("me-1"));
 
         var result = await hub.Challenge("friend-1", "en", 10, [], []);
 
         Assert.Equal((int)LiveChallengeResult.Sent, result);
-        var pending = await fixture.Cluster.GrainFactory.GetGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("friend-1");
+        var pending = await fixture.Cluster.GrainFactory.GetTenantGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("friend-1");
         Assert.Contains(pending, c => c.ChallengerId == "me-1");
     }
 
@@ -63,7 +64,7 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
         players.Items.Add(Player.Register("me-2", "me2@example.com", "Me", Language.En, DateTimeOffset.UtcNow));
         players.Items.Add(Player.Register("stranger-2", "s@example.com", "Stranger", Language.En, DateTimeOffset.UtcNow));
 
-        var hub = new LobbyHub(null!, new FixedPresence(online: true), new FakeLobbyNotifier(), players, new IdFactory(), new FakeArchive());
+        var hub = new LobbyHub(null!, new FixedPresence(online: true), new FakeLobbyNotifier(), players, new IdFactory(), new FakeArchive(), new TenantContext());
         hub.Context = new FakeHubCallerContext(PlayerUser("me-2"));
 
         var result = await hub.Challenge("stranger-2", "en", 10, [], []);
@@ -88,13 +89,13 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
         archive.Items.Add(new ArchivedMatch("past-duel-5", "PAST05", Language.En, "me-5", "rando-5", "me-5", false,
             FakeArchive.TestResults("me-5", "rando-5", 100, 40), MatchState.Resolved, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], IsLive: true));
 
-        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: true), new FakeLobbyNotifier(), players, new IdFactory(), archive);
+        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: true), new FakeLobbyNotifier(), players, new IdFactory(), archive, new TenantContext());
         hub.Context = new FakeHubCallerContext(PlayerUser("me-5"));
 
         var result = await hub.Challenge("rando-5", "en", 10, [], []);
 
         Assert.Equal((int)LiveChallengeResult.Sent, result);
-        var pending = await fixture.Cluster.GrainFactory.GetGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("rando-5");
+        var pending = await fixture.Cluster.GrainFactory.GetTenantGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("rando-5");
         Assert.Contains(pending, c => c.ChallengerId == "me-5");
     }
 
@@ -111,7 +112,7 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
         archive.Items.Add(new ArchivedMatch("unrelated", "UNREL01", Language.En, "someone-else", "someone-else-2", null, false,
             FakeArchive.TestResults("someone-else", "someone-else-2", 0, 0), MatchState.Resolved, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], IsLive: true));
 
-        var hub = new LobbyHub(null!, new FixedPresence(online: true), new FakeLobbyNotifier(), players, new IdFactory(), archive);
+        var hub = new LobbyHub(null!, new FixedPresence(online: true), new FakeLobbyNotifier(), players, new IdFactory(), archive, new TenantContext());
         hub.Context = new FakeHubCallerContext(PlayerUser("me-6"));
 
         var result = await hub.Challenge("stranger-6", "en", 10, [], []);
@@ -122,7 +123,7 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
     [Fact]
     public async Task Challenging_yourself_through_the_hub_is_refused()
     {
-        var hub = new LobbyHub(null!, new FixedPresence(online: true), new FakeLobbyNotifier(), new FakePlayers(), new IdFactory(), new FakeArchive());
+        var hub = new LobbyHub(null!, new FixedPresence(online: true), new FakeLobbyNotifier(), new FakePlayers(), new IdFactory(), new FakeArchive(), new TenantContext());
         hub.Context = new FakeHubCallerContext(PlayerUser("solo-3"));
 
         var result = await hub.Challenge("solo-3", "en", 10, [], []);
@@ -139,13 +140,13 @@ public class LobbyHubChallengeTests(LiveClusterFixture fixture)
         players.Items[0].AddFriend("friend-4");
 
         var notifier = new FakeLobbyNotifier();
-        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: true), notifier, players, new IdFactory(), new FakeArchive());
+        var hub = new LobbyHub(fixture.Cluster.GrainFactory, new FixedPresence(online: true), notifier, players, new IdFactory(), new FakeArchive(), new TenantContext());
         hub.Context = new FakeHubCallerContext(PlayerUser("me-4"));
 
         var result = await hub.Challenge("friend-4", "en", 10, [], []);
 
         Assert.Equal((int)LiveChallengeResult.Sent, result);
-        var pending = await fixture.Cluster.GrainFactory.GetGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("friend-4");
+        var pending = await fixture.Cluster.GrainFactory.GetTenantGrain<Grains.Abstractions.ILiveMatchmakingGrain>(0).PendingForAsync("friend-4");
         Assert.Contains(pending, c => c.ChallengerId == "me-4");
     }
 }

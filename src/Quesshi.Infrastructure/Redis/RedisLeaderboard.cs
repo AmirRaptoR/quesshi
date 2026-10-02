@@ -4,9 +4,9 @@ using StackExchange.Redis;
 namespace Quesshi.Infrastructure.Redis;
 
 /// <summary>Global all-time score board. A sorted set is exactly the right shape, so use it as one.</summary>
-public sealed class RedisLeaderboard(IConnectionMultiplexer redis) : ILeaderboard
+public sealed class RedisLeaderboard(IConnectionMultiplexer redis, TenantContext tenant) : ILeaderboard
 {
-    private const string Key = "quesshi:leaderboard";
+    private string Key => tenant.Key("quesshi:leaderboard");
 
     private IDatabase Db => redis.GetDatabase();
 

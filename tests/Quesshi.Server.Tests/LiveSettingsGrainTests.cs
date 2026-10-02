@@ -9,7 +9,7 @@ public class LiveSettingsGrainTests(LiveClusterFixture fixture)
 
     // Each test gets its own grain key, since key 0 is where Program.cs's real seed startup task
     // points and this suite's tests must not see each other's writes on a cluster shared per class.
-    private ILiveSettingsGrain NewGrain() => fixture.Cluster.GrainFactory.GetGrain<ILiveSettingsGrain>(Interlocked.Increment(ref _n));
+    private ILiveSettingsGrain NewGrain() => fixture.Cluster.GrainFactory.GetTenantGrain<ILiveSettingsGrain>(Interlocked.Increment(ref _n));
 
     [Fact]
     public async Task Defaults_to_enabled_before_anything_is_ever_seeded_or_set()

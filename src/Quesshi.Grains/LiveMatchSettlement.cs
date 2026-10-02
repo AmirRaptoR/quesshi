@@ -89,7 +89,7 @@ public sealed class LiveMatchSettlement(
             // calls without one of them silently no-opping the other, so they have to land together.
             // The grain itself owns the guest exclusion and the unconditional leaderboard projection —
             // this class no longer touches IPlayerRepository or ILeaderboard directly.
-            await grainFactory.GetGrain<IPlayerGrain>(playerId)
+            await grainFactory.GetTenantGrain<IPlayerGrain>(playerId)
                 .SettleMatchAsync(m.Id, (int)outcome, score, categories, correct, abandonedAt);
 
             if (onSettled is not null) await onSettled(playerId);
@@ -143,7 +143,7 @@ public sealed class LiveMatchSettlement(
         {
             if (alreadySettled?.Contains(abandonment.PlayerId) == true) continue;
 
-            await grainFactory.GetGrain<IPlayerGrain>(abandonment.PlayerId)
+            await grainFactory.GetTenantGrain<IPlayerGrain>(abandonment.PlayerId)
                 .SettleMatchAsync(m.Id, null, 0, [], [], at);
 
             if (onSettled is not null) await onSettled(abandonment.PlayerId);

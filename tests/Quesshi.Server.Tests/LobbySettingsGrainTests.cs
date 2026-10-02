@@ -6,7 +6,7 @@ namespace Quesshi.Server.Tests;
 public sealed class LobbySettingsGrainTests(LiveClusterFixture fixture)
 {
     private static long _n = 20_000;
-    private ILobbySettingsGrain NewGrain() => fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(Interlocked.Increment(ref _n));
+    private ILobbySettingsGrain NewGrain() => fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(Interlocked.Increment(ref _n));
 
     [Fact]
     public async Task Defaults_to_twenty_and_validates_the_absolute_range()
@@ -35,12 +35,12 @@ public sealed class LobbySettingsGrainTests(LiveClusterFixture fixture)
     public async Task Saved_value_survives_grain_reactivation()
     {
         var key = Interlocked.Increment(ref _n);
-        var grain = fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(key);
+        var grain = fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(key);
         Assert.True(await grain.SetMaxCapacityAsync(123));
 
         await grain.AsReference<Orleans.Core.Internal.IGrainManagementExtension>().DeactivateOnIdle();
         await Task.Delay(300);
 
-        Assert.Equal(123, await fixture.Cluster.GrainFactory.GetGrain<ILobbySettingsGrain>(key).GetMaxCapacityAsync());
+        Assert.Equal(123, await fixture.Cluster.GrainFactory.GetTenantGrain<ILobbySettingsGrain>(key).GetMaxCapacityAsync());
     }
 }

@@ -114,7 +114,7 @@ public static class AuthEndpoints
         // a full, started, or raced lobby never leaves a player record that cannot be used anywhere.
         if (found.Mode == GameMode.Matching)
         {
-            var matching = grains.GetGrain<IMatchingMatchGrain>(found.Id);
+            var matching = grains.GetTenantGrain<IMatchingMatchGrain>(found.Id);
             if ((MatchingJoinResult)await matching.JoinAsync(guest.Id) is not MatchingJoinResult.Joined)
                 return Results.BadRequest(new { error = "cannot_join" });
 
@@ -129,7 +129,7 @@ public static class AuthEndpoints
 
         await players.UpsertAsync(guest);
 
-        var grain = grains.GetGrain<IMatchGrain>(found.Id);
+        var grain = grains.GetTenantGrain<IMatchGrain>(found.Id);
         if (!await grain.JoinAsync(guest.Id)) return Results.BadRequest(new { error = "cannot_join" });
 
         var view = await grain.GetAsync(guest.Id);
@@ -157,7 +157,7 @@ public static class AuthEndpoints
         if (found.State != MatchState.AwaitingOpponent) return Results.BadRequest(new { error = "cannot_join" });
 
         var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
-        var grain = grains.GetGrain<IMatchingMatchGrain>(found.Id);
+        var grain = grains.GetTenantGrain<IMatchingMatchGrain>(found.Id);
         if ((MatchingJoinResult)await grain.JoinAsync(guest.Id) != MatchingJoinResult.Joined)
             return Results.BadRequest(new { error = "cannot_join" });
 
@@ -186,7 +186,7 @@ public static class AuthEndpoints
         if (!found.IsLive) return Results.BadRequest(new { error = "not_a_live_code" });
 
         var guest = Player.Guest(ids.NewId(), name, body.Lang.ToLanguage(), clock.Now);
-        var grain = grains.GetGrain<ILiveMatchGrain>(found.Id);
+        var grain = grains.GetTenantGrain<ILiveMatchGrain>(found.Id);
         var result = (LiveJoinResult)await grain.JoinAsync(guest.Id);
 
         if (result is not (LiveJoinResult.Joined or LiveJoinResult.AlreadyIn))

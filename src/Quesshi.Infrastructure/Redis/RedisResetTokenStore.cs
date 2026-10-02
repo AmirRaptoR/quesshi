@@ -9,13 +9,13 @@ namespace Quesshi.Infrastructure.Redis;
 /// Reset tokens live in Redis keyed by the hash of the secret, with a TTL a little longer than the
 /// token's own lifetime so a spent one can still answer "already used" before it disappears.
 /// </summary>
-public sealed class RedisResetTokenStore(IConnectionMultiplexer redis) : IResetTokenStore
+public sealed class RedisResetTokenStore(IConnectionMultiplexer redis, TenantContext tenant) : IResetTokenStore
 {
     private static readonly TimeSpan Ttl = PasswordResetToken.Lifetime + TimeSpan.FromHours(1);
 
     private IDatabase Db => redis.GetDatabase();
 
-    private static string Key(string secretHash) => $"quesshi:admin-reset:{secretHash}";
+    private string Key(string secretHash) => tenant.Key($"quesshi:admin-reset:{secretHash}");
 
     public Task SaveAsync(PasswordResetToken token, CancellationToken ct = default)
         => Db.StringSetAsync(Key(token.SecretHash),

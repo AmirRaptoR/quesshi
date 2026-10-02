@@ -90,7 +90,7 @@ internal static class MatchListBench
             var matchId = MatchId(prefix, i);
             var questionIds = await SeedQuestionsAsync(questions, matchId);
 
-            var grain = grains.GetGrain<IMatchGrain>(matchId);
+            var grain = grains.GetTenantGrain<IMatchGrain>(matchId);
             await grain.CreateAsync((int)Language.En, meId, questionIds, $"{prefix}{i:D4}".ToUpperInvariant());
             await grain.JoinAsync(rivalId);
 
@@ -279,7 +279,7 @@ internal static class MatchListBench
         await Task.WhenAll(rows.Select(async (r, i) =>
         {
             var sw = Stopwatch.StartNew();
-            await grains.GetGrain<IMatchGrain>(r.Id).GetAsync(meId);
+            await grains.GetTenantGrain<IMatchGrain>(r.Id).GetAsync(meId);
             elapsed[i] = sw.Elapsed.TotalMilliseconds;
         }));
         return elapsed.Max();
