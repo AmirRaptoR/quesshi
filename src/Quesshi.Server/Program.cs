@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Orleans.Configuration;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
@@ -210,6 +211,10 @@ builder.Services.AddQuesshiAuthentication(jwtOptions, adminAuthOptions, tokenIss
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("admin", policy => policy
         .AddAuthenticationSchemes(AdminTokenIssuer.Scheme)
+        .RequireAuthenticatedUser()
+        .RequireClaim("typ", "admin"))
+    .AddPolicy("admin-with-player-identity", policy => policy
+        .AddAuthenticationSchemes(AdminTokenIssuer.Scheme, JwtBearerDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser()
         .RequireClaim("typ", "admin"));
 

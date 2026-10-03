@@ -1,8 +1,5 @@
-@page "/admin/voting/questions"
 @inherits AdminPageBase
 @inject IJSRuntime Js
-
-<PageTitle>@L["admin.voting.questions"] · @L["app.name"]</PageTitle>
 
 <AdminShell Title="@L["admin.voting.questions"]">
     @if (_dialog == "generate")
@@ -229,7 +226,7 @@
     }
 
     private string Query() { var p = new List<string> { $"skip={(_page - 1) * _size}", $"take={_size}" }; if (_lang.Length > 0) p.Add($"lang={_lang}"); if (_category.Length > 0) p.Add($"category={_category}"); if (_status.Length > 0) p.Add($"status={_status}"); if (_text.Trim().Length > 0) p.Add($"text={Uri.EscapeDataString(_text.Trim())}"); return string.Join('&', p); }
-    private async Task FetchAsync() { QueryState.Write(Nav, new Dictionary<string, string?> { ["lang"] = _lang, ["category"] = _category, ["status"] = _status, ["q"] = _text.Trim(), ["page"] = _page == 1 ? null : _page.ToString(), ["size"] = _size == 25 ? null : _size.ToString() }); _results = await Api.AdminVotingQuestionsAsync(Query()); }
+    private async Task FetchAsync() { QueryState.Write(Nav, new Dictionary<string, string?> { ["family"] = "voting", ["lang"] = _lang, ["category"] = _category, ["status"] = _status, ["q"] = _text.Trim(), ["page"] = _page == 1 ? null : _page.ToString(), ["size"] = _size == 25 ? null : _size.ToString() }); _results = await Api.AdminVotingQuestionsAsync(Query()); }
     private async Task ReloadAsync() { _page = 1; await FetchAsync(); }
 
     private async Task GenerateVotingAsync()
@@ -276,7 +273,7 @@
 
     private async Task DownloadVotingTemplateAsync()
     {
-        if (await Api.DownloadVotingImportTemplateAsync(_import.Format) is not { } file)
+        if (await Api.DownloadImportTemplateAsync("voting", "", _import.Format) is not { } file)
         {
             _error = L["common.error"];
             return;
@@ -296,7 +293,7 @@
         _importing = true;
         using var content = new MultipartFormDataContent();
         content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
-        _importReport = await Api.ImportVotingQuestionsAsync(_import.Format, dryRun, content);
+        _importReport = await Api.ImportQuestionsAsync("voting", "", _import.Format, dryRun, content);
         _importing = false;
 
         if (_importReport is null)

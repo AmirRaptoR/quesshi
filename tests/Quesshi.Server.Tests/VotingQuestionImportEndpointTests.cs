@@ -65,7 +65,7 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
         {
             { new StringContent(body, Encoding.UTF8), "file", $"voting.{format}" }
         };
-        return await client.PostAsync($"/api/admin/voting/questions/import?format={format}&dryRun={dryRun}", form);
+        return await client.PostAsync($"/api/admin/questions/import?family=voting&format={format}&dryRun={dryRun}", form);
     }
 
     private static async Task<ImportReportDto> ImportAsync(HttpClient client, string format, string body,
@@ -164,6 +164,33 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
         Assert.Equal("duplicate_topic", report.Rows[1].Error);
     }
 
+    [Fact]
+    public async Task Trivia_and_voting_topic_keys_are_isolated_by_family()
+    {
+        using var client = AdminClient();
+        var category = CategoryId;
+        await SeedCategoryAsync(client, category);
+        var subject = $"shared-topic-{Guid.NewGuid():N}";
+        var aspect = "same-language";
+        var triviaHeader = "lang,categoryId,level,prompt,choice1,choice2,choice3,choice4,correctIndex,explanation,mediaUrl,mediaKind,status,subject,aspect";
+        var triviaRow = $"en,{category},2,trivia prompt,{Guid.NewGuid():N},second,third,fourth,0,,,,,{subject},{aspect}";
+        using var triviaForm = new MultipartFormDataContent
+        {
+            { new StringContent(triviaHeader + "\n" + triviaRow + "\n", Encoding.UTF8), "file", "trivia.csv" }
+        };
+
+        var triviaResponse = await client.PostAsync(
+            "/api/admin/questions/import?family=trivia&kind=choice&format=csv&dryRun=false", triviaForm);
+        Assert.Equal(HttpStatusCode.OK, triviaResponse.StatusCode);
+        var triviaReport = (await triviaResponse.Content.ReadFromJsonAsync<ImportReportDto>())!;
+        Assert.Equal(1, triviaReport.Accepted);
+
+        var votingReport = await ImportAsync(client, "csv",
+            Csv(Header, Row(category, "voting prompt", subject: subject, aspect: aspect)), dryRun: false);
+        Assert.Equal(1, votingReport.Accepted);
+        Assert.Null(votingReport.Rows.Single().Error);
+    }
+
     [Theory]
     [InlineData("subject-only", "")]
     [InlineData("", "aspect-only")]
@@ -250,13 +277,105 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
 
         foreach (var format in new[] { "csv", "json" })
         {
-            var response = await client.GetAsync($"/api/admin/voting/questions/import/template?format={format}");
+            var response = await client.GetAsync($"/api/admin/questions/import/template?family=voting&format={format}");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Contains("voting-template", response.Content.Headers.ContentDisposition?.FileName);
             var body = await response.Content.ReadAsStringAsync();
             var report = await ImportAsync(client, format, body);
             Assert.Equal(1, report.Accepted);
         }
+    }
+
+    [Fact]
+    public async Task Unknown_family_is_rejected_for_upload_and_template()
+    {
+        using var client = AdminClient();
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent(Csv(Header, Row("missing", "unknown family")), Encoding.UTF8), "file", "questions.csv" }
+        };
+
+        var upload = await client.PostAsync("/api/admin/questions/import?family=unknown&format=csv", form);
+        var template = await client.GetAsync("/api/admin/questions/import/template?family=unknown&format=csv");
+
+        Assert.Equal(HttpStatusCode.BadRequest, upload.StatusCode);
+        Assert.Equal("bad_family", await RequestErrorAsync(upload));
+        Assert.Equal(HttpStatusCode.BadRequest, template.StatusCode);
+        Assert.Equal("bad_family", await RequestErrorAsync(template));
+    }
+
+    [Fact]
+    public async Task Explicit_trivia_family_matches_default_upload_and_templates()
+    {
+        using var client = AdminClient();
+        var prompt = $"Trivia family {Guid.NewGuid():N}";
+        var body = "lang,categoryId,level,prompt,choice1,choice2,choice3,choice4,correctIndex,explanation,mediaUrl,mediaKind,status,subject,aspect\n"
+            + $"en,geography,2,{prompt},one,two,three,four,0,,,,,,\n";
+        using var defaultForm = new MultipartFormDataContent
+        {
+            { new StringContent(body, Encoding.UTF8), "file", "trivia.csv" }
+        };
+        using var explicitForm = new MultipartFormDataContent
+        {
+            { new StringContent(body, Encoding.UTF8), "file", "trivia.csv" }
+        };
+
+        var defaultUpload = await client.PostAsync("/api/admin/questions/import?kind=choice&format=csv", defaultForm);
+        var explicitUpload = await client.PostAsync(
+            "/api/admin/questions/import?family=trivia&kind=choice&format=csv", explicitForm);
+        var defaultReport = (await defaultUpload.Content.ReadFromJsonAsync<ImportReportDto>())!;
+        var explicitReport = (await explicitUpload.Content.ReadFromJsonAsync<ImportReportDto>())!;
+        var defaultTemplate = await client.GetAsync("/api/admin/questions/import/template?kind=choice&format=csv");
+        var explicitTemplate = await client.GetAsync(
+            "/api/admin/questions/import/template?family=trivia&kind=choice&format=csv");
+
+        Assert.True(defaultUpload.StatusCode == HttpStatusCode.OK,
+            await defaultUpload.Content.ReadAsStringAsync());
+        Assert.True(explicitUpload.StatusCode == HttpStatusCode.OK,
+            await explicitUpload.Content.ReadAsStringAsync());
+        Assert.Equal(defaultReport.DryRun, explicitReport.DryRun);
+        Assert.Equal(defaultReport.Total, explicitReport.Total);
+        Assert.Equal(defaultReport.Accepted, explicitReport.Accepted);
+        Assert.Equal(defaultReport.Rejected, explicitReport.Rejected);
+        Assert.Equal(defaultReport.Rows, explicitReport.Rows);
+        Assert.Equal(HttpStatusCode.OK, defaultTemplate.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, explicitTemplate.StatusCode);
+        Assert.Equal(await defaultTemplate.Content.ReadAsStringAsync(), await explicitTemplate.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Authenticated_non_admin_is_forbidden_from_voting_upload_and_template()
+    {
+        using var client = _host.NewClient();
+        var player = Player.Register($"voting-import-player-{Guid.NewGuid():N}", "player@example.com",
+            "Player", Language.En, DateTimeOffset.UtcNow);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _host.PlayerTokenIssuer.Issue(player));
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent(Csv(Header, Row("missing", "forbidden")), Encoding.UTF8), "file", "voting.csv" }
+        };
+
+        var upload = await client.PostAsync("/api/admin/questions/import?family=voting&format=csv", form);
+        var template = await client.GetAsync("/api/admin/questions/import/template?family=voting&format=csv");
+
+        Assert.Equal(HttpStatusCode.Forbidden, upload.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, template.StatusCode);
+    }
+
+    [Fact]
+    public async Task Family_specific_voting_upload_route_is_retired()
+    {
+        using var client = AdminClient();
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent(Csv(Header, Row("missing", "legacy route")), Encoding.UTF8), "file", "voting.csv" }
+        };
+
+        var response = await client.PostAsync("/api/admin/voting/questions/import?format=csv", form);
+
+        // The voting questions collection route still owns this prefix, but no POST import
+        // endpoint remains under it.
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
 
     [Fact]
@@ -313,7 +432,7 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
             { new ByteArrayContent([]), "file", "voting.csv" }
         };
 
-        var response = await client.PostAsync("/api/admin/voting/questions/import?format=csv", form);
+        var response = await client.PostAsync("/api/admin/questions/import?family=voting&format=csv", form);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("empty_file", await RequestErrorAsync(response));
@@ -417,7 +536,7 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
             { new StringContent(Csv(Header, Row("missing", "unauthorized")), Encoding.UTF8), "file", "voting.csv" }
         };
 
-        var response = await anonymous.PostAsync("/api/admin/voting/questions/import?format=csv", form);
+        var response = await anonymous.PostAsync("/api/admin/questions/import?family=voting&format=csv", form);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
