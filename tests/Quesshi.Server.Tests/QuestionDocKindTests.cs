@@ -21,8 +21,10 @@ public class QuestionDocKindTests
         var original = Question.Create("q1", Language.En, "geography", Difficulty.Easy,
             "Which one?", Four, 1, T0);
 
-        var restored = QuestionDoc.From(original).ToDomain();
+        var doc = QuestionDoc.From(original);
+        var restored = doc.ToTrivia();
 
+        Assert.Equal((int)QuestionFamily.Trivia, doc.Family);
         Assert.Equal(QuestionKind.Choice, restored.Kind);
         Assert.Null(restored.Target);
         Assert.Null(restored.BaseLayer);

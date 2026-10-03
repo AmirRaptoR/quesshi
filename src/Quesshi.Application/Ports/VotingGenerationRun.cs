@@ -12,4 +12,7 @@ public sealed record VotingGenerationRun(
     int Requested,
     int Inserted,
     int Rejected,
-    string? Error);
+    string? Error)
+{
+    public QuestionFamily Family => QuestionFamily.Voting;
+}

@@ -17,7 +17,7 @@ public sealed class VotingQuestion
 {
     private VotingQuestion(string id, Language lang, string? categoryId, string prompt,
         VotingAnswerSource answerSource, IReadOnlyList<string> fixedChoices, MediaRef media,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt, string? ownerId)
     {
         Id = id;
         Lang = lang;
@@ -28,6 +28,7 @@ public sealed class VotingQuestion
         Media = media;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
+        OwnerId = ownerId;
     }
 
     public string Id { get; }
@@ -44,6 +45,7 @@ public sealed class VotingQuestion
     public MediaRef Media { get; private set; }
     public QuestionStatus Status { get; private set; } = QuestionStatus.Pending;
     public QuestionSource Source { get; private set; } = QuestionSource.Admin;
+    public string? OwnerId { get; private set; }
 
     /// <summary>Subject and aspect, as <see cref="TopicKey"/> builds it. Whatever the caller
     /// supplies; never computed here. Null means "not deduplicated".</summary>
@@ -63,12 +65,13 @@ public sealed class VotingQuestion
     public static VotingQuestion Create(string id, Language lang, string? categoryId, string prompt,
         VotingAnswerSource answerSource, IReadOnlyList<string>? choices, DateTimeOffset now,
         MediaRef? media = null, QuestionSource source = QuestionSource.Admin,
-        QuestionStatus status = QuestionStatus.Pending, string? topic = null)
+        QuestionStatus status = QuestionStatus.Pending, string? topic = null, string? ownerId = null)
     {
+        Question.ValidateOwnership(source, ownerId);
         Validate(prompt, answerSource, choices);
         var fixedChoices = choices ?? [];
         return new VotingQuestion(id, lang, categoryId, prompt.Trim(), answerSource,
-            [.. fixedChoices.Select(c => c.Trim())], media ?? MediaRef.None, now)
+            [.. fixedChoices.Select(c => c.Trim())], media ?? MediaRef.None, now, ownerId)
         {
             Source = source,
             Status = status,
@@ -82,10 +85,11 @@ public sealed class VotingQuestion
         VotingAnswerSource answerSource, IReadOnlyList<string>? choices, MediaRef media,
         QuestionStatus status, QuestionSource source, string? topic,
         DateTimeOffset createdAt, DateTimeOffset updatedAt,
-        int timesServed)
+        int timesServed, string? ownerId = null)
     {
+        Question.ValidateOwnership(source, ownerId);
         return new VotingQuestion(id, lang, categoryId, prompt, answerSource, choices ?? [], media,
-            createdAt)
+            createdAt, ownerId)
         {
             UpdatedAt = updatedAt,
             Topic = topic,
