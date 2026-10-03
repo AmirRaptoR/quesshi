@@ -14,7 +14,11 @@ public sealed class FakeQuestions : IQuestionRepository
     public Task<IReadOnlyList<Question>> GetManyAsync(IReadOnlyList<string> ids, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Question>>([.. ids.Select(i => Items.FirstOrDefault(q => q.Id == i)).Where(q => q is not null)!]);
     public Task<IReadOnlyList<Question>> FindAsync(QuestionFilter f, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Question>>([.. Items]);
-    public Task<long> CountAsync(QuestionFilter f, CancellationToken ct = default) => Task.FromResult((long)Items.Count);
+    public Task<long> CountAsync(QuestionFilter f, CancellationToken ct = default) => Task.FromResult((long)Items.Count(q =>
+        (f.Lang is null || q.Lang == f.Lang) && (f.CategoryId is null || q.CategoryId == f.CategoryId) &&
+        (f.Level is null || q.Level == f.Level) && (f.Status is null || q.Status == f.Status) &&
+        (string.IsNullOrWhiteSpace(f.Text) || q.Prompt.Contains(f.Text, StringComparison.OrdinalIgnoreCase)) &&
+        (f.Reported is null || (q.ReportCount > 0) == f.Reported)));
     public Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string? c, Difficulty l, int n, IReadOnlyCollection<string> ex, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Question>>([.. Items.Where(q => (c is null || q.CategoryId == c) && q.Level == l && q.Lang == lang && !ex.Contains(q.Id)).Take(n)]);
     /// <summary>

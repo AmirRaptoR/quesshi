@@ -54,8 +54,9 @@ public static class LiveEndpoints
 
         api.MapPost("", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains, QuestionSetBuilder builder,
             IIdFactory ids, IMatchArchive archive, IPlayerRepository players,
-            IQuestionRepository questions, ICategoryRepository categories, IClock clock) =>
-            await CreateAsync(body, ctx.User.PlayerId()!, grains, builder, ids, archive, players, questions, categories, clock))
+            IQuestionRepository questions, ICategoryRepository categories, IContentSettingsRepository settings,
+            IClock clock) =>
+            await CreateAsync(body, ctx.User.PlayerId()!, grains, builder, ids, archive, players, questions, categories, clock, settings))
             .WithMetadata(new RequiresLiveEnabled());
 
         api.MapPost("/join/{code}", async (string code, HttpContext ctx, IGrainFactory grains, IMatchArchive archive,
@@ -213,7 +214,7 @@ public static class LiveEndpoints
     /// </summary>
     internal static async Task<IResult> CreateAsync(CreateMatchDto body, string meId, IGrainFactory grains,
         QuestionSetBuilder builder, IIdFactory ids, IMatchArchive archive, IPlayerRepository players,
-        IQuestionRepository questions, ICategoryRepository categories, IClock clock)
+        IQuestionRepository questions, ICategoryRepository categories, IClock clock, IContentSettingsRepository? contentSettings = null)
     {
         // The random queue rides LobbyHub.QueueRandom instead — it needs a heartbeat and a push, which
         // a REST endpoint cannot give it. This endpoint only ever seats a friend who follows the code.
@@ -223,6 +224,16 @@ public static class LiveEndpoints
         if (me is null) return Results.Unauthorized();
 
         var lang = string.IsNullOrWhiteSpace(body.Lang) ? me.Lang : body.Lang.ToLanguage();
+
+        var categoryIds = body.Categories ?? [];
+        if (contentSettings is not null)
+        {
+            var configured = (await contentSettings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var playable = Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+            categoryIds = [.. CategorySelection.Select((await categories.AllAsync())
+                .Where(c => configured.Contains(c.Id)
+                    && playable.GetValueOrDefault(c.Id, []).Contains(lang.Code(), StringComparer.Ordinal)), body.Categories)];
+        }
 
         List<Question> set;
         try
@@ -234,7 +245,7 @@ public static class LiveEndpoints
                 .Select(l => (Difficulty)l)
                 .ToList();
 
-            set = [.. await builder.BuildAsync(lang, new ContentScope(body.Categories), body.Questions, levels)];
+            set = [.. await builder.BuildAsync(lang, new ContentScope(categoryIds), body.Questions, levels)];
         }
         catch (NotEnoughQuestionsException ex)
         {

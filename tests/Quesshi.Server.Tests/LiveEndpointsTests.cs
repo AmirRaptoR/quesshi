@@ -97,6 +97,21 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
     }
 
     [Fact]
+    public async Task Create_does_not_draw_from_a_category_outside_the_tenant_trivia_allowlist()
+    {
+        var settings = new FakeContentSettingsRepository(LiveShared.Categories)
+        {
+            Value = new ContentSettings([], [])
+        };
+
+        var result = await LiveEndpoints.CreateAsync(new CreateMatchDto(false, "en", [ScarceCategory], null), Amir,
+            Grains, Builder, NewIds(), LiveShared.Archive, LiveShared.Players, LiveShared.Questions,
+            LiveShared.Categories, Clock, settings);
+
+        Assert.Equal(503, CrossTypeCodeTests.StatusOf(result));
+    }
+
+    [Fact]
     public async Task Create_with_random_true_refuses_and_creates_nothing()
     {
         var ids = NewIds();

@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Shared;
 
@@ -70,6 +71,20 @@ public class RandomPairingStartTests(ClusterFixture fixture) : IAsyncDisposable
         // Paired into the first player's own match, already playing -- no Start press by anyone.
         Assert.Equal(firstSummary.Id, secondSummary.Id);
         Assert.Equal("inprogress", secondSummary.State);
+    }
+
+    [Fact]
+    public async Task Direct_match_creation_cannot_draw_from_an_unconfigured_category()
+    {
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        SeedQuestions("category-boundary-" + tag);
+        _host.ContentSettings.Value = new ContentSettings([], []);
+        using var client = ClientFor($"category-boundary-{tag}");
+
+        var response = await client.PostAsJsonAsync("/api/matches",
+            new CreateMatchDto(false, "en", ["geography"], null, null));
+
+        Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();

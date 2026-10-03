@@ -154,7 +154,8 @@ public static class GameEndpoints
 
         // --- matches -----------------------------------------------------------------
         matches.MapPost("", async (CreateMatchDto body, HttpContext ctx, IGrainFactory grains,
-            QuestionSetBuilder builder, IIdFactory ids, IPlayerRepository players) =>
+            QuestionSetBuilder builder, IIdFactory ids, IPlayerRepository players, ICategoryRepository categories,
+            IContentSettingsRepository settings, IQuestionRepository questions) =>
         {
             var meId = ctx.User.PlayerId()!;
             var me = await players.GetAsync(meId);
@@ -179,6 +180,12 @@ public static class GameEndpoints
                 }
             }
 
+            var configured = (await settings.GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+            var playable = Mappers.PlayableLanguages(await questions.BucketCountsAsync());
+            var categoryIds = CategorySelection.Select((await categories.AllAsync())
+                .Where(c => configured.Contains(c.Id)
+                    && playable.GetValueOrDefault(c.Id, []).Contains(lang.Code(), StringComparer.Ordinal)), body.Categories);
+
             List<Question> set;
             try
             {
@@ -189,7 +196,7 @@ public static class GameEndpoints
                     .Select(l => (Difficulty)l)
                     .ToList();
 
-                set = [.. await builder.BuildAsync(lang, new ContentScope(body.Categories), body.Questions, levels)];
+                set = [.. await builder.BuildAsync(lang, new ContentScope(categoryIds), body.Questions, levels)];
             }
             catch (NotEnoughQuestionsException ex)
             {

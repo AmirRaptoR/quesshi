@@ -245,5 +245,31 @@ public sealed class VotingAdminEndpointTests(LiveClusterFixture fixture) : IAsyn
         Assert.Contains(categories!, category => category.Id == categoryId && category.IsActive);
     }
 
+    [Fact]
+    public async Task Deleting_shared_category_removes_it_from_both_family_settings()
+    {
+        using var client = AdminClient();
+        const string categoryId = "shared-settings-delete";
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/admin/categories", Category(categoryId))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PutAsJsonAsync("/api/admin/content-settings",
+                new ContentSettingsDto([categoryId], [categoryId]))).StatusCode);
+
+        var deletion = await client.DeleteAsync($"/api/admin/categories/{categoryId}");
+
+        Assert.Equal(HttpStatusCode.OK, deletion.StatusCode);
+        var content = (await client.GetFromJsonAsync<AdminContentSettingsDto>("/api/admin/content-settings"))!;
+        Assert.DoesNotContain(categoryId, content.Settings.TriviaCategoryIds);
+        Assert.DoesNotContain(categoryId, content.Settings.VotingCategoryIds);
+
+        var staleSave = await client.PutAsJsonAsync("/api/admin/content-settings",
+            new ContentSettingsDto([categoryId], [categoryId]));
+        Assert.Equal(HttpStatusCode.OK, staleSave.StatusCode);
+        var reloaded = (await client.GetFromJsonAsync<AdminContentSettingsDto>("/api/admin/content-settings"))!;
+        Assert.DoesNotContain(categoryId, reloaded.Settings.TriviaCategoryIds);
+        Assert.DoesNotContain(categoryId, reloaded.Settings.VotingCategoryIds);
+    }
+
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 }

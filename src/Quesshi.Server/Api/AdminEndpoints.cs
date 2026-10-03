@@ -262,32 +262,43 @@ public static class AdminEndpoints
         });
 
         admin.MapDelete("/categories/{id}", async (string id, ICategoryRepository categories, IQuestionRepository questions,
-            IVotingQuestionRepository votingQuestions) =>
+            IVotingQuestionRepository votingQuestions, IContentSettingsRepository settings) =>
         {
             // Deleting a category with questions behind it would orphan them; deactivate instead.
             if (await questions.CountAsync(new QuestionFilter(CategoryId: id)) > 0
                 || await votingQuestions.CountAsync(new VotingQuestionFilter(CategoryId: id)) > 0)
                 return Results.BadRequest(new { error = "category_in_use" });
 
+            var content = await settings.GetAsync();
+            await settings.SaveAsync(new ContentSettings(
+                content.TriviaCategoryIds.Where(categoryId => categoryId != id).ToList(),
+                content.VotingCategoryIds.Where(categoryId => categoryId != id).ToList()));
             await categories.DeleteAsync(id);
             return Results.Ok();
         });
 
         admin.MapGet("/content-settings", async (ICategoryRepository categories,
-            IContentSettingsRepository settings) => new
+            IContentSettingsRepository settings) =>
+        {
+            var all = await categories.AllAsync();
+            var known = all.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+            var content = await settings.GetAsync();
+            var normalized = new ContentSettings(
+                content.TriviaCategoryIds.Where(known.Contains).ToList(),
+                content.VotingCategoryIds.Where(known.Contains).ToList());
+            return new
             {
-                Categories = (await categories.AllAsync()).Select(c => c.ToDto(Language.Fa)).ToList(),
-                Settings = ToDto(await settings.GetAsync())
-            });
+                Categories = all.Select(c => c.ToDto(Language.Fa)).ToList(),
+                Settings = ToDto(normalized)
+            };
+        });
 
         admin.MapPut("/content-settings", async (ContentSettingsDto body, ICategoryRepository categories,
             IContentSettingsRepository settings) =>
         {
             var known = (await categories.AllAsync()).Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
-            var trivia = (body.TriviaCategoryIds ?? []).Distinct(StringComparer.Ordinal).ToList();
-            var voting = (body.VotingCategoryIds ?? []).Distinct(StringComparer.Ordinal).ToList();
-            if (trivia.Concat(voting).Any(id => !known.Contains(id)))
-                return Results.BadRequest(new { error = "unknown_category" });
+            var trivia = (body.TriviaCategoryIds ?? []).Where(known.Contains).Distinct(StringComparer.Ordinal).ToList();
+            var voting = (body.VotingCategoryIds ?? []).Where(known.Contains).Distinct(StringComparer.Ordinal).ToList();
 
             var value = new ContentSettings(trivia, voting);
             await settings.SaveAsync(value);

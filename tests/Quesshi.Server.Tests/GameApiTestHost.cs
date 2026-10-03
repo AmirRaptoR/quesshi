@@ -36,12 +36,14 @@ public sealed class GameApiTestHost : IAsyncDisposable
     /// (CS0236), which <see cref="LiveApiTestHost"/> hits for the exact same reason over its own
     /// <c>TokenIssuer</c> property.</summary>
     public FakeOtpStore Otps { get; }
+    public FakeContentSettingsRepository ContentSettings { get; }
 
     private readonly IHost _host;
 
     public GameApiTestHost(TestCluster cluster, params string[] enabledModes)
     {
         Otps = new FakeOtpStore();
+        ContentSettings = new FakeContentSettingsRepository(Shared.Categories);
 
         _host = new HostBuilder()
             .ConfigureWebHost(web =>
@@ -81,7 +83,7 @@ public sealed class GameApiTestHost : IAsyncDisposable
                     services.AddSingleton<AuthService>();
                     services.AddSingleton<AuthOptions>();
                     services.AddSingleton<ICategoryRepository>(Shared.VotingCategories);
-                    services.AddSingleton<IContentSettingsRepository>(sp => new FakeContentSettingsRepository(sp.GetRequiredService<ICategoryRepository>()));
+                    services.AddSingleton<IContentSettingsRepository>(ContentSettings);
                     services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
                     services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
                     services.AddSingleton<VotingQuestionSetBuilder>();

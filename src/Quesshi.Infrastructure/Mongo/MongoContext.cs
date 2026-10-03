@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace Quesshi.Infrastructure.Mongo;
@@ -40,6 +41,8 @@ public sealed class MongoContext
     /// <summary>Indexes the queries the app actually makes: bucket sampling, email lookup, match history.</summary>
     public async Task EnsureIndexesAsync(CancellationToken ct = default)
     {
+        await MigrateVotingCategoryFieldAsync(ct);
+
         await Questions.Indexes.CreateManyAsync(
         [
             new CreateIndexModel<QuestionDoc>(Builders<QuestionDoc>.IndexKeys
@@ -120,6 +123,21 @@ public sealed class MongoContext
             new CreateIndexModel<MatchDoc>(Builders<MatchDoc>.IndexKeys.Ascending(m => m.Code),
                 new CreateIndexOptions { Unique = true })
         ], ct);
+    }
+
+    /// <summary>Preserves category assignments written by the temporary VotingCategory model before
+    /// the typed repository starts querying the shared CategoryId field.</summary>
+    private async Task MigrateVotingCategoryFieldAsync(CancellationToken ct)
+    {
+        var collection = Database.GetCollection<BsonDocument>("voting_questions");
+        var legacyField = new BsonDocument("VotingCategoryId", new BsonDocument("$exists", true));
+        var update = PipelineDefinition<BsonDocument, BsonDocument>.Create(
+        [
+            new BsonDocument("$set", new BsonDocument("CategoryId",
+                new BsonDocument("$ifNull", new BsonArray { "$CategoryId", "$VotingCategoryId" }))),
+            new BsonDocument("$unset", "VotingCategoryId")
+        ]);
+        await collection.UpdateManyAsync(legacyField, update, cancellationToken: ct);
     }
 
     /// <summary>

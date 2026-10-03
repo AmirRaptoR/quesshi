@@ -38,7 +38,8 @@ public sealed class VotingMongoTests
     {
         var client = await TryConnectAsync();
         if (client is null) return;
-        var database = "quesshi_content_settings_" + Guid.NewGuid().ToString("N");
+        // Keep the tenant-suffixed database names below MongoDB's 63-character limit.
+        var database = "qs_cs_" + Guid.NewGuid().ToString("N");
         var options = new MongoOptions { ConnectionString = ConnectionString, Database = database };
         var firstTenant = new TenantContext();
         var secondTenant = new TenantContext();
@@ -115,6 +116,37 @@ public sealed class VotingMongoTests
     }
 
     [Fact]
+    public async Task Mongo_migrates_legacy_voting_category_field_before_typed_reads()
+    {
+        var client = await TryConnectAsync();
+        if (client is null) return;
+        var dbName = $"qs_vm_{Guid.NewGuid():N}";
+        try
+        {
+            var context = new MongoContext(new MongoOptions { ConnectionString = ConnectionString, Database = dbName });
+            var question = VotingQuestion.Create("legacy-category", Language.En, "m-friends", "Who?",
+                VotingAnswerSource.Participants, null, DateTimeOffset.UtcNow);
+            var legacy = VotingQuestionDoc.From(question).ToBsonDocument();
+            legacy.Remove("CategoryId");
+            legacy["VotingCategoryId"] = "m-friends";
+            await client.GetDatabase(dbName).GetCollection<BsonDocument>("voting_questions").InsertOneAsync(legacy);
+
+            await context.EnsureIndexesAsync();
+
+            var restored = await new MongoVotingQuestionRepository(context).GetAsync("legacy-category");
+            var stored = await client.GetDatabase(dbName).GetCollection<BsonDocument>("voting_questions")
+                .Find(new BsonDocument("_id", "legacy-category")).SingleAsync();
+            Assert.Equal("m-friends", restored!.CategoryId);
+            Assert.Equal("m-friends", stored["CategoryId"].AsString);
+            Assert.False(stored.Contains("VotingCategoryId"));
+        }
+        finally
+        {
+            await client.DropDatabaseAsync(dbName);
+        }
+    }
+
+    [Fact]
     public async Task Mongo_voting_store_isolated_topics_indexes_filters_and_sampling()
     {
         var client = await TryConnectAsync();
@@ -125,6 +157,8 @@ public sealed class VotingMongoTests
         {
             var context = new MongoContext(new MongoOptions { ConnectionString = ConnectionString, Database = dbName });
             await context.EnsureIndexesAsync();
+            var categories = new MongoCategoryRepository(context);
+            await categories.UpsertAsync(new Category("m-friends", "دوستان", "Friends", "people", "blue"));
             var repository = new MongoVotingQuestionRepository(context);
             var now = DateTimeOffset.UtcNow;
             var first = VotingQuestion.Create("m1", Language.En, "m-friends", "Pick a friend",
@@ -208,6 +242,7 @@ public sealed class VotingMongoTests
             var collectionNames = await client.GetDatabase(dbName).ListCollectionNames().ToListAsync();
             Assert.Contains("categories", collectionNames);
             Assert.DoesNotContain("voting_categories", collectionNames);
+            Assert.Equal("Friends", (await categories.GetAsync("m-friends"))!.NameEn);
 
             var batchInsert = VotingQuestion.Create("m10", Language.En, "m-friends", "Batch row",
                 VotingAnswerSource.Participants, null, now, topic: "batch-row");
