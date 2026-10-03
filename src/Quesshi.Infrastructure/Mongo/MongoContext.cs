@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Quesshi.Domain;
 
 namespace Quesshi.Infrastructure.Mongo;
 
@@ -39,6 +40,10 @@ public sealed class MongoContext
     /// <summary>Indexes the queries the app actually makes: bucket sampling, email lookup, match history.</summary>
     public async Task EnsureIndexesAsync(CancellationToken ct = default)
     {
+        // Existing trivia rows predate the family discriminator. Populate it before creating the
+        // family-aware indexes and before repositories start querying Family == Trivia.
+        await BackfillQuestionFamilyAsync(ct);
+
         foreach (var name in new[] { "Status_1_Lang_1_CategoryId_1_Level_1", "CategoryId_1", "Lang_1_Topic_1" })
         {
             try { await Questions.Indexes.DropOneAsync(name, ct); }
@@ -106,6 +111,13 @@ public sealed class MongoContext
                 new CreateIndexOptions { Unique = true })
         ], ct);
     }
+
+    /// <summary>Marks pre-discriminator question rows as trivia; repeated startup calls are harmless.</summary>
+    private Task<UpdateResult> BackfillQuestionFamilyAsync(CancellationToken ct)
+        => Questions.UpdateManyAsync(
+            Builders<QuestionDoc>.Filter.Exists(q => q.Family, exists: false),
+            Builders<QuestionDoc>.Update.Set(q => q.Family, (int)QuestionFamily.Trivia),
+            cancellationToken: ct);
 
     /// <summary>
     /// Sets <see cref="MatchDoc.OwnerId"/>/<see cref="MatchDoc.Participants"/> on every row that does

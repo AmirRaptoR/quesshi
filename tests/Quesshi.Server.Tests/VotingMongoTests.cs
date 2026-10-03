@@ -125,6 +125,65 @@ public sealed class VotingMongoTests
     }
 
     [Fact]
+    public async Task Ensure_indexes_backfills_legacy_trivia_before_family_scoped_repository_operations()
+    {
+        var client = await TryConnectAsync();
+        if (client is null) return;
+
+        var dbName = $"quesshi_test_{Guid.NewGuid():N}";
+        try
+        {
+            var context = new MongoContext(new MongoOptions { ConnectionString = ConnectionString, Database = dbName });
+            await context.EnsureIndexesAsync();
+            var legacy = new BsonDocument
+            {
+                ["_id"] = "legacy-trivia",
+                ["Lang"] = (int)Language.En,
+                ["CategoryId"] = "legacy-category",
+                ["Level"] = (int)Difficulty.Easy,
+                ["Prompt"] = "Legacy trivia question",
+                ["Choices"] = new BsonArray(["a", "b", "c", "d"]),
+                ["CorrectIndex"] = 0,
+                ["MediaKind"] = (int)MediaKind.None,
+                ["MediaUrl"] = "",
+                ["Status"] = (int)QuestionStatus.Approved,
+                ["Source"] = (int)QuestionSource.Seed,
+                ["CreatedAt"] = DateTime.UtcNow,
+                ["TimesServed"] = 0,
+                ["TimesCorrect"] = 0,
+                ["AnswerSource"] = 0,
+                ["FixedChoices"] = new BsonArray(),
+                ["UpdatedAt"] = DateTime.UtcNow,
+                ["ServedTokens"] = new BsonArray(),
+                ["Reports"] = new BsonArray(),
+                ["ReportCount"] = 0
+            };
+            var rawQuestions = client.GetDatabase(dbName).GetCollection<BsonDocument>("questions");
+            await rawQuestions.InsertOneAsync(legacy);
+
+            await context.EnsureIndexesAsync();
+
+            var repository = new MongoQuestionRepository(context);
+            Assert.Equal((int)QuestionFamily.Trivia,
+                (await rawQuestions.Find(new BsonDocument("_id", "legacy-trivia")).SingleAsync())["Family"].AsInt32);
+            Assert.Equal("legacy-trivia", (await repository.GetAsync("legacy-trivia"))!.Id);
+            Assert.Contains(await repository.SampleApprovedAsync(Language.En, ContentScope.All, Difficulty.Easy, 1, []),
+                q => q.Id == "legacy-trivia");
+
+            var edited = Question.Create("legacy-trivia", Language.En, "legacy-category", Difficulty.Easy,
+                "Edited legacy trivia", ["a", "b", "c", "d"], 0, DateTimeOffset.UtcNow,
+                status: QuestionStatus.Approved);
+            await repository.UpsertAsync(edited);
+            Assert.Equal("Edited legacy trivia", (await repository.GetAsync("legacy-trivia"))!.Prompt);
+            Assert.Equal(1, await repository.CountAsync(new QuestionFilter(Lang: Language.En)));
+        }
+        finally
+        {
+            await client.DropDatabaseAsync(dbName);
+        }
+    }
+
+    [Fact]
     public async Task Mongo_voting_store_isolated_topics_indexes_filters_and_sampling()
     {
         var client = await TryConnectAsync();
