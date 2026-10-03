@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Quesshi.Application.Ports;
 using Quesshi.Domain;
 using Quesshi.Shared;
 
@@ -58,18 +59,32 @@ public class RandomPairingStartTests(ClusterFixture fixture) : IAsyncDisposable
         var first = ClientFor($"rps-p1-{tag}");
         var second = ClientFor($"rps-p2-{tag}");
 
-        var firstResponse = await first.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", [], null, null));
+        var firstResponse = await first.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", null, null, null));
         firstResponse.EnsureSuccessStatusCode();
         var firstSummary = (await firstResponse.Content.ReadFromJsonAsync<MatchSummaryDto>())!;
         Assert.Equal("awaitingopponent", firstSummary.State); // queued, nobody to pair with yet
 
-        var secondResponse = await second.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", [], null, null));
+        var secondResponse = await second.PostAsJsonAsync("/api/matches", new CreateMatchDto(true, "en", null, null, null));
         secondResponse.EnsureSuccessStatusCode();
         var secondSummary = (await secondResponse.Content.ReadFromJsonAsync<MatchSummaryDto>())!;
 
         // Paired into the first player's own match, already playing -- no Start press by anyone.
         Assert.Equal(firstSummary.Id, secondSummary.Id);
         Assert.Equal("inprogress", secondSummary.State);
+    }
+
+    [Fact]
+    public async Task Direct_match_creation_cannot_draw_from_an_unconfigured_category()
+    {
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        SeedQuestions("category-boundary-" + tag);
+        _host.ContentSettings.Value = new ContentSettings([], []);
+        using var client = ClientFor($"category-boundary-{tag}");
+
+        var response = await client.PostAsJsonAsync("/api/matches",
+            new CreateMatchDto(false, "en", ["geography"], null, null));
+
+        Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
     public async ValueTask DisposeAsync() => await _host.DisposeAsync();

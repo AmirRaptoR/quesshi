@@ -385,7 +385,7 @@ public sealed class VotingMatchGrainTests(ClusterFixture fixture)
     private static string Seed(string prefix)
     {
         var categoryId = $"m-{prefix}";
-        Shared.VotingCategories.Items.Add(new VotingCategory(categoryId, "آزمون", "Test", "x", "#000"));
+        Shared.VotingCategories.Items.Add(new Category(categoryId, "آزمون", "Test", "x", "#000"));
         for (var i = 0; i < 10; i++)
         {
             Shared.VotingQuestions.Items.Add(VotingQuestion.Create($"mq-{prefix}-{i}", Language.En,

@@ -28,8 +28,8 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
 
     private static async Task SeedCategoryAsync(HttpClient client, string id, bool active = true)
     {
-        var response = await client.PostAsJsonAsync("/api/admin/voting/categories",
-            new VotingCategoryDto(id, "واردات", "Import", "Import", "📥", "#123456", active, 1));
+        var response = await client.PostAsJsonAsync("/api/admin/categories",
+            new CategoryDto(id, "واردات", "Import", "Import", "📥", "#123456", active, 1));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
@@ -425,8 +425,8 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
     [Fact]
     public async Task A_unique_index_race_marks_the_specific_losing_row_in_the_report()
     {
-        var categories = new FakeVotingCategories();
-        categories.Items.Add(new VotingCategory("m-race", "واردات", "Import", "◆", "#123456", true, 1));
+        var categories = new FakeCategories();
+        categories.Items.Add(new Category("race", "واردات", "Import", "◆", "#123456", true, 1));
         var questions = new RaceVotingQuestions(rejectFirstWrite: true);
         var body = Csv(Header,
             Row("race", "first", subject: "first", aspect: "topic"),
@@ -458,7 +458,7 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
         public Task<long> CountAsync(VotingQuestionFilter filter, CancellationToken ct = default)
             => Task.FromResult(0L);
 
-        public Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string categoryId,
+        public Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string? categoryId,
             int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<VotingQuestion>>([]);
 
@@ -489,7 +489,7 @@ public sealed class VotingQuestionImportEndpointTests(LiveClusterFixture fixture
         public Task<IReadOnlyCollection<string>> ExistingPromptsAsync(Language lang, string categoryId,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyCollection<string>>([.. Items
-                .Where(question => question.Lang == lang && question.VotingCategoryId == categoryId)
+                .Where(question => question.Lang == lang && question.CategoryId == categoryId)
                 .Select(question => question.Prompt)]);
     }
 

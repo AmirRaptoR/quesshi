@@ -47,7 +47,7 @@ public sealed class OpenRouterQuestionGenerator(
         => AskAsync(prompts.Map(lang, category, level, count, avoid), MapSchema.ResponseFormat, "map", lang, category, level, QuestionKind.Map, ct);
 
     Task<IReadOnlyList<GeneratedVotingQuestion>> IVotingQuestionGenerator.GenerateAsync(Language lang,
-        VotingCategory category, VotingAnswerSource answerSource, int count,
+        Category category, VotingAnswerSource answerSource, int count,
         IReadOnlyCollection<string> avoid, CancellationToken ct)
         => AskVotingAsync(prompts.Voting(lang, category, answerSource, count, avoid),
             VotingQuestionSchema.ResponseFormat(answerSource), lang, category, answerSource, ct);
@@ -66,7 +66,7 @@ public sealed class OpenRouterQuestionGenerator(
     }
 
     private async Task<IReadOnlyList<GeneratedVotingQuestion>> AskVotingAsync(string userPrompt,
-        object schema, Language lang, VotingCategory category, VotingAnswerSource answerSource,
+        object schema, Language lang, Category category, VotingAnswerSource answerSource,
         CancellationToken ct)
     {
         var purpose = answerSource == VotingAnswerSource.Fixed
@@ -147,7 +147,7 @@ public sealed class OpenRouterQuestionGenerator(
     }
 
     private IReadOnlyList<GeneratedVotingQuestion> ParseVoting(string content, Language lang,
-        VotingCategory category, VotingAnswerSource answerSource)
+        Category category, VotingAnswerSource answerSource)
     {
         try
         {

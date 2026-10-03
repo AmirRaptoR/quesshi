@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using MongoDB.Driver;
 using Quesshi.Application.Ports;
 using Quesshi.Application.UseCases;
@@ -11,9 +10,6 @@ namespace Quesshi.Server.Api;
 /// contracts throughout; trivia routes remain in <see cref="AdminEndpoints"/>.</summary>
 public static class VotingAdminEndpoints
 {
-    private static readonly Regex CategoryId = new("^[a-z0-9]+(?:[-_][a-z0-9]+)*$", RegexOptions.Compiled);
-    private static readonly Regex HexColor = new("^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$", RegexOptions.Compiled);
-
     public static void MapVotingAdmin(this RouteGroupBuilder admin)
     {
         admin.MapGet("/voting/questions", async (string? lang, string? category, string? status, string? text,
@@ -36,7 +32,7 @@ public static class VotingAdminEndpoints
         // the trivia importer: voting has no level or correct answer and its choices come from a
         // declared answer source.
         admin.MapPost("/voting/questions/import", async (IFormFile? file, string? format,
-            IVotingQuestionRepository questions, IVotingCategoryRepository categories,
+            IVotingQuestionRepository questions, ICategoryRepository categories,
             IClock clock, IIdFactory ids, bool dryRun = true) =>
         {
             await using var stream = file?.OpenReadStream();
@@ -77,7 +73,7 @@ public static class VotingAdminEndpoints
         });
 
         admin.MapPost("/voting/questions", async (SaveVotingQuestionDto body,
-            IVotingQuestionRepository questions, IVotingCategoryRepository categories,
+            IVotingQuestionRepository questions, ICategoryRepository categories,
             IClock clock, IIdFactory ids) =>
         {
             var error = VotingQuestionSaveBinding.TryBind(body, out var lang, out var answerSource,
@@ -88,13 +84,13 @@ public static class VotingAdminEndpoints
             var existing = suppliedId is null ? null : await questions.GetAsync(suppliedId);
             if (suppliedId is not null && existing is null) return Results.NotFound();
 
-            var categoryId = NormaliseCategoryReference(body.VotingCategoryId);
-            var category = await categories.GetAsync(categoryId);
-            if (category is null) return Results.BadRequest(new { error = "unknown_category" });
+            var categoryId = string.IsNullOrWhiteSpace(body.CategoryId) ? null : NormaliseCategoryReference(body.CategoryId);
+            var category = categoryId is null ? null : await categories.GetAsync(categoryId);
+            if (categoryId is not null && category is null) return Results.BadRequest(new { error = "unknown_category" });
 
             // Existing content under a category remains editable after that category is retired;
             // moving new content into the retired category is refused.
-            if (!category.IsActive && (existing is null || existing.VotingCategoryId != category.Id))
+            if (category is { IsActive: false } && (existing is null || existing.CategoryId != category.Id))
                 return Results.BadRequest(new { error = "inactive_category" });
 
             if (topic is not null)
@@ -109,13 +105,13 @@ public static class VotingAdminEndpoints
             {
                 if (existing is not null)
                 {
-                    existing.Edit(lang, category.Id, body.Prompt, answerSource, choices, media, topic, clock.Now);
+                    existing.Edit(lang, category?.Id, body.Prompt, answerSource, choices, media, topic, clock.Now);
                     existing.SetStatus(status);
                     await questions.UpsertAsync(existing);
                     return Results.Ok(existing.ToAdminDto());
                 }
 
-                var created = VotingQuestion.Create(ids.NewId(), lang, category.Id, body.Prompt,
+                var created = VotingQuestion.Create(ids.NewId(), lang, category?.Id, body.Prompt,
                     answerSource, choices, clock.Now, media, QuestionSource.Admin, status, topic);
                 await questions.UpsertAsync(created);
                 return Results.Ok(created.ToAdminDto());
@@ -151,41 +147,6 @@ public static class VotingAdminEndpoints
             return Results.Ok();
         });
 
-        admin.MapGet("/voting/categories", async (IVotingCategoryRepository categories) =>
-            (await categories.AllAsync()).Select(c => c.ToDto(Language.Fa)).ToList());
-
-        admin.MapPost("/voting/categories", async (VotingCategoryDto body,
-            IVotingCategoryRepository categories) =>
-        {
-            var nameFa = (body.NameFa ?? "").Trim();
-            var nameEn = (body.NameEn ?? "").Trim();
-            var nameNl = (body.NameNl ?? "").Trim();
-            if (nameFa.Length == 0 && nameEn.Length == 0)
-                return Results.BadRequest(new { error = "blank_name" });
-            if (!EmojiIcon.TryNormalize(body.Icon, out var icon))
-                return Results.BadRequest(new { error = "bad_icon" });
-
-            var rawId = (body.Id ?? "").Trim().ToLowerInvariant();
-            if (rawId.Length == 0) return Results.BadRequest(new { error = "bad_category_id" });
-            var id = rawId.StartsWith("m-", StringComparison.Ordinal) ? rawId : "m-" + rawId;
-            if (!CategoryId.IsMatch(id)) return Results.BadRequest(new { error = "bad_category_id" });
-
-            var color = (body.Color ?? "").Trim();
-            if (!HexColor.IsMatch(color))
-                return Results.BadRequest(new { error = "bad_color" });
-
-            var existing = await categories.GetAsync(id);
-            var all = await categories.AllAsync();
-            var order = body.SortOrder > 0
-                ? body.SortOrder
-                : existing?.SortOrder ?? all.Select(c => c.SortOrder).DefaultIfEmpty(0).Max() + 1;
-
-            await categories.UpsertAsync(new VotingCategory(id, nameFa, nameEn, icon,
-                color, body.IsActive, order, nameNl));
-            return Results.Ok((await categories.GetAsync(id))!.ToDto(Language.Fa));
-        });
-
-        admin.MapDelete("/voting/categories/{id}", DeleteCategoryAsync);
     }
 
     private static async Task<IResult> SetStatusAsync(string id, IVotingQuestionRepository questions, bool approve)
@@ -196,36 +157,11 @@ public static class VotingAdminEndpoints
         return Results.Ok(question.ToAdminDto());
     }
 
-    /// <summary>
-    /// Retires an empty category instead of physically deleting it. The question-count check and a
-    /// hard delete cannot be one atomic operation with the repository contract: a concurrent save
-    /// could observe the category as active after the check and then write a question whose category
-    /// no longer exists. Keeping the row and flipping <see cref="VotingCategory.IsActive"/> makes
-    /// that interleaving safe — the save either sees inactive and refuses, or writes against a real
-    /// (now retired) category. Categories with content keep the existing category-in-use contract.
-    /// </summary>
-    internal static async Task<IResult> DeleteCategoryAsync(string id,
-        IVotingCategoryRepository categories, IVotingQuestionRepository questions)
-    {
-        var categoryId = NormaliseCategoryReference(id);
-        var category = await categories.GetAsync(categoryId);
-        if (category is null) return Results.NotFound();
-
-        if (await questions.CountAsync(new VotingQuestionFilter(CategoryId: categoryId)) > 0)
-            return Results.BadRequest(new { error = "category_in_use" });
-
-        await categories.UpsertAsync(category with { IsActive = false });
-        return Results.Ok();
-    }
-
     private static QuestionStatus? ParseStatus(string? value)
         => Enum.TryParse<QuestionStatus>(value, true, out var parsed) && Enum.IsDefined(parsed) ? parsed : null;
 
     private static string NormaliseCategoryReference(string? value)
-    {
-        var raw = value?.Trim().ToLowerInvariant() ?? "";
-        return raw.StartsWith("m-", StringComparison.Ordinal) ? raw : "m-" + raw;
-    }
+        => value?.Trim().ToLowerInvariant() ?? "";
 
     private static string DomainErrorCode(ArgumentException ex)
         => ex.ParamName switch

@@ -90,7 +90,7 @@
     private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
     private string _lang = "en";
     private int _questions = 10;
-    private List<VotingCategoryDto> _categories = [];
+    private List<CategoryDto> _categories = [];
     private List<string> _categoryIds = [];
     private string? _error;
     private string? _lobbyId;
@@ -123,7 +123,7 @@
 
     private void ClearCategories() => _categoryIds = [];
 
-    private string CategoryName(VotingCategoryDto category) => _lang switch
+    private string CategoryName(CategoryDto category) => _lang switch
     {
         "fa" => Pick(category.NameFa, category.NameEn),
         "nl" => Pick(category.NameNl, category.NameEn),

@@ -26,7 +26,7 @@ public sealed class Question
 
     private readonly List<QuestionReport> _reports = [];
 
-    private Question(string id, Language lang, string categoryId, Difficulty level, string prompt,
+    private Question(string id, Language lang, string? categoryId, Difficulty level, string prompt,
         IReadOnlyList<string> choices, int correctIndex, MediaRef media, DateTimeOffset createdAt)
     {
         Id = id;
@@ -42,7 +42,7 @@ public sealed class Question
 
     public string Id { get; }
     public Language Lang { get; private set; }
-    public string CategoryId { get; private set; }
+    public string? CategoryId { get; private set; }
     public Difficulty Level { get; private set; }
     public string Prompt { get; private set; }
     /// <summary>
@@ -89,7 +89,7 @@ public sealed class Question
     /// case, so every call written before sorting and map questions existed still compiles and still
     /// means what it meant.
     /// </summary>
-    public static Question Create(string id, Language lang, string categoryId, Difficulty level, string prompt,
+    public static Question Create(string id, Language lang, string? categoryId, Difficulty level, string prompt,
         IReadOnlyList<string> choices, int correctIndex, DateTimeOffset now,
         MediaRef? media = null, string? explanation = null,
         QuestionSource source = QuestionSource.Ai, QuestionStatus status = QuestionStatus.Pending,
@@ -100,13 +100,18 @@ public sealed class Question
         return new Question(id, lang, categoryId, level, prompt.Trim(), [.. choices.Select(c => c.Trim())], correctIndex,
             media ?? MediaRef.None, now)
         {
-            Explanation = explanation, Source = source, Status = status, Topic = topic,
-            Kind = kind, Target = target, BaseLayer = baseLayer
+            Explanation = explanation,
+            Source = source,
+            Status = status,
+            Topic = topic,
+            Kind = kind,
+            Target = target,
+            BaseLayer = baseLayer
         };
     }
 
     /// <summary>Rehydrates a stored question. Storage is trusted; use <see cref="Create"/> for anything else.</summary>
-    public static Question Restore(string id, Language lang, string categoryId, Difficulty level, string prompt,
+    public static Question Restore(string id, Language lang, string? categoryId, Difficulty level, string prompt,
         IReadOnlyList<string> choices, int correctIndex, MediaRef media, string? explanation,
         QuestionStatus status, QuestionSource source, DateTimeOffset createdAt, int timesServed, int timesCorrect,
         IEnumerable<QuestionReport>? reports = null, string? topic = null,
@@ -281,7 +286,7 @@ public sealed class Question
     /// Language, category and level are included because mis-filing is the most common mistake an
     /// admin needs to correct, and validation runs first so a rejected edit changes nothing.
     /// </summary>
-    public void Edit(Language lang, string categoryId, Difficulty level, string prompt,
+    public void Edit(Language lang, string? categoryId, Difficulty level, string prompt,
         IReadOnlyList<string> choices, int correctIndex, MediaRef? media, string? explanation,
         QuestionKind kind = QuestionKind.Choice, MapTarget? target = null, MapBaseLayer? baseLayer = null,
         IReadOnlySet<string>? knownCountryCodes = null)

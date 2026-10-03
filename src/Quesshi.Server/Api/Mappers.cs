@@ -43,8 +43,8 @@ public static class Mappers
     /// </summary>
     public static Dictionary<string, List<string>> PlayableLanguages(IEnumerable<BucketCount> buckets)
         => buckets
-            .Where(b => b.Approved > 0)
-            .GroupBy(b => b.CategoryId)
+            .Where(b => b.Approved > 0 && b.CategoryId is not null)
+            .GroupBy(b => b.CategoryId!)
             .ToDictionary(g => g.Key, g => g.Select(b => b.Lang.Code()).Distinct().Order().ToList());
 
     /// <summary>The same, plus which languages the category holds approved questions in.</summary>
@@ -61,15 +61,12 @@ public static class Mappers
         q.Kind.ToString().ToLowerInvariant(), q.Target.ToDto(), q.BaseLayer?.ToString().ToLowerInvariant());
 
     public static VotingQuestionDto ToAdminDto(this VotingQuestion q) => new(
-        q.Id, q.Lang.Code(), q.VotingCategoryId, q.Prompt,
+        q.Id, q.Lang.Code(), q.CategoryId, q.Prompt,
         q.AnswerSource.ToString().ToLowerInvariant(), [.. q.FixedChoices],
         q.Status.ToString().ToLowerInvariant(), q.Source.ToString().ToLowerInvariant(),
         q.Media.Kind == MediaKind.None ? null : new MediaDto(
             q.Media.Kind.ToString().ToLowerInvariant(), q.Media.Url, q.Media.Attribution),
         q.Topic, q.CreatedAt, q.UpdatedAt, q.TimesServed);
-
-    public static VotingCategoryDto ToDto(this VotingCategory c, Language lang) => new(
-        c.Id, c.NameFor(lang), c.NameFa, c.NameEn, c.Icon, c.Color, c.IsActive, c.SortOrder, c.NameNl);
 
     /// <summary>
     /// A map target on its way to the admin form. Unlike every play-facing mapper, this one is
@@ -292,7 +289,7 @@ public static class Mappers
             var question = await questions.GetAsync(round.QuestionId);
             if (question is not null)
             {
-                var category = await categories.GetAsync(question.CategoryId);
+                var category = question.CategoryId is null ? null : await categories.GetAsync(question.CategoryId);
                 // Already have both the roster and its names here — no extra fetch needed for the
                 // one kind that serves them as its choices.
                 var participantNames = question.Kind == QuestionKind.Players
@@ -354,7 +351,7 @@ public static class Mappers
     public static LiveRoundCardDto BuildLiveCard(string matchId, int slot, int totalRounds, Question question,
         Category? category, Language lang, DateTimeOffset startedAt, IReadOnlyList<string>? participantNames = null)
         => new(slot, totalRounds, question.Id, question.Prompt, [.. GameEndpoints.ChoicesFor(matchId, slot, question, participantNames)],
-            question.CategoryId, category?.NameFor(lang) ?? question.CategoryId,
+            question.CategoryId ?? "", category?.NameFor(lang) ?? (question.CategoryId is null ? "Uncategorized" : question.CategoryId),
             category?.Icon ?? "", category?.Color ?? "", (int)question.Level,
             question.Media.Kind == MediaKind.None ? null : new MediaDto(question.Media.Kind.ToString().ToLowerInvariant(), question.Media.Url, question.Media.Attribution),
             startedAt, startedAt + MatchRules.QuestionTime,

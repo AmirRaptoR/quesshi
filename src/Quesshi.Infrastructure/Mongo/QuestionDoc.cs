@@ -9,7 +9,7 @@ public sealed class QuestionDoc
 {
     [BsonId] public string Id { get; set; } = "";
     public int Lang { get; set; }
-    public string CategoryId { get; set; } = "";
+    public string? CategoryId { get; set; }
     public int Level { get; set; }
     public string Prompt { get; set; } = "";
     public List<string> Choices { get; set; } = [];

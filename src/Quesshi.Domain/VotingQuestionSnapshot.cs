@@ -4,7 +4,7 @@ namespace Quesshi.Domain;
 public sealed record VotingQuestionSnapshot(
     string Id,
     Language Lang,
-    string VotingCategoryId,
+    string? CategoryId,
     string Prompt,
     VotingAnswerSource AnswerSource,
     List<string> FixedChoices,

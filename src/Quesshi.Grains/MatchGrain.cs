@@ -115,8 +115,15 @@ public sealed class MatchGrain(
     private async Task DrawQuestionsAsync()
     {
         var m = _match!;
-        var set = await questionSetBuilder.BuildAsync(m.Settings.Language, m.Settings.CategoryIds, m.Settings.QuestionCount, m.Settings.Levels);
-        m.DrawQuestions([.. set.Select(q => q.Id)]);
+        try
+        {
+            var set = await questionSetBuilder.BuildAsync(m.Settings.Language, new ContentScope(m.Settings.CategoryIds), m.Settings.QuestionCount, m.Settings.Levels);
+            m.DrawQuestions([.. set.Select(q => q.Id)]);
+        }
+        catch (NotEnoughQuestionsException ex)
+        {
+            throw new InvalidOperationException($"match_not_enough_questions:{ex.Message}");
+        }
     }
 
     public async Task<bool> StartAsync(string playerId)

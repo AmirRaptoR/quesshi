@@ -30,7 +30,7 @@ public class LiveEliminationTests(LiveClusterFixture fixture)
         var id = Guid.NewGuid().ToString("N");
         SeedQuestions(id);
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id);
-        await grain.CreateLobbyAsync(code, owner, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], capacity);
+        await grain.CreateLobbyAsync(code, owner, (int)Language.En, MatchRules.QuestionsPerMatch, [Category], [], capacity);
         return (grain, id);
     }
 

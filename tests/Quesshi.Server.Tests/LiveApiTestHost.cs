@@ -56,6 +56,7 @@ public sealed class LiveApiTestHost(TestCluster cluster, params string[] enabled
                 services.AddSingleton(cluster.GrainFactory);
                 services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
                 services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
+                services.AddSingleton<IContentSettingsRepository>(sp => new FakeContentSettingsRepository(sp.GetRequiredService<ICategoryRepository>()));
                 services.AddSingleton<IMatchArchive>(LiveShared.Archive);
                 services.AddSingleton<IPlayerRepository>(LiveShared.Players);
                 services.AddSingleton<IClock>(new TimeProviderClock(LiveShared.TimeProvider));

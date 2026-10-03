@@ -10,8 +10,24 @@ public interface IVotingQuestionRepository
     Task<long> CountAsync(VotingQuestionFilter filter, CancellationToken ct = default);
 
     /// <summary>Random approved voting questions for a category, excluding ids already served.</summary>
-    Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string categoryId, int count,
+    Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, string? categoryId, int count,
         IReadOnlyCollection<string> exclude, CancellationToken ct = default);
+    async Task<IReadOnlyList<VotingQuestion>> SampleApprovedAsync(Language lang, ContentScope scope, int count,
+        IReadOnlyCollection<string> exclude, CancellationToken ct = default)
+    {
+        if (scope.CategoryIds is { Count: 0 }) return [];
+        var selected = new List<VotingQuestion>();
+        var categoryIds = scope.CategoryIds is null
+            ? new string?[] { null }
+            : scope.CategoryIds.Distinct(StringComparer.Ordinal).Select(x => (string?)x).ToArray();
+        foreach (var id in categoryIds)
+        {
+            selected.AddRange(await SampleApprovedAsync(lang, id, count - selected.Count,
+                [.. exclude.Concat(selected.Select(q => q.Id))], ct));
+            if (selected.Count >= count) break;
+        }
+        return selected;
+    }
 
     Task UpsertAsync(VotingQuestion question, CancellationToken ct = default);
     /// <summary>Atomically records one newly served match slot. A token is unique per match/slot,

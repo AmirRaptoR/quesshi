@@ -22,5 +22,5 @@ public static class Shared
     public static readonly FakeLiveNotifier Notifier = new();
     public static readonly FakeVotingNotifier VotingNotifier = new();
     public static readonly FakeVotingQuestions VotingQuestions = new();
-    public static readonly FakeVotingCategories VotingCategories = new();
+    public static readonly FakeCategories VotingCategories = Categories;
 }

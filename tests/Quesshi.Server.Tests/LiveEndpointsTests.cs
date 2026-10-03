@@ -25,7 +25,7 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
     private IGrainFactory Grains => fixture.Cluster.GrainFactory;
     private static readonly TimeProviderClock Clock = new(LiveShared.TimeProvider);
-    private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions, LiveShared.Categories);
+    private static readonly QuestionSetBuilder Builder = new(LiveShared.Questions);
 
     private static int _n = LiveIdRanges.NewIdsPoolStart;
 
@@ -94,6 +94,21 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
         var view = await Grains.GetGrain<ILiveMatchGrain>(ViewOf(result).Id).GetAsync(Amir);
         Assert.Equal(MatchRules.QuestionsPerMatch, view!.TotalRounds);
+    }
+
+    [Fact]
+    public async Task Create_does_not_draw_from_a_category_outside_the_tenant_trivia_allowlist()
+    {
+        var settings = new FakeContentSettingsRepository(LiveShared.Categories)
+        {
+            Value = new ContentSettings([], [])
+        };
+
+        var result = await LiveEndpoints.CreateAsync(new CreateMatchDto(false, "en", [ScarceCategory], null), Amir,
+            Grains, Builder, NewIds(), LiveShared.Archive, LiveShared.Players, LiveShared.Questions,
+            LiveShared.Categories, Clock, settings);
+
+        Assert.Equal(503, CrossTypeCodeTests.StatusOf(result));
     }
 
     [Fact]
@@ -314,7 +329,10 @@ public class LiveEndpointsTests(LiveClusterFixture fixture)
 
     private static readonly TokenIssuer Issuer = new(new JwtOptions
     {
-        Key = "a-live-guest-test-signing-key-long-enough", Issuer = "quesshi", Audience = "quesshi", Days = 1
+        Key = "a-live-guest-test-signing-key-long-enough",
+        Issuer = "quesshi",
+        Audience = "quesshi",
+        Days = 1
     });
 
     [Fact]

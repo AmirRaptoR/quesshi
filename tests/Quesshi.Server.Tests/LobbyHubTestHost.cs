@@ -52,6 +52,10 @@ public sealed class LobbyHubTestHost : IAsyncDisposable
                         new AdminTokenIssuer(new AdminAuthOptions { Key = "unused-admin-key-long-enough-here", Issuer = "quesshi" }));
                     services.AddSingleton<IPresence>(Presence);
                     services.AddSingleton(cluster.GrainFactory);
+                    services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
+                    services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
+                    services.AddSingleton<IContentSettingsRepository>(sp =>
+                        new FakeContentSettingsRepository(sp.GetRequiredService<ICategoryRepository>()));
                     services.AddSingleton<ILobbyNotifier>(Notifier);
                     services.AddSingleton<IPlayerRepository, FakePlayers>();
                     services.AddSingleton<IIdFactory, IdFactory>();

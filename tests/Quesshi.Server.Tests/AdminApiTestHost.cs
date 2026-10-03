@@ -58,7 +58,7 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
                 // admin endpoint tests resolve the complete admin dependency graph without mixing
                 // voting rows into the trivia fakes.
                 services.AddSingleton<IVotingQuestionRepository, FakeVotingQuestions>();
-                services.AddSingleton<IVotingCategoryRepository, FakeVotingCategories>();
+                services.AddSingleton<IContentSettingsRepository>(sp => new FakeContentSettingsRepository(sp.GetRequiredService<ICategoryRepository>()));
                 services.AddSingleton<IMatchArchive>(LiveShared.Archive);
                 services.AddSingleton<IPlayerRepository>(LiveShared.Players);
                 services.AddSingleton<ILiveDirectory>(LiveShared.Directory);

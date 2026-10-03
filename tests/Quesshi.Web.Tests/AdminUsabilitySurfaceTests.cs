@@ -3,15 +3,12 @@ namespace Quesshi.Web.Tests;
 public sealed class AdminUsabilitySurfaceTests
 {
     [Fact]
-    public void Both_category_editors_expose_a_plain_emoji_text_field()
+    public void Shared_category_editor_exposes_a_plain_emoji_text_field()
     {
-        foreach (var page in new[] { "Categories.razor", "VotingCategories.razor" })
-        {
-            var source = File.ReadAllText(Page(page));
-            Assert.Contains("admin.icon", source);
-            Assert.Contains("@bind=\"_editing.Icon\"", source);
-            Assert.DoesNotContain("<select", source[source.IndexOf("admin.icon", StringComparison.Ordinal)..]);
-        }
+        var source = File.ReadAllText(Page("Categories.razor"));
+        Assert.Contains("admin.icon", source);
+        Assert.Contains("@bind=\"_editing.Icon\"", source);
+        Assert.DoesNotContain("<select", source[source.IndexOf("admin.icon", StringComparison.Ordinal)..]);
     }
 
     [Theory]
@@ -28,16 +25,16 @@ public sealed class AdminUsabilitySurfaceTests
         Assert.Contains("<AdminModal", page);
     }
 
-    [Theory]
-    [InlineData("Categories.razor")]
-    [InlineData("VotingCategories.razor")]
-    public void Category_pages_use_the_shared_admin_table_and_modal_editor(string name)
+    [Fact]
+    public void Shared_category_page_has_independent_game_family_checklists()
     {
-        var page = File.ReadAllText(Page(name));
+        var page = File.ReadAllText(Page("Categories.razor"));
 
         Assert.Contains("<AdminShell", page);
         Assert.Contains("<AdminCategoryTable", page);
         Assert.Contains("<AdminModal", page);
+        Assert.Contains("TriviaCategoryIds", page);
+        Assert.Contains("VotingCategoryIds", page);
     }
 
     [Fact]

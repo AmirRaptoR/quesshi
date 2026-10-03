@@ -90,31 +90,6 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<bool> RejectVotingAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/voting/questions/{id}/reject");
     public Task<bool> DeleteVotingQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/voting/questions/{id}");
 
-    public Task<List<VotingCategoryDto>?> AdminVotingCategoriesAsync()
-        => GetAsync<List<VotingCategoryDto>>("api/admin/voting/categories");
-
-    public async Task<(VotingCategoryDto? Saved, string? Error)> TrySaveVotingCategoryAsync(VotingCategoryDto body)
-    {
-        try
-        {
-            var response = await Client.PostAsJsonAsync("api/admin/voting/categories", body);
-            return response.IsSuccessStatusCode
-                ? (await response.Content.ReadFromJsonAsync<VotingCategoryDto>(), null)
-                : (null, (await response.Content.ReadFromJsonAsync<SaveError>())?.Error);
-        }
-        catch { return (null, null); }
-    }
-
-    public async Task<string?> TryDeleteVotingCategoryAsync(string id)
-    {
-        try
-        {
-            var response = await Client.DeleteAsync($"api/admin/voting/categories/{id}");
-            return response.IsSuccessStatusCode ? null : (await response.Content.ReadFromJsonAsync<SaveError>())?.Error;
-        }
-        catch { return "common.error"; }
-    }
-
     /// <summary>
     /// Save, and on a refusal say which rule was broken. The endpoint answers with a stable code —
     /// <c>unknown_country</c>, <c>bad_radius</c> — rather than a sentence, because the panel is read
@@ -140,6 +115,16 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<bool> RejectAsync(string id) => SendAsync(HttpMethod.Post, $"api/admin/questions/{id}/reject");
     public Task<bool> DeleteQuestionAsync(string id) => SendAsync(HttpMethod.Delete, $"api/admin/questions/{id}");
     public Task<List<CategoryDto>?> AdminCategoriesAsync() => GetAsync<List<CategoryDto>>("api/admin/categories");
+    public Task<AdminContentSettingsDto?> ContentSettingsAsync() => GetAsync<AdminContentSettingsDto>("api/admin/content-settings");
+    public async Task<ContentSettingsDto?> SaveContentSettingsAsync(ContentSettingsDto body)
+    {
+        try
+        {
+            var response = await Client.PutAsJsonAsync("api/admin/content-settings", body);
+            return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ContentSettingsDto>() : null;
+        }
+        catch { return null; }
+    }
     public async Task<(bool Saved, string? Error)> TrySaveCategoryAsync(CategoryDto body)
     {
         try

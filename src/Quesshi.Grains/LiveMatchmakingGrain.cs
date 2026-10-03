@@ -274,7 +274,7 @@ public sealed class LiveMatchmakingGrain(
             // Anything outside 1..5 is dropped rather than rejected: a nonsense level is the same
             // request as no level at all.
             var levels = levelInts.Where(l => l is >= 1 and <= 5).Select(l => (Difficulty)l).ToList();
-            set = [.. await builder.BuildAsync((Language)lang, categoryIds, questionCount, levels)];
+            set = [.. await builder.BuildAsync((Language)lang, new ContentScope(categoryIds), questionCount, levels)];
         }
         catch (NotEnoughQuestionsException)
         {

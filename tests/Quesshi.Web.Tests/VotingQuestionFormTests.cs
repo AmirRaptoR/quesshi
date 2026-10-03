@@ -7,13 +7,16 @@ public sealed class VotingQuestionFormTests
 {
     private static VotingQuestionForm Valid() => new()
     {
-        Lang = "en", VotingCategoryId = "m-music", Prompt = "Name a favourite song?", Choices = { }
+        Lang = "en",
+        CategoryId = "m-music",
+        Prompt = "Name a favourite song?",
+        Choices = { }
     };
 
     [Fact]
     public void Fixed_answers_are_trimmed_and_sent()
     {
-        var form = new VotingQuestionForm { Lang = "en", VotingCategoryId = "m-music", Prompt = " Prompt " };
+        var form = new VotingQuestionForm { Lang = "en", CategoryId = "m-music", Prompt = " Prompt " };
         form.Choices[0] = " One "; form.Choices[1] = "Two";
 
         var dto = form.ToDto();
@@ -26,7 +29,7 @@ public sealed class VotingQuestionFormTests
     [Fact]
     public void Participants_toggle_sends_no_choices_and_clears_them_when_toggled_back()
     {
-        var form = new VotingQuestionForm { VotingCategoryId = "m-music", Prompt = "Prompt" };
+        var form = new VotingQuestionForm { CategoryId = "m-music", Prompt = "Prompt" };
         form.Choices[0] = "One"; form.Choices[1] = "Two";
 
         form.UseParticipants = true;
@@ -57,14 +60,14 @@ public sealed class VotingQuestionFormTests
     [Fact]
     public void Blank_prompt_has_its_own_error()
     {
-        var errors = new VotingQuestionForm { VotingCategoryId = "m-music", Prompt = " " }.Validate();
+        var errors = new VotingQuestionForm { CategoryId = "m-music", Prompt = " " }.Validate();
         Assert.Contains("blank_prompt", errors);
     }
 
     [Fact]
     public void Blank_choice_has_its_own_error()
     {
-        var form = new VotingQuestionForm { VotingCategoryId = "m-music", Prompt = "Prompt" };
+        var form = new VotingQuestionForm { CategoryId = "m-music", Prompt = "Prompt" };
         form.Choices[0] = " ";
         Assert.Contains("blank_choice", form.Validate());
     }
@@ -72,7 +75,7 @@ public sealed class VotingQuestionFormTests
     [Fact]
     public void Duplicate_choices_are_case_insensitive_and_trimmed()
     {
-        var form = new VotingQuestionForm { VotingCategoryId = "m-music", Prompt = "Prompt" };
+        var form = new VotingQuestionForm { CategoryId = "m-music", Prompt = "Prompt" };
         form.Choices[0] = " One "; form.Choices[1] = "one";
         Assert.Contains("duplicate_choice", form.Validate());
     }
@@ -80,7 +83,7 @@ public sealed class VotingQuestionFormTests
     [Fact]
     public void Too_few_and_too_many_choices_are_rejected()
     {
-        var form = new VotingQuestionForm { VotingCategoryId = "m-music", Prompt = "Prompt" };
+        var form = new VotingQuestionForm { CategoryId = "m-music", Prompt = "Prompt" };
         form.Choices.RemoveAt(1);
         Assert.Contains("too_few_choices", form.Validate());
         while (form.Choices.Count < VotingQuestionForm.MaxChoices + 1) form.Choices.Add("choice" + form.Choices.Count);
@@ -88,16 +91,17 @@ public sealed class VotingQuestionFormTests
     }
 
     [Fact]
-    public void Missing_category_has_its_own_error()
+    public void Missing_category_is_allowed_for_uncategorized_voting_content()
     {
         var form = new VotingQuestionForm { Prompt = "Prompt" };
-        Assert.Contains("unknown_category", form.Validate());
+        Assert.DoesNotContain("unknown_category", form.Validate());
+        Assert.Null(form.ToDto().CategoryId);
     }
 
     [Fact]
     public void Subject_and_aspect_feed_the_wire_topic_fields()
     {
-        var form = new VotingQuestionForm { VotingCategoryId = "m-music", Prompt = "Prompt", Subject = "Music", Aspect = "Jazz" };
+        var form = new VotingQuestionForm { CategoryId = "m-music", Prompt = "Prompt", Subject = "Music", Aspect = "Jazz" };
         var dto = form.ToDto();
         Assert.Equal("Music", dto.Subject);
         Assert.Equal("Jazz", dto.Aspect);

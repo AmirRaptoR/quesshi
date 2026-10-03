@@ -44,7 +44,8 @@ public sealed class VotingApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddSingleton<ICategoryRepository>(Shared.Categories);
                 services.AddSignalR();
                 services.AddSingleton<ILiveNotifier, SignalRLiveNotifier>();
-                services.AddSingleton<IVotingCategoryRepository>(Shared.VotingCategories);
+                services.AddSingleton<ICategoryRepository>(Shared.VotingCategories);
+                services.AddSingleton<IContentSettingsRepository>(sp => new FakeContentSettingsRepository(sp.GetRequiredService<ICategoryRepository>()));
                 services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
                 services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
                 services.AddSingleton<VotingQuestionSetBuilder>();

@@ -32,8 +32,8 @@ public sealed class VotingAdminSurfaceTests
         Assert.Contains("admin.voting.aspect", page);
         Assert.DoesNotContain("CorrectIndex", page);
         Assert.DoesNotContain("Difficulty", page);
-        Assert.Contains("c.Id == form.VotingCategoryId && !c.IsActive", page);
-        Assert.Contains("c.IsActive || c.Id == form.VotingCategoryId", page);
+        Assert.Contains("c.Id == form.CategoryId && !c.IsActive", page);
+        Assert.Contains("c.IsActive || c.Id == form.CategoryId", page);
         var api = File.ReadAllText(Source("Services/AdminApi.cs"));
         Assert.Contains("/voting/questions/import", api);
         Assert.Contains("api/admin/voting/generate", api);
@@ -44,12 +44,13 @@ public sealed class VotingAdminSurfaceTests
     }
 
     [Fact]
-    public void Voting_admin_navigation_exposes_both_voting_pages()
+    public void Voting_admin_navigation_exposes_voting_questions_and_shared_categories()
     {
         var nav = File.ReadAllText(Source("Components/AdminNav.razor"));
 
         Assert.Contains("/admin/voting/questions", nav);
-        Assert.Contains("/admin/voting/categories", nav);
+        Assert.Contains("/admin/categories", nav);
+        Assert.DoesNotContain("/admin/voting/categories", nav);
     }
 
     private static string Page(string name) => Source($"Pages/Admin/{name}");

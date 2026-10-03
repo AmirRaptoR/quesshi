@@ -22,7 +22,9 @@ namespace Quesshi.Server.Live;
 /// </summary>
 [Authorize]
 public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNotifier notifier,
-    IPlayerRepository players, IIdFactory ids, IMatchArchive archive, TenantContext tenant) : Hub
+    IPlayerRepository players, IIdFactory ids, IMatchArchive archive, TenantContext tenant,
+    ICategoryRepository? categories = null, IContentSettingsRepository? contentSettings = null,
+    IQuestionRepository? questions = null) : Hub
 {
     /// <summary>Three heartbeats' worth, so two dropped beats don't flicker an online player offline.</summary>
     public static readonly TimeSpan PresenceTtl = TimeSpan.FromSeconds(60);
@@ -97,12 +99,24 @@ public sealed class LobbyHub(IGrainFactory grains, IPresence presence, ILobbyNot
     /// sides). Refused explicitly for a guest, on top of the connection already being refused at
     /// <see cref="OnConnectedAsync"/> — provable without standing up a connection.
     /// </summary>
-    public Task<string?> QueueRandom(int lang, int questionCount, List<string> categories, List<int> levels)
-        => Context.User!.IsGuest()
-            ? throw new HubException("guests cannot queue")
-            : ModeEnabled("live")
-                ? Matchmaking.EnqueueAsync(Context.User!.PlayerId()!, lang, questionCount, categories, levels)
-                : throw new HubException("live mode disabled");
+    public async Task<string?> QueueRandom(int lang, int questionCount, List<string> picks, List<int> levels)
+    {
+        if (Context.User!.IsGuest()) throw new HubException("guests cannot queue");
+        if (!ModeEnabled("live")) throw new HubException("live mode disabled");
+
+        var language = (Language)lang;
+        var configured = (await (contentSettings ?? throw new InvalidOperationException("content settings repository missing"))
+            .GetAsync()).TriviaCategoryIds.ToHashSet(StringComparer.Ordinal);
+        var playable = Mappers.PlayableLanguages(await (questions ?? throw new InvalidOperationException("question repository missing"))
+            .BucketCountsAsync());
+        var eligible = (await (categories ?? throw new InvalidOperationException("category repository missing"))
+            .AllAsync()).Where(c => configured.Contains(c.Id)
+            && playable.GetValueOrDefault(c.Id, []).Contains(language.Code(), StringComparer.Ordinal));
+        var selected = CategorySelection.Select(eligible, picks);
+        if (selected.Count == 0) throw new HubException("no playable categories");
+
+        return await Matchmaking.EnqueueAsync(Context.User!.PlayerId()!, lang, questionCount, [.. selected], levels);
+    }
 
     public Task LeaveQueue()
         => Context.User!.IsGuest()

@@ -20,7 +20,7 @@ public class VotingQuestionEditTests
             VotingAnswerSource.Fixed, ["only-one"], null, "new-topic", T1));
 
         Assert.Equal(Language.En, q.Lang);
-        Assert.Equal("movies", q.VotingCategoryId);
+        Assert.Equal("movies", q.CategoryId);
         Assert.Equal("Match each actor to their role.", q.Prompt);
         Assert.Equal(VotingAnswerSource.Fixed, q.AnswerSource);
         Assert.Equal(["Hero", "Sidekick", "Villain"], q.FixedChoices);
@@ -104,7 +104,7 @@ public class VotingQuestionEditTests
             ["One", "Two"], null, "new-topic", earlier);
 
         Assert.Equal(Language.Fa, q.Lang);
-        Assert.Equal("sports", q.VotingCategoryId);
+        Assert.Equal("sports", q.CategoryId);
         Assert.Equal("New prompt?", q.Prompt);
         Assert.Equal("new-topic", q.Topic);
         Assert.Equal(earlier, q.UpdatedAt);

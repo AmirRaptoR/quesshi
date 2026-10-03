@@ -29,7 +29,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var id = Guid.NewGuid().ToString("N");
         SeedQuestions(id);
         var grain = fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id);
-        await grain.CreateLobbyAsync(code, owner, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], capacity);
+        await grain.CreateLobbyAsync(code, owner, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], capacity);
         return (grain, id);
     }
 
@@ -63,11 +63,11 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
             var (grain, _) = await NewLobbyAsync($"LG{Guid.NewGuid():N}"[..6], Amir, 30);
             await settings.SetMaxCapacityAsync(20);
 
-            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 30));
-            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 25));
-            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 26));
-            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 20));
-            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 21));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 30));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 25));
+            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 26));
+            Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 20));
+            Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 21));
 
             var view = await grain.GetAsync(Amir);
             Assert.Equal(20, view!.Capacity);
@@ -333,7 +333,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         await grain.JoinAsync(Sara); // 2 seated; capacity 3 has exactly one open seat
 
         var join = grain.JoinAsync(Vahid);
-        var shrink = grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 2);
+        var shrink = grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 2);
         await Task.WhenAll(join, shrink);
 
         var view = await grain.GetAsync(Amir);
@@ -461,8 +461,8 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         var (grain, id) = await NewLobbyAsync("LOBBY10", Amir, capacity: 3);
         SeedQuestions(id + "-extra"); // 20 total distinct En/geography questions, regardless of test order
 
-        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, [], [], null)); // not the owner
-        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], null));
+        Assert.False(await grain.UpdateSettingsAsync(Sara, (int)Language.En, 20, ["geography"], [], null)); // not the owner
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, ["geography"], [], null));
 
         await grain.JoinAsync(Sara);
         await grain.JoinAsync(Vahid); // fills capacity, but no longer draws on its own (issue #104)
@@ -472,7 +472,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Assert.Equal(20, afterStart!.TotalRounds);
 
         // Questions are drawn now, so settings can no longer change.
-        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+        Assert.False(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], null));
     }
 
     /// <summary>
@@ -510,7 +510,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         await grain.JoinAsync(Sara);
         await grain.JoinAsync(Vahid); // 3 seated
 
-        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, [], [], 2); // 2 < 3 seated
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, 20, ["geography"], [], 2); // 2 < 3 seated
         Assert.False(ok);
 
         var view = await grain.GetAsync(Amir);
@@ -526,7 +526,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     {
         var (grain, _) = await NewLobbyAsync("LOBBY14", Amir, capacity: 3);
 
-        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], null));
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], null));
 
         var view = await grain.GetAsync(Amir);
         Assert.Equal(3, view!.Capacity);
@@ -539,7 +539,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
         Advance(LiveRules.LobbyExpires + TimeSpan.FromSeconds(1));
         await WaitForAsync(grain, Amir, v => v.State == (int)MatchState.NoContest);
 
-        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 4);
+        var ok = await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 4);
         Assert.False(ok);
 
         var view = await grain.GetAsync(Amir);
@@ -552,7 +552,7 @@ public class LiveMatchGrainTests(LiveClusterFixture fixture)
     public async Task A_capacity_change_survives_deactivation_and_reactivation()
     {
         var (grain, id) = await NewLobbyAsync("LOBBY16", Amir, capacity: 2);
-        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, [], [], 5));
+        Assert.True(await grain.UpdateSettingsAsync(Amir, (int)Language.En, MatchRules.QuestionsPerMatch, ["geography"], [], 5));
 
         await fixture.Cluster.GrainFactory.GetGrain<ILiveMatchGrain>(id)
             .AsReference<Orleans.Core.Internal.IGrainManagementExtension>().DeactivateOnIdle();

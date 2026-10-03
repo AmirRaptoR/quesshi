@@ -33,7 +33,7 @@ public sealed class LiveTestSilo : ISiloConfigurator
             services.AddSingleton<IQuestionRepository>(LiveShared.Questions);
             services.AddSingleton<ICategoryRepository>(LiveShared.Categories);
             services.AddSingleton<IVotingQuestionRepository>(Shared.VotingQuestions);
-            services.AddSingleton<IVotingCategoryRepository>(Shared.VotingCategories);
+            services.AddSingleton<ICategoryRepository>(Shared.VotingCategories);
             services.AddSingleton<ILiveNotifier>(LiveShared.Notifier);
             services.AddSingleton<IVotingNotifier>(Shared.VotingNotifier);
             services.AddSingleton<ILobbyNotifier>(LiveShared.LobbyNotifier);

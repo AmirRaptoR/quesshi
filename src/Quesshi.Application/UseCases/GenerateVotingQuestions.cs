@@ -11,7 +11,7 @@ namespace Quesshi.Application.UseCases;
 /// </summary>
 public sealed class GenerateVotingQuestions(
     IVotingQuestionRepository questions,
-    IVotingCategoryRepository categories,
+    ICategoryRepository categories,
     IVotingQuestionGenerator generator,
     IVotingGenerationLog log,
     IClock clock,

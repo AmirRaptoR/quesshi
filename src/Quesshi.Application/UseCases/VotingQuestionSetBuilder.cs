@@ -3,73 +3,34 @@ using Quesshi.Domain;
 
 namespace Quesshi.Application.UseCases;
 
-/// <summary>Builds a question set exclusively from the voting content bank.</summary>
-public sealed class VotingQuestionSetBuilder(
-    IVotingQuestionRepository questions,
-    IVotingCategoryRepository categories)
+/// <summary>Builds voting sets only within the category scope selected by the application boundary.</summary>
+public sealed class VotingQuestionSetBuilder(IVotingQuestionRepository questions)
 {
-    public async Task<IReadOnlyList<VotingQuestion>> BuildAsync(Language lang,
-        IReadOnlyList<string>? categoryIds = null, int? questionCount = null,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<VotingQuestion>> BuildAsync(Language lang, ContentScope? scope = null,
+        int? questionCount = null, CancellationToken ct = default)
     {
+        scope ??= ContentScope.All;
         var count = questionCount ?? MatchRules.QuestionsPerMatch;
         if (!MatchRules.IsValidCount(count)) count = MatchRules.QuestionsPerMatch;
+        if (scope.CategoryIds is { Count: 0 })
+            throw new NotEnoughQuestionsException("The category scope is empty.");
 
-        var active = (await categories.AllAsync(ct)).Where(c => c.IsActive).ToList();
-        if (active.Count == 0)
-            throw new NotEnoughQuestionsException("There are no active categories.");
-
-        var chosen = ChooseCategories(active, categoryIds);
-        var fallbackTo = categoryIds is { Count: > 0 } && chosen.Count > 0 ? chosen : active;
+        var categoryIds = scope.CategoryIds?.Distinct(StringComparer.Ordinal).ToList();
         var picked = new List<VotingQuestion>(count);
         var used = new HashSet<string>();
-
         for (var slot = 0; slot < count; slot++)
         {
-            var category = chosen[slot % chosen.Count];
-            var question = await TakeAsync(lang, category.Id, used, ct)
-                ?? await TakeAnywhereAsync(lang, fallbackTo, used, ct)
-                ?? throw new NotEnoughQuestionsException(
-                    $"Not enough approved {lang} voting questions in {string.Join(", ", fallbackTo.Select(c => c.Id))} " +
-                    $"to fill a match (got {picked.Count} of {count}).");
-
+            var preferred = categoryIds is { Count: > 0 }
+                ? new ContentScope([categoryIds[slot % categoryIds.Count]])
+                : scope;
+            var question = (await questions.SampleApprovedAsync(lang, preferred, 1, used, ct)).FirstOrDefault();
+            if (question is null && preferred != scope)
+                question = (await questions.SampleApprovedAsync(lang, scope, 1, used, ct)).FirstOrDefault();
+            if (question is null)
+                throw new NotEnoughQuestionsException($"Not enough approved {lang} voting questions in the supplied category scope (got {picked.Count} of {count}).");
             picked.Add(question);
             used.Add(question.Id);
         }
-
         return picked;
-    }
-
-    private static List<VotingCategory> ChooseCategories(List<VotingCategory> active,
-        IReadOnlyList<string>? requested)
-    {
-        var chosen = new List<VotingCategory>();
-        if (requested is { Count: > 0 })
-            foreach (var id in requested.Distinct())
-                if (active.FirstOrDefault(c => c.Id == id) is { } category)
-                    chosen.Add(category);
-
-        if (chosen.Count > 0) return chosen;
-
-        foreach (var category in active.OrderBy(_ => Random.Shared.Next()))
-        {
-            if (chosen.Count == MatchRules.CategoriesPerMatch) break;
-            chosen.Add(category);
-        }
-
-        return chosen;
-    }
-
-    private async Task<VotingQuestion?> TakeAsync(Language lang, string categoryId,
-        HashSet<string> used, CancellationToken ct)
-        => (await questions.SampleApprovedAsync(lang, categoryId, 1, used, ct)).FirstOrDefault();
-
-    private async Task<VotingQuestion?> TakeAnywhereAsync(Language lang,
-        IReadOnlyList<VotingCategory> fallbackTo, HashSet<string> used, CancellationToken ct)
-    {
-        foreach (var category in fallbackTo.OrderBy(_ => Random.Shared.Next()))
-            if (await TakeAsync(lang, category.Id, used, ct) is { } question)
-                return question;
-        return null;
     }
 }

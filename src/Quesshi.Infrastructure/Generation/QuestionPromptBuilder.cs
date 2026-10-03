@@ -23,7 +23,7 @@ public sealed class QuestionPromptBuilder
         "You answer only with JSON matching the requested schema, and never with commentary.";
 
     /// <summary>Questions whose value comes from comparing participants' answers, never grading them.</summary>
-    public string Voting(Language lang, VotingCategory category, VotingAnswerSource answerSource,
+    public string Voting(Language lang, Category category, VotingAnswerSource answerSource,
         int count, IReadOnlyCollection<string> avoid)
     {
         var language = Name(lang);

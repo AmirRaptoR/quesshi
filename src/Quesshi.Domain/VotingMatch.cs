@@ -297,12 +297,12 @@ public sealed class VotingMatch
     }
 
     private static VotingQuestionSnapshot ToQuestionSnapshot(VotingQuestion question) => new(
-        question.Id, question.Lang, question.VotingCategoryId, question.Prompt, question.AnswerSource,
+        question.Id, question.Lang, question.CategoryId, question.Prompt, question.AnswerSource,
         [.. question.FixedChoices], question.Media, question.Status, question.Source, question.Topic,
         question.CreatedAt, question.UpdatedAt, question.TimesServed);
 
     private static VotingQuestion FromQuestionSnapshot(VotingQuestionSnapshot question) => VotingQuestion.Restore(
-        question.Id, question.Lang, question.VotingCategoryId, question.Prompt, question.AnswerSource,
+        question.Id, question.Lang, question.CategoryId, question.Prompt, question.AnswerSource,
         question.FixedChoices ?? [], question.Media, question.Status, question.Source, question.Topic,
         question.CreatedAt, question.UpdatedAt, question.TimesServed);
 }

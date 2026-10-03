@@ -27,9 +27,9 @@ public sealed class InMemoryQuestions : IQuestionRepository
         (f.Status is null || q.Status == f.Status) &&
         (f.Text is null || q.Prompt.Contains(f.Text, StringComparison.OrdinalIgnoreCase)));
 
-    public Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string categoryId, Difficulty level, int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
+    public Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string? categoryId, Difficulty level, int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Question>>([.. Items
-            .Where(q => q.Status == QuestionStatus.Approved && q.Lang == lang && q.CategoryId == categoryId && q.Level == level && !exclude.Contains(q.Id))
+            .Where(q => q.Status == QuestionStatus.Approved && q.Lang == lang && (categoryId is null || q.CategoryId == categoryId) && q.Level == level && !exclude.Contains(q.Id))
             .OrderBy(_ => _rng.Next())
             .Take(count)]);
 

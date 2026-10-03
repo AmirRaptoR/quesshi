@@ -195,6 +195,7 @@
                         <option value="nl">@L["lang.nl"]</option>
                     </select>
                     <select class="select" style="width:auto" @bind="_editing.CategoryId">
+                        <option value="">Uncategorized</option>
                         @foreach (var category in _categories)
                         {
                             <option value="@category.Id">@L.Name(category)</option>
@@ -392,8 +393,9 @@
     private static readonly string[] Shapes = ["country", "city"];
 
     /// <summary>A category's display name, falling back to the slug for one that has since been deleted.</summary>
-    private string CategoryName(string id)
-        => _categories.FirstOrDefault(c => c.Id == id) is { } category ? L.Name(category) : id;
+    private string CategoryName(string? id)
+        => string.IsNullOrWhiteSpace(id) ? L["admin.uncategorized"]
+            : _categories.FirstOrDefault(c => c.Id == id) is { } category ? L.Name(category) : id;
 
     /// <summary>The media currently attached to the question being edited, if any.</summary>
     private MediaDto? EditingMedia => string.IsNullOrWhiteSpace(_editing?.MediaUrl)

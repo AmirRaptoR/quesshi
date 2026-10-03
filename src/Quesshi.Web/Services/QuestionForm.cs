@@ -19,7 +19,7 @@ public sealed class QuestionForm
 {
     public string? Id { get; set; }
     public string Lang { get; set; } = "fa";
-    public string CategoryId { get; set; } = "";
+    public string? CategoryId { get; set; }
     public int Level { get; set; } = 1;
     public string Prompt { get; set; } = "";
     public List<string> Choices { get; set; } = ["", "", "", ""];
@@ -82,10 +82,17 @@ public sealed class QuestionForm
 
     public static QuestionForm From(AdminQuestionDto q) => new()
     {
-        Id = q.Id, Lang = q.Lang, CategoryId = q.CategoryId, Level = q.Level, Prompt = q.Prompt,
+        Id = q.Id,
+        Lang = q.Lang,
+        CategoryId = q.CategoryId,
+        Level = q.Level,
+        Prompt = q.Prompt,
         Choices = q.Choices.Count == 4 ? [.. q.Choices] : ["", "", "", ""],
-        CorrectIndex = q.CorrectIndex, Explanation = q.Explanation,
-        MediaKind = q.Media?.Kind, MediaUrl = q.Media?.Url, Status = q.Status,
+        CorrectIndex = q.CorrectIndex,
+        Explanation = q.Explanation,
+        MediaKind = q.Media?.Kind,
+        MediaUrl = q.Media?.Url,
+        Status = q.Status,
         Kind = q.Kind,
         TargetShape = q.Target?.Shape ?? "country",
         CountryCode = q.Target?.CountryCode,
@@ -101,7 +108,7 @@ public sealed class QuestionForm
     /// says which one was broken, but a form that knowingly sent a rejectable body would be asking
     /// the admin to fix something they never typed.
     /// </summary>
-    public SaveQuestionDto ToDto() => new(Id, Lang, CategoryId, Level, Prompt.Trim(),
+    public SaveQuestionDto ToDto() => new(Id, Lang, string.IsNullOrWhiteSpace(CategoryId) ? null : CategoryId.Trim(), Level, Prompt.Trim(),
         IsMap || IsPlayers ? [] : [.. Choices.Select(c => c.Trim())],
         IsMap || IsSort || IsPlayers ? 0 : CorrectIndex,
         Explanation, MediaKind, MediaUrl, Status,

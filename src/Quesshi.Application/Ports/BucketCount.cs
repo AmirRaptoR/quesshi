@@ -8,5 +8,5 @@ namespace Quesshi.Application.Ports;
 /// existed — including every fake <c>IQuestionRepository</c> in the test suite — keeps compiling
 /// and keeps meaning what it meant: a bucket with no kind of its own is a choice bucket.
 /// </summary>
-public sealed record BucketCount(Language Lang, string CategoryId, Difficulty Level, int Approved, int Pending,
+public sealed record BucketCount(Language Lang, string? CategoryId, Difficulty Level, int Approved, int Pending,
     QuestionKind Kind = QuestionKind.Choice);

@@ -165,8 +165,15 @@ public sealed class LiveMatchGrain(
     private async Task DrawQuestionsAsync()
     {
         var m = _match!;
-        var set = await questionSetBuilder.BuildAsync(m.Settings.Language, m.Settings.CategoryIds, m.Settings.QuestionCount, m.Settings.Levels);
-        m.DrawQuestions([.. set.Select(q => q.Id)]);
+        try
+        {
+            var set = await questionSetBuilder.BuildAsync(m.Settings.Language, new ContentScope(m.Settings.CategoryIds), m.Settings.QuestionCount, m.Settings.Levels);
+            m.DrawQuestions([.. set.Select(q => q.Id)]);
+        }
+        catch (NotEnoughQuestionsException ex)
+        {
+            throw new InvalidOperationException($"live_not_enough_questions:{ex.Message}");
+        }
     }
 
     public async Task<bool> StartAsync(string playerId)
@@ -572,7 +579,7 @@ public sealed class LiveMatchGrain(
                     break;
                 }
 
-                var category = await categories.GetAsync(question.CategoryId);
+                var category = question.CategoryId is null ? null : await categories.GetAsync(question.CategoryId);
                 var participantNames = question.Kind == QuestionKind.Players
                     ? await ParticipantNamesAsync(Participants(m))
                     : null;
@@ -804,7 +811,7 @@ public sealed class LiveMatchGrain(
         int totalRounds, IReadOnlyList<string>? participantNames = null) => new(
         round.Slot, totalRounds, question.Id, question.Prompt,
         [.. question.Kind == QuestionKind.Players && participantNames is not null ? participantNames : question.ServedChoices(matchId, round.Slot)],
-        question.CategoryId, category?.NameFor(question.Lang) ?? question.CategoryId,
+        question.CategoryId ?? "", category?.NameFor(question.Lang) ?? (question.CategoryId is null ? "Uncategorized" : question.CategoryId),
         category?.Icon ?? "", category?.Color ?? "", question.Level, question.Media,
         round.StartedAt, round.StartedAt + MatchRules.QuestionTime,
         question.Kind, question.BaseLayer, question.Target?.Shape);
