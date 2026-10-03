@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +42,10 @@ public sealed class AdminApiTestHost(TestCluster cluster) : IAsyncDisposable
                 services.AddAuthorizationBuilder()
                     .AddPolicy("admin", policy => policy
                         .AddAuthenticationSchemes(AdminTokenIssuer.Scheme)
+                        .RequireAuthenticatedUser()
+                        .RequireClaim("typ", "admin"))
+                    .AddPolicy("admin-with-player-identity", policy => policy
+                        .AddAuthenticationSchemes(AdminTokenIssuer.Scheme, JwtBearerDefaults.AuthenticationScheme)
                         .RequireAuthenticatedUser()
                         .RequireClaim("typ", "admin"));
 

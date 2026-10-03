@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text;
-using System.Text.Json;
 using MongoDB.Driver;
 using Quesshi.Application.Ports;
 using Quesshi.Domain;
@@ -18,94 +16,33 @@ public static class VotingQuestionImport
     private static readonly string[] ChoiceColumns = ["choice1", "choice2", "choice3", "choice4",
         "choice5", "choice6", "choice7", "choice8"];
 
-    public static async Task<(string? RequestError, ImportReportDto? Report)> RunAsync(
+    public static Task<(string? RequestError, ImportReportDto? Report)> RunAsync(
         string? format, Stream? content, long contentLength, bool dryRun,
         IVotingQuestionRepository questions, ICategoryRepository categories,
         IClock clock, IIdFactory ids, CancellationToken ct = default)
-    {
-        var normalizedFormat = format?.Trim().ToLowerInvariant();
-        if (normalizedFormat is not ("csv" or "json")) return ("bad_format", null);
-        if (content is null || contentLength == 0) return ("empty_file", null);
-        if (contentLength > QuestionImport.MaxImportBytes) return ("file_too_large", null);
-
-        List<Dictionary<string, string>>? rawRows;
-        List<int>? malformedRows;
-        string? parseError;
-        if (normalizedFormat == "csv")
-            (parseError, rawRows, malformedRows) = ParseCsv(content);
-        else
-            (parseError, rawRows, malformedRows) = ParseJson(content);
-
-        if (parseError is not null) return (parseError, null);
-        if (rawRows!.Count > QuestionImport.MaxImportRows) return ("too_many_rows", null);
-
-        var rows = new List<ImportRowResultDto>(rawRows.Count);
-        var candidates = new List<(int Row, VotingQuestion Question, string? Prompt)>();
-        var topicsByLang = new Dictionary<Language, HashSet<string>>();
-        var fileTopics = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = 0; i < rawRows.Count; i++)
-        {
-            var rowNumber = i + 1;
-            if (malformedRows!.Contains(i))
+        => QuestionImportPipeline.RunAsync<VotingQuestion>(format, content, contentLength, dryRun,
+            RequiredColumns,
+            async (fields, token) =>
             {
-                rows.Add(new ImportRowResultDto(rowNumber, null, false, "bad_row"));
-                continue;
-            }
-
-            var fields = rawRows[i];
-            var prompt = Field(fields, "prompt");
-            var (question, error) = await BindRowAsync(fields, categories, ids, clock.Now, ct);
-            if (question is null)
+                var (question, error) = await BindRowAsync(fields, categories, ids, clock.Now, token);
+                return (question is null ? null : new QuestionImportPipeline.BoundRow<VotingQuestion>(
+                    question, question.Prompt, question.Lang, question.Topic), error);
+            },
+            (language, token) => questions.ExistingTopicsAsync(language, token),
+            async (accepted, token) =>
             {
-                rows.Add(new ImportRowResultDto(rowNumber, prompt, false, error));
-                continue;
-            }
-
-            if (question.Topic is { Length: > 0 } topic)
-            {
-                if (!topicsByLang.TryGetValue(question.Lang, out var existing))
-                    topicsByLang[question.Lang] = existing = [.. await questions.ExistingTopicsAsync(question.Lang, ct)];
-
-                var key = $"{(int)question.Lang}|{topic}";
-                if (existing.Contains(topic) || !fileTopics.Add(key))
+                var rejected = new HashSet<int>();
+                foreach (var candidate in accepted)
                 {
-                    rows.Add(new ImportRowResultDto(rowNumber, question.Prompt, false, "duplicate_topic"));
-                    continue;
+                    try { await questions.UpsertAsync(candidate.Bound.Value, token); }
+                    catch (InvalidOperationException) { rejected.Add(candidate.Row); }
+                    catch (MongoWriteException ex) when (ex.WriteError?.Code == 11000) { rejected.Add(candidate.Row); }
                 }
-            }
-
-            candidates.Add((rowNumber, question, question.Prompt));
-            rows.Add(new ImportRowResultDto(rowNumber, question.Prompt, true, null));
-        }
-
-        // Write one row at a time. Besides keeping the report honest if a unique index races another
-        // writer, this lets us name the exact row that lost rather than returning a lower batch count.
-        if (!dryRun)
-        {
-            foreach (var candidate in candidates)
-            {
-                try
-                {
-                    await questions.UpsertAsync(candidate.Question, ct);
-                }
-                catch (InvalidOperationException)
-                {
-                    ReplaceResult(rows, candidate.Row, candidate.Prompt, "duplicate_topic");
-                }
-                catch (MongoWriteException ex) when (ex.WriteError?.Code == 11000)
-                {
-                    ReplaceResult(rows, candidate.Row, candidate.Prompt, "duplicate_topic");
-                }
-            }
-        }
-
-        var accepted = rows.Count(r => r.Accepted);
-        return (null, new ImportReportDto(dryRun, rows.Count, accepted, rows.Count - accepted, rows));
-    }
+                return rejected;
+            }, ct);
 
     private static async Task<(VotingQuestion? Question, string? Error)> BindRowAsync(
-        Dictionary<string, string> fields, ICategoryRepository categories,
+        IReadOnlyDictionary<string, string> fields, ICategoryRepository categories,
         IIdFactory ids, DateTimeOffset now, CancellationToken ct)
     {
         var langRaw = Field(fields, "lang")?.ToLowerInvariant();
@@ -160,131 +97,7 @@ public static class VotingQuestionImport
         return (question, null);
     }
 
-    private static string? Field(Dictionary<string, string> fields, string key)
-        => fields.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+    private static string? Field(IReadOnlyDictionary<string, string> fields, string key)
+        => QuestionImportPipeline.Field(fields, key);
 
-    private static void ReplaceResult(List<ImportRowResultDto> rows, int row, string? prompt, string error)
-        => rows[row - 1] = new ImportRowResultDto(row, prompt, false, error);
-
-    private static (string? Error, List<Dictionary<string, string>>? Rows, List<int>? Malformed) ParseCsv(Stream content)
-    {
-        using var reader = new StreamReader(content, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        var records = ReadCsvRecords(reader.ReadToEnd());
-        if (records.Count == 0) return (null, [], []);
-
-        var headerRecord = records[0];
-        var header = headerRecord.Fields.Select((value, index) => index == 0 ? value.TrimStart('\uFEFF').Trim().ToLowerInvariant() : value.Trim().ToLowerInvariant()).ToList();
-        if (headerRecord.Malformed || !header.ToHashSet(StringComparer.Ordinal).IsSupersetOf(RequiredColumns))
-            return ("bad_row", null, null);
-
-        var rows = new List<Dictionary<string, string>>();
-        var malformed = new List<int>();
-        for (var i = 1; i < records.Count; i++)
-        {
-            var record = records[i];
-            var map = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (record.Malformed || record.Fields.Count != header.Count) malformed.Add(i - 1);
-            else for (var c = 0; c < header.Count; c++) map[header[c]] = record.Fields[c];
-            rows.Add(map);
-        }
-
-        return (null, rows, malformed);
-    }
-
-    private sealed record CsvRecord(List<string> Fields, bool Malformed);
-
-    private static List<CsvRecord> ReadCsvRecords(string text)
-    {
-        var records = new List<CsvRecord>();
-        var record = new List<string>();
-        var field = new StringBuilder();
-        var quoted = false;
-        var quoteClosed = false;
-        var fieldStarted = false;
-        var malformed = false;
-        var sawAny = false;
-        for (var i = 0; i < text.Length;)
-        {
-            var c = text[i++];
-            if (quoted)
-            {
-                if (c == '"' && i < text.Length && text[i] == '"') { field.Append('"'); i++; }
-                else if (c == '"') { quoted = false; quoteClosed = true; }
-                else field.Append(c);
-                continue;
-            }
-            if (c == '"')
-            {
-                // A quote is legal only at the beginning of a field. Quotes in ordinary text are
-                // malformed, as is a quote after a quoted field has already been closed.
-                if (fieldStarted) malformed = true;
-                else quoted = true;
-                fieldStarted = true;
-                sawAny = true;
-                continue;
-            }
-            if (c == ',')
-            {
-                record.Add(field.ToString());
-                field.Clear();
-                fieldStarted = false;
-                quoteClosed = false;
-                sawAny = true;
-                continue;
-            }
-            if (c == '\r') continue;
-            if (c == '\n')
-            {
-                record.Add(field.ToString());
-                field.Clear();
-                records.Add(new CsvRecord(record, malformed || quoted));
-                record = [];
-                fieldStarted = false;
-                quoteClosed = false;
-                malformed = false;
-                sawAny = false;
-                continue;
-            }
-            if (quoteClosed) malformed = true;
-            field.Append(c);
-            fieldStarted = true;
-            sawAny = true;
-        }
-        if (sawAny || field.Length > 0 || record.Count > 0)
-        {
-            record.Add(field.ToString());
-            records.Add(new CsvRecord(record, malformed || quoted));
-        }
-        return [.. records.Where(r => r.Fields.Count > 1 || r.Fields[0].Length > 0 || r.Malformed)];
-    }
-
-    private static (string? Error, List<Dictionary<string, string>>? Rows, List<int>? Malformed) ParseJson(Stream content)
-    {
-        JsonDocument document;
-        try { document = JsonDocument.Parse(content); }
-        catch (JsonException) { return ("bad_json", null, null); }
-
-        using (document)
-        {
-            if (document.RootElement.ValueKind != JsonValueKind.Array) return ("bad_json", null, null);
-            var rows = new List<Dictionary<string, string>>();
-            var malformed = new List<int>();
-            var index = 0;
-            foreach (var element in document.RootElement.EnumerateArray())
-            {
-                if (element.ValueKind != JsonValueKind.Object) { malformed.Add(index); rows.Add([]); index++; continue; }
-                var map = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var property in element.EnumerateObject())
-                    map[property.Name.ToLowerInvariant()] = property.Value.ValueKind switch
-                    {
-                        JsonValueKind.String => property.Value.GetString() ?? "",
-                        JsonValueKind.Null => "",
-                        _ => property.Value.GetRawText()
-                    };
-                rows.Add(map);
-                index++;
-            }
-            return (null, rows, malformed);
-        }
-    }
 }

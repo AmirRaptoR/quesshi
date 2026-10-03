@@ -189,7 +189,7 @@ public static class AdminEndpoints
             };
 
             return error is not null ? Results.BadRequest(new { error }) : Results.Ok(report);
-        }).DisableAntiforgery();
+        }).RequireAuthorization("admin-with-player-identity").DisableAntiforgery();
 
         admin.MapGet("/questions/import/template", (string? family, string? kind, string? format) =>
         {
@@ -203,7 +203,7 @@ public static class AdminEndpoints
             if (template.Error is not null) return Results.BadRequest(new { error = template.Error });
 
             return Results.File(template.Content!, template.ContentType!, template.FileName);
-        });
+        }).RequireAuthorization("admin-with-player-identity");
 
         // The review queue: everything players have complained about, worst first.
         admin.MapGet("/reported", async (int? skip, int? take, IQuestionRepository questions, IPlayerRepository players) =>
