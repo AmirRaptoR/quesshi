@@ -155,11 +155,11 @@ public sealed class AdminApi(AdminHttpClient http)
     public Task<MediaDto?> UploadAsync(MultipartFormDataContent content) => PostContentAsync<MediaDto>("api/admin/media", content);
 
     /// <summary>Dry run or commit — same endpoint, `dryRun` decides whether anything is written.</summary>
-    public async Task<ImportReportDto?> ImportQuestionsAsync(string kind, string format, bool dryRun, MultipartFormDataContent content)
+    public async Task<ImportReportDto?> ImportQuestionsAsync(string family, string kind, string format, bool dryRun, MultipartFormDataContent content)
     {
         try
         {
-            var response = await Client.PostAsync($"api/admin/questions/import?kind={kind}&format={format}&dryRun={dryRun}", content);
+            var response = await Client.PostAsync($"api/admin/questions/import?family={family}&kind={kind}&format={format}&dryRun={dryRun}", content);
             return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ImportReportDto>() : null;
         }
         catch { return null; }
@@ -168,37 +168,15 @@ public sealed class AdminApi(AdminHttpClient http)
     /// <summary>The raw bytes and the filename the server chose, for the client to save — there is
     /// no `Content-Disposition`-following browser navigation on the admin API, which needs a bearer
     /// token a plain link click never sends.</summary>
-    public async Task<(byte[] Bytes, string FileName)?> DownloadImportTemplateAsync(string kind, string format)
+    public async Task<(byte[] Bytes, string FileName)?> DownloadImportTemplateAsync(string family, string kind, string format)
     {
         try
         {
-            var response = await Client.GetAsync($"api/admin/questions/import/template?kind={kind}&format={format}");
+            var response = await Client.GetAsync($"api/admin/questions/import/template?family={family}&kind={kind}&format={format}");
             if (!response.IsSuccessStatusCode) return null;
 
-            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"{kind}-template.{format}");
-        }
-        catch { return null; }
-    }
-
-    /// <summary>Dry run or commit a voting-only import in the voting bounded context.</summary>
-    public async Task<ImportReportDto?> ImportVotingQuestionsAsync(string format, bool dryRun, MultipartFormDataContent content)
-    {
-        try
-        {
-            var response = await Client.PostAsync($"api/admin/voting/questions/import?format={format}&dryRun={dryRun}", content);
-            return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ImportReportDto>() : null;
-        }
-        catch { return null; }
-    }
-
-    public async Task<(byte[] Bytes, string FileName)?> DownloadVotingImportTemplateAsync(string format)
-    {
-        try
-        {
-            var response = await Client.GetAsync($"api/admin/voting/questions/import/template?format={format}");
-            if (!response.IsSuccessStatusCode) return null;
-
-            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"voting-template.{format}");
+            var fallback = family == "voting" ? "voting" : kind;
+            return (await response.Content.ReadAsByteArrayAsync(), response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"{fallback}-template.{format}");
         }
         catch { return null; }
     }

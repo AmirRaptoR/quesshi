@@ -171,26 +171,38 @@ public static class AdminEndpoints
             return Results.Ok(created.ToAdminDto());
         });
 
-        // Bulk import: one file, one declared kind, validated through the same path as the form
-        // above. dryRun defaults to true so an admin always sees the report before anything is
-        // written. See QuestionImport for why dedup is decided explicitly rather than left to the
-        // store's unique index.
-        admin.MapPost("/questions/import", async (IFormFile? file, string? kind, string? format,
-            IQuestionRepository questions, IClock clock, IIdFactory ids, bool dryRun = true) =>
+        // One upload route dispatches to the selected family's row parser and keeps persistence
+        // family-scoped through its typed repository. Dry run remains the safe default.
+        admin.MapPost("/questions/import", async (IFormFile? file, string? family, string? kind, string? format,
+            IQuestionRepository questions, IVotingQuestionRepository votingQuestions,
+            ICategoryRepository categories, IClock clock, IIdFactory ids, bool dryRun = true) =>
         {
             await using var stream = file?.OpenReadStream();
-            var (error, report) = await QuestionImport.RunAsync(kind, format, stream, file?.Length ?? 0, dryRun,
-                questions, clock, ids);
+            var normalizedFamily = family?.Trim().ToLowerInvariant() ?? "trivia";
+            var (error, report) = normalizedFamily switch
+            {
+                "trivia" => await QuestionImport.RunAsync(kind, format, stream, file?.Length ?? 0, dryRun,
+                    questions, clock, ids),
+                "voting" => await VotingQuestionImport.RunAsync(format, stream, file?.Length ?? 0, dryRun,
+                    votingQuestions, categories, clock, ids),
+                _ => ("bad_family", (ImportReportDto?)null)
+            };
 
             return error is not null ? Results.BadRequest(new { error }) : Results.Ok(report);
         }).DisableAntiforgery();
 
-        admin.MapGet("/questions/import/template", (string? kind, string? format) =>
+        admin.MapGet("/questions/import/template", (string? family, string? kind, string? format) =>
         {
-            var (error, template) = QuestionImportTemplates.Build(kind, format);
-            if (error is not null) return Results.BadRequest(new { error });
+            var normalizedFamily = family?.Trim().ToLowerInvariant() ?? "trivia";
+            (string? Error, byte[]? Content, string? ContentType, string? FileName) template = normalizedFamily switch
+            {
+                "trivia" => TriviaTemplate(kind, format),
+                "voting" => VotingTemplate(format),
+                _ => ("bad_family", (byte[]?)null, (string?)null, (string?)null)
+            };
+            if (template.Error is not null) return Results.BadRequest(new { error = template.Error });
 
-            return Results.File(template!.Content, template.ContentType, template.FileName);
+            return Results.File(template.Content!, template.ContentType!, template.FileName);
         });
 
         // The review queue: everything players have complained about, worst first.
@@ -381,6 +393,18 @@ public static class AdminEndpoints
 
             return Results.Ok(new MediaDto(kind.ToString().ToLowerInvariant(), $"/media/uploads/{name}"));
         }).DisableAntiforgery();
+    }
+
+    private static (string? Error, byte[]? Content, string? ContentType, string? FileName) TriviaTemplate(string? kind, string? format)
+    {
+        var (error, file) = QuestionImportTemplates.Build(kind, format);
+        return (error, file?.Content, file?.ContentType, file?.FileName);
+    }
+
+    private static (string? Error, byte[]? Content, string? ContentType, string? FileName) VotingTemplate(string? format)
+    {
+        var (error, file) = VotingQuestionImportTemplates.Build(format);
+        return (error, file?.Content, file?.ContentType, file?.FileName);
     }
 
     private static async Task<IResult> SetStatusAsync(string id, IQuestionRepository questions, bool approve)

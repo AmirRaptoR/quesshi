@@ -34,8 +34,9 @@ public sealed class VotingAdminSurfaceTests
         Assert.DoesNotContain("Difficulty", page);
         Assert.Contains("c.Id == form.CategoryId && !c.IsActive", page);
         Assert.Contains("c.IsActive || c.Id == form.CategoryId", page);
+        Assert.Contains("[\"family\"] = \"voting\"", page);
         var api = File.ReadAllText(Source("Services/AdminApi.cs"));
-        Assert.Contains("/voting/questions/import", api);
+        Assert.Contains("api/admin/questions/import?family={family}", api);
         Assert.Contains("api/admin/voting/generate", api);
         Assert.Contains("GenerateVotingRequestDto", page);
         Assert.Contains("AnswerSource", page);
@@ -44,11 +45,17 @@ public sealed class VotingAdminSurfaceTests
     }
 
     [Fact]
-    public void Voting_admin_navigation_exposes_voting_questions_and_shared_categories()
+    public void Voting_admin_navigation_exposes_one_questions_page_and_shared_categories()
     {
         var nav = File.ReadAllText(Source("Components/AdminNav.razor"));
 
-        Assert.Contains("/admin/voting/questions", nav);
+        Assert.DoesNotContain("/admin/voting/questions", nav);
+        var page = File.ReadAllText(Page("AdminQuestions.razor"));
+        Assert.Contains("@page \"/admin/questions\"", page);
+        Assert.Contains("admin.triviaFamily", page);
+        Assert.Contains("admin.votingFamily", page);
+        Assert.Contains("<Questions />", page);
+        Assert.Contains("<VotingQuestions />", page);
         Assert.Contains("/admin/categories", nav);
         Assert.DoesNotContain("/admin/voting/categories", nav);
     }

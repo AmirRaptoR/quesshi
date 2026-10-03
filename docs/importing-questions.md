@@ -1,19 +1,20 @@
 # Importing questions from CSV / JSON
 
-`/admin/questions` can bulk-import a file of questions instead of writing them one at a time. A file
-describes rows of **one `QuestionKind`** — `choice`, `sort` or `map`, chosen when the file is
-uploaded — because the columns a row needs differ by kind, and mixing them would mean columns most
-rows leave blank. Download the matching template first
-(`GET /api/admin/questions/import/template?kind=<kind>&format=<csv|json>`) rather than typing a file
-by hand.
+`/admin/questions` is the shared admin library for Trivia and Voting. Choose a family on the page
+before listing, editing or importing questions. Each upload contains one family's rows; Trivia files
+also describe one `QuestionKind` (`choice`, `sort` or `map`) because their columns differ. Download
+the matching template first
+(`GET /api/admin/questions/import/template?family=<trivia|voting>&kind=<kind>&format=<csv|json>`).
 
-Every row is bound and validated through the exact same path the single-question admin form uses
-(`QuestionSaveBinding` → `Question.Create`), so a row that would be refused by the form comes back
-with the same error code. A dry run (`dryRun=true`, the default) reports what would be accepted and
-rejected without writing anything; committing (`dryRun=false`) re-runs the same checks against
-current data and writes exactly the rows that still pass.
+Trivia templates use `family=trivia` and a `kind` value. Voting templates use `family=voting`; they do
+not use `kind`. Both families accept CSV and JSON.
 
-## Common columns, every kind
+Each family's rows keep that family's validation and repository path. A dry run (`dryRun=true`, the
+default) reports what would be accepted and rejected without writing anything; committing
+(`dryRun=false`) re-runs the same checks against current data and writes exactly the rows that still
+pass.
+
+## Trivia columns, every kind
 
 | Column | Required | Notes |
 |---|---|---|
@@ -57,6 +58,21 @@ A column irrelevant to the row's `targetShape` (`latitude` on a country row, `co
 row) is ignored, not rejected — the template's header carries all five map fields regardless of which
 shape a given row uses.
 
+## Voting
+
+Voting has no difficulty or correct-answer fields. Its template uses these columns:
+
+| Column | Required | Notes |
+|---|---|---|
+| `lang` | yes | `fa`, `en` or `nl` |
+| `categoryId` | yes | Voting category |
+| `prompt` | yes | |
+| `answerSource` | yes | `participants` or `fixed` |
+| `choice1`..`choice8` | for `fixed` | Fixed answers; participant-answer questions leave these blank |
+| `subject` / `aspect` | no | Together form the dedup key |
+| `mediaUrl` / `mediaKind` | no | Media URL and `image`, `audio` or `video` kind |
+| `status` | no | `pending` (default), `approved` or `rejected` |
+
 ## Media
 
 `mediaUrl` is a URL, exactly like the single-question form's media field — there is no
@@ -66,12 +82,11 @@ upload (`POST /api/admin/media`) to get a URL, then put that URL in the row.
 ## Deduplication
 
 A row supplying **both** `subject` and `aspect` gets a `TopicKey` — the same key the OpenRouter
-generator uses to avoid asking for a question twice. That topic is checked against every question
-already stored in the same language and against every row already accepted earlier in the same file;
-a collision with either is rejected as `duplicate_topic`. A row invalid for another reason never
-reserves its topic, so a later row with the same `subject`/`aspect` is still eligible. A row supplying
-only one of the two, or neither, is never dedup-rejected, exactly like a hand-authored or generated
-question with no topic at all.
+generator uses to avoid asking for a question twice. That topic is checked against questions already
+stored in the same family and language and against rows accepted earlier in the same file; a collision
+is rejected as `duplicate_topic`. Trivia and Voting topic keys do not collide with each other. A row
+invalid for another reason never reserves its topic, so a later row with the same `subject`/`aspect` is
+still eligible. A row supplying only one of the two, or neither, is not dedup-rejected.
 
 ## Format notes
 

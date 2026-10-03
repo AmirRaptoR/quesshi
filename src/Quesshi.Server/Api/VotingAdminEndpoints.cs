@@ -28,26 +28,6 @@ public static class VotingAdminEndpoints
                 await questions.CountAsync(filter));
         });
 
-        // Voting imports stay in this bounded context. In particular, do not add these fields to
-        // the trivia importer: voting has no level or correct answer and its choices come from a
-        // declared answer source.
-        admin.MapPost("/voting/questions/import", async (IFormFile? file, string? format,
-            IVotingQuestionRepository questions, ICategoryRepository categories,
-            IClock clock, IIdFactory ids, bool dryRun = true) =>
-        {
-            await using var stream = file?.OpenReadStream();
-            var (error, report) = await VotingQuestionImport.RunAsync(format, stream, file?.Length ?? 0,
-                dryRun, questions, categories, clock, ids);
-            return error is not null ? Results.BadRequest(new { error }) : Results.Ok(report);
-        }).DisableAntiforgery();
-
-        admin.MapGet("/voting/questions/import/template", (string? format) =>
-        {
-            var (error, template) = VotingQuestionImportTemplates.Build(format);
-            if (error is not null) return Results.BadRequest(new { error });
-            return Results.File(template!.Content, template.ContentType, template.FileName);
-        });
-
         admin.MapPost("/voting/generate", async (GenerateVotingRequestDto body,
             GenerateVotingQuestions generation) =>
         {

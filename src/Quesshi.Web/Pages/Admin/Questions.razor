@@ -1,8 +1,5 @@
-@page "/admin/questions"
 @inherits AdminPageBase
 @inject IJSRuntime Js
-
-<PageTitle>@L["admin.questions"] · @L["app.name"]</PageTitle>
 
 <AdminShell Title="@L["admin.questions"]">
     @if (_dialog == "generate")
@@ -618,7 +615,7 @@
 
     private async Task DownloadTemplateAsync()
     {
-        if (await Api.DownloadImportTemplateAsync(_import.Kind, _import.Format) is not { } file) { _error = L["common.error"]; return; }
+        if (await Api.DownloadImportTemplateAsync("trivia", _import.Kind, _import.Format) is not { } file) { _error = L["common.error"]; return; }
 
         var contentType = _import.Format == "json" ? "application/json" : "text/csv";
         await Js.InvokeVoidAsync("quesshi.download", file.FileName, contentType, Convert.ToBase64String(file.Bytes));
@@ -636,7 +633,7 @@
         // 20 MB matches the server's own cap; a larger file is refused there anyway.
         content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
 
-        _importReport = await Api.ImportQuestionsAsync(_import.Kind, _import.Format, dryRun, content);
+        _importReport = await Api.ImportQuestionsAsync("trivia", _import.Kind, _import.Format, dryRun, content);
         _importing = false;
 
         if (_importReport is null) { _error = L["common.error"]; return; }

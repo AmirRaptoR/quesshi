@@ -1,0 +1,28 @@
+@page "/admin/questions"
+@inject NavigationManager Nav
+@inject Translator L
+
+<PageTitle>@L["admin.questions"] · @L["app.name"]</PageTitle>
+
+<div class="admin-shell admin-family-switch" role="group" aria-label="@L["admin.questions"]">
+    <button type="button" class="btn @(!IsVoting ? "btn--gold" : "btn--ghost")" aria-pressed="@(!IsVoting)"
+            @onclick="() => SelectFamily(false)">@L["admin.triviaFamily"]</button>
+    <button type="button" class="btn @(IsVoting ? "btn--gold" : "btn--ghost")" aria-pressed="@IsVoting"
+            @onclick="() => SelectFamily(true)">@L["admin.votingFamily"]</button>
+</div>
+
+@if (IsVoting)
+{
+    <VotingQuestions />
+}
+else
+{
+    <Questions />
+}
+
+@code {
+    private bool IsVoting => Nav.ToAbsoluteUri(Nav.Uri).Query.Contains("family=voting", StringComparison.OrdinalIgnoreCase);
+
+    private void SelectFamily(bool voting)
+        => Nav.NavigateTo(voting ? "/admin/questions?family=voting" : "/admin/questions?family=trivia");
+}
