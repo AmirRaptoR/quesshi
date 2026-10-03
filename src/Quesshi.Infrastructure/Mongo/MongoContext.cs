@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Quesshi.Domain;
 
 namespace Quesshi.Infrastructure.Mongo;
 
@@ -30,24 +31,31 @@ public sealed class MongoContext
     public IMongoCollection<QuestionDoc> Questions => Database.GetCollection<QuestionDoc>("questions");
     public IMongoCollection<CategoryDoc> Categories => Database.GetCollection<CategoryDoc>("categories");
     public IMongoCollection<ContentSettingsDoc> ContentSettings => Database.GetCollection<ContentSettingsDoc>("content_settings");
-    public IMongoCollection<VotingQuestionDoc> VotingQuestions => Database.GetCollection<VotingQuestionDoc>("voting_questions");
     public IMongoCollection<PlayerDoc> Players => Database.GetCollection<PlayerDoc>("players");
     public IMongoCollection<MatchDoc> Matches => Database.GetCollection<MatchDoc>("matches");
     public IMongoCollection<GenerationRunDoc> GenerationRuns => Database.GetCollection<GenerationRunDoc>("generation_runs");
-    public IMongoCollection<VotingGenerationRunDoc> VotingGenerationRuns => Database.GetCollection<VotingGenerationRunDoc>("voting_generation_runs");
     public IMongoCollection<AdminUserDoc> AdminUsers => Database.GetCollection<AdminUserDoc>("admin_users");
     public IMongoCollection<AiCallDoc> AiCalls => Database.GetCollection<AiCallDoc>("ai_calls");
 
     /// <summary>Indexes the queries the app actually makes: bucket sampling, email lookup, match history.</summary>
     public async Task EnsureIndexesAsync(CancellationToken ct = default)
     {
-        await MigrateVotingCategoryFieldAsync(ct);
+        // Existing trivia rows predate the family discriminator. Populate it before creating the
+        // family-aware indexes and before repositories start querying Family == Trivia.
+        await BackfillQuestionFamilyAsync(ct);
+
+        foreach (var name in new[] { "Status_1_Lang_1_CategoryId_1_Level_1", "CategoryId_1", "Lang_1_Topic_1" })
+        {
+            try { await Questions.Indexes.DropOneAsync(name, ct); }
+            catch (MongoCommandException ex) when (ex.CodeName == "IndexNotFound") { }
+        }
 
         await Questions.Indexes.CreateManyAsync(
         [
             new CreateIndexModel<QuestionDoc>(Builders<QuestionDoc>.IndexKeys
-                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.CategoryId).Ascending(q => q.Level)),
-            new CreateIndexModel<QuestionDoc>(Builders<QuestionDoc>.IndexKeys.Ascending(q => q.CategoryId)),
+                .Ascending(q => q.Family).Ascending(q => q.Status).Ascending(q => q.Lang)
+                .Ascending(q => q.CategoryId).Ascending(q => q.Level)),
+            new CreateIndexModel<QuestionDoc>(Builders<QuestionDoc>.IndexKeys.Ascending(q => q.OwnerId)),
             new CreateIndexModel<QuestionDoc>(Builders<QuestionDoc>.IndexKeys.Descending(q => q.ReportCount)),
 
             // The same subject and aspect may exist once per language and no more — this is what
@@ -55,28 +63,11 @@ public sealed class MongoContext
             // partial on purpose: the hand-written seed bank carries no topic, and null is not a
             // value that can be unique.
             new CreateIndexModel<QuestionDoc>(
-                Builders<QuestionDoc>.IndexKeys.Ascending(q => q.Lang).Ascending(q => q.Topic),
+                Builders<QuestionDoc>.IndexKeys.Ascending(q => q.Lang).Ascending(q => q.Family).Ascending(q => q.Topic),
                 new CreateIndexOptions<QuestionDoc>
                 {
                     Unique = true,
                     PartialFilterExpression = Builders<QuestionDoc>.Filter.Type(q => q.Topic, MongoDB.Bson.BsonType.String)
-                })
-        ], ct);
-
-        await VotingQuestions.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
-                .Ascending(q => q.Status).Ascending(q => q.Lang).Ascending(q => q.CategoryId)),
-            new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
-                .Ascending(q => q.CategoryId)),
-            // A topic is unique only within a language. Null topics are intentionally left out so
-            // questions without a deduplication key can coexist.
-            new CreateIndexModel<VotingQuestionDoc>(Builders<VotingQuestionDoc>.IndexKeys
-                    .Ascending(q => q.Lang).Ascending(q => q.Topic),
-                new CreateIndexOptions<VotingQuestionDoc>
-                {
-                    Unique = true,
-                    PartialFilterExpression = Builders<VotingQuestionDoc>.Filter.Type(q => q.Topic, MongoDB.Bson.BsonType.String)
                 })
         ], ct);
 
@@ -91,10 +82,6 @@ public sealed class MongoContext
         // The spend panel only ever asks "since when", so one index on the timestamp covers it.
         await AiCalls.Indexes.CreateOneAsync(
             new CreateIndexModel<AiCallDoc>(Builders<AiCallDoc>.IndexKeys.Descending(c => c.At)), cancellationToken: ct);
-
-        await VotingGenerationRuns.Indexes.CreateOneAsync(
-            new CreateIndexModel<VotingGenerationRunDoc>(
-                Builders<VotingGenerationRunDoc>.IndexKeys.Descending(r => r.StartedAt)), cancellationToken: ct);
 
         // A one-time backfill for every row written before Participants/OwnerId existed. Unlike the
         // grain snapshots in Redis this migration also tolerates — which stay permanently dual-shaped
@@ -125,20 +112,12 @@ public sealed class MongoContext
         ], ct);
     }
 
-    /// <summary>Preserves category assignments written by the temporary VotingCategory model before
-    /// the typed repository starts querying the shared CategoryId field.</summary>
-    private async Task MigrateVotingCategoryFieldAsync(CancellationToken ct)
-    {
-        var collection = Database.GetCollection<BsonDocument>("voting_questions");
-        var legacyField = new BsonDocument("VotingCategoryId", new BsonDocument("$exists", true));
-        var update = PipelineDefinition<BsonDocument, BsonDocument>.Create(
-        [
-            new BsonDocument("$set", new BsonDocument("CategoryId",
-                new BsonDocument("$ifNull", new BsonArray { "$CategoryId", "$VotingCategoryId" }))),
-            new BsonDocument("$unset", "VotingCategoryId")
-        ]);
-        await collection.UpdateManyAsync(legacyField, update, cancellationToken: ct);
-    }
+    /// <summary>Marks pre-discriminator question rows as trivia; repeated startup calls are harmless.</summary>
+    private Task<UpdateResult> BackfillQuestionFamilyAsync(CancellationToken ct)
+        => Questions.UpdateManyAsync(
+            Builders<QuestionDoc>.Filter.Exists(q => q.Family, exists: false),
+            Builders<QuestionDoc>.Update.Set(q => q.Family, (int)QuestionFamily.Trivia),
+            cancellationToken: ct);
 
     /// <summary>
     /// Sets <see cref="MatchDoc.OwnerId"/>/<see cref="MatchDoc.Participants"/> on every row that does

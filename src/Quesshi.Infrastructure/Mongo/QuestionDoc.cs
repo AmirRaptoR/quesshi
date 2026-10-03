@@ -8,12 +8,14 @@ namespace Quesshi.Infrastructure.Mongo;
 public sealed class QuestionDoc
 {
     [BsonId] public string Id { get; set; } = "";
+    public int Family { get; set; }
+    public string? OwnerId { get; set; }
     public int Lang { get; set; }
     public string? CategoryId { get; set; }
-    public int Level { get; set; }
+    [BsonIgnoreIfNull] public int? Level { get; set; }
     public string Prompt { get; set; } = "";
     public List<string> Choices { get; set; } = [];
-    public int CorrectIndex { get; set; }
+    [BsonIgnoreIfNull] public int? CorrectIndex { get; set; }
     public int MediaKind { get; set; }
     public string MediaUrl { get; set; } = "";
     public string? MediaAttribution { get; set; }
@@ -24,6 +26,10 @@ public sealed class QuestionDoc
     public DateTime CreatedAt { get; set; }
     public int TimesServed { get; set; }
     public int TimesCorrect { get; set; }
+    public int AnswerSource { get; set; }
+    public List<string> FixedChoices { get; set; } = [];
+    public DateTime UpdatedAt { get; set; }
+    public List<string> ServedTokens { get; set; } = [];
     public List<ReportDoc> Reports { get; set; } = [];
 
     /// <summary>Denormalised so the database can sort and filter on it without unwinding the array.</summary>
@@ -56,6 +62,8 @@ public sealed class QuestionDoc
     public static QuestionDoc From(Question q) => new()
     {
         Id = q.Id,
+        Family = (int)QuestionFamily.Trivia,
+        OwnerId = q.OwnerId,
         Lang = (int)q.Lang,
         CategoryId = q.CategoryId,
         Level = (int)q.Level,
@@ -83,8 +91,12 @@ public sealed class QuestionDoc
         BaseLayer = q.BaseLayer is null ? null : (int)q.BaseLayer.Value
     };
 
-    public Question ToDomain()
+    public Question ToDomain() => ToTrivia();
+
+    public Question ToTrivia()
     {
+        if (Family != (int)QuestionFamily.Trivia)
+            throw new InvalidOperationException($"Question {Id} belongs to family {Family}, not Trivia.");
         // A legacy document -- written before sorting and map questions existed -- has no Kind
         // element at all, which deserialises to null here rather than 0. Every such row predates
         // QuestionKind entirely and so is a Choice question by definition; this coalesce says that
@@ -99,10 +111,45 @@ public sealed class QuestionDoc
             _ => null
         };
 
-        return Question.Restore(Id, (Language)Lang, CategoryId, (Difficulty)Level, Prompt, Choices,
-            CorrectIndex, new MediaRef((MediaKind)MediaKind, MediaUrl, MediaAttribution), Explanation,
+        return Question.Restore(Id, (Language)Lang, CategoryId,
+            (Difficulty)(Level ?? throw new InvalidOperationException($"Trivia question {Id} has no difficulty.")), Prompt, Choices,
+            CorrectIndex ?? throw new InvalidOperationException($"Trivia question {Id} has no correct answer."),
+            new MediaRef((MediaKind)MediaKind, MediaUrl, MediaAttribution), Explanation,
             (QuestionStatus)Status, (QuestionSource)Source, new DateTimeOffset(CreatedAt, TimeSpan.Zero), TimesServed, TimesCorrect,
             Reports.Select(r => new QuestionReport(r.PlayerId, (ReportReason)r.Reason, new DateTimeOffset(r.At, TimeSpan.Zero))),
-            Topic, kind, target, BaseLayer is null ? null : (MapBaseLayer)BaseLayer.Value);
+            Topic, kind, target, BaseLayer is null ? null : (MapBaseLayer)BaseLayer.Value, OwnerId);
+    }
+
+    public static QuestionDoc From(VotingQuestion q) => new()
+    {
+        Id = q.Id,
+        Family = (int)QuestionFamily.Voting,
+        OwnerId = q.OwnerId,
+        Lang = (int)q.Lang,
+        CategoryId = q.CategoryId,
+        Prompt = q.Prompt,
+        AnswerSource = (int)q.AnswerSource,
+        FixedChoices = [.. q.FixedChoices],
+        MediaKind = (int)q.Media.Kind,
+        MediaUrl = q.Media.Url,
+        MediaAttribution = q.Media.Attribution,
+        Topic = q.Topic,
+        Status = (int)q.Status,
+        Source = (int)q.Source,
+        CreatedAt = q.CreatedAt.UtcDateTime,
+        UpdatedAt = q.UpdatedAt.UtcDateTime,
+        TimesServed = q.TimesServed,
+        ServedTokens = []
+    };
+
+    public VotingQuestion ToVoting()
+    {
+        if (Family != (int)QuestionFamily.Voting)
+            throw new InvalidOperationException($"Question {Id} belongs to family {Family}, not Voting.");
+        return VotingQuestion.Restore(Id, (Language)Lang, CategoryId, Prompt, (VotingAnswerSource)AnswerSource,
+            FixedChoices, new MediaRef((MediaKind)MediaKind, MediaUrl, MediaAttribution),
+            (QuestionStatus)Status, (QuestionSource)Source, Topic,
+            new DateTimeOffset(CreatedAt, TimeSpan.Zero), new DateTimeOffset(UpdatedAt, TimeSpan.Zero), TimesServed,
+            OwnerId);
     }
 }

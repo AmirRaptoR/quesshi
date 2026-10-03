@@ -8,13 +8,14 @@ namespace Quesshi.Infrastructure.Mongo;
 public sealed class MongoQuestionRepository(MongoContext db) : IQuestionRepository
 {
     private static readonly FilterDefinitionBuilder<QuestionDoc> F = Builders<QuestionDoc>.Filter;
+    private static FilterDefinition<QuestionDoc> Trivia => F.Eq(q => q.Family, (int)QuestionFamily.Trivia);
 
     public async Task<Question?> GetAsync(string id, CancellationToken ct = default)
-        => (await db.Questions.Find(q => q.Id == id).FirstOrDefaultAsync(ct))?.ToDomain();
+        => (await db.Questions.Find(F.Eq(q => q.Id, id) & Trivia).FirstOrDefaultAsync(ct))?.ToTrivia();
 
     public async Task<IReadOnlyList<Question>> GetManyAsync(IReadOnlyList<string> ids, CancellationToken ct = default)
     {
-        var docs = await db.Questions.Find(F.In(q => q.Id, ids)).ToListAsync(ct);
+        var docs = await db.Questions.Find(F.In(q => q.Id, ids) & Trivia).ToListAsync(ct);
 
         // Preserve the caller's order: a match's question order is part of its fairness contract.
         var byId = docs.ToDictionary(d => d.Id);
@@ -23,7 +24,7 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
 
     public async Task<IReadOnlyList<Question>> FindAsync(QuestionFilter filter, CancellationToken ct = default)
     {
-        var find = db.Questions.Find(Build(filter));
+        var find = db.Questions.Find(Trivia & Build(filter));
 
         // When looking at complaints, the worst offenders belong at the top. Otherwise the machine's
         // output leads: QuestionSource runs Seed(0) < Ai(1) < Admin(2), so descending floats
@@ -36,12 +37,12 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
     }
 
     public Task<long> CountAsync(QuestionFilter filter, CancellationToken ct = default)
-        => db.Questions.CountDocumentsAsync(Build(filter), cancellationToken: ct);
+        => db.Questions.CountDocumentsAsync(Trivia & Build(filter), cancellationToken: ct);
 
     public async Task<IReadOnlyList<Question>> SampleApprovedAsync(Language lang, string? categoryId, Difficulty level,
         int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
     {
-        var filter = F.Eq(q => q.Status, (int)QuestionStatus.Approved)
+        var filter = Trivia & F.Eq(q => q.OwnerId, null) & F.Eq(q => q.Status, (int)QuestionStatus.Approved)
                    & F.Eq(q => q.Lang, (int)lang)
                    & F.Eq(q => q.Level, (int)level)
                    & F.Nin(q => q.Id, exclude);
@@ -55,9 +56,10 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
         Difficulty? level, int count, IReadOnlyCollection<string> exclude, CancellationToken ct = default)
     {
         if (scope.CategoryIds is { Count: 0 }) return [];
-        var filter = F.Eq(q => q.Status, (int)QuestionStatus.Approved)
+        var filter = Trivia & F.Eq(q => q.Status, (int)QuestionStatus.Approved)
             & F.Eq(q => q.Lang, (int)lang) & F.Nin(q => q.Id, exclude);
         if (scope.CategoryIds is { } categories) filter &= F.In(q => q.CategoryId, categories);
+        filter &= scope.OwnerId is null ? F.Eq(q => q.OwnerId, null) : F.Eq(q => q.OwnerId, scope.OwnerId);
         if (level is { } difficulty) filter &= F.Eq(q => q.Level, (int)difficulty);
         var docs = await db.Questions.Aggregate().Match(filter).Sample(count).ToListAsync(ct);
         return [.. docs.Select(d => d.ToDomain())];
@@ -70,19 +72,20 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
         // ToDomain -- the field was never written -- and it has to be resolved to Choice in the
         // projection itself, or every pre-existing question groups under a null key that no caller
         // asked for and 3067 real Choice questions silently vanish from that bucket's count.
-        var docs = await db.Questions.Find(F.Empty)
+        var docs = await db.Questions.Find(Trivia)
             .Project(q => new { q.Lang, q.CategoryId, q.Level, q.Status, Kind = q.Kind ?? (int)QuestionKind.Choice })
             .ToListAsync(ct);
 
         return [.. docs.GroupBy(d => (d.Lang, d.CategoryId, d.Level, d.Kind))
-            .Select(g => new BucketCount((Language)g.Key.Lang, g.Key.CategoryId, (Difficulty)g.Key.Level,
+            .Select(g => new BucketCount((Language)g.Key.Lang, g.Key.CategoryId,
+                (Difficulty)(g.Key.Level ?? throw new InvalidOperationException("Trivia question has no difficulty.")),
                 g.Count(x => x.Status == (int)QuestionStatus.Approved),
                 g.Count(x => x.Status == (int)QuestionStatus.Pending),
                 (QuestionKind)g.Key.Kind))];
     }
 
     public Task UpsertAsync(Question question, CancellationToken ct = default)
-        => db.Questions.ReplaceOneAsync(q => q.Id == question.Id, QuestionDoc.From(question),
+        => db.Questions.ReplaceOneAsync(F.Eq(q => q.Id, question.Id) & Trivia, QuestionDoc.From(question),
             new ReplaceOptions { IsUpsert = true }, ct);
 
     public async Task<int> UpsertManyAsync(IReadOnlyList<Question> questions, CancellationToken ct = default)
@@ -90,7 +93,7 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
         if (questions.Count == 0) return 0;
 
         var writes = questions.Select(q =>
-            new ReplaceOneModel<QuestionDoc>(F.Eq(d => d.Id, q.Id), QuestionDoc.From(q)) { IsUpsert = true });
+            new ReplaceOneModel<QuestionDoc>(F.Eq(d => d.Id, q.Id) & Trivia, QuestionDoc.From(q)) { IsUpsert = true });
 
         try
         {
@@ -109,27 +112,27 @@ public sealed class MongoQuestionRepository(MongoContext db) : IQuestionReposito
     }
 
     public Task DeleteAsync(string id, CancellationToken ct = default)
-        => db.Questions.DeleteOneAsync(q => q.Id == id, ct);
+        => db.Questions.DeleteOneAsync(F.Eq(q => q.Id, id) & Trivia, ct);
 
     public async Task<IReadOnlyCollection<(string Prompt, string Answer)>> ExistingQuestionsAsync(string categoryId, CancellationToken ct = default)
     {
-        var docs = await db.Questions.Find(q => q.CategoryId == categoryId)
+        var docs = await db.Questions.Find(Trivia & F.Eq(q => q.CategoryId, categoryId))
             .Project(q => new { q.Prompt, q.Choices, q.CorrectIndex }).ToListAsync(ct);
 
         return [.. docs.Select(d => (d.Prompt,
-            d.CorrectIndex >= 0 && d.CorrectIndex < d.Choices.Count ? d.Choices[d.CorrectIndex] : ""))];
+            d.CorrectIndex is { } correct && correct >= 0 && correct < d.Choices.Count ? d.Choices[correct] : ""))];
     }
 
     public async Task<IReadOnlySet<string>> ExistingTopicsAsync(Language lang, CancellationToken ct = default)
     {
-        var filter = F.Eq(q => q.Lang, (int)lang) & F.Type(q => q.Topic, BsonType.String);
+        var filter = Trivia & F.Eq(q => q.Lang, (int)lang) & F.Type(q => q.Topic, BsonType.String);
         var topics = await db.Questions.Distinct(q => q.Topic, filter, cancellationToken: ct).ToListAsync(ct);
         return topics.Where(t => t is not null).Select(t => t!).ToHashSet();
     }
 
     private static FilterDefinition<QuestionDoc> Build(QuestionFilter f)
     {
-        var filter = F.Empty;
+        var filter = Trivia;
         if (f.Lang is { } lang) filter &= F.Eq(q => q.Lang, (int)lang);
         if (f.CategoryId is { } cat) filter &= F.Eq(q => q.CategoryId, cat);
         if (f.Level is { } level) filter &= F.Eq(q => q.Level, (int)level);

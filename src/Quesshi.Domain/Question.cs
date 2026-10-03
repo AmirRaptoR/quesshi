@@ -27,7 +27,7 @@ public sealed class Question
     private readonly List<QuestionReport> _reports = [];
 
     private Question(string id, Language lang, string? categoryId, Difficulty level, string prompt,
-        IReadOnlyList<string> choices, int correctIndex, MediaRef media, DateTimeOffset createdAt)
+        IReadOnlyList<string> choices, int correctIndex, MediaRef media, DateTimeOffset createdAt, string? ownerId)
     {
         Id = id;
         Lang = lang;
@@ -38,6 +38,7 @@ public sealed class Question
         CorrectIndex = correctIndex;
         Media = media;
         CreatedAt = createdAt;
+        OwnerId = ownerId;
     }
 
     public string Id { get; }
@@ -75,6 +76,7 @@ public sealed class Question
     public string? Topic { get; private set; }
     public QuestionStatus Status { get; private set; } = QuestionStatus.Pending;
     public QuestionSource Source { get; private set; } = QuestionSource.Ai;
+    public string? OwnerId { get; private set; }
     public DateTimeOffset CreatedAt { get; }
     public int TimesServed { get; private set; }
     public int TimesCorrect { get; private set; }
@@ -94,11 +96,12 @@ public sealed class Question
         MediaRef? media = null, string? explanation = null,
         QuestionSource source = QuestionSource.Ai, QuestionStatus status = QuestionStatus.Pending,
         string? topic = null, QuestionKind kind = QuestionKind.Choice, MapTarget? target = null,
-        MapBaseLayer? baseLayer = null, IReadOnlySet<string>? knownCountryCodes = null)
+        MapBaseLayer? baseLayer = null, IReadOnlySet<string>? knownCountryCodes = null, string? ownerId = null)
     {
+        ValidateOwnership(source, ownerId);
         Validate(prompt, choices, correctIndex, kind, target, baseLayer, knownCountryCodes);
         return new Question(id, lang, categoryId, level, prompt.Trim(), [.. choices.Select(c => c.Trim())], correctIndex,
-            media ?? MediaRef.None, now)
+            media ?? MediaRef.None, now, ownerId)
         {
             Explanation = explanation,
             Source = source,
@@ -115,9 +118,11 @@ public sealed class Question
         IReadOnlyList<string> choices, int correctIndex, MediaRef media, string? explanation,
         QuestionStatus status, QuestionSource source, DateTimeOffset createdAt, int timesServed, int timesCorrect,
         IEnumerable<QuestionReport>? reports = null, string? topic = null,
-        QuestionKind kind = QuestionKind.Choice, MapTarget? target = null, MapBaseLayer? baseLayer = null)
+        QuestionKind kind = QuestionKind.Choice, MapTarget? target = null, MapBaseLayer? baseLayer = null,
+        string? ownerId = null)
     {
-        var question = new Question(id, lang, categoryId, level, prompt, choices, correctIndex, media, createdAt)
+        ValidateOwnership(source, ownerId);
+        var question = new Question(id, lang, categoryId, level, prompt, choices, correctIndex, media, createdAt, ownerId)
         {
             Explanation = explanation,
             Topic = topic,
@@ -132,6 +137,12 @@ public sealed class Question
 
         if (reports is not null) question._reports.AddRange(reports);
         return question;
+    }
+
+    internal static void ValidateOwnership(QuestionSource source, string? ownerId)
+    {
+        if ((source == QuestionSource.Player) != (ownerId is not null))
+            throw new ArgumentException("Player-authored questions require an owner; public questions require a non-player source.", nameof(ownerId));
     }
 
     /// <summary>

@@ -42,6 +42,7 @@ public class MongoQuestionKindTests
     private static BsonDocument LegacyChoiceDoc(string id, string categoryId, QuestionStatus status) => new()
     {
         ["_id"] = id,
+        ["Family"] = (int)QuestionFamily.Trivia,
         ["Lang"] = (int)Language.En,
         ["CategoryId"] = categoryId,
         ["Level"] = (int)Difficulty.Easy,

@@ -73,7 +73,7 @@ public sealed class VotingMongoTests
     }
 
     [Fact]
-    public void Voting_question_document_round_trips_both_answer_sources_and_all_store_fields()
+    public void Shared_question_document_round_trips_voting_fields_and_rejects_wrong_family()
     {
         var created = new DateTimeOffset(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);
         var updated = created.AddHours(4);
@@ -84,9 +84,15 @@ public sealed class VotingMongoTests
             VotingAnswerSource.Fixed, [" first ", "second"], new MediaRef(MediaKind.Audio, "u"),
             QuestionStatus.Rejected, QuestionSource.Admin, null, created, updated, 3);
 
-        var restoredParticipants = VotingQuestionDoc.From(participants).ToDomain();
-        var restoredFixed = VotingQuestionDoc.From(fixedQuestion).ToDomain();
+        var participantsDoc = QuestionDoc.From(participants);
+        var fixedDoc = QuestionDoc.From(fixedQuestion);
+        var restoredParticipants = participantsDoc.ToVoting();
+        var restoredFixed = fixedDoc.ToVoting();
 
+        Assert.Equal((int)QuestionFamily.Voting, participantsDoc.Family);
+        var persistedVoting = participantsDoc.ToBsonDocument();
+        Assert.False(persistedVoting.Contains("Level"));
+        Assert.False(persistedVoting.Contains("CorrectIndex"));
         Assert.Equal(participants.Id, restoredParticipants.Id);
         Assert.Equal(participants.Lang, restoredParticipants.Lang);
         Assert.Equal(participants.CategoryId, restoredParticipants.CategoryId);
@@ -113,32 +119,63 @@ public sealed class VotingMongoTests
         Assert.Equal(fixedQuestion.CreatedAt, restoredFixed.CreatedAt);
         Assert.Equal(fixedQuestion.UpdatedAt, restoredFixed.UpdatedAt);
         Assert.Equal(fixedQuestion.TimesServed, restoredFixed.TimesServed);
+        Assert.Throws<InvalidOperationException>(() => participantsDoc.ToTrivia());
+        Assert.Throws<InvalidOperationException>(() => QuestionDoc.From(
+            Question.Create("trivia-choice", Language.En, "geo", Difficulty.Easy, "which?", ["a", "b", "c", "d"], 0, created)).ToVoting());
     }
 
     [Fact]
-    public async Task Mongo_migrates_legacy_voting_category_field_before_typed_reads()
+    public async Task Ensure_indexes_backfills_legacy_trivia_before_family_scoped_repository_operations()
     {
         var client = await TryConnectAsync();
         if (client is null) return;
-        var dbName = $"qs_vm_{Guid.NewGuid():N}";
+
+        var dbName = $"quesshi_test_{Guid.NewGuid():N}";
         try
         {
             var context = new MongoContext(new MongoOptions { ConnectionString = ConnectionString, Database = dbName });
-            var question = VotingQuestion.Create("legacy-category", Language.En, "m-friends", "Who?",
-                VotingAnswerSource.Participants, null, DateTimeOffset.UtcNow);
-            var legacy = VotingQuestionDoc.From(question).ToBsonDocument();
-            legacy.Remove("CategoryId");
-            legacy["VotingCategoryId"] = "m-friends";
-            await client.GetDatabase(dbName).GetCollection<BsonDocument>("voting_questions").InsertOneAsync(legacy);
+            await context.EnsureIndexesAsync();
+            var legacy = new BsonDocument
+            {
+                ["_id"] = "legacy-trivia",
+                ["Lang"] = (int)Language.En,
+                ["CategoryId"] = "legacy-category",
+                ["Level"] = (int)Difficulty.Easy,
+                ["Prompt"] = "Legacy trivia question",
+                ["Choices"] = new BsonArray(["a", "b", "c", "d"]),
+                ["CorrectIndex"] = 0,
+                ["MediaKind"] = (int)MediaKind.None,
+                ["MediaUrl"] = "",
+                ["Status"] = (int)QuestionStatus.Approved,
+                ["Source"] = (int)QuestionSource.Seed,
+                ["CreatedAt"] = DateTime.UtcNow,
+                ["TimesServed"] = 0,
+                ["TimesCorrect"] = 0,
+                ["AnswerSource"] = 0,
+                ["FixedChoices"] = new BsonArray(),
+                ["UpdatedAt"] = DateTime.UtcNow,
+                ["ServedTokens"] = new BsonArray(),
+                ["Reports"] = new BsonArray(),
+                ["ReportCount"] = 0
+            };
+            var rawQuestions = client.GetDatabase(dbName).GetCollection<BsonDocument>("questions");
+            await rawQuestions.InsertOneAsync(legacy);
 
             await context.EnsureIndexesAsync();
 
-            var restored = await new MongoVotingQuestionRepository(context).GetAsync("legacy-category");
-            var stored = await client.GetDatabase(dbName).GetCollection<BsonDocument>("voting_questions")
-                .Find(new BsonDocument("_id", "legacy-category")).SingleAsync();
-            Assert.Equal("m-friends", restored!.CategoryId);
-            Assert.Equal("m-friends", stored["CategoryId"].AsString);
-            Assert.False(stored.Contains("VotingCategoryId"));
+            var repository = new MongoQuestionRepository(context);
+            Assert.Equal((int)QuestionFamily.Trivia,
+                (await rawQuestions.Find(new BsonDocument("_id", "legacy-trivia")).SingleAsync())["Family"].AsInt32);
+            Assert.Equal("legacy-trivia", (await repository.GetAsync("legacy-trivia"))!.Id);
+            Assert.Contains(await repository.SampleApprovedAsync(Language.En, ContentScope.All, Difficulty.Easy, 1, []),
+                q => q.Id == "legacy-trivia");
+
+            var edited = Question.Create("legacy-trivia", Language.En, "legacy-category", Difficulty.Easy,
+                "Edited legacy trivia", ["a", "b", "c", "d"], 0, DateTimeOffset.UtcNow,
+                status: QuestionStatus.Approved);
+            await repository.UpsertAsync(edited);
+            Assert.Equal("Edited legacy trivia", (await repository.GetAsync("legacy-trivia"))!.Prompt);
+            Assert.Equal(1, await repository.CountAsync(new QuestionFilter(Lang: Language.En)));
         }
         finally
         {
@@ -157,6 +194,15 @@ public sealed class VotingMongoTests
         {
             var context = new MongoContext(new MongoOptions { ConnectionString = ConnectionString, Database = dbName });
             await context.EnsureIndexesAsync();
+            var questionIndexes = await context.Questions.Indexes.ListAsync();
+            var indexNames = (await questionIndexes.ToListAsync()).Select(index => index["name"].AsString).ToArray();
+            Assert.Contains("Family_1_Status_1_Lang_1_CategoryId_1_Level_1", indexNames);
+            Assert.Contains("OwnerId_1", indexNames);
+            Assert.Contains("ReportCount_-1", indexNames);
+            Assert.Contains("Lang_1_Family_1_Topic_1", indexNames);
+            Assert.DoesNotContain("Lang_1_Topic_1", indexNames);
+            Assert.DoesNotContain("CategoryId_1", indexNames);
+            Assert.DoesNotContain("Status_1_Lang_1_CategoryId_1_Level_1", indexNames);
             var categories = new MongoCategoryRepository(context);
             await categories.UpsertAsync(new Category("m-friends", "دوستان", "Friends", "people", "blue"));
             var repository = new MongoVotingQuestionRepository(context);
@@ -231,6 +277,15 @@ public sealed class VotingMongoTests
             Assert.Equal(["Another", "Edited friend", "Empty topic", "Other", "Rejected friend"],
                 (await repository.ExistingPromptsAsync(Language.En, "m-friends")).Order());
 
+            var ownedVoting = VotingQuestion.Create("owned-voting", Language.En, "m-friends", "Owner question",
+                VotingAnswerSource.Participants, null, now, source: QuestionSource.Player,
+                status: QuestionStatus.Approved, ownerId: "player-1");
+            await repository.UpsertAsync(ownedVoting);
+            Assert.DoesNotContain("owned-voting", (await repository.SampleApprovedAsync(Language.En, ContentScope.All, 100, []))
+                .Select(q => q.Id));
+            Assert.Equal(["owned-voting"], (await repository.SampleApprovedAsync(Language.En,
+                new ContentScope(null, "player-1"), 10, [])).Select(q => q.Id));
+
             var uncategorized = VotingQuestion.Create("m-uncategorized", Language.En, null, "Uncategorized prompt",
                 VotingAnswerSource.Participants, null, now, status: QuestionStatus.Approved);
             await repository.UpsertAsync(uncategorized);
@@ -242,6 +297,8 @@ public sealed class VotingMongoTests
             var collectionNames = await client.GetDatabase(dbName).ListCollectionNames().ToListAsync();
             Assert.Contains("categories", collectionNames);
             Assert.DoesNotContain("voting_categories", collectionNames);
+            Assert.Contains("questions", collectionNames);
+            Assert.DoesNotContain("voting_questions", collectionNames);
             Assert.Equal("Friends", (await categories.GetAsync("m-friends"))!.NameEn);
 
             var batchInsert = VotingQuestion.Create("m10", Language.En, "m-friends", "Batch row",
@@ -256,6 +313,14 @@ public sealed class VotingMongoTests
                 "Uncategorized trivia", ["a", "b", "c", "d"], 0, now, status: QuestionStatus.Approved);
             await triviaRepository.UpsertAsync(trivia);
             await triviaRepository.UpsertAsync(uncategorizedTrivia);
+            var sameTopicTrivia = Question.Create("same-topic-trivia-two", Language.En, "general", Difficulty.Easy,
+                "Second trivia", ["a", "b", "c", "d"], 0, now, topic: "people/friends");
+            await triviaRepository.UpsertAsync(sameTopicTrivia);
+            Assert.Null(await triviaRepository.GetAsync("m1"));
+            Assert.Null(await repository.GetAsync(trivia.Id));
+            var duplicateTriviaTopic = Question.Create("duplicate-trivia-topic", Language.En, "general", Difficulty.Easy,
+                "Duplicate trivia", ["a", "b", "c", "d"], 0, now, topic: "people/friends");
+            await Assert.ThrowsAsync<MongoWriteException>(() => triviaRepository.UpsertAsync(duplicateTriviaTopic));
             Assert.Null((await triviaRepository.GetAsync(uncategorizedTrivia.Id))!.CategoryId);
             Assert.Empty(await triviaRepository.SampleApprovedAsync(Language.En, new ContentScope([]), Difficulty.Easy, 10, []));
             var triviaAll = await triviaRepository.SampleApprovedAsync(Language.En, ContentScope.All, Difficulty.Easy, 10, []);
@@ -264,6 +329,14 @@ public sealed class VotingMongoTests
             var triviaCategory = await triviaRepository.SampleApprovedAsync(Language.En, new ContentScope(["general"]), Difficulty.Easy, 10, []);
             Assert.All(triviaCategory, q => Assert.Equal("general", q.CategoryId));
             Assert.DoesNotContain("people/trivia", await repository.ExistingTopicsAsync(Language.En));
+            var ownedTrivia = Question.Create("owned-trivia", Language.En, "general", Difficulty.Easy,
+                "Owner trivia", ["a", "b", "c", "d"], 0, now, source: QuestionSource.Player,
+                status: QuestionStatus.Approved, ownerId: "player-1");
+            await triviaRepository.UpsertAsync(ownedTrivia);
+            Assert.DoesNotContain("owned-trivia", (await triviaRepository.SampleApprovedAsync(Language.En,
+                ContentScope.All, Difficulty.Easy, 100, [])).Select(q => q.Id));
+            Assert.Equal(["owned-trivia"], (await triviaRepository.SampleApprovedAsync(Language.En,
+                new ContentScope(["general"], "player-1"), Difficulty.Easy, 10, [])).Select(q => q.Id));
 
             var generationLog = new MongoVotingGenerationLog(context);
             var generationNow = new DateTimeOffset(
@@ -272,6 +345,18 @@ public sealed class VotingMongoTests
                 "m-friends", VotingAnswerSource.Participants, 5, 4, 1, null);
             await generationLog.SaveAsync(generation);
             Assert.Equal(generation, Assert.Single(await generationLog.RecentAsync(10)));
+
+            var triviaLog = new MongoGenerationLog(context);
+            var triviaRun = new GenerationRun("trivia-run", generationNow, generationNow.AddSeconds(1), 3, 2, 1, null);
+            await triviaLog.SaveAsync(triviaRun);
+            Assert.Equal(triviaRun, Assert.Single(await triviaLog.RecentAsync(10)));
+            Assert.Equal(QuestionFamily.Trivia, triviaRun.Family);
+            Assert.Equal(QuestionFamily.Voting, generation.Family);
+            var generationRows = await client.GetDatabase(dbName).GetCollection<BsonDocument>("generation_runs")
+                .Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+            Assert.Equal(2, generationRows.Count);
+            Assert.Contains(generationRows, row => row["Family"].AsInt32 == (int)QuestionFamily.Trivia);
+            Assert.Contains(generationRows, row => row["Family"].AsInt32 == (int)QuestionFamily.Voting);
         }
         finally
         {
