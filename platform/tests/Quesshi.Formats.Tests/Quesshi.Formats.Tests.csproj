@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup><ProjectReference Include="../../src/Quesshi.Formats/Quesshi.Formats.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Quesshi.Formats/Quesshi.Formats.csproj" />
+    <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
+  </ItemGroup>
   <Import Project="../TestProject.props" />
 </Project>

@@ -1,53 +1,61 @@
-using System.Diagnostics;
+using Quesshi.Testing;
 
 namespace Quesshi.Kinds.Tests;
 
 public sealed class BannedApiGuardTests
 {
     [Fact]
-    public async Task UtcNow_and_NewGuid_are_compile_errors()
+    public async Task UtcNow_and_NewGuid_are_reported_as_banned_apis()
     {
-        var exitCode = await BannedApiCompileProbe.RunAsync("Quesshi.Kinds");
-
-        Assert.NotEqual(0, exitCode);
-    }
-}
-
-public static class BannedApiCompileProbe
-{
-    public static async Task<int> RunAsync(string projectName)
-    {
-        var platform = FindPlatformDirectory();
-        var probe = Path.Combine(Path.GetTempPath(), $"quesshi-{Guid.NewGuid():N}.cs");
-        await File.WriteAllTextAsync(probe, "public sealed class Probe { public System.DateTime Clock() => System.DateTime.UtcNow; public System.Guid Id() => System.Guid.NewGuid(); }");
-
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo("dotnet")
-            {
-                WorkingDirectory = platform,
-                UseShellExecute = false,
-                ArgumentList = { "build", $"src/{projectName}/{projectName}.csproj", "--no-restore", $"-p:QuesshiBannedApiProbe={probe}" }
-            })!;
-            await process.WaitForExitAsync();
-            return process.ExitCode;
-        }
-        finally
-        {
-            File.Delete(probe);
-        }
+        await AssertRejectedAsync("public sealed class Probe { public System.DateTime Clock() => System.DateTime.UtcNow; }", "QUESSHI002", "DateTime.UtcNow");
+        await AssertRejectedAsync("public sealed class Probe { public System.Guid Id() => System.Guid.NewGuid(); }", "QUESSHI002", "Guid.NewGuid");
     }
 
-    private static string FindPlatformDirectory()
+    [Fact]
+    public async Task Namespace_wide_network_file_system_and_reflection_emit_bans_are_compile_errors()
     {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Quesshi.Platform.slnx")))
-            {
-                return directory.FullName;
-            }
-        }
+        await AssertRejectedAsync("public sealed class Probe { public string Host() => System.Net.Dns.GetHostName(); }", "QUESSHI001", "System.Net");
+        await AssertRejectedAsync("public sealed class Probe { public object Client() => new System.Net.Http.HttpClient(); }", "QUESSHI001", "System.Net");
+        await AssertRejectedAsync("public sealed class Probe { public object Client() => new System.Net.Sockets.TcpClient(); }", "QUESSHI001", "System.Net");
+        await AssertRejectedAsync("public sealed class Probe { public string[] Files() => System.IO.Directory.GetFiles(\".\"); }", "QUESSHI001", "System.IO");
+        await AssertRejectedAsync("public sealed class Probe { public object Stream() => new System.IO.FileStream(\"file\", System.IO.FileMode.Open); }", "QUESSHI001", "System.IO");
+        await AssertRejectedAsync("public sealed class Probe { public object Emit() => new System.Reflection.Emit.DynamicMethod(\"method\", typeof(void), System.Type.EmptyTypes); }", "QUESSHI001", "System.Reflection.Emit");
+    }
 
-        throw new DirectoryNotFoundException("Could not find the platform solution.");
+    [Fact]
+    public void Banned_api_policy_covers_every_category_and_the_project_cannot_reference_Npgsql()
+    {
+        AssertPolicyIsComplete();
+
+        var project = File.ReadAllText(Path.Combine(BannedApiCompileProbe.FindPlatformDirectory(), "src", "Quesshi.Kinds", "Quesshi.Kinds.csproj"));
+        Assert.DoesNotContain("Npgsql", project, StringComparison.Ordinal);
+        Assert.DoesNotContain(typeof(Quesshi.Kinds.KindsMarker).Assembly.GetReferencedAssemblies(), reference => reference.Name == "Npgsql");
+    }
+
+    private static async Task AssertRejectedAsync(string source, string diagnosticId, string expectedSymbol)
+    {
+        var result = await BannedApiCompileProbe.RunAsync(source);
+
+        Assert.Contains(result.Diagnostics, diagnostic =>
+            diagnostic.Id == diagnosticId && diagnostic.GetMessage().Contains(expectedSymbol, StringComparison.Ordinal));
+    }
+
+    private static void AssertPolicyIsComplete()
+    {
+        var platform = BannedApiCompileProbe.FindPlatformDirectory();
+        var symbols = File.ReadAllText(Path.Combine(platform, "BannedSymbols.txt"));
+        var namespaces = File.ReadAllText(Path.Combine(platform, "PluginBannedNamespaces.txt"));
+
+        Assert.All(
+            new[]
+            {
+                "P:System.Random.Shared", "P:System.DateTime.Now", "P:System.DateTime.UtcNow",
+                "P:System.DateTimeOffset.Now", "P:System.DateTimeOffset.UtcNow", "M:System.Guid.NewGuid",
+                "M:System.Reflection.Assembly.Load(System.String)"
+            },
+            symbol => Assert.Contains(symbol, symbols, StringComparison.Ordinal));
+        Assert.All(
+            new[] { "System.Net;", "System.IO;", "System.Reflection.Emit;", "Npgsql;" },
+            @namespace => Assert.Contains(@namespace, namespaces, StringComparison.Ordinal));
     }
 }

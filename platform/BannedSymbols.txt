@@ -5,8 +5,9 @@ P:System.DateTime.UtcNow; Use a value supplied by the caller.
 P:System.DateTimeOffset.Now; Use a value supplied by the caller.
 P:System.DateTimeOffset.UtcNow; Use a value supplied by the caller.
 M:System.Guid.NewGuid; Use an identifier supplied by the caller.
-N:System.Net; Network APIs are not available to plugins.
-T:System.IO.File; File-system APIs are not available to plugins.
+# Namespace-wide network, file-system, reflection-emit, and database bans are configured in
+# PluginBannedNamespaces.txt and enforced by the Quesshi.PluginGuards analyzer. Banned API
+# analyzer namespace entries do not report usages, so those rules live in the namespace policy.
 M:System.Reflection.Assembly.Load(System.String); Dynamic assembly loading is not available to plugins.
 M:System.Reflection.Assembly.Load(System.Byte[]); Dynamic assembly loading is not available to plugins.
 M:System.Reflection.Assembly.Load(System.Byte[],System.Byte[]); Dynamic assembly loading is not available to plugins.
@@ -17,4 +18,3 @@ M:System.Reflection.Assembly.LoadFile(System.String); Dynamic assembly loading i
 M:System.Reflection.Assembly.LoadModule(System.String,System.Byte[]); Dynamic assembly loading is not available to plugins.
 M:System.Reflection.Assembly.LoadModule(System.String,System.Byte[],System.Byte[]); Dynamic assembly loading is not available to plugins.
 M:System.Reflection.Assembly.LoadWithPartialName(System.String); Dynamic assembly loading is not available to plugins.
-N:Npgsql; Database APIs are not available to plugins.

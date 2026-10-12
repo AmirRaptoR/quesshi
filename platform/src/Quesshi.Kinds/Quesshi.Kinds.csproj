@@ -1,10 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+    <ProjectReference Include="../../build/Quesshi.PluginGuards/Quesshi.PluginGuards.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4" PrivateAssets="all" />
     <AdditionalFiles Include="../../BannedSymbols.txt" Link="BannedSymbols.txt" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(QuesshiBannedApiProbe)' != ''">
-    <Compile Include="$(QuesshiBannedApiProbe)" Link="BannedApiProbe.cs" />
+    <AdditionalFiles Include="../../PluginBannedNamespaces.txt" Link="PluginBannedNamespaces.txt" />
   </ItemGroup>
 </Project>
