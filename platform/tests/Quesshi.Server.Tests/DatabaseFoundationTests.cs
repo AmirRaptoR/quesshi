@@ -93,13 +93,55 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
 
         var delayed = Script("20261012T1225_core_concurrent", "select pg_sleep(1); create table runner_concurrent (id integer primary key);");
         var concurrentScripts = scripts.Append(delayed).ToArray();
-        var clock = Stopwatch.StartNew();
+        await using var admin = new NpgsqlConnection(fixture.ConnectionString);
+        await admin.OpenAsync();
         var first = RunAsync(concurrentScripts);
-        await Task.Delay(100);
+        await WaitUntilAsync(
+            () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and state = 'active' and query like '%pg_sleep(1)%')"),
+            "the first migration run did not begin its delayed migration");
         var second = RunAsync(concurrentScripts);
+        await WaitUntilAsync(
+            () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and wait_event_type = 'Lock' and wait_event = 'advisory')"),
+            "the second migration run did not wait for the advisory lock");
         await Task.WhenAll(first, second);
-        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(800));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261012T1225_core_concurrent.sql'"));
+
+        await ExecuteAsync(admin, "create schema runner_shadow");
+        await ExecuteAsync(admin, "create table runner_shadow.schema_migrations (name text primary key, owner text not null, checksum text not null, applied_at timestamptz not null default now())");
+        await ExecuteAsync(admin, "grant usage, create on schema runner_shadow to quesshi_owner");
+        await ExecuteAsync(admin, "grant select, insert on runner_shadow.schema_migrations to quesshi_owner");
+        foreach (var script in concurrentScripts)
+        {
+            await RecordMigrationAsync(admin, "runner_shadow.schema_migrations", script);
+        }
+
+        var pathMigration = Script("20261012T1230_core_search_path", "create table runner_public_path (id integer primary key);");
+        await using (var customPath = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(fixture.ConnectionStringForRole("quesshi_owner"))
+        {
+            SearchPath = "runner_shadow, public"
+        }.ConnectionString))
+        {
+            await customPath.OpenAsync();
+            await new MigrationRunner(concurrentScripts.Append(pathMigration)).RunAsync(customPath);
+        }
+        Assert.True(await ScalarAsync<bool>(admin, "select to_regclass('public.runner_public_path') is not null"));
+        Assert.Equal(1L, await ScalarAsync<long>(admin, "select count(*) from public.schema_migrations where name = '20261012T1230_core_search_path.sql'"));
+        Assert.Equal(0L, await ScalarAsync<long>(admin, "select count(*) from runner_shadow.schema_migrations where name = '20261012T1230_core_search_path.sql'"));
+
+        var cancellationMigration = Script("20261012T1235_core_cancellation", "select pg_sleep(5);");
+        await using var callerConnection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await callerConnection.OpenAsync();
+        using var cancellation = new CancellationTokenSource();
+        var cancelledRun = new MigrationRunner(concurrentScripts.Append(pathMigration).Append(cancellationMigration)).RunAsync(callerConnection, cancellation.Token);
+        await WaitUntilAsync(
+            () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and state = 'active' and query like '%pg_sleep(5)%')"),
+            "the cancellation migration did not begin its delayed statement");
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledRun);
+
+        using var releaseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        await using var verifyingConnection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await new MigrationRunner(concurrentScripts.Append(pathMigration)).RunAsync(verifyingConnection, releaseTimeout.Token);
     }
 
     [SkippableFact]
@@ -123,14 +165,25 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
         }
         Assert.Equal(0L, await ScalarAsync<long>(admin, "select count(*) from pg_auth_members m join pg_roles parent on parent.oid = m.roleid join pg_roles member on member.oid = m.member where parent.rolname like 'quesshi_%' and member.rolname like 'quesshi_%'"));
         Assert.Equal("quesshi_owner", await ScalarAsync<string>(admin, "select tableowner from pg_tables where schemaname = 'public' and tablename = 'schema_migrations'"));
+        Assert.Equal("quesshi_owner", await ScalarAsync<string>(admin, "select pg_get_userbyid(proowner) from pg_proc where oid = 'app_tenant()'::regprocedure"));
+        Assert.Equal("quesshi_owner", await ScalarAsync<string>(admin, "select pg_get_userbyid(proowner) from pg_proc where oid = 'quesshi_tenant_table(regclass, text)'::regprocedure"));
 
         foreach (var role in new[] { "quesshi_app", "quesshi_system" })
         {
             await using var runtime = new NpgsqlConnection(fixture.ConnectionStringForRole(role));
             await runtime.OpenAsync();
-            await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(runtime, $"create table {role}_must_not_create (id integer)"));
-            await Assert.ThrowsAsync<PostgresException>(() => ScalarAsync<long>(runtime, "select count(*) from schema_migrations"));
-            await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(runtime, "select quesshi_tenant_table('schema_migrations', 'demo')"));
+            await AssertInsufficientPrivilegeAsync(() => ExecuteAsync(runtime, $"create table {role}_must_not_create (id integer)"));
+            await AssertInsufficientPrivilegeAsync(async () => await ScalarAsync<long>(runtime, "select count(*) from schema_migrations"));
+            await AssertInsufficientPrivilegeAsync(() => ExecuteAsync(runtime, "select quesshi_tenant_table('schema_migrations', 'demo')"));
+            if (role == "quesshi_app")
+            {
+                await ExecuteAsync(runtime, "select set_config('app.tenant_id', '3f7ca0e3-8907-4fb0-ae58-3584b63ea667', false)");
+                Assert.Equal(Guid.Parse("3f7ca0e3-8907-4fb0-ae58-3584b63ea667"), await ScalarAsync<Guid>(runtime, "select app_tenant()"));
+            }
+            else
+            {
+                await AssertInsufficientPrivilegeAsync(async () => await ScalarAsync<Guid>(runtime, "select app_tenant()"));
+            }
         }
     }
 
@@ -157,5 +210,32 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
     {
         await using var command = new NpgsqlCommand(sql, connection);
         return (T)(await command.ExecuteScalarAsync())!;
+    }
+
+    private static async Task RecordMigrationAsync(NpgsqlConnection connection, string table, MigrationScript script)
+    {
+        await using var command = new NpgsqlCommand($"insert into {table} (name, owner, checksum) values (@name, @owner, @checksum)", connection);
+        command.Parameters.AddWithValue("name", script.Name);
+        command.Parameters.AddWithValue("owner", script.Owner);
+        command.Parameters.AddWithValue("checksum", script.Checksum);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task AssertInsufficientPrivilegeAsync(Func<Task> action)
+    {
+        var exception = await Assert.ThrowsAsync<PostgresException>(action);
+        Assert.Equal("42501", exception.SqlState);
+    }
+
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
+    {
+        var timeout = Stopwatch.StartNew();
+        while (timeout.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            if (await condition()) return;
+            await Task.Delay(25);
+        }
+
+        Assert.Fail(failureMessage);
     }
 }

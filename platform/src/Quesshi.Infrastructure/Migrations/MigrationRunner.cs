@@ -60,6 +60,7 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
         if (openedHere) await connection.OpenAsync(cancellationToken);
         try
         {
+            await ExecuteAsync(connection, "set search_path to public", cancellationToken);
             await ExecuteAsync(connection, "select pg_advisory_lock(@lock)", cancellationToken, ("lock", MigrationLock));
             try
             {
@@ -72,7 +73,7 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
             }
             finally
             {
-                await ExecuteAsync(connection, "select pg_advisory_unlock(@lock)", cancellationToken, ("lock", MigrationLock));
+                await ExecuteAsync(connection, "select pg_advisory_unlock(@lock)", CancellationToken.None, ("lock", MigrationLock));
             }
         }
         finally
@@ -105,7 +106,7 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
         if (!(bool)(await exists.ExecuteScalarAsync(cancellationToken) ?? false)) return new(StringComparer.Ordinal);
 
         var applied = new Dictionary<string, string>(StringComparer.Ordinal);
-        await using var command = new NpgsqlCommand("select name, checksum from schema_migrations order by name", connection);
+        await using var command = new NpgsqlCommand("select name, checksum from public.schema_migrations order by name", connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) applied.Add(reader.GetString(0), reader.GetString(1));
         return applied;
@@ -140,7 +141,7 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
             await migration.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using (var ledger = new NpgsqlCommand("insert into schema_migrations (name, owner, checksum) values (@name, @owner, @checksum)", connection, transaction))
+        await using (var ledger = new NpgsqlCommand("insert into public.schema_migrations (name, owner, checksum) values (@name, @owner, @checksum)", connection, transaction))
         {
             ledger.Parameters.AddWithValue("name", script.Name);
             ledger.Parameters.AddWithValue("owner", script.Owner);
