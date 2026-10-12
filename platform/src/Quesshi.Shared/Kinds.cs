@@ -130,7 +130,8 @@ public abstract class Kind<TPayload, TResolved, TCard, TAnswer, TStored, TReveal
 
     Grade IKindRuntime.Grade(JsonElement payload, JsonElement resolved, JsonElement? stored)
     {
-        if (stored is null || stored.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return Quesshi.Shared.Grade.Of(0);
+        if (stored is null || stored.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return Gradable ? Quesshi.Shared.Grade.Of(0) : Quesshi.Shared.Grade.None;
         return CheckedGrade(Grade(Item(payload, resolved), Read<TStored>(stored.Value, "stored answer")));
     }
 

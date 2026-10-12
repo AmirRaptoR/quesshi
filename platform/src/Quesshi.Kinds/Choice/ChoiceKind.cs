@@ -17,7 +17,7 @@ public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, Choice
         if (from != Version) throw new NotSupportedException($"choice v{from} cannot be upgraded by choice v{Version}.");
         var value = JsonSerializer.Deserialize(payload, ChoiceJsonContext.Default.ChoicePayload)
             ?? throw new JsonException("Choice payload is invalid.");
-        return value with { Options = value.Options.Select(option => option?.Trim() ?? string.Empty).ToArray() };
+        return value with { Options = value.Options?.Select(option => option?.Trim() ?? string.Empty).ToArray() };
     }
 
     public override Snapshot<ChoiceCard, ChoiceReveal, ChoiceStored> UpgradeSnapshot(int from, RawSnapshot old)
@@ -32,9 +32,9 @@ public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, Choice
     public override IReadOnlyList<Problem> Validate(ChoicePayload payload, ValidateEnv env)
     {
         var problems = new List<Problem>();
-        if (payload.Options.Count < 4) problems.Add(new("options.tooFew", "Choice needs exactly four options."));
-        if (payload.Options.Count > 4) problems.Add(new("options.tooMany", "Choice needs exactly four options."));
-        var options = payload.Options.Select(option => option?.Trim() ?? string.Empty).ToArray();
+        var options = payload.Options?.Select(option => option?.Trim() ?? string.Empty).ToArray() ?? [];
+        if (options.Length < 4) problems.Add(new("options.tooFew", "Choice needs exactly four options."));
+        if (options.Length > 4) problems.Add(new("options.tooMany", "Choice needs exactly four options."));
         if (options.Any(string.IsNullOrWhiteSpace)) problems.Add(new("options.blank", "Choice options cannot be blank."));
         if (options.Where(option => !string.IsNullOrWhiteSpace(option)).Distinct(StringComparer.OrdinalIgnoreCase).Count() != options.Count(option => !string.IsNullOrWhiteSpace(option)))
             problems.Add(new("options.duplicate", "Choice options must be distinct ignoring case."));
@@ -46,14 +46,14 @@ public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, Choice
     public override ChoiceResolved Resolve(ChoicePayload payload, ResolveContext context) => new();
 
     public override ChoiceCard Card(Item<ChoicePayload, ChoiceResolved> item) =>
-        new(item.Payload.Options.Select(option => option.Trim()).ToArray());
+        new((item.Payload.Options ?? throw new InvalidOperationException("Choice options are required.")).Select(option => option.Trim()).ToArray());
 
     public override ChoiceReveal Reveal(Item<ChoicePayload, ChoiceResolved> item) =>
-        new(item.Payload.CorrectIndex, item.Payload.Options[item.Payload.CorrectIndex].Trim());
+        new(item.Payload.CorrectIndex, (item.Payload.Options ?? throw new InvalidOperationException("Choice options are required."))[item.Payload.CorrectIndex].Trim());
 
     public override ChoiceStored Normalize(Item<ChoicePayload, ChoiceResolved> item, ChoiceAnswer answer)
     {
-        if (answer.Index < 0 || answer.Index >= item.Payload.Options.Count)
+        if (answer.Index < 0 || answer.Index >= (item.Payload.Options ?? throw new InvalidOperationException("Choice options are required.")).Count)
             throw new MalformedAnswer("Choice answer index must identify one of the four options.");
         return new(answer.Index);
     }
@@ -62,11 +62,11 @@ public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, Choice
         Quesshi.Shared.Grade.Of(stored.Index == item.Payload.CorrectIndex ? 1 : 0);
 }
 
-public sealed record ChoicePayload(IReadOnlyList<string> Options, int CorrectIndex);
+public sealed record ChoicePayload([property: JsonRequired] IReadOnlyList<string>? Options, [property: JsonRequired] int CorrectIndex);
 public sealed record ChoiceResolved;
 public sealed record ChoiceCard(IReadOnlyList<string> Options);
-public sealed record ChoiceAnswer(int Index);
-public sealed record ChoiceStored(int Index);
+public sealed record ChoiceAnswer([property: JsonRequired] int Index);
+public sealed record ChoiceStored([property: JsonRequired] int Index);
 public sealed record ChoiceReveal(int CorrectIndex, string CorrectOption);
 
 [JsonSerializable(typeof(ChoicePayload))]

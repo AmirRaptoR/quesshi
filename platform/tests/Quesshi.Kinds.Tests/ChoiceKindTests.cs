@@ -21,6 +21,15 @@ public sealed class ChoiceKindTests
     }
 
     [Fact]
+    public void Runtime_refuses_missing_required_payload_members_and_validates_null_options()
+    {
+        IKindRuntime runtime = _kind;
+
+        Assert.Throws<JsonException>(() => runtime.Validate(Json("{\"options\":[\"one\",\"two\",\"three\",\"four\"]}"), new ValidateEnv("en")));
+        Assert.NotEmpty(runtime.Validate(Json("{\"options\":null,\"correctIndex\":0}"), new ValidateEnv("en")));
+    }
+
+    [Fact]
     public void Card_is_author_order_without_answer_and_reveal_identifies_it()
     {
         var first = Item(Payload([" one ", "two", "three", "four"], 0));
@@ -46,6 +55,8 @@ public sealed class ChoiceKindTests
         Assert.Equal(0, runtime.Grade(payload, resolved, null).Credit);
         Assert.Throws<MalformedAnswer>(() => runtime.Normalize(payload, resolved, Json("{\"index\":4}")));
         Assert.Throws<MalformedAnswer>(() => runtime.Normalize(payload, resolved, Json("{\"index\":1.5}")));
+        Assert.Throws<MalformedAnswer>(() => runtime.Normalize(payload, resolved, Json("{}")));
+        Assert.Throws<MalformedAnswer>(() => runtime.Normalize(payload, resolved, Json("{\"index\":null}")));
     }
 
     private static ChoicePayload Payload(IReadOnlyList<string> options, int correctIndex) => new(options, correctIndex);

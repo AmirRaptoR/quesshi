@@ -12,6 +12,8 @@
     { "submitted": { "index": 0 }, "stored": { "index": 0 }, "credit": 0 },
     { "credit": 0 },
     { "submitted": { "index": 4 }, "malformed": true },
-    { "submitted": { "index": 1.5 }, "malformed": true }
+    { "submitted": { "index": 1.5 }, "malformed": true },
+    { "submitted": {}, "malformed": true },
+    { "submitted": { "index": null }, "malformed": true }
   ]
 }

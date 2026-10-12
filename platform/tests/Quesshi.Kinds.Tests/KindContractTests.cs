@@ -50,6 +50,19 @@ public sealed class KindContractTests
     }
 
     [Fact]
+    public void Runtime_rejects_non_object_outputs()
+    {
+        IKindRuntime runtime = new NonObjectTestKind();
+        var payload = Json("{\"value\":2}");
+        var resolved = Json("{\"value\":7}");
+
+        Assert.Throws<JsonException>(() => runtime.Upgrade(1, payload));
+        Assert.Throws<JsonException>(() => runtime.Resolve(payload, new ResolveContext("session", 0, [])));
+        Assert.Throws<JsonException>(() => runtime.Card(payload, resolved));
+        Assert.Throws<JsonException>(() => runtime.Reveal(payload, resolved));
+    }
+
+    [Fact]
     public void Grade_none_is_distinct_from_zero_and_invalid_credit_is_rejected()
     {
         var none = new TestKind { ReturnNone = true };
@@ -57,6 +70,7 @@ public sealed class KindContractTests
         Assert.True(((IKindRuntime)none).Grade(Payload, Resolved, Json("{\"value\":0}")).IsNone);
         Assert.False(((IKindRuntime)zero).Grade(Payload, Resolved, Json("{\"value\":0}")).IsNone);
         Assert.Equal(0, ((IKindRuntime)zero).Grade(Payload, Resolved, Json("{\"value\":0}")).Credit);
+        Assert.True(((IKindRuntime)new TestKind { GradableValue = false }).Grade(Payload, Resolved, null).IsNone);
 
         foreach (var credit in new[] { 1.5, double.NaN, double.PositiveInfinity })
             Assert.Throws<InvalidOperationException>(() => ((IKindRuntime)new TestKind { Credit = credit }).Grade(Payload, Resolved, Json("{\"value\":0}")));
@@ -131,7 +145,8 @@ internal sealed class TestKind : Kind<TestPayload, TestResolved, TestCard, TestA
     public override int Version => VersionValue;
     public int VersionValue { get; init; } = 1;
     public override string Family => "test";
-    public override bool Gradable => true;
+    public bool GradableValue { get; init; } = true;
+    public override bool Gradable => GradableValue;
     public double Credit { get; init; }
     public bool ReturnNone { get; init; }
     protected override JsonSerializerContext SerializerContext => TestJsonContext.Default;
@@ -153,6 +168,39 @@ internal sealed record TestAnswer(int Value);
 internal sealed record TestStored(int Value);
 internal sealed record TestReveal(int Answer);
 
+[JsonConverter(typeof(ScalarJsonConverter))]
+internal sealed record Scalar(int Value);
+
+internal sealed class ScalarJsonConverter : JsonConverter<Scalar>
+{
+    public override Scalar Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number) return new(reader.GetInt32());
+        using var document = JsonDocument.ParseValue(ref reader);
+        return new(document.RootElement.GetProperty("value").GetInt32());
+    }
+
+    public override void Write(Utf8JsonWriter writer, Scalar value, JsonSerializerOptions options) => writer.WriteNumberValue(value.Value);
+}
+
+internal sealed class NonObjectTestKind : Kind<Scalar, Scalar, Scalar, TestAnswer, TestStored, Scalar>
+{
+    public override string Id => "non-object";
+    public override int Version => 1;
+    public override string Family => "test";
+    public override bool Gradable => true;
+    protected override JsonSerializerContext SerializerContext => NonObjectJsonContext.Default;
+    public override Scalar Upgrade(int from, JsonElement payload) => JsonSerializer.Deserialize(payload, NonObjectJsonContext.Default.Scalar)!;
+    public override Snapshot<Scalar, Scalar, TestStored> UpgradeSnapshot(int from, RawSnapshot old) =>
+        new(JsonSerializer.Deserialize(old.Card, NonObjectJsonContext.Default.Scalar)!, JsonSerializer.Deserialize(old.Reveal, NonObjectJsonContext.Default.Scalar)!, old.Answers.Select(answer => JsonSerializer.Deserialize(answer, NonObjectJsonContext.Default.TestStored)!).ToArray());
+    public override IReadOnlyList<Problem> Validate(Scalar payload, ValidateEnv env) => [];
+    public override Scalar Resolve(Scalar payload, ResolveContext context) => new(7);
+    public override Scalar Card(Item<Scalar, Scalar> item) => new(item.Resolved.Value);
+    public override Scalar Reveal(Item<Scalar, Scalar> item) => new(item.Payload.Value);
+    public override TestStored Normalize(Item<Scalar, Scalar> item, TestAnswer answer) => new(answer.Value);
+    public override Grade Grade(Item<Scalar, Scalar> item, TestStored stored) => Quesshi.Shared.Grade.Of(0);
+}
+
 [JsonSerializable(typeof(TestPayload))]
 [JsonSerializable(typeof(TestResolved))]
 [JsonSerializable(typeof(TestCard))]
@@ -162,3 +210,10 @@ internal sealed record TestReveal(int Answer);
 [JsonSerializable(typeof(Snapshot<TestCard, TestReveal, TestStored>))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 internal partial class TestJsonContext : JsonSerializerContext;
+
+[JsonSerializable(typeof(Scalar))]
+[JsonSerializable(typeof(TestAnswer))]
+[JsonSerializable(typeof(TestStored))]
+[JsonSerializable(typeof(Snapshot<Scalar, Scalar, TestStored>))]
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+internal partial class NonObjectJsonContext : JsonSerializerContext;
