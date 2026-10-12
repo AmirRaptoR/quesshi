@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Quesshi.Shared;
@@ -90,6 +91,35 @@ public sealed class KindContractTests
         Assert.Equal([expectedFirst, expectedSecond, expectedThird],
             [second.NextUInt64(), second.NextUInt64(), second.NextUInt64()]);
         Assert.NotEqual(DeterministicRng.For(sessionId, slot).NextUInt64(), DeterministicRng.For(sessionId, slot + 1).NextUInt64());
+    }
+
+    [Fact]
+    public void Splitmix64_sequence_is_stable_in_a_separate_process()
+    {
+        const string probeVariable = "QUESSHI_RNG_PROCESS_PROBE";
+        if (Environment.GetEnvironmentVariable(probeVariable) == "1")
+        {
+            var rng = DeterministicRng.For("alpha", 0);
+            Assert.Equal(1320619409127077649UL, rng.NextUInt64());
+            Assert.Equal(10475257336574687358UL, rng.NextUInt64());
+            return;
+        }
+
+        using var process = Process.Start(new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            ArgumentList =
+            {
+                "vstest",
+                typeof(KindContractTests).Assembly.Location,
+                "--TestCaseFilter:FullyQualifiedName=Quesshi.Kinds.Tests.KindContractTests.Splitmix64_sequence_is_stable_in_a_separate_process"
+            },
+            Environment = { [probeVariable] = "1" }
+        })!;
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, $"{process.StandardOutput.ReadToEnd()}{process.StandardError.ReadToEnd()}");
     }
 
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
