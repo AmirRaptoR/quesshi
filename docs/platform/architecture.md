@@ -539,7 +539,7 @@ same fixtures drive the kind's unit tests and its components' bUnit tests.
 
 | Kind | Family | Payload | Resolved at start | Answer | Graded |
 |---|---|---|---|---|---|
-| `choice` | trivia | exactly 4 options, correct one marked | display order | option id | yes |
+| `choice` | trivia | exactly 4 options, correct one marked | nothing | option index | yes |
 | `order` | trivia | exactly 4 items in correct order | display order | item ids as placed | yes |
 | `map_pick` | trivia | country code, or point and radius; base layer | nothing | country code or point | yes |
 | `poll_choice` | poll | 2–8 options | nothing | an option, or "not applicable" | no |

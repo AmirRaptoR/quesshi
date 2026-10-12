@@ -75,7 +75,7 @@ public sealed class PluginNamespaceBanAnalyzer : DiagnosticAnalyzer
     private static string NamespaceName(ISymbol symbol)
     {
         while (symbol is IAliasSymbol alias) symbol = alias.Target;
-        return (symbol as INamespaceSymbol ?? symbol.ContainingNamespace).ToDisplayString();
+        return (symbol as INamespaceSymbol ?? symbol.ContainingNamespace)?.ToDisplayString() ?? string.Empty;
     }
 }
 
