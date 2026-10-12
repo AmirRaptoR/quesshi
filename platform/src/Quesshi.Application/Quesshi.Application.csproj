@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.Domain/Quesshi.Domain.csproj" />
+    <ProjectReference Include="../Quesshi.Plugin.Api/Quesshi.Plugin.Api.csproj" />
+    <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quesshi.Infrastructure" />
+    <InternalsVisibleTo Include="Quesshi.Grains" />
+    <InternalsVisibleTo Include="Quesshi.Server" />
+    <InternalsVisibleTo Include="Quesshi.Domain.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Kinds.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Formats.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Application.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Features.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Server.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Web.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Architecture.Tests" />
+  </ItemGroup>
+</Project>

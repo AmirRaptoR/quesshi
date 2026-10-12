@@ -1,0 +1,31 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quesshi.Shared/Quesshi.Shared.csproj" />
+    <Project Path="src/Quesshi.Domain/Quesshi.Domain.csproj" />
+    <Project Path="src/Quesshi.Kinds/Quesshi.Kinds.csproj" />
+    <Project Path="src/Quesshi.Engine.Contracts/Quesshi.Engine.Contracts.csproj" />
+    <Project Path="src/Quesshi.Formats/Quesshi.Formats.csproj" />
+    <Project Path="src/Quesshi.Plugin.Api/Quesshi.Plugin.Api.csproj" />
+    <Project Path="src/Quesshi.Features/Quesshi.Features.csproj" />
+    <Project Path="src/Quesshi.Application/Quesshi.Application.csproj" />
+    <Project Path="src/Quesshi.Infrastructure/Quesshi.Infrastructure.csproj" />
+    <Project Path="src/Quesshi.Grains.Abstractions/Quesshi.Grains.Abstractions.csproj" />
+    <Project Path="src/Quesshi.Grains/Quesshi.Grains.csproj" />
+    <Project Path="src/Quesshi.Server/Quesshi.Server.csproj" />
+    <Project Path="src/Quesshi.Web/Quesshi.Web.csproj" />
+    <Project Path="src/Quesshi.Web.Plugins/Quesshi.Web.Plugins.csproj" />
+    <Project Path="src/Quesshi.Web.Admin/Quesshi.Web.Admin.csproj" />
+    <Project Path="src/Quesshi.Kinds.MapPick.Client/Quesshi.Kinds.MapPick.Client.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Quesshi.Domain.Tests/Quesshi.Domain.Tests.csproj" />
+    <Project Path="tests/Quesshi.Kinds.Tests/Quesshi.Kinds.Tests.csproj" />
+    <Project Path="tests/Quesshi.Formats.Tests/Quesshi.Formats.Tests.csproj" />
+    <Project Path="tests/Quesshi.Application.Tests/Quesshi.Application.Tests.csproj" />
+    <Project Path="tests/Quesshi.Features.Tests/Quesshi.Features.Tests.csproj" />
+    <Project Path="tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj" />
+    <Project Path="tests/Quesshi.Web.Tests/Quesshi.Web.Tests.csproj" />
+    <Project Path="tests/Quesshi.Architecture.Tests/Quesshi.Architecture.Tests.csproj" />
+    <Project Path="tests/Quesshi.Testing/Quesshi.Testing.csproj" />
+  </Folder>
+</Solution>
