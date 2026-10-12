@@ -4,4 +4,7 @@
     <PackageReference Include="Npgsql" Version="10.0.1" />
     <PackageReference Include="xunit.extensibility.core" Version="2.9.3" PrivateAssets="all" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="../../deploy/bootstrap-roles.sql" Link="deploy/bootstrap-roles.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -6,6 +6,7 @@ namespace Quesshi.Testing;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     public const string AdminConnectionStringEnvironmentVariable = "QUESSHI_TEST_POSTGRES";
+    public const string RolePassword = "quesshi-test-role-password";
 
     private readonly string? _adminConnectionString;
 
@@ -45,16 +46,35 @@ public sealed class PostgresFixture : IAsyncLifetime
         DatabaseName = $"quesshi_test_{Guid.NewGuid():N}";
         await using var connection = new NpgsqlConnection(_adminConnectionString);
         await connection.OpenAsync();
+        await ExecuteBootstrapAsync(connection);
+        await using (var rolePasswords = new NpgsqlCommand($"alter role quesshi_owner password '{RolePassword}'; alter role quesshi_app password '{RolePassword}'; alter role quesshi_system password '{RolePassword}';", connection))
+        {
+            await rolePasswords.ExecuteNonQueryAsync();
+        }
         await using (var command = new NpgsqlCommand($"CREATE DATABASE {QuoteIdentifier(DatabaseName)}", connection))
         {
             await command.ExecuteNonQueryAsync();
+        }
+        await using (var grant = new NpgsqlCommand($"GRANT CREATE ON DATABASE {QuoteIdentifier(DatabaseName)} TO quesshi_owner", connection))
+        {
+            await grant.ExecuteNonQueryAsync();
         }
 
         ConnectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
         {
             Database = DatabaseName
         }.ConnectionString;
+        await using var databaseConnection = new NpgsqlConnection(ConnectionString);
+        await databaseConnection.OpenAsync();
+        await using var schemaGrant = new NpgsqlCommand("grant usage, create on schema public to quesshi_owner", databaseConnection);
+        await schemaGrant.ExecuteNonQueryAsync();
     }
+
+    public string ConnectionStringForRole(string role) => new NpgsqlConnectionStringBuilder(ConnectionString)
+    {
+        Username = role,
+        Password = RolePassword
+    }.ConnectionString;
 
     public async Task DisposeAsync()
     {
@@ -76,6 +96,14 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     private static bool IsCi() => string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task ExecuteBootstrapAsync(NpgsqlConnection connection)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "deploy", "bootstrap-roles.sql");
+        var sql = await File.ReadAllTextAsync(path);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
+    }
 
     private static string QuoteIdentifier(string value) => $"\"{value.Replace("\"", "\"\"")}\"";
 }
