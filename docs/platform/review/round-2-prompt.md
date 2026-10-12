@@ -1,0 +1,31 @@
+Round 2 of at most 3. I changed docs/platform/architecture.md and docs/platform/schema.sql in response to your 59 findings. Re-read both files in full, and re-check against the real source in src/ where a finding was about today's behaviour. Still read-only: do not edit, create or delete any file.
+
+How the findings were resolved (your numbers):
+
+- 1, 2, 12, 13, 14, 15, 16 (the order of work): the plan no longer changes the running application in place. Production stays on today's version until the platform is complete; the platform is built beside the old code on a branch, deployed per milestone to a staging tenant, and production moves once, starting empty (19.2). So there is no bridge storage, no reimplementing Redis services to delete them, no adapting old grains to new question shapes, no conversion of interim production data, and no temporary stats handler (events and jobs are in milestone 1; stats and leaderboard arrive before the cut-over).
+- 3, 4, 49, 50: session creation is an insert by the core in the caller's transaction, the one exception to "the grain is the only writer" (7.3). Matchmaking has no queue grain; it is a database protocol with player locks, a two-row delete check and CreateAsync in one transaction, with per-format match rules that keep today's behaviour and a (tenant, player, format) key (13). Features do not own grains.
+- 5, 6, 7, 8: the fencing statement is the first statement with RETURNING and its protocol is written out; four outcomes are distinguished; activation loads in one repeatable-read transaction; working state is immutable; what the grain caches for grading is stated (7.4).
+- 9, 10, 39, 40, 41, 42: sweep dispatch limits and timeouts; format faults versus infrastructure failures with separate handling, both moving retry_at so nothing starves; timer API and collection policy; recovery described as measured; time anchors for delayed transitions (7.5).
+- 11: the live-path prototype and benchmark is milestone 2, before anything is built on it (7.4, 19.2).
+- 17: the pipeline is listed as adapted, with what changes, and a rollback policy for the cut-over (17, 19.2).
+- 18, 19: antiforgery token plus Origin on every changing request including multipart; a guest matrix, deny by default (11.3).
+- 20–26: owner leaving cancels the lobby; poll special answers and answer replacement with a revision; per-slot poll expiry and fewer-than-two rule; poll visibility and results by today's VotingResults; async forfeit anchored at creation with standings even at zero answers; live timings restored to today's (one countdown, 2 s grace, 40 s stale limit); live standings as BuildStandings (8.2).
+- 27, 28, 29, 30, 31: family category allow-lists and the three-category rule in the bank source (7.2); report authorisation; mutual friendship; leaderboard keeps today's forgive-at-zero rule through a ledger folded in time order; per-player category stats (13, schema).
+- 32, 33: media URLs become stored assets with a fetch step; admins get is_active, last_login_at, unique email and the last-admin rules.
+- 34, 35, 36, 37: "enabled" means offered for new play, existing sessions continue; descriptor-based client registry resolved after lazy load; service worker stops precaching lazy assemblies and the map; the shell stays static and tenant data comes from /theme.css, the manifest and /api/config (5.2, 16).
+- 38: explicit Orleans schema creation with a search path, marked as to be verified.
+- 43–48: one renderer for both paths and four independently tracked versions; Dapper conventions; connection budget; listen loop; Blazor stream details; write deadlines with an abort path.
+- 51, 52, 53: four-item bounds and adapted SortOrder; bank draw rules with existing tests as the specification; generation settings and a candidate record separate from the payload.
+- 54, 55: a non-generic runtime adapter and source-generated JSON; a separate Plugin.Api project, internal core types, a banned-API analyzer, and an honest statement of what is not enforced (4, 6.2).
+- 56, 57, 58, 59: an admin operation mapping (15.1); the join page takeover (16); extension points built only with their first consumer (5.3); wording corrected.
+- A new section 19.4 lists the deliberate differences from today, and a non-goal says today's rules win otherwise.
+
+What I want now, with the same precision (where, concrete failure, concrete fix) and the same priority labels:
+
+A. Which round-1 findings are NOT actually resolved, or are resolved wrongly? List only those.
+B. New problems introduced. Attack especially: (1) "build beside, cut over once" — long-branch risk, how old and new code coexist in one solution and one host during milestones 1–5 (routes, auth, DI, Orleans silo configuration with both Redis and PostgreSQL providers, tests), what "playable on staging" needs at each milestone, and whether milestone order has hidden dependencies (identity before content before engine; admin screens; the client shell); (2) the creation-by-insert exception and the first activation; (3) the immutable-state / four-outcomes protocol and the timer; (4) the leaderboard ledger and refold under the player lock, including periods and penalty amounts depending on earlier penalties; (5) poll answer replacement with revisions against duplicate detection and slot closing; (6) the matchmaking protocol against today's two behaviours; (7) antiforgery in a Blazor WebAssembly PWA with a static shell; (8) the static shell with /theme.css and /api/config versus first paint and the service worker; (9) Plugin.Api containing ITenantTx and friends while formats must stay pure.
+C. Fidelity again: after these changes, list any remaining rule of today's product that the design still drops, changes without listing in 19.4, or leaves undefined. Check 19.4 itself: is anything listed there not actually a change, or is a real change missing?
+D. Is the schema still consistent with the design (leaderboard tables, matchmaking key, answer revisions, admins, per-category stats)?
+E. Over-specification to cut.
+
+Output format: numbered findings ordered by priority, each starting with P0/P1/P2/P3, then where, problem, fix. A one-line count per priority. Then what you checked and found sound.

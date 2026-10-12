@@ -1,0 +1,200 @@
+<title>Quesshi Refactor Decisions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column. Each decision is a headline you can scan; its detail is folded. */
+:root {
+  --bg: #f2f4f8; --surface: #ffffff; --ink: #16233b; --muted: #56627a; --line: #d5dbe6;
+  --lapis: #1f4fa3; --teal: #0b7f7a; --saffron: #b97706; --saffron-bg: #fdf3dc;
+  --p0: #b3261e; --p1: #c2570c; --p2: #1f4fa3; --p3: #6b7689;
+  --ok: #0b7f7a; --ok-bg: #dff3f1; --fix-bg: #fdf3dc;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1724; --surface: #162233; --ink: #e5eaf3; --muted: #9aa7bd; --line: #2a3a52;
+    --lapis: #86aef5; --teal: #56cbc4; --saffron: #f2b544; --saffron-bg: #33290f;
+    --p0: #ff8a80; --p1: #ffab66; --p2: #86aef5; --p3: #9aa7bd;
+    --ok: #56cbc4; --ok-bg: #12332f; --fix-bg: #33290f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1724; --surface: #162233; --ink: #e5eaf3; --muted: #9aa7bd; --line: #2a3a52;
+  --lapis: #86aef5; --teal: #56cbc4; --saffron: #f2b544; --saffron-bg: #33290f;
+  --p0: #ff8a80; --p1: #ffab66; --p2: #86aef5; --p3: #9aa7bd;
+  --ok: #56cbc4; --ok-bg: #12332f; --fix-bg: #33290f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 860px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 72px; display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2rem, 6vw, 3rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.5rem; font-weight: 700; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.86em; background: color-mix(in srgb, var(--line) 55%, transparent); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+a { color: var(--lapis); }
+.eyebrow { font: 500 0.78rem/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--teal); }
+header { display: flex; flex-direction: column; gap: 14px; }
+.lede { font-size: 1.1rem; color: var(--muted); max-width: 62ch; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+section { display: flex; flex-direction: column; gap: 16px; }
+.sec-head { display: flex; flex-direction: column; gap: 6px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+.sec-head p { color: var(--muted); }
+
+/* review rounds */
+.rounds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.round { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.round b { font: 700 2rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.round span { color: var(--muted); font-size: 0.9rem; }
+.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.bar i { display: block; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 0.8rem var(--mono); color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+@media (max-width: 560px) { .rounds { grid-template-columns: 1fr; } }
+
+/* flags */
+.flag { background: var(--saffron-bg); border-left: 4px solid var(--saffron); border-radius: 0 8px 8px 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.flag strong { font-weight: 600; }
+.flag p { color: var(--ink); }
+
+/* decisions */
+.decision { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.decision > summary { list-style: none; cursor: pointer; padding: 14px 44px 14px 16px; position: relative; display: flex; flex-direction: column; gap: 4px; }
+.decision > summary::-webkit-details-marker { display: none; }
+.decision > summary::after { content: "+"; position: absolute; right: 16px; top: 12px; font: 500 1.3rem/1 var(--mono); color: var(--muted); }
+.decision[open] > summary::after { content: "−"; }
+.decision > summary:focus-visible { outline: 2px solid var(--lapis); outline-offset: 2px; border-radius: 10px; }
+.decision .what { font-weight: 600; font-size: 1.03rem; }
+.decision .why { color: var(--muted); font-size: 0.95rem; }
+.decision .more { border-top: 1px solid var(--line); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 0.95rem; }
+.decision .more ul { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 6px; }
+.key > summary { border-left: 4px solid var(--saffron); border-radius: 10px 0 0 10px; }
+.tag { align-self: flex-start; font: 500 0.7rem/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--saffron); }
+.tools { display: flex; gap: 10px; flex-wrap: wrap; }
+button { font: 500 0.85rem var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+button:hover { border-color: var(--lapis); }
+button:focus-visible { outline: 2px solid var(--lapis); outline-offset: 2px; }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 0.74rem/1.2 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.pill { display: inline-block; font: 500 0.72rem/1 var(--mono); padding: 5px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.pill.fix { background: var(--fix-bg); color: var(--saffron); }
+ol.first { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 8px; }
+footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Quesshi · refactor review record</span>
+  <h1>Refactor decisions</h1>
+  <p class="lede">Quesshi keeps .NET, Orleans and Blazor and becomes a multi-tenant platform that grows by plugins, on PostgreSQL only. This is what was decided and what three review rounds with Codex, against the real source code, changed. Nothing is built yet.</p>
+</header>
+
+<section>
+  <div class="sec-head"><h2>The review in numbers</h2><p>Each round, Codex read both documents and the source in <code>src/</code>, and returned prioritised findings. All were applied.</p></div>
+  <div class="rounds"><div class="round"><span>Round 1</span><b>59</b><div class="bar"><i style="width:5.1%;background:var(--p0)"></i><i style="width:59.3%;background:var(--p1)"></i><i style="width:33.9%;background:var(--p2)"></i><i style="width:1.7%;background:var(--p3)"></i></div><span>3 P0 · 35 P1 · 20 P2 · 1 P3</span></div><div class="round"><span>Round 2</span><b>36</b><div class="bar"><i style="width:5.6%;background:var(--p0)"></i><i style="width:50%;background:var(--p1)"></i><i style="width:41.6%;background:var(--p2)"></i><i style="width:2.8%;background:var(--p3)"></i></div><span>2 P0 · 18 P1 · 15 P2 · 1 P3</span></div><div class="round"><span>Round 3</span><b>20</b><div class="bar"><i style="width:5%;background:var(--p0)"></i><i style="width:35%;background:var(--p1)"></i><i style="width:60%;background:var(--p2)"></i></div><span>1 P0 · 7 P1 · 12 P2 · 0 P3</span></div></div>
+  <div class="legend">
+    <span><i style="background:var(--p0)"></i>P0 wrong or unbuildable as written</span>
+    <span><i style="background:var(--p1)"></i>P1 real bug, lost behaviour or rework</span>
+    <span><i style="background:var(--p2)"></i>P2 decide before building that part</span>
+    <span><i style="background:var(--p3)"></i>P3 minor</span>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Read these first</h2><p>Two things need your answer; the rest you should know.</p></div>
+  <div class="stack"><div class="flag"><strong>Needs your answer: build beside and cut over once.</strong><p>My first plan changed the live app stage by stage. Review showed that needs scaffolding that is thrown away, and forces every intermediate release to convert the data the previous one created. The plan is now a second solution in the same repository; production stays on today's version until the platform is complete, then moves once.</p></div>
+<div class="flag"><strong>Needs your answer: carry the question bank over.</strong><p>Players and history start empty, as you decided. I propose a one-off export of questions, categories and their media, because regenerating them costs model spend.</p></div>
+<div class="flag"><strong>The round 3 fixes have not been reviewed.</strong><p>Three rounds was the limit. Its 20 findings are written into the documents, including one that would have stopped the schema from running, but nobody has checked those edits.</p></div>
+<div class="flag"><strong>The schema has never been run.</strong><p>There is no PostgreSQL on this machine. Round 3 found a broken foreign key by reading; running it is the first thing to do.</p></div>
+<div class="flag"><strong>Live play at 500 players is unproven on this design too.</strong><p>A grain handles one answer at a time, each with a database write, so 500 answers take about a second of its time. The second milestone is a prototype that measures exactly this before anything is built on it.</p></div>
+<div class="flag"><strong>Eleven intended changes to how the game behaves are listed.</strong><p>Everything else is meant to play as it does today. Four of the eleven fix quirks the review found in today's code.</p></div>
+</div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Decisions</h2><p>Marked ones shape everything else. Open any line for the detail.</p></div>
+  <div class="tools"><button id="openAll" type="button">Open all</button><button id="closeAll" type="button">Close all</button></div>
+
+  <h3>The plan</h3><div class="stack"><details class="decision key"><summary><span class="tag">Key · awaiting your confirmation</span><span class="what">The platform is built as a second solution beside today's code, and production moves once.</span><span class="why">Today's app keeps running and getting fixes, untouched, until the new one is complete.</span></summary><div class="more"><ul><li>A separate solution under <code>platform/</code> with its own host, Blazor client, tests and CI job. The two never run in one process.</li><li>Kept code is copied into it with its tests, not moved, because today's projects still use it.</li><li>Fixes made to today's version meanwhile are tracked in a parity list and checked against the latest production commit before the cut-over.</li><li>Each milestone is deployed to a staging host as its own tenant.</li><li>The old tree is deleted in the cut-over release.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Eight milestones, each with a stated "done".</span><span class="why">The riskiest measurement comes second, not last.</span></summary><div class="more"><ul><li>1. Foundation: database roles, migrations, tenants, jobs and events, new host and shell.</li><li>2. The live-path prototype and its benchmark, which fixes the player limit or the need for batching.</li><li>3. Identity. 4. Content and the five existing question kinds.</li><li>5. The engine and the three existing formats. 6. Feature plugins.</li><li>7. Flashcards, required before the cut-over. 8. Cut-over, with a rehearsed roll-back.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Rolling back means switching to a complete, untouched copy of the old deployment.</span><span class="why">Kept for an agreed window and rehearsed on staging first.</span></summary><div class="more"><p>That copy is the image, the compose file, its configuration and keys, the MongoDB and Redis volumes, and a snapshot of the media folder. What was played on the new platform in between is lost.</p></div></details>
+</div>
+
+  <h3>What stays and what goes</h3><div class="stack"><details class="decision"><summary><span class="what">Kept: the rules, and most of what surrounds the game.</span><span class="why">Scoring, the question-set builder, live standings, voting results, the map, mail, the admin panel's functions, translations, CSS.</span></summary><div class="more"><ul><li>Their existing tests move with them and become the proof that the new formats play like today.</li><li>Adapted, not kept as is: the sort shuffle, the import pipeline, the prompt builder, the sign-in code check, the deployment scripts.</li></ul></div></details>
+<details class="decision key"><summary><span class="tag">Key</span><span class="what">Replaced: the three parallel game stacks, the storage, the realtime channel.</span><span class="why">Three aggregates, three grains, three APIs and two SignalR hubs become one engine, one grain type, one API and one stream.</span></summary><div class="more"><ul><li>MongoDB and Redis go; PostgreSQL holds everything, including Orleans' cluster membership.</li><li>Six other grains go: player, two matchmaking, two settings, the question generator.</li><li>The <code>Player</code> document splits into accounts, players and plugin tables.</li><li>Database-per-tenant and the ambient "current tenant" go; the default tenant <code>quesshi</code> is no longer special.</li></ul></div></details>
+</div>
+
+  <h3>Orleans and the session engine</h3><div class="stack"><details class="decision key"><summary><span class="tag">Key</span><span class="what">One grain type for every format; grains write, the database is read.</span><span class="why">The grain is a session's only writer. Views, lists and history never wake a grain.</span></summary><div class="more"><ul><li>Its key carries the tenant, passed explicitly to every database call.</li><li>Orleans grain storage and reminders are not used. Nothing is stored as a blob.</li><li>Today, listing a player's matches wakes one grain per match.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Every write is guarded by the session's version.</span><span class="why">So two activations of one grain, which Orleans allows briefly after a failure, cannot both write.</span></summary><div class="more"><ul><li>The first statement of each transaction updates the session only if its version is the one the grain last saw.</li><li>No row updated means another activation wrote: this one drops everything and deactivates.</li><li>A lost connection during commit is treated the same way. The client retries, and position checks make the retry safe.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Creating a session is a database insert, not a grain call.</span><span class="why">That lets matchmaking pair two players and start their game in one transaction.</span></summary><div class="more"><ul><li>Three shapes: a lobby; a started session with its roster; an open session its creator can play before anyone joins, which is today's async challenge.</li><li>The caller supplies the id, so a retried create cannot make a second session.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Deadlines live in one column; a once-a-second sweep wakes sleeping sessions.</span><span class="why">A grain timer handles the next two minutes; the sweep covers restarts and 48-hour forfeits.</span></summary><div class="more"><ul><li>The sweep never writes to a session.</li><li>A format bug counts as a fault and ends the session after five tries. A database outage never does.</li><li>The core can end any session without calling its format: cancelled by owner or admin, expired, fault, outage.</li></ul></div></details>
+<details class="decision"><summary><span class="what">The one P0 of the earlier design still applies: a format declares whose position counts.</span><span class="why">The session's for live and poll; each player's for async duel and flashcards.</span></summary><div class="more"><p>The engine uses that single position to reject stale commands, detect duplicates and build the response.</p></div></details>
+</div>
+
+  <h3>Today's rules, kept exactly</h3><div class="stack"><details class="decision key"><summary><span class="tag">Key · changed by review</span><span class="what">Review caught my design drifting from the real game in about twenty places.</span><span class="why">Each is now restored from the source, with the existing tests as the specification.</span></summary><div class="more"><ul><li>Live: one countdown, 2-second grace, 40-second outage limit, today's reveal timing, today's standings where finishers outrank everyone who left.</li><li>Async: forfeit 48 hours after creation; the creator can play before an opponent arrives.</li><li>Poll: answers can be changed until the slot closes; "not applicable" and the roster's special answers; results shown only at the end.</li><li>Lobbies: the owner leaving cancels it; invitations only to friends or recent co-players, never guests; rematch only for live.</li><li>Content: exactly four options; category allow-lists per family; at most three chosen categories; the draw's fallbacks.</li><li>Friends are mutual. Reports only for questions from your own recent games. Guests denied by default.</li><li>A penalty takes a score to zero and no further; the rest is forgiven.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Eleven deliberate changes are listed in one table.</span><span class="why">If it is not in that table, it should play as today.</span></summary><div class="more"><ul><li>Yours: one account across tenants.</li><li>From the design: cookie sign-in; boards and stats a second or two behind the result; guest-started runs never ranked; per-format and weekly or monthly boards; answers stored as rows; media stored as files; languages as codes; flashcards.</li><li>Quirks fixed: quitting a live game others finish now costs a penalty; accuracy no longer counts rounds after you left; a tied async game no longer gives everyone a draw; the penalty formula no longer wraps around at very large counts.</li></ul></div></details>
+</div>
+
+  <h3>Plugins, tenancy, identity</h3><div class="stack"><details class="decision"><summary><span class="what">Five plugin types around a fixed core, enforced by project references.</span><span class="why">Kinds, formats, features, sign-in methods, content sources.</span></summary><div class="more"><ul><li>Formats reference a contracts project that contains no database interface, so a format cannot touch storage.</li><li>Features see the core only through an interface project; the core's own types are internal.</li><li>Features do not own grains.</li><li>Each extension point is built only when its first real user is.</li></ul></div></details>
+<details class="decision key"><summary><span class="tag">Key</span><span class="what">A game result never waits for a feature.</span><span class="why">Stats and boards follow by events, each applied exactly once.</span></summary><div class="more"><ul><li>This replaces today's settlement through the player grain, with its checkpoints, dedup list and retry reminder.</li><li>The leaderboard keeps a ledger and folds it in time order, so results processed late still come out right.</li><li>Deleting a player's data is mandatory for every plugin and cannot be switched off.</li></ul></div></details>
+<details class="decision"><summary><span class="what">One schema for all tenants, row-level security, three database roles.</span><span class="why">No running credential can read two tenants in one query.</span></summary><div class="more"><ul><li>Tenants, hosts and what each has switched on move from <code>appsettings.json</code> into the database.</li><li>"Enabled" means offered for new play; games already running keep going.</li></ul></div></details>
+<details class="decision"><summary><span class="what">One account across tenants; cookie sessions replace the two JWT schemes.</span><span class="why">Sessions can now be revoked, which deletion and bans need.</span></summary><div class="more"><ul><li>Antiforgery token on every changing request, including uploads.</li><li>Upgrading a guest to an email that already has a profile here is refused, as today.</li><li>The last owner of a tenant and the last platform admin cannot be removed, checked under a shared lock.</li></ul></div></details>
+</div>
+
+  <h3>Delivery and the Blazor client</h3><div class="stack"><details class="decision key"><summary><span class="tag">Key</span><span class="what">One app-wide stream of server-sent events; commands by POST.</span><span class="why">It replaces both hubs, the three notifier interfaces and the client's fourteen events.</span></summary><div class="more"><ul><li>The server pushes each player's whole current view. A reconnect just gets the current state.</li><li>A 2-second reconcile repairs anything a lost notification missed.</li><li>In Blazor it is a streamed <code>HttpClient</code> request, not the browser's EventSource.</li></ul></div></details>
+<details class="decision"><summary><span class="what">The first visit by invite link is treated as the path that matters.</span><span class="why">A plain server page appears at once; the app loads behind it and takes over.</span></summary><div class="more"><ul><li>The admin area and the map are lazy-loaded assemblies.</li><li>The service worker stops downloading everything at install.</li><li>The shell stays a static, integrity-checked file; theme and configuration come from three small per-tenant routes.</li><li>Target on a mid-range phone on mobile data: invite page usable in under a second, app playable in under four.</li></ul></div></details>
+<details class="decision"><summary><span class="what">Fetching a media URL someone typed is fenced.</span><span class="why">Today the browser loads such URLs; now the server would, so internal addresses are refused.</span></summary><div class="more"><p>Only http and https, the resolved address is checked and used, redirects are limited and re-checked, and size is capped.</p></div></details>
+</div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Codex's final verdict by area</h2><p>Given in round 3, before its 20 findings were applied. They are now in the documents, unreviewed.</p></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Area</th><th>Verdict</th><th>What was outstanding</th></tr></thead>
+    <tbody>
+      <tr><td>The plan: second solution, milestones, cut-over</td><td><span class="pill ok">Ready</span></td><td>Nothing</td></tr>
+      <tr><td>Tenancy, roles, row security</td><td><span class="pill ok">Ready</span></td><td>Nothing</td></tr>
+      <tr><td>Identity</td><td><span class="pill ok">Ready</span></td><td>Nothing</td></tr>
+      <tr><td>Question kinds and content</td><td><span class="pill fix">With fixes</span></td><td>Where language names are stored</td></tr>
+      <tr><td>Session grain</td><td><span class="pill fix">With fixes</span></td><td>The open async challenge; replayed creates; poll duplicates</td></tr>
+      <tr><td>Time and timers</td><td><span class="pill fix">With fixes</span></td><td>Retry timer identity; flashcards' first deadline</td></tr>
+      <tr><td>Formats and fidelity</td><td><span class="pill fix">With fixes</span></td><td>Four settlement differences to decide</td></tr>
+      <tr><td>Delivery</td><td><span class="pill fix">With fixes</span></td><td>Ordering of plugin effects; very large result screens</td></tr>
+      <tr><td>Plugin model</td><td><span class="pill fix">With fixes</span></td><td>Retiring a feature with jobs still queued</td></tr>
+      <tr><td>Feature plugins</td><td><span class="pill fix">With fixes</span></td><td>Async pairing recovery; ledger tie order; penalty cap</td></tr>
+      <tr><td>Blazor client</td><td><span class="pill fix">With fixes</span></td><td>Server pages reading the saved language</td></tr>
+      <tr><td>The schema as SQL</td><td><span class="pill fix" style="background:var(--surface);border:1px solid var(--p0);color:var(--p0)">Not ready</span></td><td>A foreign key to a column that did not exist; a constraint that could be passed by accident. Both fixed since</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Verify these first in code</h2><p>Codex's three, which I agree with.</p></div>
+  <ol class="first">
+    <li><strong>Run the migrations on PostgreSQL 18 under the three real roles,</strong> including Orleans' membership tables in their own schema.</li>
+    <li><strong>The two-silo prototype</strong> with lost commit responses, duplicate activations and the 500-player burst.</li>
+    <li><strong>The published PWA end to end:</strong> sign-in changes, lazy components, service worker updates, async pairing recovery.</li>
+  </ol>
+</section>
+
+<footer>
+  Full detail: <code>docs/platform/architecture.md</code>, <code>docs/platform/schema.sql</code> and the three rounds in <code>docs/platform/review/</code> of the <code>quesshi</code> repository. Nothing is committed.
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var all = function () { return document.querySelectorAll("details.decision"); };
+  document.getElementById("openAll").addEventListener("click", function () { all().forEach(function (d) { d.open = true; }); });
+  document.getElementById("closeAll").addEventListener("click", function () { all().forEach(function (d) { d.open = false; }); });
+})();
+</script>
