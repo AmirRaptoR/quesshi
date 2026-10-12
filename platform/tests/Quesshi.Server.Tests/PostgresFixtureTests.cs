@@ -1,4 +1,5 @@
 using Quesshi.Testing;
+using Quesshi.Server;
 
 namespace Quesshi.Server.Tests;
 
@@ -19,6 +20,23 @@ public sealed class PostgresFixtureConfigurationTests
         var exception = Assert.Throws<InvalidOperationException>(() => PostgresFixture.IsConfigured(null, isCi: true));
 
         Assert.Contains(PostgresFixture.AdminConnectionStringEnvironmentVariable, exception.Message);
+    }
+}
+
+public sealed class MigrateCommandTests
+{
+    [Fact]
+    public async Task Migrate_requires_an_owner_connection_string()
+    {
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => Program.MigrateAsync(null));
+
+        Assert.Contains("ConnectionStrings__Owner", exception.Message);
+    }
+
+    [Fact]
+    public async Task Serve_does_not_require_an_owner_connection_string()
+    {
+        await Program.Main([]);
     }
 }
 

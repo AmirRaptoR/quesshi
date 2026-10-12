@@ -5,6 +5,9 @@
     <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Migrations/**/*.sql" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Quesshi.Infrastructure" />
     <InternalsVisibleTo Include="Quesshi.Grains" />
     <InternalsVisibleTo Include="Quesshi.Server" />

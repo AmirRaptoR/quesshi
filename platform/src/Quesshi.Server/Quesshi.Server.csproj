@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <ProjectReference Include="../Quesshi.Application/Quesshi.Application.csproj" />
+    <ProjectReference Include="../Quesshi.Features/Quesshi.Features.csproj" />
     <ProjectReference Include="../Quesshi.Infrastructure/Quesshi.Infrastructure.csproj" />
     <ProjectReference Include="../Quesshi.Grains/Quesshi.Grains.csproj" />
     <ProjectReference Include="../Quesshi.Grains.Abstractions/Quesshi.Grains.Abstractions.csproj" />

@@ -4,5 +4,9 @@
     <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Migrations/Application/*.sql" LogicalName="Quesshi.Application.Migrations.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Migrations/Features/ai_generation/*.sql" LogicalName="Quesshi.Features.Features.ai_generation.Migrations.%(Filename)%(Extension)" />
+  </ItemGroup>
   <Import Project="../TestProject.props" />
 </Project>

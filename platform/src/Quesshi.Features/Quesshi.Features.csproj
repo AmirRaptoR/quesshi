@@ -2,4 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="../Quesshi.Plugin.Api/Quesshi.Plugin.Api.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Features/*/Migrations/**/*.sql" />
+  </ItemGroup>
 </Project>
