@@ -1,0 +1,20 @@
+# Pure kind and format plugins must be deterministic and isolated from infrastructure.
+P:System.Random.Shared; Use an injected deterministic random source.
+P:System.DateTime.Now; Use a value supplied by the caller.
+P:System.DateTime.UtcNow; Use a value supplied by the caller.
+P:System.DateTimeOffset.Now; Use a value supplied by the caller.
+P:System.DateTimeOffset.UtcNow; Use a value supplied by the caller.
+M:System.Guid.NewGuid; Use an identifier supplied by the caller.
+N:System.Net; Network APIs are not available to plugins.
+T:System.IO.File; File-system APIs are not available to plugins.
+M:System.Reflection.Assembly.Load(System.String); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.Load(System.Byte[]); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.Load(System.Byte[],System.Byte[]); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.Load(System.Reflection.AssemblyName); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.LoadFrom(System.String); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.LoadFrom(System.String,System.Byte[],System.Configuration.Assemblies.AssemblyHashAlgorithm); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.LoadFile(System.String); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.LoadModule(System.String,System.Byte[]); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.LoadModule(System.String,System.Byte[],System.Byte[]); Dynamic assembly loading is not available to plugins.
+M:System.Reflection.Assembly.LoadWithPartialName(System.String); Dynamic assembly loading is not available to plugins.
+N:Npgsql; Database APIs are not available to plugins.

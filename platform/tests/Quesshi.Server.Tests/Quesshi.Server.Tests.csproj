@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Quesshi.Server/Quesshi.Server.csproj" />
+    <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+  </ItemGroup>
+  <Import Project="../TestProject.props" />
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4" PrivateAssets="all" />
+    <AdditionalFiles Include="../../BannedSymbols.txt" Link="BannedSymbols.txt" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(QuesshiBannedApiProbe)' != ''">
+    <Compile Include="$(QuesshiBannedApiProbe)" Link="BannedApiProbe.cs" />
+  </ItemGroup>
+</Project>

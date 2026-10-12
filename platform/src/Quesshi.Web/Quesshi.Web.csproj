@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+    <ProjectReference Include="../Quesshi.Kinds/Quesshi.Kinds.csproj" />
+    <ProjectReference Include="../Quesshi.Web.Plugins/Quesshi.Web.Plugins.csproj" />
+    <ProjectReference Include="../Quesshi.Web.Admin/Quesshi.Web.Admin.csproj" />
+    <ProjectReference Include="../Quesshi.Kinds.MapPick.Client/Quesshi.Kinds.MapPick.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.11" />
+  </ItemGroup>
+</Project>
