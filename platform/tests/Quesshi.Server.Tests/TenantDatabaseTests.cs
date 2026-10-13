@@ -339,7 +339,7 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
         foreach (var table in new[]
                  {
                      "player_references", "inbox_events", "plugin_rows", "packs",
-                     "questions", "players", "typed_rows", "tenant_rows"
+                     "questions", "typed_rows", "tenant_rows"
                  })
         {
             await ExecuteAsync(owner, $"drop table if exists {table} cascade");
@@ -349,14 +349,13 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
         {
             "create table tenant_rows (tenant_id uuid not null, id uuid not null, value text not null, primary key (tenant_id, id))",
             "create table typed_rows (tenant_id uuid not null, id uuid not null, guid_value uuid not null, happened_at timestamptz not null, payload jsonb not null, primary key (tenant_id, id))",
-            "create table players (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
             "create table questions (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
             "create table packs (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
             "create table plugin_rows (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
             "create table player_references (tenant_id uuid not null, id uuid not null, player_id uuid not null, primary key (tenant_id, id), foreign key (tenant_id, player_id) references players (tenant_id, id))",
             "create table inbox_events (tenant_id uuid not null, sequence bigserial not null, player_id uuid not null, primary key (tenant_id, sequence))"
         }) await ExecuteAsync(owner, statement);
-        foreach (var table in new[] { "tenant_rows", "typed_rows", "players", "questions", "packs", "plugin_rows", "player_references", "inbox_events" })
+        foreach (var table in new[] { "tenant_rows", "typed_rows", "questions", "packs", "plugin_rows", "player_references", "inbox_events" })
         {
             await ExecuteAsync(
                 owner,
@@ -364,6 +363,8 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
                 ("tableName", table),
                 ("owner", table == "plugin_rows" ? "demo_plugin" : "core"));
         }
+        await ExecuteAsync(owner, "delete from sessions; delete from tenants");
+        await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'tenant-a', 'Tenant A', 'en'), (@b, 'tenant-b', 'Tenant B', 'en')", ("a", TenantA), ("b", TenantB));
         await ExecuteAsync(owner, "grant usage, select on sequence inbox_events_sequence_seq to quesshi_app");
     }
 
@@ -371,10 +372,11 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
     {
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
-        foreach (var (table, id) in new[] { ("players", playerA), ("players", playerB), ("questions", content), ("plugin_rows", owned) })
+        foreach (var (table, id) in new[] { ("questions", content), ("plugin_rows", owned) })
         {
             await ExecuteAsync(owner, $"insert into {table} (tenant_id, id) values (@tenant, @id)", ("tenant", TenantA), ("id", id));
         }
+        await ExecuteAsync(owner, "insert into players (tenant_id, id, display_name, avatar_seed, lang) values (@tenant, @a, 'Player A', 'seed-a', 'en'), (@tenant, @b, 'Player B', 'seed-b', 'en')", ("tenant", TenantA), ("a", playerA), ("b", playerB));
     }
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)

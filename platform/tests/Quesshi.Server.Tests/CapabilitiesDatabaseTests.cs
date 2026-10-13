@@ -20,7 +20,7 @@ public sealed class CapabilitiesDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         await using var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await ExecuteAsync(owner, "delete from sessions; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
         await SeedAsync(owner, TenantA, "tenant-a");
         await SeedAsync(owner, TenantB, "tenant-b");
 
