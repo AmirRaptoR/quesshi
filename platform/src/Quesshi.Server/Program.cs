@@ -17,6 +17,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Clock;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
 
 namespace Quesshi.Server;
 
@@ -126,11 +127,11 @@ public static class Program
         builder.Services.AddSingleton<IPlatformSiloHealth, PlatformSiloHealth>();
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
+        builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+        builder.Services.TryAddSingleton(CoreCapabilities.CreateRegistry());
+        builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
         if (builder.Configuration.GetValue("Jobs:Enabled", true))
         {
-            builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
-            builder.Services.TryAddSingleton(CoreCapabilities.CreateRegistry());
-            builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
             builder.Services.AddSingleton<IJobStore, PostgresJobStore>();
             builder.Services.AddSingleton<JobHandlerRegistry>();
             builder.Services.AddSingleton<JobScheduleRegistry>();
@@ -168,7 +169,12 @@ public static class Program
             var report = await health.CheckAsync(cancellationToken);
             return report.IsHealthy ? Results.Ok(report) : Results.Json(report, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
+        app.MapTenantResources();
         app.UseWhen(context => !context.Request.Path.StartsWithSegments("/health"), tenant => tenant.UseTenantResolution());
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot"))
+        });
         app.Use(async (context, next) =>
         {
             var tenant = TenantResolutionMiddleware.GetTenant(context);
