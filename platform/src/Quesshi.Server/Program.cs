@@ -1,9 +1,14 @@
 using Quesshi.Application;
+using Quesshi.Application.Jobs;
+using Quesshi.Infrastructure.Capabilities;
+using Quesshi.Infrastructure.Jobs;
+using Quesshi.Plugin.Api;
 using Quesshi.Features;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Migrations;
 using Quesshi.Server.Commands;
 using Quesshi.Server.Health;
+using Quesshi.Server.Jobs;
 using Quesshi.Server.Tenants;
 using Npgsql;
 using Orleans.Configuration;
@@ -11,6 +16,7 @@ using Orleans.Hosting;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Clock;
 using System.Net;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Quesshi.Server;
 
@@ -120,6 +126,16 @@ public static class Program
         builder.Services.AddSingleton<IPlatformSiloHealth, PlatformSiloHealth>();
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
+        if (builder.Configuration.GetValue("Jobs:Enabled", true))
+        {
+            builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+            builder.Services.TryAddSingleton(CoreCapabilities.CreateRegistry());
+            builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
+            builder.Services.AddSingleton<IJobStore, PostgresJobStore>();
+            builder.Services.AddSingleton<JobHandlerRegistry>();
+            builder.Services.AddSingleton<JobWorker>();
+            builder.Services.AddHostedService<JobWorkerService>();
+        }
         builder.Host.UseOrleans(silo =>
         {
             var membership = new NpgsqlConnectionStringBuilder(sources.SystemConnectionString) { SearchPath = "orleans" }.ConnectionString;
