@@ -178,6 +178,7 @@ public static class Program
         // The Blazor client is published through static web assets. Its index remains tenant-neutral;
         // tenant branding and configuration are served by the host-scoped endpoints above.
         app.MapStaticAssets();
+        app.MapFallbackToFile("index.html");
         app.Use(async (context, next) =>
         {
             var tenant = TenantResolutionMiddleware.GetTenant(context);

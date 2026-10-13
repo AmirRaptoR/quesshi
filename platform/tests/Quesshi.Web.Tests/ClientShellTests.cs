@@ -70,6 +70,28 @@ public sealed class ClientShellTests
         Assert.Contains("!dynamicPaths.has", worker);
     }
 
+    [Fact]
+    public void Published_server_maps_unmatched_tenant_routes_to_the_blazor_shell()
+    {
+        var platform = FindPlatformDirectory();
+        var server = File.ReadAllText(Path.Combine(platform, "src", "Quesshi.Server", "Program.cs"));
+
+        Assert.Contains("app.MapStaticAssets();", server);
+        Assert.Contains("app.MapFallbackToFile(\"index.html\");", server);
+        Assert.True(server.IndexOf("app.MapStaticAssets();", StringComparison.Ordinal) < server.IndexOf("app.MapFallbackToFile(\"index.html\");", StringComparison.Ordinal));
+    }
+
+    private static string FindPlatformDirectory()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var platform = Path.Combine(directory.FullName, "platform");
+            if (File.Exists(Path.Combine(platform, "Quesshi.Platform.slnx"))) return platform;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the platform source directory.");
+    }
+
     private static HttpResponseMessage Config(string name, long version) => new(HttpStatusCode.OK)
     {
         Content = new StringContent($$"""{"name":"{{name}}","languages":[{"code":"en","displayName":"English","direction":"ltr"}],"defaultLanguage":"en","capabilities":{},"configVersion":{{version}},"serverBuildId":"test"}""", Encoding.UTF8, "application/json")
