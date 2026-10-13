@@ -7,6 +7,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
@@ -218,6 +219,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await using var app = Program.CreateApplication(Sources(), 11131, 30131);
         app.Urls.Add("http://127.0.0.1:50131");
         await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
             var factory = app.Services.GetRequiredService<IGrainFactory>();
@@ -261,6 +263,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await using var app = Program.CreateApplication(Sources(), 11132, 30132);
         app.Urls.Add("http://127.0.0.1:50132");
         await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
             var grain = app.Services.GetRequiredService<IGrainFactory>().GetGrain<ISessionGrain>($"{tenant}/{session}");
