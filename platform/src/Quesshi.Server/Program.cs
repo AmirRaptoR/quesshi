@@ -175,6 +175,9 @@ public static class Program
         {
             FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot"))
         });
+        // The Blazor client is published through static web assets. Its index remains tenant-neutral;
+        // tenant branding and configuration are served by the host-scoped endpoints above.
+        app.MapStaticAssets();
         app.Use(async (context, next) =>
         {
             var tenant = TenantResolutionMiddleware.GetTenant(context);

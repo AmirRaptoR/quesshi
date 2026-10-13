@@ -1,0 +1,2255 @@
+/* ============================================================
+   Quesshi — glaze & girih
+   A Persian tile palette: lapis ground, turquoise and saffron glaze.
+   One family (Vazirmatn) carries both scripts so Persian and English
+   have the same personality rather than two different designs.
+   ============================================================ */
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --shab:        #090E22;   /* night — the page ground */
+  --lajevard:    #16225C;   /* lapis — cards */
+  --lajevard-up: #1E2E78;   /* lapis, lifted */
+  --firouzeh:    #2FBFB0;   /* turquoise glaze — primary */
+  --zaferan:     #E8A83A;   /* saffron — score, correct */
+  --anaar:       #D4425C;   /* pomegranate — wrong, danger */
+  --sadaf:       #EDE3D0;   /* mother-of-pearl — text */
+
+  --sadaf-2: rgb(237 227 208 / 0.66);
+  --sadaf-3: rgb(237 227 208 / 0.38);
+  --line:    rgb(47 191 176 / 0.18);
+  --line-2:  rgb(47 191 176 / 0.34);
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+
+  --step--1: clamp(0.75rem, 0.72rem + 0.15vw, 0.82rem);
+  --step-0:  clamp(0.94rem, 0.90rem + 0.2vw, 1rem);
+  --step-1:  clamp(1.13rem, 1.05rem + 0.4vw, 1.3rem);
+  --step-2:  clamp(1.4rem, 1.25rem + 0.7vw, 1.75rem);
+  --step-3:  clamp(1.8rem, 1.5rem + 1.4vw, 2.6rem);
+  --step-4:  clamp(2.6rem, 2rem + 2.8vw, 4rem);
+
+  --shell: 30rem;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: 'Vazirmatn', system-ui, sans-serif;
+  font-size: var(--step-0);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--sadaf);
+  background: var(--shab);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* --- the ground: a girih lattice under a slow lapis dawn ------------------ */
+body::before, body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: -1; }
+
+body::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cg fill='none' stroke='%232FBFB0' stroke-width='1.1'%3E%3Crect x='40' y='40' width='60' height='60'/%3E%3Crect x='40' y='40' width='60' height='60' transform='rotate(45 70 70)'/%3E%3Crect x='-30' y='-30' width='60' height='60'/%3E%3Crect x='-30' y='-30' width='60' height='60' transform='rotate(45 0 0)'/%3E%3Crect x='110' y='-30' width='60' height='60'/%3E%3Crect x='110' y='-30' width='60' height='60' transform='rotate(45 140 0)'/%3E%3Crect x='-30' y='110' width='60' height='60'/%3E%3Crect x='-30' y='110' width='60' height='60' transform='rotate(45 0 140)'/%3E%3Crect x='110' y='110' width='60' height='60'/%3E%3Crect x='110' y='110' width='60' height='60' transform='rotate(45 140 140)'/%3E%3C/g%3E%3C/svg%3E");
+  opacity: 0.07;
+}
+
+body::after {
+  background:
+    radial-gradient(58rem 40rem at 78% -8%, rgb(47 191 176 / 0.16), transparent 62%),
+    radial-gradient(52rem 44rem at 8% 104%, rgb(30 46 120 / 0.55), transparent 60%);
+  animation: dawn 26s var(--ease) infinite alternate;
+}
+
+@keyframes dawn {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(0, -2.5%, 0) scale(1.07); }
+}
+
+/* --- type ---------------------------------------------------------------- */
+h1, h2, h3 { margin: 0; font-weight: 800; line-height: 1.15; letter-spacing: -0.015em; }
+h1 { font-size: var(--step-3); }
+h2 { font-size: var(--step-2); }
+h3 { font-size: var(--step-1); }
+p  { margin: 0 0 0.9rem; }
+a  { color: var(--firouzeh); text-decoration: none; }
+
+.eyebrow {
+  font-size: var(--step--1);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--firouzeh);
+}
+:root[dir="rtl"] .eyebrow { letter-spacing: 0.06em; }
+
+.muted   { color: var(--sadaf-2); }
+.faint   { color: var(--sadaf-3); }
+.numeral { font-variant-numeric: tabular-nums; font-weight: 800; }
+
+/* --- shell and nav ------------------------------------------------------- */
+.shell {
+  width: min(100% - 2rem, var(--shell));
+  margin-inline: auto;
+  padding-block: 1.5rem 6.5rem;
+}
+.shell--wide { --shell: 68rem; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.topbar__title { font-size: var(--step-1); font-weight: 800; }
+.topbar__spacer { margin-inline-start: auto; }
+
+.tabbar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.5rem max(1rem, env(safe-area-inset-left)) calc(0.5rem + env(safe-area-inset-bottom));
+  background: rgb(9 14 34 / 0.86);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line);
+}
+.tabbar__link {
+  flex: 1 1 0;
+  max-width: 7rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.2rem;
+  border-radius: var(--r-sm);
+  color: var(--sadaf-3);
+  font-size: var(--step--1);
+  font-weight: 600;
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tabbar__link:hover { color: var(--sadaf-2); }
+}
+.tabbar__link.active { color: var(--zaferan); background: rgb(232 168 58 / 0.1); }
+.tabbar__icon { font-size: 1.15rem; line-height: 1; }
+
+/* --- surfaces ------------------------------------------------------------ */
+.card {
+  position: relative;
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 1.25rem;
+  margin-top: 0.85rem;
+}
+.card--flat { background: rgb(22 34 92 / 0.5); }
+
+/* One motif, two scales: a small eight-point star straddles the top edge of the card that matters.
+   Centring is physical, not logical, so it holds in both text directions. */
+.card--taq { margin-top: 1.4rem; border-radius: var(--r-lg) var(--r-lg) var(--r-md) var(--r-md); }
+.card--taq::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.95rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%232FBFB0' stroke-width='1.3'%3E%3Crect x='6' y='6' width='12' height='12'/%3E%3Crect x='6' y='6' width='12' height='12' transform='rotate(45 12 12)'/%3E%3C/g%3E%3C/svg%3E")
+      center / 1.55rem no-repeat,
+    var(--shab);
+}
+
+.stack { display: grid; gap: 0.85rem; }
+.row   { display: flex; align-items: center; gap: 0.75rem; }
+.row--between { justify-content: space-between; }
+.grow  { flex: 1; min-width: 0; }
+
+/* --- buttons ------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-weight: 700;
+  color: var(--shab);
+  background: var(--firouzeh);
+  cursor: pointer;
+  transition: transform 0.15s var(--ease), filter 0.2s var(--ease), background 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+}
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn--block { width: 100%; }
+.btn--gold  { background: var(--zaferan); }
+.btn--ghost { background: transparent; color: var(--sadaf); border-color: var(--line-2); }
+@media (hover: hover) and (pointer: fine) {
+  .btn--ghost:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+}
+.btn--danger { background: var(--anaar); color: var(--sadaf); }
+.btn--sm { padding: 0.45rem 0.75rem; font-size: var(--step--1); }
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--zaferan);
+  outline-offset: 2px;
+}
+
+/* Blazor focuses the heading on navigation for screen readers; sighted users should not see a box. */
+[tabindex="-1"]:focus { outline: none; }
+
+/* --- fields -------------------------------------------------------------- */
+.field { display: grid; gap: 0.35rem; }
+.field > label { font-size: var(--step--1); font-weight: 600; color: var(--sadaf-2); }
+
+.input, .select, .textarea {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  color: var(--sadaf);
+  background: rgb(9 14 34 / 0.55);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color 0.2s var(--ease);
+}
+.input:focus, .select:focus, .textarea:focus { border-color: var(--firouzeh); }
+.input::placeholder { color: var(--sadaf-3); }
+
+.code-input {
+  font-size: var(--step-2);
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- chips and badges ---------------------------------------------------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: var(--step--1);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: rgb(47 191 176 / 0.08);
+  color: var(--sadaf-2);
+}
+.chip--win  { color: var(--zaferan); border-color: rgb(232 168 58 / 0.4); background: rgb(232 168 58 / 0.12); }
+.chip--loss { color: var(--anaar);   border-color: rgb(212 66 92 / 0.4);  background: rgb(212 66 92 / 0.12); }
+.chip--draw { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); background: rgb(47 191 176 / 0.12); }
+.chip--live { color: var(--firouzeh); }
+.chip--live-tag { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); background: rgb(47 191 176 / 0.12); }
+
+.level {
+  display: inline-flex;
+  gap: 2px;
+}
+.level i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--sadaf-3);
+  display: block;
+}
+.level i.on { background: var(--zaferan); }
+
+/* --- avatar: a glazed tile, seeded from the player id -------------------- */
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.5rem; height: 2.5rem;
+  border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  font-weight: 800;
+  color: var(--shab);
+  background: var(--firouzeh);
+}
+.avatar--lg { width: 4rem; height: 4rem; font-size: var(--step-2); }
+.avatar--sm { width: 2rem; height: 2rem; font-size: var(--step--1); }
+
+/* --- standings: the results screen's per-participant ranking -------------- */
+.stand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--line);
+}
+.stand-row:last-child { border-bottom: none; }
+.stand-row--me { background: rgb(232 168 58 / 0.07); border-radius: var(--r-sm); padding-inline: 0.5rem; }
+.stand-row__place {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem; height: 1.6rem;
+  border-radius: 50%;
+  font-size: var(--step--1);
+  color: var(--sadaf-2);
+  background: rgb(237 227 208 / 0.08);
+}
+.stand-row--first .stand-row__place { color: var(--shab); background: var(--zaferan); }
+.stand-row__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stand-row__score { font-size: var(--step-1); }
+
+/* --- lobby: a room people are standing in, from two seats to eight -------- */
+/* Every seat renders the same size and shape whether it holds someone or not, wrapped and centred
+   rather than stretched — a two-player lobby is two tiles side by side, not two tiles pretending to
+   fill an eight-wide row, which is what would make it read as emptier than it does today. */
+.lobby-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
+.lobby-seat {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 9rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: rgb(47 191 176 / 0.06);
+}
+.lobby-seat--me { border-color: var(--line-2); background: rgb(232 168 58 / 0.09); }
+.lobby-seat--empty {
+  justify-content: center;
+  color: var(--sadaf-3);
+  border-style: dashed;
+  background: transparent;
+}
+.lobby-seat__ghost {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  color: var(--sadaf-3);
+}
+
+/* --- presence: who could actually play right now -------------------------- */
+.dot--online {
+  flex: none;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--firouzeh);
+}
+
+/* --- shamseh: the twelve-ray rosette ------------------------------------- */
+.shamseh { display: block; width: 100%; height: auto; overflow: visible; }
+.shamseh__ray { transition: fill 0.45s var(--ease), opacity 0.45s var(--ease); }
+.shamseh__ray--idle    { fill: rgb(237 227 208 / 0.06); stroke: var(--line);   stroke-width: 1; }
+.shamseh__ray--hidden  { fill: rgb(237 227 208 / 0.03); stroke: var(--line);   stroke-width: 1; stroke-dasharray: 3 3; }
+.shamseh__ray--right   { fill: var(--zaferan); stroke: none; }
+.shamseh__ray--wrong   { fill: rgb(212 66 92 / 0.55); stroke: none; }
+.shamseh__seam { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 2 4; }
+.shamseh__hub  { fill: rgb(9 14 34 / 0.9); stroke: var(--line-2); stroke-width: 1; }
+
+.shamseh--ignite .shamseh__ray { animation: ignite 0.5s var(--ease) backwards; }
+@keyframes ignite {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* --- countdown ring ------------------------------------------------------ */
+.ring { transform: rotate(-90deg); }
+.ring__track { stroke: rgb(237 227 208 / 0.12); fill: none; }
+.ring__fill  { stroke: var(--firouzeh); fill: none; stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.4s var(--ease); }
+.ring__fill.warn { stroke: var(--zaferan); }
+.ring__fill.hot  { stroke: var(--anaar); }
+
+/* --- question media ------------------------------------------------------ */
+.media { margin-top: 1rem; }
+.media img, .media video {
+  display: block;
+  width: 100%;
+  max-height: 15rem;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.6);
+}
+.media audio { width: 100%; }
+
+/* In a list, media is a thumbnail beside the text rather than the point of the row. */
+.media--compact { margin-top: 0.6rem; }
+.media--compact img,
+.media--compact video {
+  width: auto;
+  max-width: min(100%, 14rem);
+  max-height: 7rem;
+}
+.media--compact audio { max-width: 18rem; height: 2rem; }
+
+.media__credit {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--sadaf-3);
+}
+.media__source { display: block; word-break: break-all; }
+
+/* --- the answer tiles ---------------------------------------------------- */
+.answers { display: grid; gap: 0.6rem; margin-top: 1.1rem; }
+
+.answer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  text-align: start;
+  font: inherit;
+  font-weight: 600;
+  color: var(--sadaf);
+  background: rgb(9 14 34 / 0.5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.15s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .answer:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); border-color: var(--line-2); }
+}
+.answer:disabled { cursor: default; }
+.answer__key {
+  flex: none;
+  display: grid; place-items: center;
+  width: 1.75rem; height: 1.75rem;
+  border-radius: 6px;
+  font-size: var(--step--1);
+  font-weight: 800;
+  color: var(--firouzeh);
+  background: rgb(47 191 176 / 0.14);
+}
+.answer--right { border-color: var(--zaferan); background: rgb(232 168 58 / 0.16); animation: pop 0.4s var(--ease); }
+.answer--right .answer__key { color: var(--shab); background: var(--zaferan); }
+.answer--wrong { border-color: var(--anaar); background: rgb(212 66 92 / 0.16); animation: shake 0.35s var(--ease); }
+.answer--wrong .answer__key { color: var(--sadaf); background: var(--anaar); }
+.answer--dim { opacity: 0.4; }
+
+@keyframes pop   { 0% { transform: scale(1); } 45% { transform: scale(1.035); } 100% { transform: scale(1); } }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+/* --- gameplay: the question is the arena, not another form ---------------- */
+.game-shell {
+  --shell: 42rem;
+  position: relative;
+  min-height: 100dvh;
+  padding-top: max(1.1rem, env(safe-area-inset-top));
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}
+.game-shell::before {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  width: min(34rem, 88vw);
+  aspect-ratio: 1;
+  top: 14vh;
+  left: 50%;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(47 191 176 / 0.12), transparent 68%);
+  filter: blur(18px);
+  animation: game-aura 8s var(--ease) infinite alternate;
+}
+
+.game-hud {
+  position: relative;
+  min-height: 3.5rem;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(9 14 34 / 0.62);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  backdrop-filter: blur(12px);
+}
+.game-hud .chip { background: rgb(47 191 176 / 0.12); }
+.game-hud .ring { flex: none; filter: drop-shadow(0 0 7px rgb(47 191 176 / 0.32)); }
+.game-progress {
+  position: absolute;
+  inset-inline: 0.7rem;
+  bottom: 0.35rem;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(237 227 208 / 0.09);
+}
+.game-progress > i {
+  display: block;
+  width: var(--game-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--firouzeh), var(--zaferan));
+  box-shadow: 0 0 12px rgb(47 191 176 / 0.6);
+  transition: width 0.55s var(--ease);
+}
+
+.game-stage {
+  isolation: isolate;
+  overflow: visible;
+  padding: clamp(1.3rem, 4vw, 2rem);
+  border-color: rgb(47 191 176 / 0.4);
+  background:
+    radial-gradient(32rem 18rem at 50% -8%, rgb(47 191 176 / 0.2), transparent 64%),
+    linear-gradient(155deg, rgb(30 46 120 / 0.98), rgb(14 23 65 / 0.98) 72%);
+  box-shadow:
+    0 28px 70px -32px rgb(0 0 0 / 0.95),
+    inset 0 1px rgb(255 255 255 / 0.05),
+    0 0 0 1px rgb(47 191 176 / 0.05);
+  animation: game-stage-in 0.58s var(--ease) backwards;
+}
+.game-stage::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 11rem;
+  height: 11rem;
+  inset-inline-end: -1rem;
+  bottom: -1rem;
+  rotate: 22.5deg;
+  border: 1px solid rgb(47 191 176 / 0.13);
+  box-shadow: 0 0 0 1.8rem rgb(47 191 176 / 0.035), 0 0 0 3.6rem rgb(47 191 176 / 0.025);
+}
+.game-stage > * { position: relative; z-index: 1; }
+.game-stage h1 {
+  max-width: 29ch;
+  margin-inline: auto;
+  font-size: clamp(1.55rem, 4.8vw, 2.35rem) !important;
+  line-height: 1.28;
+  text-align: center;
+  text-shadow: 0 3px 18px rgb(0 0 0 / 0.35);
+}
+.game-kicker {
+  width: max-content;
+  margin: 0 auto 0.65rem;
+  color: var(--firouzeh);
+  font-size: var(--step--1);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+:root[dir="rtl"] .game-kicker { letter-spacing: 0.02em; }
+.game-kicker .numeral { color: var(--zaferan); }
+.game-stage .media img,
+.game-stage .media video {
+  border: 1px solid var(--line-2);
+  box-shadow: 0 16px 36px -20px rgb(0 0 0 / 0.9);
+}
+
+.game-answers { margin-top: clamp(1.15rem, 4vw, 1.7rem) !important; }
+.game-answer {
+  min-height: 3.75rem;
+  padding: 0.9rem 1rem;
+  border-color: rgb(47 191 176 / 0.27);
+  border-radius: var(--r-md);
+  background:
+    linear-gradient(110deg, rgb(255 255 255 / 0.025), transparent 45%),
+    rgb(9 14 34 / 0.7);
+  box-shadow: 0 9px 22px -18px rgb(0 0 0 / 0.9), inset 0 1px rgb(255 255 255 / 0.025);
+  animation: answer-deal 0.42s var(--ease) backwards;
+  animation-delay: calc(var(--answer-i, 0) * 55ms + 120ms);
+}
+.game-answer .answer__key {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 7px;
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+  box-shadow: 0 0 0 1px rgb(47 191 176 / 0.18), 0 0 14px rgb(47 191 176 / 0.08);
+}
+@media (hover: hover) and (pointer: fine) {
+  .game-answer:hover:not(:disabled) {
+    border-color: var(--firouzeh);
+    background: rgb(47 191 176 / 0.15);
+    box-shadow: 0 14px 28px -18px rgb(47 191 176 / 0.7);
+    transform: translateY(-2px) scale(1.006);
+  }
+}
+.answer--selected,
+.game-answer.answer--locked {
+  border-color: var(--firouzeh);
+  background: linear-gradient(110deg, rgb(47 191 176 / 0.22), rgb(9 14 34 / 0.62));
+  box-shadow: 0 0 0 1px rgb(47 191 176 / 0.18), 0 12px 32px -18px rgb(47 191 176 / 0.8);
+}
+.answer--selected .answer__key,
+.game-answer.answer--locked .answer__key { color: var(--shab); background: var(--firouzeh); }
+.game-answer.answer--right { animation: pop 0.4s var(--ease); }
+.game-answer.answer--wrong { animation: shake 0.35s var(--ease); }
+
+.game-stage .sortrow,
+.game-stage .mapbar {
+  min-height: 3.5rem;
+  border-radius: var(--r-md);
+  border-color: rgb(47 191 176 / 0.27);
+  background: rgb(9 14 34 / 0.68);
+  box-shadow: 0 9px 22px -18px rgb(0 0 0 / 0.9);
+}
+.game-stage .worldmap {
+  border-radius: var(--r-md);
+  border-color: rgb(47 191 176 / 0.34);
+  box-shadow: 0 18px 45px -24px rgb(0 0 0 / 0.95), 0 0 28px rgb(47 191 176 / 0.05);
+}
+.game-stage .btn--block { min-height: 3.25rem; border-radius: var(--r-md); }
+
+.game-status {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--sadaf-2);
+  background: rgb(9 14 34 / 0.62);
+  text-align: center;
+  box-shadow: 0 10px 28px -22px rgb(0 0 0 / 0.9);
+}
+.game-feedback {
+  border-color: rgb(232 168 58 / 0.28);
+  background: linear-gradient(135deg, rgb(22 34 92 / 0.78), rgb(9 14 34 / 0.72));
+  box-shadow: 0 18px 44px -28px rgb(0 0 0 / 0.9);
+}
+.game-review {
+  border-color: rgb(237 227 208 / 0.13);
+  background: linear-gradient(150deg, rgb(22 34 92 / 0.62), rgb(9 14 34 / 0.55));
+}
+.game-stage--reveal { border-color: rgb(232 168 58 / 0.44); }
+.game-results { border-color: rgb(232 168 58 / 0.42); }
+.game-countdown .numeral {
+  color: var(--zaferan);
+  text-shadow: 0 0 28px rgb(232 168 58 / 0.45);
+  animation: countdown-beat 0.8s var(--ease) infinite alternate;
+}
+
+@media (min-width: 38rem) {
+  .game-answers.answers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-answers .game-answer { height: 100%; }
+}
+@media (max-width: 24rem) {
+  .game-shell { width: min(100% - 1rem, var(--shell)); }
+  .game-hud { gap: 0.45rem; }
+  .game-hud .chip { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-stage { padding-inline: 1rem; }
+}
+
+@keyframes game-stage-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); filter: saturate(0.65); }
+  to { opacity: 1; transform: none; filter: saturate(1); }
+}
+@keyframes answer-deal {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes game-aura {
+  from { opacity: 0.65; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1.08); }
+}
+@keyframes countdown-beat {
+  from { transform: scale(0.96); opacity: 0.78; }
+  to { transform: scale(1.04); opacity: 1; }
+}
+
+/* --- reporting a question ------------------------------------------------- */
+.report__open {
+  padding: 0;
+  font: inherit;
+  font-size: var(--step--1);
+  color: var(--sadaf-3);
+  background: none;
+  border: 0;
+  border-bottom: 1px dotted var(--sadaf-3);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .report__open:hover { color: var(--anaar); border-bottom-color: var(--anaar); }
+}
+
+.report { display: grid; gap: 0.4rem; }
+.report__reasons { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.report__reason { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .report__reason:hover:not(:disabled) { border-color: var(--anaar); color: var(--anaar); }
+}
+
+/* --- accuracy bars ------------------------------------------------------- */
+.meter { height: 6px; border-radius: 999px; background: rgb(237 227 208 / 0.1); overflow: hidden; }
+.meter > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--firouzeh), var(--zaferan)); }
+
+/* --- pagination ----------------------------------------------------------- */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  font-size: var(--step--1);
+}
+.pager__count { margin-inline-end: auto; }
+
+.pager__page, .pager__step {
+  min-width: 2.1rem;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--sadaf-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .pager__page:hover:not(:disabled), .pager__step:hover:not(:disabled) {
+    color: var(--sadaf);
+    background: rgb(47 191 176 / 0.1);
+    border-color: var(--line-2);
+  }
+}
+.pager__page.is-current {
+  color: var(--shab);
+  background: var(--zaferan);
+  border-color: var(--zaferan);
+}
+.pager__step:disabled { opacity: 0.35; cursor: not-allowed; }
+.pager__gap { padding-inline: 0.15rem; color: var(--sadaf-3); }
+
+/* The chevrons point along the reading direction, so they flip with it. */
+.pager__arrow { display: inline-block; }
+:root[dir="rtl"] .pager__arrow { transform: scaleX(-1); }
+
+.pager__size { display: flex; align-items: center; gap: 0.4rem; margin-inline-start: 0.5rem; }
+.pager__size .select { width: auto; padding: 0.3rem 0.5rem; }
+
+/* --- tables (admin) ------------------------------------------------------ */
+.table { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
+.table th, .table td { padding: 0.6rem 0.5rem; text-align: start; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { color: var(--sadaf-2); font-weight: 700; white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) {
+  .table tr:hover td { background: rgb(47 191 176 / 0.05); }
+}
+.scroll-x { overflow-x: auto; }
+
+.grid-2 { display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); }
+.grid-3 { display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+
+.stat { text-align: center; }
+.stat__value { font-size: var(--step-2); font-weight: 800; color: var(--zaferan); font-variant-numeric: tabular-nums; }
+.stat__label { font-size: var(--step--1); color: var(--sadaf-2); }
+
+/* --- feedback ------------------------------------------------------------ */
+.notice { padding: 0.7rem 0.9rem; border-radius: var(--r-sm); font-size: var(--step--1); border: 1px solid var(--line); }
+.notice--bad  { color: var(--anaar); border-color: rgb(212 66 92 / 0.45); background: rgb(212 66 92 / 0.1); }
+.notice--good { color: var(--firouzeh); border-color: var(--line-2); background: rgb(47 191 176 / 0.08); }
+
+.empty { text-align: center; padding: 2.5rem 1rem; color: var(--sadaf-3); }
+
+.spinner {
+  width: 1.75rem; height: 1.75rem; margin: 2rem auto;
+  border: 2px solid var(--line); border-top-color: var(--firouzeh);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- entrance ------------------------------------------------------------ */
+.enter { animation: enter 0.5s var(--ease) backwards; }
+.enter:nth-child(2) { animation-delay: 0.06s; }
+.enter:nth-child(3) { animation-delay: 0.12s; }
+.enter:nth-child(4) { animation-delay: 0.18s; }
+.enter:nth-child(5) { animation-delay: 0.24s; }
+@keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* Blazor's own error strip, restyled so it matches the rest. */
+#blazor-error-ui {
+  position: fixed; inset-inline: 0; bottom: 0; z-index: 100;
+  display: none;
+  padding: 0.8rem 1.2rem;
+  color: var(--shab);
+  background: var(--zaferan);
+}
+#blazor-error-ui .dismiss { cursor: pointer; float: inline-end; }
+
+/* --- pickers ------------------------------------------------------------- */
+/* Choosing the shape of a duel: how long, and on what. Both are taps, never typing. */
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 3px; }
+.segmented__option {
+  padding: 0.4rem 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .segmented__option:hover { color: var(--sadaf); }
+}
+.segmented__option.is-on { color: var(--shab); background: var(--firouzeh); }
+.segmented__option:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* A smaller variant for a segmented control that qualifies another control rather than standing level
+   with it — see Home.razor's live/async pick, a property of "Invite a friend" and its stepper, not a
+   third thing beside them. */
+.segmented--sm .segmented__option { padding: 0.3rem 0.75rem; font-size: var(--step--1); }
+
+/* --- stepper: "how many seats", a control that matters only occasionally sitting quietly beside
+   the button that matters every time, rather than a whole segmented row daring you to notice it --- */
+.stepper { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.55rem; border: 1px solid var(--line); border-radius: 999px; }
+.stepper__btn {
+  width: 1.6rem; height: 1.6rem;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font: inherit;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--sadaf);
+  background: rgb(47 191 176 / 0.14);
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .stepper__btn:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+}
+.stepper__btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.stepper__value { min-width: 1.1rem; text-align: center; }
+
+.picker { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.picker__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--sadaf-2);
+  background: rgb(9 14 34 / 0.4);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .picker__chip:hover { border-color: var(--line-2); color: var(--sadaf); }
+}
+.picker__chip.is-on {
+  color: var(--sadaf);
+  border-color: var(--pick, var(--firouzeh));
+  background: color-mix(in srgb, var(--pick, var(--firouzeh)) 18%, transparent);
+}
+
+/* --- modal --------------------------------------------------------------- */
+/* Editing a question is a detour, not a place: it covers the list and gives it back. */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: start center;
+  padding: 1rem;
+  overflow-y: auto;
+  background: rgb(9 14 34 / 0.72);
+  backdrop-filter: blur(3px);
+  animation: fade 0.2s var(--ease);
+}
+.modal__panel {
+  width: min(42rem, 100%);
+  margin: auto;
+  animation: enter 0.25s var(--ease) backwards;
+}
+.modal__close { position: absolute; inset-inline-end: 0.75rem; top: 0.75rem; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- AI-written questions ------------------------------------------------ */
+/* Machine output is sorted to the top of the admin list and has to look different from
+   the hand-written bank, or an admin approves it without noticing which is which. */
+.card--ai {
+  border-color: rgb(199 125 255 / 0.45);
+  box-shadow: 0 0 0 1px rgb(199 125 255 / 0.12), 0 0 22px -6px rgb(199 125 255 / 0.5);
+}
+.card--ai::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  background: linear-gradient(180deg, #C77DFF, var(--firouzeh));
+  animation: aiPulse 2.6s var(--ease) infinite;
+}
+.chip--ai { color: #D6A6FF; border-color: rgb(199 125 255 / 0.45); background: rgb(199 125 255 / 0.14); }
+@keyframes aiPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .card--ai::after, .modal, .modal__panel { animation: none; }
+}
+
+/* --- icon buttons -------------------------------------------------------- */
+/* A square button holding one line icon. The destructive one stays quiet until you reach for it:
+   a row of solid red buttons makes deleting look like the expected thing to do. */
+.btn--icon { padding: 0.42rem; line-height: 0; }
+.btn--icon .icon { display: block; }
+
+.btn--icon-danger {
+  color: var(--anaar);
+  background: transparent;
+  border-color: rgb(212 66 92 / 0.35);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn--icon-danger:hover:not(:disabled) {
+    color: var(--sadaf);
+    background: var(--anaar);
+    border-color: var(--anaar);
+  }
+}
+
+/* --- the landing page ---------------------------------------------------- */
+/* The only page a stranger sees. Wider than the game, and the one place the rosette is
+   allowed to be decoration rather than a scoreboard. */
+.hero { text-align: center; padding-block: 7vh 1rem; }
+.hero__mark { width: min(11rem, 44vw); margin-inline: auto; }
+.hero h1 { margin-top: 1.3rem; font-size: var(--step-4); }
+.hero__lede { margin: 0.8rem auto 0; max-width: 34ch; font-size: var(--step-1); color: var(--sadaf-2); }
+.hero__cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-top: 1.5rem; }
+
+.section { margin-top: 3rem; }
+/* The taq card wears a star straddling its top edge; without extra room it crowds the heading above. */
+.section .card--taq { margin-top: 2.4rem; }
+
+.steps { display: grid; gap: 1.1rem; counter-reset: step; }
+.step { display: grid; grid-template-columns: auto 1fr; gap: 0.9rem; align-items: start; }
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 2.1rem; height: 2.1rem;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  color: var(--firouzeh);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+/* Persian text reads badly with Latin digits — the same rule the rest of the app follows. */
+:root[dir="rtl"] .step::before { content: counter(step, persian); }
+
+.landing__foot { margin-top: 1.5rem; text-align: center; }
+
+/* A long duel outgrows the rays: two rings, the outer one yours, carrying the same three states. */
+.shamseh__track { fill: none; stroke: rgb(237 227 208 / 0.1); stroke-width: 7; }
+.shamseh__arc {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: butt;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray 0.5s var(--ease);
+}
+.shamseh__arc--right { stroke: var(--zaferan); }
+.shamseh__arc--wrong { stroke: rgb(212 66 92 / 0.55); }
+
+/* A category with no questions in the chosen language is shown, not hidden: knowing it exists and
+   is empty is more useful than wondering where it went. */
+.picker__chip:disabled { opacity: 0.35; cursor: not-allowed; }
+@media (hover: hover) and (pointer: fine) {
+  .picker__chip:disabled:hover { border-color: var(--line); color: var(--sadaf-2); }
+}
+
+/* --- live duel bar: option A, a row above the topbar ---------------------- */
+/* justify-content:space-between plus plain DOM order is already direction-aware — "mine" sits at
+   the reading-start edge and "theirs" at the reading-end edge in both ltr and rtl, no second rule. */
+.duelbar { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-block-end: 0.9rem; }
+.duelbar__side { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.duelbar__side--theirs { flex-direction: row-reverse; }
+.duelbar__name { font-weight: 700; font-size: var(--step--1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 6rem; }
+.duelbar__score { font-size: var(--step-1); }
+.duelbar__score--mine { color: var(--zaferan); }
+
+/* Three or more seats: the single "theirs" column becomes a scrollable strip of the same side
+   markup instead, so up to seven other players stay legible without wrapping the whole bar. */
+.duelbar__others {
+  display: flex;
+  gap: 0.9rem;
+  overflow-x: auto;
+  min-width: 0;
+}
+.duelbar__others .duelbar__name { max-width: 4.5rem; }
+.duelbar__others::-webkit-scrollbar { display: none; }
+.duelbar__side--out { opacity: 0.4; }
+.duelbar__side--out .avatar { filter: grayscale(1); }
+
+/* --- live answers: locked (chosen, outcome still withheld) ---------------- */
+/* A stuck iOS :hover reads the same turquoise as a plain background tint, so the mark that says
+   "this is what you picked" has to be one hover cannot fake: a filled key chip, the same trick
+   .answer--right and .answer--wrong already use, rather than a few points of alpha on the tile. */
+.answer--locked { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
+.answer--locked .answer__key { color: var(--shab); background: var(--firouzeh); }
+
+.live-code { font-size: var(--step-2); font-weight: 800; letter-spacing: .25em; color: var(--firouzeh); }
+
+/* ============================================================
+   Sorting and map questions (docs/sorting-and-map-questions.md)
+   Two new ways to answer, built out of the pieces already here:
+   the sort row is the answer tile with its key slot turned into
+   a grip, and the map sits in the same dark well the tiles do.
+   Nothing below invents a colour — the accents are the same
+   turquoise for "what you picked" and saffron for "what was
+   right" the choice questions have always used.
+   ============================================================ */
+
+/* --- the sort list ------------------------------------------------------- */
+/* An <ol>, because the order is the answer and a screen reader should say so. */
+.sortlist { display: grid; gap: 0.6rem; margin: 1.1rem 0 0; padding: 0; list-style: none; }
+
+/* Deliberately the same box as .answer: same padding, border, radius and well, so a sorting
+   question reads as the same family of thing as a choice question rather than as a different game.
+   No touch-action here — the row must stay inert so a scroll gesture that starts on it scrolls the
+   page instead of quietly reordering the player's answer. Only the grip claims the gesture. */
+.sortrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  font-weight: 600;
+  color: var(--sadaf);
+  background: rgb(9 14 34 / 0.5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.15s var(--ease);
+}
+
+/* The grip is the row's first flex child, which *is* the reading-start edge in both directions —
+   no `left` anywhere and no rtl override to keep in step, which is the whole point of laying it out
+   logically. touch-action:none is what stops the browser treating a downward drag on the grip as a
+   scroll and cancelling the pointer sequence halfway through. */
+.sortrow__grip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--firouzeh);
+  background: rgb(47 191 176 / 0.14);
+  cursor: grab;
+  touch-action: none;
+  transition: background 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sortrow__grip:hover:not(:disabled) { background: rgb(47 191 176 / 0.26); }
+}
+.sortrow__grip:disabled { cursor: default; opacity: 0.5; }
+.sortrow__grip:active:not(:disabled) { cursor: grabbing; }
+
+/* The place a row is in is the answer, so it is numbered rather than decorated. */
+.sortrow__place {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  font-size: var(--step--1);
+  color: var(--zaferan);
+  background: rgb(232 168 58 / 0.12);
+}
+
+/* The one moment of motion in the list, and it answers the player's own gesture: the row being
+   dragged lifts off the others rather than sliding among them invisibly. */
+.sortrow--dragging {
+  border-color: var(--zaferan);
+  background: rgb(232 168 58 / 0.12);
+  transform: scale(1.02);
+  box-shadow: 0 10px 24px -12px rgb(9 14 34 / 0.9);
+  cursor: grabbing;
+}
+.sortrow--dragging .sortrow__grip { background: rgb(232 168 58 / 0.22); color: var(--zaferan); }
+
+/* --- the sort reveal: the right order, and yours, side by side ------------ */
+/* Two columns on a phone and one on anything narrower, rather than a table: four short items in
+   two lists is the smallest arrangement in which "these two disagree at place 3" is visible at a
+   glance, which is the only thing this reveal has to say. */
+.sortreveal { display: grid; gap: 0.7rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); margin-top: 1.1rem; }
+.sortreveal__col { display: grid; gap: 0.35rem; align-content: start; }
+.sortreveal__head { font-size: var(--step--1); font-weight: 700; color: var(--sadaf-2); }
+.sortreveal__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: var(--step--1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.4);
+}
+.sortreveal__item--right { border-color: rgb(232 168 58 / 0.5); background: rgb(232 168 58 / 0.14); }
+.sortreveal__item--wrong { border-color: rgb(212 66 92 / 0.5); background: rgb(212 66 92 / 0.14); }
+.sortreveal__item--blank { border-style: dashed; color: var(--sadaf-3); }
+.sortreveal__place { flex: none; color: var(--sadaf-3); font-variant-numeric: tabular-nums; font-weight: 800; }
+
+/* --- the world map ------------------------------------------------------- */
+/* The sea is the well the answer tiles sit in, not a separate white panel, so a 360x180 rectangle
+   settles into the page instead of sitting on top of it as a foreign object. */
+.worldmap {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.5);
+  touch-action: manipulation;
+}
+
+/* Land is the same lifted lapis the cards are made of. Every stroke below is non-scaling: the
+   viewBox is 360 units wide, so a stroke-width of 1 would be one degree of longitude — about
+   110 km of coastline drawn as a line. */
+.worldmap__country { fill: var(--lajevard-up); stroke: none; transition: fill 0.18s var(--ease); }
+.worldmap--borders .worldmap__country { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.worldmap--pick .worldmap__country { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .worldmap--pick .worldmap__country:hover { fill: rgb(47 191 176 / 0.45); }
+}
+
+/* What you picked is turquoise, what was right is saffron — the same two meanings those colours
+   carry on every answer tile in the app. Target wins where they are the same country, because
+   "you were right" is the more useful of the two things to see. */
+.worldmap__country.is-picked { fill: var(--firouzeh); }
+.worldmap__country.is-target { fill: var(--zaferan); }
+.worldmap__country.is-miss { fill: var(--anaar); }
+
+/* A filled country is a few pixels across at world scale, and on a phone that is not enough to
+   find by eye. The pale outline is what makes it read as "this one" from arm's length; it is drawn
+   over the border layer so it wins wherever the two meet. */
+.worldmap__country.is-picked,
+.worldmap__country.is-target,
+.worldmap__country.is-miss {
+  stroke: var(--sadaf);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  paint-order: stroke;
+}
+
+/* The catcher for a city question: a transparent rectangle over the whole viewBox, so a tap in the
+   middle of the Atlantic is as answerable as a tap on Berlin. */
+.worldmap__sea { fill: transparent; cursor: crosshair; }
+
+.worldmap__pin { fill: var(--firouzeh); stroke: var(--shab); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.worldmap__pin--target { fill: var(--zaferan); }
+.worldmap__cross { stroke: var(--shab); stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: 0.7; }
+
+/* The tolerance an answer is judged against, drawn as an ellipse rather than a circle — see
+   WorldMapProjection.RadiusInDegrees for why a circle here would be a picture of the rules that
+   disagrees with the rules. */
+.worldmap__tolerance {
+  fill: rgb(232 168 58 / 0.14);
+  stroke: var(--zaferan);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The line from a missed pin to where the answer actually was. */
+.worldmap__miss { stroke: var(--anaar); stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+
+/* --- the bar beneath the map: what you just hit -------------------------- */
+/* This bar is the whole reason a world map is usable on a phone with no pan and no zoom. It says
+   "Belgium", not "somewhere near where you meant", while there is still time to move. */
+.mapbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.4);
+}
+.mapbar--empty { color: var(--sadaf-3); }
+.mapbar__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapbar__coords { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mapbar__mark { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 2px; background: var(--firouzeh); transform: rotate(45deg); }
+.mapbar__mark--target { background: var(--zaferan); }
+.mapbar__mark--miss { background: var(--anaar); }
+
+/* The reveal's key: one row per thing drawn on the map above it. */
+.maplegend { display: grid; gap: 0.4rem; margin-top: 0.6rem; font-size: var(--step--1); }
+.maplegend__row { display: flex; align-items: center; gap: 0.5rem; }
+
+/* --- the question editor's mode switches --------------------------------- */
+/* A question's kind decides what the rest of the editor means — four items in order, or a point on
+   a map, or the multiple-choice form that has always been here. That is a mode, not one field among
+   five, so it shows all three options and the current one at once instead of hiding two of them
+   inside a dropdown beside language and level. The map target's two shapes use the same control for
+   the same reason, and reusing it rather than inventing a second look keeps the panel's vocabulary
+   at one word per idea.
+   Laid out with flex and logical properties only: in Persian the first option sits at the right,
+   with nothing to override. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(9 14 34 / 0.4);
+}
+.segmented__option {
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .segmented__option:hover { background: rgb(47 191 176 / 0.1); }
+}
+
+/* Turquoise for "this is the one selected", the same meaning it carries on every answer tile. */
+.segmented__option.is-on { color: var(--firouzeh); background: rgb(47 191 176 / 0.16); }
+
+/* Which shape a question is, in the listing. Only drawn for the two kinds that are not the
+   default — a bank of three thousand choice questions does not need three thousand labels
+   saying so. */
+.chip--kind { color: var(--firouzeh); border-color: rgb(47 191 176 / 0.4); }
+
+/* The tolerance slider. One declaration rather than a rebuilt track: the native control is
+   keyboard-operable, announces itself and handles RTL already, and all it needed was the house
+   colour. */
+input[type='range'] { accent-color: var(--firouzeh); }
+
+/* =====================================================   ---- home (#88) ----
+   The home is two tabs now — Live and Offline — and everything
+   below belongs to them. It is written as its own block rather
+   than woven into the sections above for a plain reason: the
+   redesign of #87 lands as six issues at once, and a block that
+   only ever grows at the end of the file is a block that cannot
+   collide with the lobby's, the profile's or the sheet's.
+
+   Nothing here invents a colour, a radius or a face. The one new
+   value is the online green, which the palette genuinely lacked:
+   turquoise already means "primary" and saffron means "your
+   score", so a presence dot in either would say something it
+   does not mean.
+
+   Every inline offset is logical (inset-inline, padding-inline,
+   text-align:start) — Persian is the default language of this
+   app, not an afterthought, and the only thing that flips by
+   hand is the chevron, which is a picture of a direction.
+   ============================================================ */
+
+:root { --sabz: #8FD64A; }
+
+/* --- the header: wordmark, and who you are ------------------------------- */
+.home-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.4rem; }
+.home-mark { font-size: var(--step-1); font-weight: 800; letter-spacing: -0.01em; }
+
+/* Uneven inline padding: the avatar is already a shape with its own edge, the number needs air.
+   Logical, so the pair swaps ends in Persian without a second rule. */
+.home-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem;
+  padding-inline-end: 0.75rem;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+}
+.home-score__face { width: 1.5rem; height: 1.5rem; font-size: 0.7rem; }
+.home-score__value { font-size: var(--step-0); color: var(--zaferan); }
+
+/* --- the two tabs -------------------------------------------------------- */
+/* A pill, not a row of links: these are two states of one screen, and the control has to look like
+   something that switches rather than something that navigates. */
+.home-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgb(22 34 92 / 0.5);
+  border: 1px solid var(--line);
+}
+.home-tabs__tab {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-tabs__tab:hover:not(.is-on) { color: var(--sadaf); }
+}
+.home-tabs__tab.is-on { font-weight: 800; color: var(--shab); background: var(--firouzeh); }
+
+/* --- the one action per tab ---------------------------------------------- */
+/* Solid turquoise, the largest radius in the system, and the only filled surface on the screen:
+   whatever else is on this tab, this is the thing to press. */
+.home-primary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  margin-top: 1.6rem;
+  padding: 1.35rem 1.15rem;
+  text-align: start;
+  border: 0;
+  border-radius: var(--r-lg);
+  font: inherit;
+  color: var(--shab);
+  background: var(--firouzeh);
+  cursor: pointer;
+  transition: filter 0.2s var(--ease), transform 0.15s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-primary:hover:not(:disabled) { filter: brightness(1.07); }
+}
+.home-primary:active:not(:disabled) { transform: translateY(1px); }
+.home-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.home-primary__icon, .home-primary__go { flex: none; }
+.home-primary__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.home-primary__title { font-size: var(--step-1); font-weight: 800; line-height: 1.2; }
+.home-primary__hint { font-size: var(--step--1); line-height: 1.35; opacity: 0.75; }
+
+/* A chevron is a picture of "onward", and onward is leftward in Persian. The only mirrored thing
+   in this block, and the same rule .pager__arrow above already follows. */
+:root[dir="rtl"] .home-go { transform: scaleX(-1); }
+
+/* --- the pair beneath it ------------------------------------------------- */
+/* Half width each, so both read as smaller than the card above without being smaller in type. */
+.home-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin-top: 0.6rem; }
+.home-tile {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+  align-content: start;
+  min-height: 44px;
+  padding: 1.1rem;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  font: inherit;
+  font-weight: 800;
+  color: var(--sadaf);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-tile:hover:not(:disabled) { border-color: var(--line-2); }
+}
+.home-tile:disabled { opacity: 0.45; cursor: not-allowed; }
+.home-tile.is-on { border-color: var(--firouzeh); background: rgb(47 191 176 / 0.14); }
+.home-tile__icon { color: var(--firouzeh); }
+
+/* --- the code field, revealed under whichever control asked for it -------- */
+.home-code { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+.home-code .input { min-height: 44px; letter-spacing: 0.12em; font-weight: 700; }
+.home-code__go { flex: none; min-width: 44px; min-height: 44px; padding: 0.6rem; }
+
+/* --- the opponent picker on the Offline tab ------------------------------ */
+.home-choice { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.home-choice__option {
+  flex: 1 1 6rem;
+  min-height: 44px;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--step--1);
+  color: var(--sadaf);
+  background: rgb(9 14 34 / 0.4);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-choice__option:hover:not(:disabled) { background: rgb(47 191 176 / 0.12); }
+}
+.home-choice__option:disabled { opacity: 0.45; cursor: not-allowed; }
+.home-choice__option.is-on { color: var(--shab); background: var(--firouzeh); border-color: var(--firouzeh); }
+
+/* --- the settings line --------------------------------------------------- */
+/* Dashed, quiet, and the width of the screen: the whole point of #87's decision is that this is
+   nearly always right already, so it states itself and stays out of the way. The dash is what says
+   "adjustable" — every solid-edged surface on this page is something that happens when pressed. */
+.home-settings {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 1.5rem;
+  padding: 0.7rem 0.85rem;
+  text-align: start;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--step--1);
+  color: var(--sadaf-2);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-settings:hover { border-color: var(--line-2); color: var(--sadaf); }
+}
+.home-settings__text { flex: 1; min-width: 0; }
+.home-settings__change { flex: none; font-weight: 700; color: var(--firouzeh); }
+
+/* --- sections ------------------------------------------------------------ */
+/* Plain sentence-case headings at reading size. The audit counted ten tracked-out ALL-CAPS eyebrows
+   across four screens, all shouting equally; a section title is a label, and a label that has to be
+   decoded before it can be read is not doing its job. */
+.home-sect { margin-top: 1.8rem; }
+.home-sect__title { margin: 0; font-size: var(--step-1); font-weight: 700; }
+.home-sect__title--quiet { color: var(--sadaf-2); }
+.home-sect__hint { margin: 0.7rem 0 0; font-size: var(--step--1); color: var(--sadaf-3); }
+.home-sect__none { margin: 0.65rem 0 0; color: var(--sadaf-2); }
+
+/* --- friends online now -------------------------------------------------- */
+/* Faces, not rows: a friend is a person, and at this size the avatar is the name. */
+.home-faces { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.85rem; }
+.home-face {
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  width: 4.25rem;
+  padding: 0.15rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
+  color: var(--sadaf);
+  cursor: pointer;
+  transition: transform 0.15s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-face:hover:not(:disabled) { transform: translateY(-2px); }
+}
+.home-face:disabled { opacity: 0.5; cursor: progress; }
+.home-face__tile { position: relative; width: 3.5rem; height: 3.5rem; font-size: var(--step-1); }
+.home-face__dot {
+  position: absolute;
+  inset-block-end: -2px;
+  inset-inline-end: -2px;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: var(--sabz);
+  border: 2px solid var(--shab);
+}
+.home-face__name { max-width: 100%; font-size: var(--step--1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- the two duel lists -------------------------------------------------- */
+/* The whole row is the target. A seventy-pixel row with one forty-four-pixel pill in its corner is
+   a row that does nothing when tapped where a thumb actually lands. */
+.home-duels { display: grid; gap: 0.5rem; margin-top: 0.8rem; }
+.home-duel {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.85rem 0.9rem;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(22 34 92 / 0.5);
+  font: inherit;
+  color: var(--sadaf);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-duel:hover { border-color: var(--line-2); }
+}
+
+/* Saffron edge and the lifted lapis: the duels waiting on this player are the ones with something
+   to do, and they are meant to be the first thing the eye lands on in the list. */
+.home-duel--turn {
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border-color: rgb(232 168 58 / 0.4);
+}
+.home-duel__face { width: 2.75rem; height: 2.75rem; font-size: var(--step-0); }
+.home-duel__who { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.home-duel__name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-duel__sub { font-size: var(--step--1); color: var(--sadaf-2); }
+.home-duel__play {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 1.1rem;
+  border-radius: 999px;
+  background: var(--zaferan);
+  color: var(--shab);
+  font-size: var(--step--1);
+  font-weight: 700;
+}
+
+/* ---- profile (#91) ---- */
+/* Profile stops being a settings form with a stats card bolted on: identity, a three-tile record and
+   friends, with a gear as the only door into everything that used to sit here as fields. Settings
+   gets its own new pieces below too (script tiles, the sounds switch) rather than reusing Profile's
+   old form markup, since neither survives this issue looking anything like it used to. */
+
+/* A small icon rendered at a comfortable size sitting inside a 44px tap target without the target's
+   own extra padding pushing the surrounding layout around — the negative margin gives the hit area
+   back the space its padding just claimed, the same trick the mockup itself uses for both the gear
+   and the settings back chevron. */
+.icon-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -10px;
+  border-radius: 50%;
+  color: var(--sadaf-2);
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .icon-hit:hover { color: var(--sadaf); background: rgb(47 191 176 / 0.1); }
+}
+
+/* A "back" chevron is drawn once, pointing towards the start of reading order, and mirrored for the
+   languages that read the other way — the same rule .pager__arrow already applies to its own chevrons. */
+:root[dir="rtl"] .icon-hit--back .icon { transform: scaleX(-1); }
+
+/* --- identity: a large avatar, the name, and points with a rank alongside when there is one -------- */
+.profile-id { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 0.4rem; }
+.profile-id__avatar { width: 5.75rem; height: 5.75rem; font-size: var(--step-3); }
+.profile-id__name { margin-top: 0.85rem; font-size: var(--step-2); }
+.profile-id__meta { display: flex; align-items: baseline; gap: 0.4rem; margin-top: 0.3rem; font-size: var(--step--1); }
+.profile-id__points { font-size: var(--step-1); color: var(--zaferan); }
+
+/* --- record: three unlabelled tiles, the section's own aria-label carries what they are ------------ */
+.record-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; margin-top: 1.75rem; }
+.record-tile {
+  text-align: center;
+  padding: 1rem 0.5rem;
+  border-radius: var(--r-md);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border: 1px solid var(--line);
+}
+.record-tile__value { font-size: var(--step-2); font-weight: 800; font-variant-numeric: tabular-nums; }
+.record-tile__label { font-size: var(--step--1); color: var(--sadaf-2); margin-top: 0.15rem; }
+
+/* --- friends: a plain bold title rather than an eyebrow, "Add" as the section's one action ---------- */
+.friends-title { margin: 0; font-size: var(--step-1); font-weight: 700; }
+.link-action {
+  padding: 0.55rem 0.2rem; /* vertical padding alone gets this past the 44px tap-target rule without
+                               widening a link that is meant to read as text, not a button. */
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--firouzeh);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .link-action:hover { color: var(--zaferan); }
+}
+
+.friends-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-md);
+  color: var(--sadaf-2);
+  font-size: var(--step--1);
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--r-md);
+  background: rgb(22 34 92 / 0.5);
+  border: 1px solid var(--line);
+}
+.friend-row__avatar { position: relative; }
+.friend-row__dot { position: absolute; inset-inline-end: -2px; bottom: -2px; border: 2px solid var(--shab); }
+.friend-row__name { font-weight: 700; font-size: var(--step-0); }
+.friend-row__status { font-size: var(--step--1); margin-top: 0.1rem; }
+
+/* One pill, two finishes: filled turquoise when the tap sends an instant live challenge, outlined
+   when it creates an async duel instead — the same meaning "filled vs outlined" already carries
+   between .btn and .btn--ghost, just shaped as a pill to read as this row's one action rather than a
+   form control. Both are 44px tall regardless of the row's own smaller line-height. */
+.duel-pill {
+  flex: none;
+  min-height: 44px;
+  padding: 0 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.2s var(--ease), background 0.2s var(--ease);
+}
+.duel-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+.duel-pill--live { border: 1px solid transparent; background: var(--firouzeh); color: var(--shab); }
+@media (hover: hover) and (pointer: fine) {
+  .duel-pill--live:hover:not(:disabled) { filter: brightness(1.1); }
+}
+.duel-pill--async { border: 1px solid var(--line-2); background: transparent; color: var(--sadaf); }
+@media (hover: hover) and (pointer: fine) {
+  .duel-pill--async:hover:not(:disabled) { background: rgb(47 191 176 / 0.1); }
+}
+
+/* --- friends: remove, restored (issue #92) -----------------------------------------------------
+   #91's redesign dropped the old bare "×" along with the settings-form Profile it came from. Back as
+   a quiet affordance rather than a menu: a small × sitting in the row's own .icon-hit circle, which on
+   a first tap swaps for plain "Remove?" text — .is-confirm widens the circle into a pill rather than
+   trying to cram a word into a 44px circle — and reverts on its own if the second tap never comes. */
+.friend-row__remove { flex: none; color: var(--sadaf-3); }
+@media (hover: hover) and (pointer: fine) {
+  .friend-row__remove:hover { color: var(--anaar); background: rgb(212 66 92 / 0.12); }
+}
+.friend-row__remove.is-confirm {
+  width: auto;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  color: var(--anaar);
+  background: rgb(212 66 92 / 0.12);
+}
+@media (hover: hover) and (pointer: fine) {
+  .friend-row__remove.is-confirm:hover { background: rgb(212 66 92 / 0.2); }
+}
+.friend-row__removeText { font-size: var(--step--1); font-weight: 700; white-space: nowrap; }
+
+/* --- settings: script tiles for language, in the same three-per-row shape the #89 questions sheet
+   mockup already settled on — reused rather than a second design for the same three options. --------- */
+.script-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.script-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  padding: 0 0.4rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: rgb(22 34 92 / 0.5);
+  color: var(--sadaf);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .script-tile:hover { border-color: var(--line-2); }
+}
+.script-tile.is-on { background: var(--firouzeh); color: var(--shab); border-color: var(--firouzeh); }
+
+.settings-row__label { font-weight: 700; }
+
+/* --- the sounds switch: a 44px-tall button around a smaller visual track, so the tap target meets
+   the rule this whole redesign holds every control to without the pill itself looking oversized. ---- */
+.switch {
+  flex: none;
+  width: 64px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.switch__track {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgb(9 14 34 / 0.55);
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.switch__thumb {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sadaf-2);
+  transition: inset-inline-start 0.2s var(--ease), background 0.2s var(--ease);
+}
+.switch.is-on .switch__track { background: var(--firouzeh); border-color: var(--firouzeh); }
+.switch.is-on .switch__thumb { inset-inline-start: 22px; background: var(--shab); }
+
+/* ---- lobby (#90) ---- */
+/* "Code first, faces not rows" — issue #90's whole rewrite of the lobby (see its mockup). The card
+   chrome the old lobby wrapped every section in is gone from the header, code and roster: a room
+   people are standing in reads better as one continuous page than as a stack of boxes, and the code
+   and face tiles are distinct enough in shape and colour that they need no border to read as their
+   own section. The two guest-only cards (identity, "keep this account") keep .card — those really
+   are two separate, occasional detours from the room itself, not the room. */
+
+/* The back chevron's tap target is the same 44px square as everything else new here even though the
+   icon it holds is drawn small — the negative margin pulls that extra hit area back in so it never
+   pushes the title over, the same trick a native back button plays. Flipped for RTL exactly like
+   .pager__arrow: "back" always points toward the reading-start edge, whichever edge that is. */
+.lobby-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -10px;
+  color: var(--sadaf);
+}
+:root[dir="rtl"] .lobby-back { transform: scaleX(-1); }
+
+/* The share code: the one thing a visitor to this page actually needs, so it is drawn bigger than
+   any heading anywhere else in the app rather than filed under a label like everything used to be. */
+.lobby-code {
+  margin: 0.25rem 0 0;
+  font-size: var(--step-4);
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--firouzeh);
+}
+
+/* A pill-shaped .btn for Copy link / Share — same colours, hover and disabled behaviour as
+   .btn--ghost already has, just rounder and guaranteed the full 44px tap height regardless of how
+   short its label is. */
+.btn--pill { border-radius: 999px; min-height: 44px; padding-inline: 1.15rem; }
+
+/* --- the roster grid: face tiles instead of rows ------------------------------------------------- */
+/* Three columns up to a three-seat lobby, four beyond it (LobbyPresentation.RosterColumns) — two
+   across would strand a lonely third tile on its own row, and past four seats three across runs a
+   phone screen out of height before the last tile without scrolling. */
+.lobby-grid { display: grid; grid-template-columns: repeat(var(--lobby-cols, 3), minmax(0, 1fr)); gap: 0.6rem; }
+
+.lobby-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.4rem;
+  text-align: center;
+  border-radius: var(--r-md);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  border: 1px solid var(--line);
+}
+.lobby-tile--open { justify-content: center; background: none; border-style: dashed; border-color: var(--line-2); }
+.lobby-tile__plus {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  border: 1px dashed var(--line-2);
+  font-size: var(--step-1);
+  color: var(--sadaf-3);
+}
+
+/* A bigger .avatar for a face tile — the seat or friend is the whole point of the tile, not one
+   detail in a row that also has to fit a name. */
+.avatar--tile { width: 3.25rem; height: 3.25rem; font-size: var(--step-1); }
+
+/* --- invite: an avatar row of friends, tapped rather than read out of a list ---------------------- */
+.lobby-friends { display: flex; gap: 0.75rem; overflow-x: auto; padding-block: 0.1rem; }
+.lobby-friend {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 4.25rem;
+  padding: 0.2rem 0 0.35rem;
+  font: inherit;
+  color: var(--sadaf);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lobby-friend:disabled { cursor: default; opacity: 0.7; }
+.lobby-friend--dim { cursor: default; }
+.lobby-friend--dim .avatar { opacity: 0.5; }
+.lobby-friend__avatar-wrap { position: relative; }
+
+/* Logical inset properties rather than the mockup's literal "right" — the dot has to sit at the same
+   corner of the avatar in both reading directions relative to the tile, not the same physical side. */
+.lobby-friend__dot {
+  position: absolute;
+  inset-inline-end: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--firouzeh);
+  border: 2px solid var(--shab);
+}
+
+/* --- the settings summary: one line, tappable only for the owner --------------------------------- */
+.lobby-settings-line {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-inline-end: -0.3rem;
+  padding-inline: 0.3rem;
+  color: var(--sadaf-2);
+  font-size: var(--step--1);
+  text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lobby-settings-line:hover { color: var(--sadaf); }
+}
+
+/* --- the quiet Leave/Cancel action: a text link that never competes with Start for attention ------ */
+.lobby-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--sadaf-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lobby-quiet:hover:not(:disabled) { color: var(--sadaf-2); }
+}
+.lobby-quiet:disabled { cursor: not-allowed; opacity: 0.6; }
+
+
+/* =====================================================
+   ---- the questions sheet and the topics page (#89) ----
+   Two screens that ask four questions between them, all of them by tap. What they replace is the
+   reason they look the way they do: a stack of labelled fields — Questions, Language, Difficulty,
+   Categories, each with a helper sentence under it — asked before every duel. Here the answer is the
+   control. Three words in three scripts are the language question; six numerals in a row are the
+   length one; a coloured ramp is the difficulty one. Only the ramp's ends are labelled, because
+   "Easy" and "Hard" are the scale rather than a heading above it.
+   ===================================================== */
+
+/* The sheet fills the screen so its one commit sits at the bottom of it rather than wherever the
+   controls happen to stop — a Done button floating halfway up a phone reads as the end of a section,
+   not the end of the page. The 12rem is the shell's own top and bottom padding plus the header. */
+.sheet { display: flex; flex-direction: column; gap: 1.35rem; min-height: calc(100dvh - 12rem); }
+.sheet__rest { flex: 1 1 1.5rem; }
+
+/* Done: the palette's primary, at the size of a decision. Rounder and heavier than .btn's default —
+   this is the only button on either screen, so it can afford to be the thing you see first. */
+.btn--done {
+  width: 100%;
+  min-height: 56px;
+  border-radius: var(--r-md);
+  font-size: var(--step-1);
+  font-weight: 800;
+}
+
+/* --- how many questions: bare numerals ------------------------------------------------------------
+   No label, and no "questions" after each number: six numerals in a row on a page titled Questions
+   are not ambiguous, and the word repeated six times is six times the reading for none of the
+   meaning. Each option carries a full 44px of height even though the numeral inside is small. */
+.count-row {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgb(22 34 92 / 0.5);
+}
+.count-row__option {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.15rem;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--sadaf-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .count-row__option:hover { color: var(--sadaf); }
+}
+.count-row__option.is-on { color: var(--shab); background: var(--firouzeh); font-weight: 800; }
+
+/* --- how hard: two handles on one ramp ------------------------------------------------------------
+   The track is turquoise → saffron → pomegranate: the same three colours the app uses for "right",
+   "careful" and "wrong", read here as effort rather than as outcome. Narrowing dims the ends that
+   are out of play rather than shortening the bar, so the part you gave up stays visible next to the
+   part you kept — a short bar would just look like a different control. */
+.ramp__ends {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--step--1);
+  color: var(--sadaf-2);
+}
+.ramp__ramps { color: var(--zaferan); font-weight: 700; }
+.ramp__span { color: var(--sadaf); font-weight: 700; }
+
+.ramp__track { position: relative; height: 44px; display: flex; align-items: center; }
+
+.ramp__rail {
+  position: absolute;
+  inset-inline: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--firouzeh), var(--zaferan) 55%, var(--anaar));
+}
+/* A gradient has no logical direction keyword, so the one axis on this page that cannot mirror
+   itself is turned around by hand: easy stays at the reading start in both scripts. */
+:root[dir="rtl"] .ramp__rail { background: linear-gradient(to left, var(--firouzeh), var(--zaferan) 55%, var(--anaar)); }
+
+/* The ground colour laid back over the ends that are out of play — the ramp is still there under it,
+   greyed rather than gone. */
+.ramp__off {
+  position: absolute;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(9 14 34 / 0.72);
+  pointer-events: none;
+}
+.ramp__off--low { inset-inline-start: 0; }
+.ramp__off--high { inset-inline-end: 0; }
+
+/* Two native inputs stacked over that rail. Native because a range input is already keyboard-
+   operable, already announces itself, already mirrors in Persian and already handles a finger
+   sliding off it — all of which a pair of divs and a pointermove handler would have to reinvent,
+   badly. The input itself takes no pointer events so it cannot swallow taps meant for the handle
+   underneath it; only the two thumbs do, which is what lets either handle be grabbed wherever the
+   other one is standing. */
+.ramp__handle {
+  position: absolute;
+  inset-inline: 0;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  pointer-events: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ramp__handle::-webkit-slider-runnable-track { height: 44px; background: none; border: 0; }
+.ramp__handle::-moz-range-track { height: 44px; background: none; border: 0; }
+
+/* Mother-of-pearl with a ring of the page's own ground: on a coloured track a plain light circle
+   would smear into whatever it is standing on. Duplicated per engine because a rule listing both
+   vendor pseudo-elements is dropped whole by both of them. */
+.ramp__handle::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  margin-top: 9px;
+  border-radius: 50%;
+  border: 3px solid var(--shab);
+  background: var(--sadaf);
+  cursor: pointer;
+}
+.ramp__handle::-moz-range-thumb {
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--shab);
+  background: var(--sadaf);
+  cursor: pointer;
+}
+
+/* The focus ring belongs on the handle, not around the full-width invisible input: a box drawn round
+   the whole track would not say which of the two handles the arrow keys are about to move. */
+.ramp__handle:focus-visible { outline: none; }
+.ramp__handle:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--zaferan); outline-offset: 2px; }
+.ramp__handle:focus-visible::-moz-range-thumb { outline: 2px solid var(--zaferan); outline-offset: 2px; }
+
+/* Both handles on the hardest level leaves the top one with nowhere to go; bringing the easy handle
+   to the front is what lets the pair be pulled apart again. */
+.ramp__handle--front { z-index: 2; }
+
+/* --- the topics row: the one thing on this sheet that leads somewhere else ------------------------ */
+.topic-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 44px;
+  padding: 1rem 1.1rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  color: var(--sadaf);
+  transition: border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .topic-row:hover { border-color: var(--line-2); }
+}
+.topic-row__icons { display: flex; gap: 2px; font-size: 1.6rem; line-height: 1; }
+.topic-row__text { flex: 1; min-width: 0; }
+.topic-row__names {
+  display: block;
+  font-weight: 700;
+  /* Three names fit; a fourth would push the count off the row, so the line ends in an ellipsis and
+     the count under it carries the number the names no longer can. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topic-row__count { display: block; margin-top: 2px; font-size: var(--step--1); color: var(--sadaf-2); }
+.topic-row__go { flex: none; color: var(--firouzeh); }
+
+/* --- the topics page ------------------------------------------------------------------------------ */
+/* "Any topic": an action, not the absence of one. Outlined rather than filled — it undoes a choice
+   rather than being one, and a second filled pill up here would compete with the tiles below. */
+.any-pill {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--firouzeh);
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .any-pill:hover { background: rgb(47 191 176 / 0.12); }
+}
+
+/* Two columns at any width. Three would shrink the icon below the size that makes a topic
+   recognisable without reading its name, which is the whole reason these are tiles and not chips. */
+.topic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+
+.topic-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 132px;
+  padding: 0.75rem 0.6rem;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(165deg, var(--lajevard-up), var(--lajevard) 62%);
+  font: inherit;
+  color: var(--sadaf-2);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .topic-tile:hover { border-color: var(--line-2); color: var(--sadaf); }
+}
+.topic-tile__icon { font-size: 2.75rem; line-height: 1; }
+.topic-tile__name { font-weight: 700; text-align: center; line-height: 1.25; }
+
+/* Picked reads as filled, the same turquoise every "this one is chosen" surface in the app uses. */
+.topic-tile.is-on {
+  background: var(--firouzeh);
+  border-color: var(--firouzeh);
+  color: var(--shab);
+}
+.topic-tile.is-on .topic-tile__name { font-weight: 800; }
+
+/* The tick is belt to the fill's braces: a filled tile is obvious in colour, and a mark in the
+   corner is what says "picked" to somebody who cannot tell these two backgrounds apart. */
+.topic-tile__check {
+  position: absolute;
+  top: 10px;
+  inset-inline-end: 10px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--shab);
+  color: var(--firouzeh);
+}
+
+/* The button follows the grid down rather than sitting at the end of it: twenty tiles is a scroll,
+   and the count on the button is the receipt for a tile that may already be off-screen. The fade is
+   what keeps a tile from appearing to slide out from under it. */
+.topic-done {
+  position: sticky;
+  bottom: 4.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1.75rem;
+  background: linear-gradient(180deg, rgb(9 14 34 / 0), var(--shab) 45%);
+}
+
+/* Voting deliberately has no clock, score ring, correctness colours or sound affordance. These
+   small roster tiles keep presence visible while the answer surface remains ordinary answer buttons. */
+.voting-players {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:.55rem;
+  margin:.15rem 0 1rem;
+  padding:.65rem;
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  background:rgb(9 14 34 / .46);
+  backdrop-filter:blur(10px);
+}
+.voting-player {
+  display:flex;
+  align-items:center;
+  gap:.4rem;
+  min-height:2.65rem;
+  padding:.3rem .65rem .3rem .35rem;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:linear-gradient(120deg, rgb(47 191 176 / .11), rgb(22 34 92 / .38));
+  box-shadow:0 8px 18px -15px rgb(0 0 0 / .9);
+  animation:answer-deal .4s var(--ease) backwards;
+}
+:root[dir="rtl"] .voting-player { padding:.3rem .35rem .3rem .65rem; }
+.voting-player.is-left { opacity:.58; }
+.voting-player__name { font-size:var(--step--1); font-weight:700; }
+.voting-distribution { margin-top:.8rem; border-top:1px solid var(--line); padding-top:.55rem; }
+.voting-distribution__row { padding:.25rem 0; font-size:var(--step--1); }
+
+/* ---- admin workspace ---------------------------------------------------- */
+.admin-shell { max-width: 78rem; }
+.admin-family-switch { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 auto .75rem; }
+.admin-page-head { display:flex; align-items:end; justify-content:space-between; padding:.4rem 0 1rem; }
+.admin-page-head h1 { margin:.15rem 0 0; font-size:var(--step-2); }
+.admin-page-head__product { color:var(--firouzeh); font-size:var(--step--1); font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.admin-page-content { padding-top:1.25rem; }
+
+.admin-nav { position:relative; display:flex; align-items:center; gap:.85rem; border-block:1px solid var(--line); }
+.admin-nav__pages { display:flex; align-items:center; gap:.15rem; overflow-x:auto; scrollbar-width:thin; }
+.admin-nav__link { flex:none; padding:.8rem .75rem; border-bottom:2px solid transparent; color:var(--sadaf-2); font-size:var(--step--1); font-weight:700; }
+.admin-nav__link.is-active { color:var(--sadaf); border-bottom-color:var(--firouzeh); }
+.admin-account { position:relative; margin-inline-start:auto; flex:none; }
+.admin-account__summary { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.3rem .5rem; cursor:pointer; list-style:none; font-size:var(--step--1); font-weight:700; }
+.admin-account__summary::-webkit-details-marker { display:none; }
+.admin-account__avatar { display:grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; color:var(--shab); background:var(--zaferan); }
+.admin-account__menu { position:absolute; z-index:35; top:calc(100% + .35rem); inset-inline-end:0; display:grid; min-width:14rem; padding:.45rem; border:1px solid var(--line-2); border-radius:var(--r-md); background:var(--lajevard); box-shadow:0 18px 50px rgb(0 0 0 / .35); }
+.admin-account__label { padding:.55rem .65rem; color:var(--sadaf-3); font-size:var(--step--1); border-bottom:1px solid var(--line); }
+.admin-account__language { padding:.55rem .65rem; border-bottom:1px solid var(--line); }
+.admin-account__item { width:100%; padding:.65rem; border:0; border-radius:var(--r-sm); color:var(--sadaf-2); background:transparent; font:inherit; font-size:var(--step--1); text-align:start; cursor:pointer; }
+.admin-account__item--danger { color:var(--anaar); }
+@media (hover: hover) and (pointer: fine) {
+  .admin-account__item:hover { color:var(--sadaf); background:rgb(47 191 176 / .1); }
+}
+
+.admin-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.8rem; margin-bottom:1rem; padding:.8rem; border:1px solid var(--line); border-radius:var(--r-md); background:rgb(22 34 92 / .28); }
+.admin-toolbar__filters, .admin-toolbar__actions { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
+.admin-toolbar__filters { flex:1; }
+.admin-toolbar__actions { padding-inline-start:.75rem; border-inline-start:1px solid var(--line); }
+.admin-table-wrap { border:1px solid var(--line); border-radius:var(--r-md); background:rgb(22 34 92 / .24); }
+.admin-table th { padding:.75rem .8rem; background:rgb(22 34 92 / .55); font-size:.72rem; letter-spacing:.045em; text-transform:uppercase; }
+.admin-table td { padding:.75rem .8rem; vertical-align:middle; }
+.admin-table tbody tr:last-child td { border-bottom:0; }
+.admin-table__actions-head { width:1%; }
+.admin-row-actions { display:flex; align-items:center; justify-content:flex-end; gap:.35rem; white-space:nowrap; }
+.admin-category-name { display:flex; align-items:center; gap:.7rem; min-width:12rem; }
+.admin-category-name small { display:block; margin-top:.1rem; color:var(--sadaf-3); }
+.admin-category-icon { display:grid; place-items:center; width:2.35rem; height:2.35rem; border-radius:.65rem; background:color-mix(in srgb, var(--category-colour) 22%, transparent); border:1px solid color-mix(in srgb, var(--category-colour) 55%, transparent); }
+.admin-code { padding:.18rem .4rem; border-radius:.35rem; color:var(--sadaf-2); background:rgb(9 14 34 / .55); font-size:.75rem; }
+.admin-status { display:inline-flex; align-items:center; width:max-content; padding:.22rem .55rem; border:1px solid var(--line-2); border-radius:999px; color:var(--sadaf-2); font-size:.72rem; font-weight:750; }
+.admin-status.is-active { color:var(--firouzeh); border-color:rgb(47 191 176 / .4); background:rgb(47 191 176 / .08); }
+.admin-status.is-inactive { color:var(--anaar); border-color:rgb(212 66 92 / .4); background:rgb(212 66 92 / .08); }
+.admin-danger { color:var(--anaar); }
+
+.admin-modal { z-index:60; }
+.admin-modal__panel { position:relative; width:min(48rem, 100%); max-height:calc(100vh - 2rem); overflow:auto; padding:0; border:1px solid var(--line-2); border-radius:var(--r-lg); background:var(--lajevard); }
+.admin-modal__head { position:sticky; z-index:2; top:0; display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem 1.2rem; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--lajevard) 94%, transparent); backdrop-filter:blur(10px); }
+.admin-modal__head h2 { margin:0; font-size:var(--step-1); }
+.admin-modal__body { padding:1.15rem 1.2rem 1.35rem; }
+
+.admin-question { position:relative; padding:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--r-md); background:rgb(22 34 92 / .28); }
+.admin-question__head { display:flex; justify-content:space-between; gap:.75rem; padding:.65rem .8rem; border-bottom:1px solid var(--line); background:rgb(22 34 92 / .5); }
+.admin-question__meta, .admin-question__actions { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; }
+.admin-question__body { padding:.9rem; }
+.admin-question__prompt { margin:0; font-size:var(--step-0); font-weight:750; line-height:1.55; }
+.admin-question__topic { display:flex; align-items:center; flex-wrap:wrap; gap:.35rem; margin-top:.6rem; color:var(--sadaf-3); font-size:var(--step--1); }
+.admin-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem; margin-top:.75rem; }
+.admin-option { display:flex; align-items:center; gap:.55rem; min-height:2.6rem; padding:.55rem .65rem; border:1px solid var(--line); border-radius:var(--r-sm); background:rgb(9 14 34 / .35); }
+.admin-option__key { display:grid; place-items:center; flex:none; width:1.5rem; height:1.5rem; border-radius:.35rem; color:var(--sadaf-3); background:rgb(237 227 208 / .07); font-size:.7rem; font-weight:800; }
+.admin-option.is-correct { border-color:rgb(47 191 176 / .5); background:rgb(47 191 176 / .08); }
+.admin-option.is-correct .admin-option__key { color:var(--shab); background:var(--firouzeh); }
+
+.profile-name-line { display:flex; align-items:center; justify-content:center; gap:.65rem; }
+.profile-name-line .profile-id__name { margin-inline-start:34px; }
+.profile-name-editor { display:grid; gap:.55rem; width:min(22rem,100%); margin-top:.85rem; }
+.profile-name-editor .input { text-align:center; font-size:var(--step-1); font-weight:700; }
+.profile-history__list { display:grid; gap:.45rem; margin-top:.75rem; }
+.profile-history__row { display:flex; align-items:center; gap:.75rem; padding:.7rem .8rem; border:1px solid var(--line); border-radius:var(--r-md); color:var(--sadaf); background:rgb(22 34 92 / .38); }
+.profile-history__row small { display:block; margin-top:.12rem; color:var(--sadaf-3); font-size:var(--step--1); }
+.profile-history__avatar { width:2.4rem; height:2.4rem; font-size:.9rem; }
+
+@media (max-width: 720px) {
+  .admin-nav { align-items:stretch; }
+  .admin-nav__pages { padding-inline-end:.25rem; }
+  .admin-account__summary > span:last-child { display:none; }
+  .admin-toolbar { align-items:stretch; flex-direction:column; }
+  .admin-toolbar__actions { width:100%; padding:.7rem 0 0; border-inline-start:0; border-top:1px solid var(--line); }
+  .admin-options { grid-template-columns:1fr; }
+  .admin-question__head { flex-direction:column; }
+  .admin-question__actions { justify-content:flex-end; }
+}

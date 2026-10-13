@@ -1,0 +1,41 @@
+@using Quesshi.Web.Services
+@implements IDisposable
+@inject AppConfig Config
+@inject LanguageSelection Languages
+@inject Translator Translator
+
+<main class="shell" aria-live="polite">
+    <section class="empty">
+        <h1>@Config.NameFor(Languages.CurrentCode)</h1>
+        <p class="muted">@Translator["app.tagline"]</p>
+        <label>
+            <span class="sr-only">Language</span>
+            <select value="@Languages.CurrentCode" @onchange="ChangeLanguageAsync">
+                @foreach (var language in Config.Current.Languages)
+                {
+                    <option value="@language.Code">@language.DisplayName</option>
+                }
+            </select>
+        </label>
+    </section>
+</main>
+
+@code {
+    protected override void OnInitialized() => Config.Changed += StateHasChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Languages.InitializeAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ChangeLanguageAsync(ChangeEventArgs args)
+    {
+        if (args.Value is string code) await Languages.UseAsync(code);
+    }
+
+    public void Dispose() => Config.Changed -= StateHasChanged;
+}

@@ -33,6 +33,30 @@ async function serveFile(directory, request, response) {
   }
 }
 
+function tenantFor(request, tenants) {
+  const host = (request.headers.host ?? '').split(':', 1)[0];
+  return tenants[host] ?? tenants.default;
+}
+
+function dynamicResource(request, response, tenant) {
+  const pathname = new URL(request.url, 'http://localhost').pathname;
+  if (!tenant) return false;
+  const resources = {
+    '/api/config': { body: JSON.stringify(tenant.config), type: 'application/json', tag: `config-${tenant.config.configVersion}` },
+    '/theme.css': { body: tenant.theme, type: 'text/css', tag: `theme-${tenant.config.configVersion}` },
+    '/manifest.webmanifest': { body: JSON.stringify({ name: tenant.config.name, short_name: tenant.config.name, theme_color: tenant.themeColor }), type: 'application/manifest+json', tag: `manifest-${tenant.config.configVersion}` }
+  };
+  const resource = resources[pathname];
+  if (!resource) return false;
+  const etag = `"${resource.tag}"`;
+  if (request.headers['if-none-match'] === etag) {
+    response.writeHead(304, { etag, 'cache-control': 'no-cache' }).end();
+    return true;
+  }
+  response.writeHead(200, { 'content-type': resource.type, etag, 'cache-control': 'no-cache' }).end(resource.body);
+  return true;
+}
+
 async function listen(server) {
   await new Promise((resolveListen, reject) => {
     server.once('error', reject);
@@ -42,9 +66,12 @@ async function listen(server) {
   return port;
 }
 
-export async function startPublishedPlatformHost({ directory }) {
+export async function startPublishedPlatformHost({ directory, tenants = {} }) {
   const rootDirectory = resolve(directory);
-  const server = createServer((request, response) => void serveFile(rootDirectory, request, response));
+  const server = createServer((request, response) => {
+    if (dynamicResource(request, response, tenantFor(request, tenants))) return;
+    void serveFile(rootDirectory, request, response);
+  });
   const port = await listen(server);
   return {
     port,
