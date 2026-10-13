@@ -47,7 +47,10 @@ public sealed class InMemorySession : ISession, IViewing
         var duplicate = CurrentState.Answers.ContainsKey(new AnswerKey(command.Player, item.Metadata.Slot));
         var stored = kind.Normalize(item.Payload, item.Resolved, command.Payload);
         var grade = kind.Grade(item.Payload, item.Resolved, stored);
-        var taken = command.Received - _clock.Now;
+        var openedAt = Session.Position == command.At
+            ? Session.PositionStartedAt
+            : seat.Position == command.At ? seat.PositionStartedAt : null;
+        var taken = openedAt is { } opened ? command.Received - opened : TimeSpan.Zero;
         if (taken < TimeSpan.Zero) taken = TimeSpan.Zero;
         var onTime = Session.DueAt is null || command.Received <= Session.DueAt.Value;
         return new Graded(command, stored?.Clone(), !grade.IsNone, grade.Credit, taken, onTime, duplicate);
@@ -57,9 +60,14 @@ public sealed class InMemorySession : ISession, IViewing
     {
         ArgumentNullException.ThrowIfNull(graded);
         var key = new AnswerKey(graded.Command.Player, graded.Command.At.Slot);
+        var item = Item(key.Slot);
+        var kind = _kinds.Get(item.Metadata.Kind, item.Metadata.KindVersion);
+        var player = SeatFor(key.Player);
+        if (kind.Gradable && player.ReleasedSlot >= key.Slot)
+            throw new InvalidOperationException("A gradable answer cannot be recorded after its reveal was released.");
         if (graded.Duplicate || CurrentState.Answers.ContainsKey(key))
             throw new InvalidOperationException("An answer is already recorded for this player and slot.");
-        var answer = new AnswerState(graded.Stored?.Clone(), graded.IsGraded, graded.Credit, points, graded.Taken, graded.Command.Received);
+        var answer = new AnswerState(graded.Stored?.Clone(), graded.IsGraded, graded.Credit, points, graded.Taken, graded.Command.Received, Revision: graded.Command.Revision);
         var answers = Copy(CurrentState.Answers);
         answers.Add(key, answer);
         var seats = Copy(CurrentState.Seats);
@@ -91,7 +99,7 @@ public sealed class InMemorySession : ISession, IViewing
 
     public void SetPosition(int phase, int slot, int step = 0)
     {
-        var row = Session with { Position = new Position(phase, slot, step) };
+        var row = Session with { Position = new Position(phase, slot, step), PositionStartedAt = _clock.Now };
         Transition(CurrentState with { Session = row }, "sessions", row.Id, row);
     }
 
@@ -103,7 +111,13 @@ public sealed class InMemorySession : ISession, IViewing
         Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);
     }
 
-    public void Serve(string player, int slot) => SetSeatPosition(player, 0, slot);
+    public void Serve(string player, int slot)
+    {
+        var seat = SeatFor(player) with { Position = new Position(0, slot), PositionStartedAt = _clock.Now };
+        var seats = Copy(CurrentState.Seats);
+        seats[player] = seat;
+        Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);
+    }
 
     public void Release(int slot)
     {
@@ -150,16 +164,22 @@ public sealed class InMemorySession : ISession, IViewing
         var players = Seats.Where(seat => seat.Role == "player").Select(seat => seat.Player).Order().ToArray();
         if (!players.SequenceEqual(standings.Select(standing => standing.Player).Order(), StringComparer.Ordinal))
             throw new InvalidOperationException("Standings must cover every player seat.");
+        var seats = Copy(CurrentState.Seats);
+        foreach (var standing in standings)
+            seats[standing.Player] = seats[standing.Player] with { Place = standing.Place, Outcome = standing.Outcome };
         var row = Session with { Ended = true, EndReason = reason, Result = result.Clone(), DueAt = null };
         Transition(
             CurrentState with
             {
                 Session = row,
                 FormatState = JsonSerializer.SerializeToElement(new { }),
+                Seats = ReadOnly(seats),
             },
             "sessions",
             row.Id,
             row);
+        foreach (var standing in standings)
+            Changes = Changes.Add("session_participants", standing.Player, seats[standing.Player]);
     }
 
     public JsonElement Card(int slot) => Item(slot).Card.Clone();

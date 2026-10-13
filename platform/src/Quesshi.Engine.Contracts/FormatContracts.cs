@@ -93,7 +93,8 @@ public sealed record SessionRow(
     Position? Position,
     bool Ended = false,
     EndReason? EndReason = null,
-    JsonElement? Result = null);
+    JsonElement? Result = null,
+    DateTimeOffset? PositionStartedAt = null);
 
 public sealed record Seat(
     string Player,
@@ -101,7 +102,10 @@ public sealed record Seat(
     Position? Position = null,
     int Score = 0,
     bool Eliminated = false,
-    int? ReleasedSlot = null);
+    int? ReleasedSlot = null,
+    DateTimeOffset? PositionStartedAt = null,
+    int? Place = null,
+    string? Outcome = null);
 
 /// <summary>Item metadata deliberately excludes question payload and resolved answer data.</summary>
 public sealed record SessionItem(int Slot, string Kind, int KindVersion, int? Level, string? Category);
