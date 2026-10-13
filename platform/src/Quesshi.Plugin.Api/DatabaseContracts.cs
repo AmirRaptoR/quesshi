@@ -56,8 +56,14 @@ public interface IInbox
 public sealed class LockOrderViolation(string message) : InvalidOperationException(message);
 
 /// <summary>A JSONB value with explicit source-generated serialization metadata.</summary>
-public readonly record struct Jsonb<T>(T Value, JsonTypeInfo<T> TypeInfo) : SqlMapper.ICustomQueryParameter
+public sealed class Jsonb<T> : SqlMapper.ICustomQueryParameter
 {
+    public Jsonb(T value, JsonTypeInfo<T> typeInfo) => (Value, TypeInfo) = (value, typeInfo);
+
+    public T Value { get; }
+
+    public JsonTypeInfo<T> TypeInfo { get; }
+
     public void AddParameter(IDbCommand command, string name)
     {
         var parameter = (NpgsqlParameter)command.CreateParameter();

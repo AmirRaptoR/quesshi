@@ -13,6 +13,7 @@ internal static class DapperConventions
     public static void Configure()
     {
         if (Interlocked.Exchange(ref _configured, 1) != 0) return;
+        SqlMapper.RemoveTypeMap(typeof(DateTimeOffset));
         SqlMapper.AddTypeHandler(new UtcDateTimeOffsetHandler());
         SqlMapper.AddTypeHandler(new JsonElementHandler());
         SqlMapper.AddTypeHandler(new JsonDocumentHandler());
@@ -26,7 +27,12 @@ internal static class DapperConventions
             parameter.Value = value.ToUniversalTime();
         }
 
-        public override DateTimeOffset Parse(object value) => ((DateTimeOffset)value).ToUniversalTime();
+        public override DateTimeOffset Parse(object value) => value switch
+        {
+            DateTimeOffset timestamp => timestamp.ToUniversalTime(),
+            DateTime timestamp => new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)),
+            _ => throw new DataException($"Cannot read {value.GetType().Name} as a timestamp with time zone.")
+        };
     }
 
     private sealed class JsonElementHandler : SqlMapper.TypeHandler<JsonElement>

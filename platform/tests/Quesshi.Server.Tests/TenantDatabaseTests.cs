@@ -122,6 +122,13 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
         await database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
             "insert into typed_rows (tenant_id, id, guid_value, happened_at, payload) values (@tenantId, @id, @id, @instant, @payload)",
             new { tenantId = TenantA, id, instant, payload = new Jsonb<Payload>(payload, TenantJsonContext.Default.Payload) }));
+        using var documentParameter = JsonDocument.Parse("{\"name\":\"東京\"}");
+        var elementParameter = documentParameter.RootElement.Clone();
+        var parameterRoundTrip = await database.InTenantAsync(TenantA, async tx => new
+        {
+            Element = await tx.QuerySingleOrDefaultAsync<JsonElement>("select cast(@element as jsonb)", new { element = elementParameter }),
+            Document = await tx.QuerySingleOrDefaultAsync<JsonDocument>("select cast(@document as jsonb)", new { document = documentParameter })
+        });
         var read = await database.InTenantAsync(TenantA, async tx => new
         {
             Guid = await tx.QuerySingleOrDefaultAsync<Guid>("select guid_value from typed_rows where id = @id", new { id }),
@@ -132,7 +139,13 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
 
         Assert.Equal(id, read.Guid);
         Assert.Equal(instant.ToUniversalTime(), read.Instant);
-        Assert.Equal(payload, read.Json is null ? null : JsonSerializer.Deserialize(read.Json, TenantJsonContext.Default.Payload));
+        var roundTrippedPayload = read.Json is null ? null : JsonSerializer.Deserialize(read.Json, TenantJsonContext.Default.Payload);
+        Assert.NotNull(roundTrippedPayload);
+        Assert.Equal(payload.Labels, roundTrippedPayload.Labels);
+        Assert.Equal(payload.Child.Name, roundTrippedPayload.Child.Name);
+        Assert.Equal(payload.Child.Values, roundTrippedPayload.Child.Values);
+        Assert.Equal("東京", parameterRoundTrip.Element.GetProperty("name").GetString());
+        Assert.Equal("東京", parameterRoundTrip.Document?.RootElement.GetProperty("name").GetString());
         Assert.Equal(1, read.Count);
     }
 
@@ -170,7 +183,8 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
         });
 
         var order = await database.InTenantAsync(TenantA, tx => tx.QueryAsync<Guid>("select player_id from inbox_events order by sequence"));
-        Assert.Equal([playerA, playerB], order);
+        var orderedPlayers = new[] { playerA, playerB }.Order().ToArray();
+        Assert.Equal(orderedPlayers, order);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, tx =>
         {
@@ -188,7 +202,7 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
             return 0;
         });
         var afterRetry = await database.InTenantAsync(TenantA, tx => tx.QueryAsync<Guid>("select player_id from inbox_events order by sequence"));
-        Assert.Equal([playerA, playerB, playerB], afterRetry);
+        Assert.Equal([.. orderedPlayers, playerB], afterRetry);
     }
 
     [SkippableFact]
@@ -279,9 +293,11 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
             new { playerId }, cancellationToken);
     }
 
-    private sealed record Payload(string[] Labels, PayloadChild Child);
-    private sealed record PayloadChild(string Name, int[] Values);
-
-    [JsonSerializable(typeof(Payload))]
-    private sealed partial class TenantJsonContext : JsonSerializerContext;
 }
+
+internal sealed record Payload(string[] Labels, PayloadChild Child);
+
+internal sealed record PayloadChild(string Name, int[] Values);
+
+[JsonSerializable(typeof(Payload))]
+internal sealed partial class TenantJsonContext : JsonSerializerContext;

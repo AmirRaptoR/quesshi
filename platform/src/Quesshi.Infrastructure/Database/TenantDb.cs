@@ -53,7 +53,15 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Npgsql disposes a transaction after some low-level write failures.
+                // Preserve the callback failure instead of hiding it behind rollback.
+            }
             throw;
         }
     }
