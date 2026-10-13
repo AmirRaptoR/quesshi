@@ -3,6 +3,7 @@
     <ProjectReference Include="../../src/Quesshi.Kinds/Quesshi.Kinds.csproj" />
     <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
     <Content Include="Fixtures/**/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/Quesshi.Shared/maps/world.svg" Link="maps/world.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="../TestProject.props" />
 </Project>

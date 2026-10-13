@@ -1,0 +1,17 @@
+{
+  "payload": {
+    "baseLayer": "Blank",
+    "target": { "shape": "Country", "countryCode": "DE" }
+  },
+  "seed": { "sessionId": "map-pick-country", "slot": 2 },
+  "resolved": { "target": { "shape": "Country", "countryCode": "DE", "latitude": null, "longitude": null, "radiusKm": null } },
+  "card": { "baseLayer": "Blank", "shape": "Country" },
+  "reveal": { "target": { "shape": "Country", "countryCode": "DE", "latitude": null, "longitude": null, "radiusKm": null } },
+  "answers": [
+    { "submitted": { "shape": "Country", "countryCode": "DE" }, "stored": { "shape": "Country", "countryCode": "DE", "latitude": null, "longitude": null }, "credit": 1 },
+    { "submitted": { "shape": "Country", "countryCode": "NL" }, "stored": { "shape": "Country", "countryCode": "NL", "latitude": null, "longitude": null }, "credit": 0 },
+    { "credit": 0 },
+    { "submitted": { "shape": "Country", "countryCode": "de" }, "malformed": true },
+    { "submitted": { "shape": "Point", "latitude": 0, "longitude": 0 }, "malformed": true }
+  ]
+}

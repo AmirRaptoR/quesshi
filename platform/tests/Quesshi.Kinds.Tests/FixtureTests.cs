@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Quesshi.Kinds.Choice;
+using Quesshi.Kinds.MapPick;
 using Quesshi.Kinds.PollChoice;
 using Quesshi.Kinds.PollRoster;
 using Quesshi.Shared;
@@ -25,6 +26,21 @@ public sealed class FixtureTests
     [Fact]
     public void Poll_roster_fixtures_cover_runtime_behavior() =>
         KindFixtureRunner.Run("poll_roster", new PollRosterKind(), payload => payload);
+
+    [Fact]
+    public void Map_pick_fixtures_cover_runtime_behavior_and_card_noninterference() =>
+        KindFixtureRunner.Run("map_pick", new MapPickKind(), payload =>
+        {
+            var value = JsonSerializer.Deserialize(payload, MapPickJsonContext.Default.MapPickPayload)!;
+            var target = value.Target!;
+            var changedTarget = target.Shape == MapTargetKind.Country
+                ? target with { CountryCode = target.CountryCode == "DE" ? "NL" : "DE" }
+                : target with { Latitude = target.Latitude == 0 ? 1 : 0 };
+
+            return JsonSerializer.SerializeToElement(
+                value with { Target = changedTarget },
+                MapPickJsonContext.Default.MapPickPayload);
+        });
 
     [Fact]
     public void Fixture_runner_detects_a_card_that_leaks_the_correct_answer()
