@@ -210,6 +210,11 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
             {
                 Assert.Contains(enabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobWorkerService");
                 Assert.Contains(enabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobScheduleService");
+
+                var features = enabled.Services.GetRequiredService<FeatureRegistry>();
+                Assert.Same(features.Capabilities, enabled.Services.GetRequiredService<CapabilityRegistry>());
+                Assert.Same(features.Jobs, enabled.Services.GetRequiredService<JobHandlerRegistry>());
+                Assert.Same(features.Schedules, enabled.Services.GetRequiredService<JobScheduleRegistry>());
             }
 
             Environment.SetEnvironmentVariable("Jobs__Enabled", "false");

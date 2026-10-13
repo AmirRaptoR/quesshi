@@ -1,4 +1,5 @@
 using Quesshi.Application.Jobs;
+using Quesshi.Plugin.Api;
 
 namespace Quesshi.Application.Tests;
 

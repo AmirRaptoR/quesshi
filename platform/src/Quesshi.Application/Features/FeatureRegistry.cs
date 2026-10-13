@@ -1,0 +1,170 @@
+using System.Reflection;
+using Quesshi.Application.Jobs;
+using Quesshi.Plugin.Api;
+
+namespace Quesshi.Application;
+
+/// <summary>Registers feature declarations with platform capabilities and durable-work registries.</summary>
+internal sealed class FeatureRegistry(
+    CapabilityRegistry capabilities,
+    JobHandlerRegistry jobs,
+    JobScheduleRegistry schedules)
+{
+    private readonly Dictionary<string, RegisteredFeature> _features = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _eventHandlers = [];
+    private readonly Dictionary<string, Delegate> _cleanupHandlers = new(StringComparer.Ordinal);
+
+    public IReadOnlyCollection<RegisteredFeature> Features => _features.Values;
+
+    public CapabilityRegistry Capabilities => capabilities;
+
+    public JobHandlerRegistry Jobs => jobs;
+
+    public JobScheduleRegistry Schedules => schedules;
+
+    /// <summary>Contains only handlers that should receive events emitted after startup.</summary>
+    public IReadOnlyDictionary<(string FeatureId, Type EventType), Delegate> EventHandlers => _eventHandlers;
+
+    /// <summary>Contains cleanup declarations, including those from retired features.</summary>
+    public IReadOnlyDictionary<string, Delegate> CleanupHandlers => _cleanupHandlers;
+
+    public void Register(IFeature feature)
+    {
+        ArgumentNullException.ThrowIfNull(feature);
+        ArgumentException.ThrowIfNullOrWhiteSpace(feature.Id);
+        ArgumentNullException.ThrowIfNull(feature.Settings);
+
+        var id = feature.Id.Trim();
+        if (_features.ContainsKey(id))
+        {
+            throw new InvalidOperationException($"Feature '{id}' is already registered.");
+        }
+
+        var settingsErrors = feature.Settings.Validate(feature.Settings.DefaultSettings);
+        if (settingsErrors.Count > 0)
+        {
+            throw new InvalidOperationException($"Feature '{id}' has invalid default settings: {string.Join(" ", settingsErrors)}");
+        }
+
+        var builder = new FeatureBuilder(id);
+        feature.Configure(builder);
+
+        capabilities.Register(CapabilityType.Feature, id, feature.Settings);
+
+        foreach (var job in builder.Jobs)
+        {
+            jobs.Register(id, job.Kind, (context, cancellationToken) => job.Handler(context, cancellationToken), job.WhenDisabled);
+        }
+
+        if (!feature.Retired)
+        {
+            foreach (var schedule in builder.Schedules)
+            {
+                schedules.Every(id, schedule.Interval, schedule.Kind);
+            }
+
+            foreach (var eventHandler in builder.EventHandlers)
+            {
+                _eventHandlers.Add((id, eventHandler.EventType), eventHandler.Handler);
+            }
+        }
+
+        if (builder.CleanupHandler is not null)
+        {
+            _cleanupHandlers.Add(id, builder.CleanupHandler);
+        }
+
+        _features.Add(id, new RegisteredFeature(id, feature.Retired, feature.Settings));
+    }
+
+    public static IReadOnlyList<IFeature> Discover(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+        return assembly.GetTypes()
+            .Where(type => !type.IsAbstract && typeof(IFeature).IsAssignableFrom(type))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .Select(type => Activator.CreateInstance(type) as IFeature
+                ?? throw new InvalidOperationException($"Feature '{type.FullName}' requires a public parameterless constructor."))
+            .ToArray();
+    }
+
+    public static FeatureRegistry Create(IEnumerable<IFeature> features)
+    {
+        ArgumentNullException.ThrowIfNull(features);
+        var capabilities = CoreCapabilities.CreateRegistry();
+        var jobs = new JobHandlerRegistry();
+        var schedules = new JobScheduleRegistry(jobs);
+        var registry = new FeatureRegistry(capabilities, jobs, schedules);
+        foreach (var feature in features) registry.Register(feature);
+        return registry;
+    }
+
+    internal sealed record RegisteredFeature(string Id, bool Retired, FeatureSettings Settings);
+
+    private sealed class FeatureBuilder(string featureId) : IFeatureBuilder
+    {
+        private readonly Dictionary<Type, Delegate> _eventHandlers = [];
+        private readonly Dictionary<string, FeatureJob> _jobs = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string Kind, TimeSpan Interval), FeatureSchedule> _schedules = [];
+
+        public IReadOnlyCollection<FeatureEventHandler> EventHandlers =>
+            _eventHandlers.Select(pair => new FeatureEventHandler(pair.Key, pair.Value)).ToArray();
+
+        public IReadOnlyCollection<FeatureJob> Jobs => _jobs.Values;
+
+        public IReadOnlyCollection<FeatureSchedule> Schedules => _schedules.Values;
+
+        public Delegate? CleanupHandler { get; private set; }
+
+        public void On<TEvent>(Func<ITenantTx, TEvent, CancellationToken, Task> handler)
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+            if (!_eventHandlers.TryAdd(typeof(TEvent), handler))
+            {
+                throw new InvalidOperationException($"Feature '{featureId}' already has a handler for event '{typeof(TEvent).FullName}'.");
+            }
+        }
+
+        public void CleanupPlayer(Func<ITenantTx, Guid, CancellationToken, Task> handler)
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+            if (CleanupHandler is not null)
+            {
+                throw new InvalidOperationException($"Feature '{featureId}' already has a player cleanup handler.");
+            }
+
+            CleanupHandler = handler;
+        }
+
+        public void Job(string kind, Func<JobContext, CancellationToken, Task> handler, WhenDisabled whenDisabled = WhenDisabled.Complete)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+            ArgumentNullException.ThrowIfNull(handler);
+            if (!Enum.IsDefined(whenDisabled)) throw new ArgumentOutOfRangeException(nameof(whenDisabled));
+
+            var normalizedKind = kind.Trim();
+            if (!_jobs.TryAdd(normalizedKind, new FeatureJob(normalizedKind, handler, whenDisabled)))
+            {
+                throw new InvalidOperationException($"Feature '{featureId}' already has a handler for job '{normalizedKind}'.");
+            }
+        }
+
+        public void Every(TimeSpan interval, string kind)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+            if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
+
+            var normalizedKind = kind.Trim();
+            if (!_schedules.TryAdd((normalizedKind, interval), new FeatureSchedule(interval, normalizedKind)))
+            {
+                throw new InvalidOperationException($"Feature '{featureId}' already schedules job '{normalizedKind}' every {interval}.");
+            }
+        }
+    }
+
+    private sealed record FeatureEventHandler(Type EventType, Delegate Handler);
+
+    private sealed record FeatureJob(string Kind, Func<JobContext, CancellationToken, Task> Handler, WhenDisabled WhenDisabled);
+
+    private sealed record FeatureSchedule(TimeSpan Interval, string Kind);
+}

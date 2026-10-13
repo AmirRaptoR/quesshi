@@ -85,7 +85,7 @@ public static class Program
             return await SyncAsync(environmentSources, registry, cancellationToken);
         }
 
-        return await new CapabilitySyncCommand(new SystemDb(sources), registry ?? CoreCapabilities.CreateRegistry())
+        return await new CapabilitySyncCommand(new SystemDb(sources), registry ?? CreateCapabilityRegistry())
             .ExecuteAsync(cancellationToken);
     }
 
@@ -98,7 +98,7 @@ public static class Program
             return await AddTenantAsync(args, environmentSources, registry, cancellationToken);
         }
 
-        return await new TenantAddCommand(new SystemDb(sources), registry ?? CoreCapabilities.CreateRegistry())
+        return await new TenantAddCommand(new SystemDb(sources), registry ?? CreateCapabilityRegistry())
             .ExecuteAsync(options, cancellationToken);
     }
 
@@ -133,13 +133,14 @@ public static class Program
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
-        builder.Services.TryAddSingleton(CoreCapabilities.CreateRegistry());
+        builder.Services.AddSingleton(_ => FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly)));
+        builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Capabilities);
+        builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Jobs);
+        builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Schedules);
         builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
         if (builder.Configuration.GetValue("Jobs:Enabled", true))
         {
             builder.Services.AddSingleton<IJobStore, PostgresJobStore>();
-            builder.Services.AddSingleton<JobHandlerRegistry>();
-            builder.Services.AddSingleton<JobScheduleRegistry>();
             builder.Services.AddSingleton<IJobScheduleTenants, PostgresJobScheduleTenants>();
             builder.Services.AddSingleton<SystemJobs>();
             builder.Services.AddSingleton<ISystemJobs>(provider => provider.GetRequiredService<SystemJobs>());
@@ -199,6 +200,9 @@ public static class Program
         });
         return app;
     }
+
+    private static CapabilityRegistry CreateCapabilityRegistry() =>
+        FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly)).Capabilities;
 
     internal static string? GetStaticAssetsManifestPath(string? baseDirectory = null)
     {

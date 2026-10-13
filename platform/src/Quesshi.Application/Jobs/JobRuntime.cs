@@ -4,39 +4,6 @@ using Quesshi.Plugin.Api;
 
 namespace Quesshi.Application.Jobs;
 
-/// <summary>Describes what to do with tenant work when its owning feature is disabled.</summary>
-internal enum WhenDisabled
-{
-    Complete,
-    Cancel
-}
-
-/// <summary>Work made available to a registered background-job handler.</summary>
-internal sealed class JobContext
-{
-    internal JobContext(long id, Guid? tenantId, string owner, string kind, JsonElement payload, ITenantDb? database)
-    {
-        Id = id;
-        TenantId = tenantId;
-        Owner = owner;
-        Kind = kind;
-        Payload = payload;
-        Database = database;
-    }
-
-    public long Id { get; }
-    public Guid? TenantId { get; }
-    public string Owner { get; }
-    public string Kind { get; }
-    public JsonElement Payload { get; }
-
-    /// <summary>
-    /// The tenant-bound database for tenant jobs, or <see langword="null"/> for global jobs.
-    /// It accepts only this job's explicit tenant id and has no ambient or fallback tenant.
-    /// </summary>
-    public ITenantDb? Database { get; }
-}
-
 internal delegate Task JobHandler(JobContext context, CancellationToken cancellationToken);
 
 internal sealed record JobHandlerRegistration(string Owner, string Kind, JobHandler Handler, WhenDisabled WhenDisabled);

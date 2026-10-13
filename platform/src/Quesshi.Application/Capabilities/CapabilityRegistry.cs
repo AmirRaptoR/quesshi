@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Quesshi.Plugin.Api;
 
 namespace Quesshi.Application;
 
@@ -61,6 +62,27 @@ internal sealed class CapabilityDefinition<TSettings>(
             : throw new InvalidOperationException($"Capability {Type}:{Key} requires {typeof(TSettings).Name} settings.");
 }
 
+internal sealed class FeatureCapabilityDefinition(CapabilityType type, string key, FeatureSettings settings) : CapabilityDefinition(type, key, settings.SettingsType)
+{
+    public override object DefaultSettingsObject => settings.DefaultSettings;
+
+    public override IReadOnlyList<string> ValidateObject(object value) => settings.Validate(value);
+
+    public override object Deserialize(JsonElement value) =>
+        JsonSerializer.Deserialize(value, SettingsType) ?? throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings.");
+
+    public override JsonElement SerializeObject(object value)
+    {
+        var validationErrors = settings.Validate(value);
+        if (validationErrors.Count > 0)
+        {
+            throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings: {string.Join(" ", validationErrors)}");
+        }
+
+        return JsonSerializer.SerializeToElement(value, SettingsType);
+    }
+}
+
 internal sealed class CapabilityRegistry
 {
     private readonly Dictionary<(CapabilityType Type, string Key), CapabilityDefinition> _definitions = [];
@@ -81,6 +103,22 @@ internal sealed class CapabilityRegistry
 
         var normalizedKey = key.Trim();
         var definition = new CapabilityDefinition<TSettings>(type, normalizedKey, defaultSettings, validator);
+        if (!_definitions.TryAdd((type, normalizedKey), definition))
+        {
+            throw new InvalidOperationException($"Capability {type}:{normalizedKey} is already registered.");
+        }
+
+        return definition;
+    }
+
+    public CapabilityDefinition Register(CapabilityType type, string key, FeatureSettings settings)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!Enum.IsDefined(type)) throw new ArgumentOutOfRangeException(nameof(type));
+
+        var normalizedKey = key.Trim();
+        var definition = new FeatureCapabilityDefinition(type, normalizedKey, settings);
         if (!_definitions.TryAdd((type, normalizedKey), definition))
         {
             throw new InvalidOperationException($"Capability {type}:{normalizedKey} is already registered.");
