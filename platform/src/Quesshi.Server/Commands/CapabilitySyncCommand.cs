@@ -7,22 +7,39 @@ internal sealed class CapabilitySyncCommand(ISystemDb database, CapabilityRegist
 {
     public async Task<int> ExecuteAsync(CancellationToken cancellationToken = default)
     {
-        var inserted = 0;
-        foreach (var definition in registry.Definitions)
+        return await database.InTransactionAsync(async transaction =>
         {
-            inserted += await database.ExecuteAsync("""
-                insert into tenant_capabilities (tenant_id, type, key, entitled, enabled, settings)
-                select id, @type, @key, false, false, @settings
-                from tenants
-                on conflict (tenant_id, type, key) do nothing
-                """, new
+            var inserted = 0;
+            var affectedTenantIds = new HashSet<Guid>();
+            foreach (var definition in registry.Definitions)
             {
-                type = definition.Type.ToString().ToLowerInvariant(),
-                definition.Key,
-                settings = definition.SerializeObject(definition.DefaultSettingsObject)
-            }, cancellationToken);
-        }
+                var tenantIds = await transaction.QueryAsync<Guid>("""
+                    insert into tenant_capabilities (tenant_id, type, key, entitled, enabled, settings)
+                    select id, @type, @key, false, false, @settings
+                    from tenants
+                    on conflict (tenant_id, type, key) do nothing
+                    returning tenant_id
+                    """, new
+                {
+                    type = definition.Type.ToString().ToLowerInvariant(),
+                    definition.Key,
+                    settings = definition.SerializeObject(definition.DefaultSettingsObject)
+                }, cancellationToken);
 
-        return inserted;
+                inserted += tenantIds.Count;
+                affectedTenantIds.UnionWith(tenantIds);
+            }
+
+            if (affectedTenantIds.Count > 0)
+            {
+                await transaction.ExecuteAsync("""
+                    update tenants
+                    set config_version = config_version + 1
+                    where id = any(@tenantIds)
+                    """, new { tenantIds = affectedTenantIds.ToArray() }, cancellationToken);
+            }
+
+            return inserted;
+        }, cancellationToken);
     }
 }
