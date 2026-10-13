@@ -19,15 +19,19 @@ public sealed class ClockContractTests
     public async Task Calibration_selects_the_shortest_round_trip_and_disciplines_now_to_the_database()
     {
         var monotonic = new ManualMonotonicClock();
-        var database = new LatencyInjectingDatabaseClock(monotonic, TimeSpan.FromSeconds(3),
-            TimeSpan.FromMilliseconds(40), TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(50));
+        var database = new LatencyInjectingDatabaseClock(monotonic,
+            new DatabaseSample(TimeSpan.FromMilliseconds(40), TimeSpan.FromSeconds(1)),
+            new DatabaseSample(TimeSpan.FromMilliseconds(10), TimeSpan.FromSeconds(3)),
+            new DatabaseSample(TimeSpan.FromMilliseconds(30), TimeSpan.FromSeconds(5)),
+            new DatabaseSample(TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(7)),
+            new DatabaseSample(TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(9)));
         await using var clock = new PostgresClock(database, monotonic);
 
         Assert.True(await clock.CalibrateAsync());
 
+        Assert.Equal(TimeSpan.FromSeconds(30), PostgresClock.CalibrationInterval);
         Assert.Equal(TimeSpan.FromMilliseconds(5), clock.Uncertainty);
-        var databaseNow = DateTimeOffset.UnixEpoch.AddSeconds(3).AddMilliseconds(monotonic.Timestamp);
-        Assert.True((clock.Now - databaseNow).Duration() < clock.Uncertainty);
+        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(3).AddMilliseconds(monotonic.Timestamp), clock.Now);
         Assert.True(clock.IsHealthy);
     }
 
@@ -133,16 +137,30 @@ public sealed class ClockContractTests
         public void Advance(TimeSpan duration) => Timestamp += duration.Ticks / TimeSpan.TicksPerMillisecond;
     }
 
-    private sealed class LatencyInjectingDatabaseClock(ManualMonotonicClock monotonic, TimeSpan offset, params TimeSpan[] roundTrips) : IDatabaseClock
+    private readonly record struct DatabaseSample(TimeSpan RoundTrip, TimeSpan Offset);
+
+    private sealed class LatencyInjectingDatabaseClock : IDatabaseClock
     {
-        private readonly Queue<TimeSpan> _roundTrips = new(roundTrips);
+        private readonly ManualMonotonicClock _monotonic;
+        private readonly Queue<DatabaseSample> _samples;
+
+        public LatencyInjectingDatabaseClock(ManualMonotonicClock monotonic, TimeSpan offset, params TimeSpan[] roundTrips)
+            : this(monotonic, roundTrips.Select(roundTrip => new DatabaseSample(roundTrip, offset)).ToArray())
+        {
+        }
+
+        public LatencyInjectingDatabaseClock(ManualMonotonicClock monotonic, params DatabaseSample[] samples)
+        {
+            _monotonic = monotonic;
+            _samples = new(samples);
+        }
 
         public Task<DateTimeOffset> ReadAsync(CancellationToken cancellationToken = default)
         {
-            var roundTrip = _roundTrips.Count > 0 ? _roundTrips.Dequeue() : TimeSpan.Zero;
-            var before = monotonic.Timestamp;
-            monotonic.Advance(roundTrip);
-            return Task.FromResult(DateTimeOffset.UnixEpoch.Add(offset).AddMilliseconds(before + (roundTrip.TotalMilliseconds / 2)));
+            var sample = _samples.Count > 0 ? _samples.Dequeue() : default;
+            var before = _monotonic.Timestamp;
+            _monotonic.Advance(sample.RoundTrip);
+            return Task.FromResult(DateTimeOffset.UnixEpoch.Add(sample.Offset).AddMilliseconds(before + (sample.RoundTrip.TotalMilliseconds / 2)));
         }
     }
 
