@@ -133,8 +133,13 @@ public static class Program
             builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
             builder.Services.AddSingleton<IJobStore, PostgresJobStore>();
             builder.Services.AddSingleton<JobHandlerRegistry>();
+            builder.Services.AddSingleton<JobScheduleRegistry>();
+            builder.Services.AddSingleton<IJobScheduleTenants, PostgresJobScheduleTenants>();
+            builder.Services.AddSingleton<ISystemJobs, SystemJobs>();
             builder.Services.AddSingleton<JobWorker>();
+            builder.Services.AddSingleton<JobScheduler>();
             builder.Services.AddHostedService<JobWorkerService>();
+            builder.Services.AddHostedService<JobScheduleService>();
         }
         builder.Host.UseOrleans(silo =>
         {
