@@ -134,12 +134,18 @@ public sealed record Graded(
     bool OnTime,
     bool Duplicate);
 
+/// <summary>A format-safe projection of one persisted answer row.</summary>
+public sealed record StoredAnswer(JsonElement? Value, int Revision, bool Miss = false);
+
 public interface ISession
 {
     SessionRow Session { get; }
     JsonElement State { get; set; }
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
+    DateTimeOffset Now { get; }
+    StoredAnswer? Answer(string player, int slot);
+    JsonElement Card(int slot);
     Graded Grade(Command command);
     void Record(Graded graded, int points);
     void Replace(Graded graded, int revision);
@@ -165,6 +171,7 @@ public interface IViewing
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
     string Viewer { get; }
+    StoredAnswer? Answer(string player, int slot);
     JsonElement Card(int slot);
     JsonElement? Reveal(int slot);
     IReadOnlyList<AnswerRecord> Answers(string player);
