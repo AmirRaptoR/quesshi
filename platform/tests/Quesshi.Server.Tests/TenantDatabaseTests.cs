@@ -1,0 +1,287 @@
+using System.Data;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Npgsql;
+using Quesshi.Infrastructure.Database;
+using Quesshi.Plugin.Api;
+using Quesshi.Server;
+using Quesshi.Testing;
+
+namespace Quesshi.Server.Tests;
+
+[Collection("PostgreSQL")]
+public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
+{
+    private static readonly Guid TenantA = Guid.Parse("63f188c2-f5a7-4c12-a4ef-d20db7eb9ce1");
+    private static readonly Guid TenantB = Guid.Parse("e1c56186-6e74-43a1-bf29-0185cd68c5b9");
+
+    [Fact]
+    public void Plugin_database_contracts_do_not_publish_provider_handles()
+    {
+        var exposedTypes = typeof(ITenantDb).Assembly.GetExportedTypes();
+        var signatures = exposedTypes.SelectMany(type =>
+            type.GetMethods().SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType)
+                .Append(method.ReturnType))
+            .Concat(type.GetProperties().Select(property => property.PropertyType)));
+
+        Assert.DoesNotContain(signatures, type => type.FullName is "Npgsql.NpgsqlConnection" or "Npgsql.NpgsqlTransaction" or "Npgsql.NpgsqlDataSource");
+        Assert.DoesNotContain(typeof(TenantDb).Assembly.GetExportedTypes(), type => type.Name == "ISystemDb");
+    }
+
+    [SkippableFact]
+    public async Task Tenant_transaction_scopes_queries_rolls_back_and_does_not_leak_pool_state()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        var aRow = Guid.NewGuid();
+        var bRow = Guid.NewGuid();
+
+        await database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+            "insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)",
+            new { tenantId = TenantA, id = aRow, value = "a" }));
+        await database.InTenantAsync(TenantB, tx => tx.ExecuteAsync(
+            "insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)",
+            new { tenantId = TenantB, id = bRow, value = "b" }));
+
+        var aRows = await database.InTenantAsync(TenantA, tx => tx.QueryAsync<Guid>("select id from tenant_rows order by id"));
+        var bRows = await database.InTenantAsync(TenantB, tx => tx.QueryAsync<Guid>("select id from tenant_rows order by id"));
+        Assert.Equal([aRow], aRows);
+        Assert.Equal([bRow], bRows);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, async tx =>
+        {
+            await tx.ExecuteAsync("insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)", new { tenantId = TenantA, id = Guid.NewGuid(), value = "rollback" });
+            throw new InvalidOperationException("rollback");
+        }));
+        Assert.Equal(1, await database.InTenantAsync(TenantA, async tx => (await tx.QueryAsync<Guid>("select id from tenant_rows")).Count));
+
+        await using var outside = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_app"));
+        await outside.OpenAsync();
+        await Assert.ThrowsAsync<PostgresException>(async () => await new NpgsqlCommand("select count(*) from tenant_rows", outside).ExecuteScalarAsync());
+        await using var system = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
+        await system.OpenAsync();
+        var systemFailure = await Assert.ThrowsAsync<PostgresException>(async () => await new NpgsqlCommand("select count(*) from tenant_rows", system).ExecuteScalarAsync());
+        Assert.Equal("42501", systemFailure.SqlState);
+        await Assert.ThrowsAsync<PostgresException>(() => database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+            "insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)",
+            new { tenantId = TenantB, id = Guid.NewGuid(), value = "forbidden" })));
+    }
+
+    [SkippableFact]
+    public async Task Retries_only_transient_failures_and_keeps_failed_attempts_uncommitted()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        var attempts = 0;
+        var row = Guid.NewGuid();
+
+        await database.InTenantAsync(TenantA, async tx =>
+        {
+            attempts++;
+            await tx.ExecuteAsync("insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)", new { tenantId = TenantA, id = row, value = "retry" });
+            if (attempts == 1) await tx.ExecuteAsync("do $$ begin raise exception using errcode = '40001'; end $$");
+            return 0;
+        }, IsolationLevel.Serializable);
+        Assert.Equal(2, attempts);
+        Assert.Equal(1, await database.InTenantAsync(TenantA, async tx => (await tx.QueryAsync<Guid>("select id from tenant_rows where id = @row", new { row })).Count));
+
+        attempts = 0;
+        var transient = await Assert.ThrowsAsync<PostgresException>(() => database.InTenantAsync(TenantA, async tx =>
+        {
+            attempts++;
+            await tx.ExecuteAsync("do $$ begin raise exception using errcode = '40P01'; end $$");
+            return 0;
+        }));
+        Assert.Equal("40P01", transient.SqlState);
+        Assert.Equal(3, attempts);
+
+        attempts = 0;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, _ =>
+        {
+            attempts++;
+            throw new InvalidOperationException("not transient");
+        }));
+        Assert.Equal(1, attempts);
+    }
+
+    [SkippableFact]
+    public async Task Dapper_helpers_round_trip_postgres_types_and_jsonb()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        var id = Guid.NewGuid();
+        var payload = new Payload(["éclair", "東京"], new PayloadChild("nested", [1, 2, 3]));
+        var instant = new DateTimeOffset(2026, 10, 13, 8, 30, 0, TimeSpan.FromHours(3));
+
+        await database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+            "insert into typed_rows (tenant_id, id, guid_value, happened_at, payload) values (@tenantId, @id, @id, @instant, @payload)",
+            new { tenantId = TenantA, id, instant, payload = new Jsonb<Payload>(payload, TenantJsonContext.Default.Payload) }));
+        var read = await database.InTenantAsync(TenantA, async tx => new
+        {
+            Guid = await tx.QuerySingleOrDefaultAsync<Guid>("select guid_value from typed_rows where id = @id", new { id }),
+            Instant = await tx.QuerySingleOrDefaultAsync<DateTimeOffset>("select happened_at from typed_rows where id = @id", new { id }),
+            Json = await tx.QuerySingleOrDefaultAsync<JsonDocument>("select payload from typed_rows where id = @id", new { id }),
+            Count = (await tx.QueryAsync<Guid>("select id from typed_rows where id = any(@ids)", new { ids = new[] { id, Guid.NewGuid() } })).Count
+        });
+
+        Assert.Equal(id, read.Guid);
+        Assert.Equal(instant.ToUniversalTime(), read.Instant);
+        Assert.Equal(payload, read.Json is null ? null : JsonSerializer.Deserialize(read.Json, TenantJsonContext.Default.Payload));
+        Assert.Equal(1, read.Count);
+    }
+
+    [SkippableFact]
+    public async Task Locks_follow_the_global_order_and_inbox_flushes_once_in_player_order()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources, new TestInboxSink());
+        var locks = new TenantLocks();
+        var inbox = new TenantInbox();
+        var playerA = Guid.NewGuid();
+        var playerB = Guid.NewGuid();
+        var content = Guid.NewGuid();
+        var owned = Guid.NewGuid();
+        await SeedAsync(playerA, playerB, content, owned);
+
+        await database.InTenantAsync(TenantA, async tx =>
+        {
+            await locks.ContentAsync(tx, [content]);
+            await Assert.ThrowsAsync<LockOrderViolation>(() => locks.PlayersAsync(tx, [playerA]));
+            return 0;
+        });
+        await database.InTenantAsync(TenantA, async tx =>
+        {
+            await locks.PlayersAsync(tx, [playerB, playerA]);
+            await locks.PlayersAsync(tx, [playerA]);
+            await locks.ContentAsync(tx, [content]);
+            await locks.OwnAsync(tx, "plugin_rows", [owned]);
+            inbox.Changed(tx, playerB);
+            inbox.Changed(tx, playerA);
+            inbox.Changed(tx, playerB);
+            return 0;
+        });
+
+        var order = await database.InTenantAsync(TenantA, tx => tx.QueryAsync<Guid>("select player_id from inbox_events order by sequence"));
+        Assert.Equal([playerA, playerB], order);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, tx =>
+        {
+            inbox.Changed(tx, playerA);
+            throw new InvalidOperationException("rollback");
+        }));
+        Assert.Equal(2, await database.InTenantAsync(TenantA, async tx => (await tx.QueryAsync<Guid>("select player_id from inbox_events")).Count));
+
+        var retryAttempts = 0;
+        await database.InTenantAsync(TenantA, async tx =>
+        {
+            retryAttempts++;
+            inbox.Changed(tx, retryAttempts == 1 ? playerA : playerB);
+            if (retryAttempts == 1) await tx.ExecuteAsync("do $$ begin raise exception using errcode = '40001'; end $$");
+            return 0;
+        });
+        var afterRetry = await database.InTenantAsync(TenantA, tx => tx.QueryAsync<Guid>("select player_id from inbox_events order by sequence"));
+        Assert.Equal([playerA, playerB, playerB], afterRetry);
+    }
+
+    [SkippableFact]
+    public async Task Player_lock_order_avoids_deadlock_and_does_not_block_foreign_key_inserts()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        var locks = new TenantLocks();
+        var playerA = Guid.NewGuid();
+        var playerB = Guid.NewGuid();
+        await SeedAsync(playerA, playerB, Guid.NewGuid(), Guid.NewGuid());
+
+        await Task.WhenAll(
+            database.InTenantAsync(TenantA, async tx => { await locks.PlayersAsync(tx, [playerA, playerB]); await Task.Delay(50); return 0; }),
+            database.InTenantAsync(TenantA, async tx => { await locks.PlayersAsync(tx, [playerB, playerA]); await Task.Delay(50); return 0; }));
+
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var locker = database.InTenantAsync(TenantA, async tx =>
+        {
+            await locks.PlayersAsync(tx, [playerA]);
+            held.SetResult();
+            await release.Task;
+            return 0;
+        });
+        await held.Task;
+        var insert = database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+            "insert into player_references (tenant_id, id, player_id) values (@tenantId, @id, @playerId)",
+            new { tenantId = TenantA, id = Guid.NewGuid(), playerId = playerA }));
+        Assert.Same(insert, await Task.WhenAny(insert, Task.Delay(TimeSpan.FromSeconds(2))));
+        release.SetResult();
+        await locker;
+    }
+
+    private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+    private async Task PrepareAsync()
+    {
+        await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        foreach (var statement in new[]
+        {
+            "create table if not exists tenant_rows (tenant_id uuid not null, id uuid not null, value text not null, primary key (tenant_id, id))",
+            "create table if not exists typed_rows (tenant_id uuid not null, id uuid not null, guid_value uuid not null, happened_at timestamptz not null, payload jsonb not null, primary key (tenant_id, id))",
+            "create table if not exists players (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table if not exists questions (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table if not exists packs (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table if not exists plugin_rows (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table if not exists player_references (tenant_id uuid not null, id uuid not null, player_id uuid not null, primary key (tenant_id, id), foreign key (tenant_id, player_id) references players (tenant_id, id))",
+            "create table if not exists inbox_events (tenant_id uuid not null, sequence bigserial primary key, player_id uuid not null)"
+        }) await ExecuteAsync(owner, statement);
+        foreach (var table in new[] { "tenant_rows", "typed_rows", "players", "questions", "packs", "plugin_rows", "player_references", "inbox_events" })
+        {
+            await ExecuteAsync(owner, $"alter table {table} enable row level security");
+            await ExecuteAsync(owner, $"grant select, insert, update, delete on {table} to quesshi_app");
+            await ExecuteAsync(owner, $"comment on table {table} is 'owner:{(table == "plugin_rows" ? "demo_plugin" : "core")}'");
+            await ExecuteAsync(owner, $"drop policy if exists tenant_isolation on {table}");
+            await ExecuteAsync(owner, $"create policy tenant_isolation on {table} using (tenant_id = app_tenant()) with check (tenant_id = app_tenant())");
+            await ExecuteAsync(owner, $"truncate table {table} restart identity cascade");
+        }
+        await ExecuteAsync(owner, "grant usage, select on sequence inbox_events_sequence_seq to quesshi_app");
+    }
+
+    private async Task SeedAsync(Guid playerA, Guid playerB, Guid content, Guid owned)
+    {
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        foreach (var (table, id) in new[] { ("players", playerA), ("players", playerB), ("questions", content), ("plugin_rows", owned) })
+        {
+            await ExecuteAsync(owner, $"insert into {table} (tenant_id, id) values (@tenant, @id)", ("tenant", TenantA), ("id", id));
+        }
+    }
+
+    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private sealed class TestInboxSink : IInboxBumpSink
+    {
+        public Task ApplyAsync(ITenantTx transaction, Guid playerId, CancellationToken cancellationToken = default) => transaction.ExecuteAsync(
+            "insert into inbox_events (tenant_id, player_id) values (current_setting('app.tenant_id')::uuid, @playerId)",
+            new { playerId }, cancellationToken);
+    }
+
+    private sealed record Payload(string[] Labels, PayloadChild Child);
+    private sealed record PayloadChild(string Name, int[] Values);
+
+    [JsonSerializable(typeof(Payload))]
+    private sealed partial class TenantJsonContext : JsonSerializerContext;
+}
