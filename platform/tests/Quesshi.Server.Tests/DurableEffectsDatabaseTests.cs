@@ -523,7 +523,7 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         private async Task SessionEndedAsync(ITenantTx transaction, SessionEnded @event, CancellationToken cancellationToken)
         {
             var key = convergent
-                ? $"player:{await transaction.QuerySingleOrDefaultAsync<Guid>(\"select owner_id from sessions where id = @sessionId\", new { sessionId = @event.SessionId }, cancellationToken)}"
+                ? $"player:{await transaction.QuerySingleOrDefaultAsync<Guid>("select owner_id from sessions where id = @sessionId", new { sessionId = @event.SessionId }, cancellationToken)}"
                 : $"session:{@event.SessionId}";
             await WriteEffectAsync(transaction, key);
             if (Interlocked.Decrement(ref _eventFailures) >= 0) throw new InvalidOperationException("event failure");
