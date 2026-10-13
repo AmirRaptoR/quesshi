@@ -1,0 +1,43 @@
+{
+  "payload": {
+    "items": [
+      { "id": "delta", "text": "Delta" },
+      { "id": "bravo", "text": "Bravo" },
+      { "id": "alpha", "text": "Alpha" },
+      { "id": "charlie", "text": "Charlie" }
+    ]
+  },
+  "seed": { "sessionId": "order-fixture", "slot": 4 },
+  "resolved": { "itemIds": ["alpha", "charlie", "bravo", "delta"] },
+  "card": { "items": [
+    { "id": "alpha", "text": "Alpha" },
+    { "id": "charlie", "text": "Charlie" },
+    { "id": "bravo", "text": "Bravo" },
+    { "id": "delta", "text": "Delta" }
+  ] },
+  "reveal": { "itemIds": ["delta", "bravo", "alpha", "charlie"] },
+  "answers": [
+    { "submitted": { "itemIds": ["delta", "bravo", "alpha", "charlie"] }, "stored": { "itemIds": ["delta", "bravo", "alpha", "charlie"] }, "credit": 1 },
+    { "submitted": { "itemIds": ["alpha", "bravo", "charlie", "delta"] }, "stored": { "itemIds": ["alpha", "bravo", "charlie", "delta"] }, "credit": 0 },
+    { "submitted": { "itemIds": ["alpha", "charlie", "bravo", "delta"] }, "stored": { "itemIds": ["alpha", "charlie", "bravo", "delta"] }, "credit": 0 },
+    { "credit": 0 },
+    { "submitted": { "itemIds": ["delta", "delta", "alpha", "charlie"] }, "malformed": true },
+    { "submitted": { "itemIds": ["delta", "bravo", "alpha"] }, "malformed": true },
+    { "submitted": { "itemIds": ["delta", "bravo", "alpha", "foreign"] }, "malformed": true },
+    { "submitted": {}, "malformed": true }
+  ],
+  "validation": [
+    {
+      "payload": { "items": [
+        { "id": "a", "text": "One" }, { "id": "b", "text": "Two" }, { "id": "c", "text": "Three" }
+      ] },
+      "codes": ["items.tooFew"]
+    },
+    {
+      "payload": { "items": [
+        { "id": "a", "text": "One" }, { "id": "a", "text": "Two" }, { "id": "c", "text": "Three" }, { "id": "d", "text": "Four" }
+      ] },
+      "codes": ["items.duplicateId"]
+    }
+  ]
+}
