@@ -22,12 +22,12 @@ public sealed record SessionView(
     JsonElement Body);
 
 public sealed record MySeat(string Id, int Seat, string Role, string Status, int Score, int? Place, string? Outcome);
-public sealed record RosterSeat(string Id, string Name, int Seat, string Role, string Status, int Score, int? Place, string? Outcome);
+public sealed record SessionRosterSeat(string Id, string Name, int Seat, string Role, string Status, int Score, int? Place, string? Outcome);
 
 /// <summary>A complete roster is sent only while it remains small enough for every view.</summary>
 public abstract record RosterView(int Total);
-public sealed record CompleteRosterView(IReadOnlyList<RosterSeat> Seats) : RosterView(Seats.Count);
-public sealed record WindowedRosterView(int TotalSeats, IReadOnlyList<RosterSeat> Top, IReadOnlyList<RosterSeat> Neighbours) : RosterView(TotalSeats);
+public sealed record CompleteRosterView(IReadOnlyList<SessionRosterSeat> Seats) : RosterView(Seats.Count);
+public sealed record WindowedRosterView(int TotalSeats, IReadOnlyList<SessionRosterSeat> Top, IReadOnlyList<SessionRosterSeat> Neighbours) : RosterView(TotalSeats);
 
 /// <summary>A stable, cursor-paged roster response for sessions whose view is windowed.</summary>
-public sealed record RosterPage(IReadOnlyList<RosterSeat> Seats, int? NextSeat);
+public sealed record RosterPage(IReadOnlyList<SessionRosterSeat> Seats, int? NextSeat);

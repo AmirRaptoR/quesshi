@@ -84,7 +84,7 @@ public sealed class SessionCommandEndpointTests
         var session = Guid.NewGuid();
         var viewer = Guid.NewGuid();
         var snapshots = new RosterSnapshots(new RosterPage(
-            [new RosterSeat(viewer.ToString(), "Viewer", 10, "player", "active", 0, null, null)], 10));
+            [new SessionRosterSeat(viewer.ToString(), "Viewer", 10, "player", "active", 0, null, null)], 10));
         var context = Context("");
         context.Items[typeof(Tenant)] = tenant;
         context.Request.Headers["X-Quesshi-Test-Player"] = viewer.ToString();

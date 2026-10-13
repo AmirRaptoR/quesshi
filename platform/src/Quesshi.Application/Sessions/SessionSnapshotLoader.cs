@@ -112,7 +112,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
             order by p.seat, p.player_id
             limit @limit
             """, new { sessionId, afterSeat, limit = take + 1 }, cancellationToken)).ToArray();
-        var page = rows.Take(take).Select(row => new RosterSeat(row.Id, row.Name, row.Seat, row.Role, row.Status, row.Score, row.Place, row.Outcome)).ToArray();
+        var page = rows.Take(take).Select(row => new SessionRosterSeat(row.Id, row.Name, row.Seat, row.Role, row.Status, row.Score, row.Place, row.Outcome)).ToArray();
         return new RosterPage(page, rows.Length > take ? page[^1].Seat : null);
     }
 

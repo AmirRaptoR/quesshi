@@ -88,7 +88,7 @@ internal sealed class ViewRenderer : IViewRenderer
     }
 
     private static MySeat ToMySeat(Seat seat) => new(seat.Player, seat.Number, seat.Role, SeatStatusText(seat), seat.Score, seat.Place, seat.Outcome);
-    private static RosterSeat ToRosterSeat(Seat seat) => new(seat.Player, seat.DisplayName ?? seat.Player, seat.Number, seat.Role, SeatStatusText(seat), seat.Score, seat.Place, seat.Outcome);
+    private static SessionRosterSeat ToRosterSeat(Seat seat) => new(seat.Player, seat.DisplayName ?? seat.Player, seat.Number, seat.Role, SeatStatusText(seat), seat.Score, seat.Place, seat.Outcome);
     private static string SeatStatusText(Seat seat) => seat.Status.ToString().ToLowerInvariant();
     private static string Serialize(JsonElement shared, MySeat me, RosterView roster, JsonElement body)
     {
