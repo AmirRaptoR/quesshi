@@ -135,7 +135,9 @@ public static class Program
             builder.Services.AddSingleton<JobHandlerRegistry>();
             builder.Services.AddSingleton<JobScheduleRegistry>();
             builder.Services.AddSingleton<IJobScheduleTenants, PostgresJobScheduleTenants>();
-            builder.Services.AddSingleton<ISystemJobs, SystemJobs>();
+            builder.Services.AddSingleton<SystemJobs>();
+            builder.Services.AddSingleton<ISystemJobs>(provider => provider.GetRequiredService<SystemJobs>());
+            builder.Services.AddSingleton<ISystemScheduledJobs>(provider => provider.GetRequiredService<SystemJobs>());
             builder.Services.AddSingleton<JobWorker>();
             builder.Services.AddSingleton<JobScheduler>();
             builder.Services.AddHostedService<JobWorkerService>();

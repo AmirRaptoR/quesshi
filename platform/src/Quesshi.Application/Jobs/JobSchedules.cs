@@ -40,11 +40,23 @@ internal interface IJobScheduleTenants
     Task<IReadOnlyList<Guid>> ListEnabledAsync(string owner, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Atomically claims a schedule window and queues its system job once.</summary>
+internal interface ISystemScheduledJobs
+{
+    Task<bool> EnqueueOnceAsync(
+        Guid tenantId,
+        JobSchedule schedule,
+        System.Text.Json.JsonElement payload,
+        string uniqueKey,
+        DateTimeOffset window,
+        CancellationToken cancellationToken = default);
+}
+
 /// <summary>Enqueues the current UTC window for every enabled tenant schedule.</summary>
 internal sealed class JobScheduler(
     JobScheduleRegistry schedules,
     IJobScheduleTenants tenants,
-    ISystemJobs jobs,
+    ISystemScheduledJobs jobs,
     TimeProvider? timeProvider = null)
 {
     private static readonly System.Text.Json.JsonElement EmptyPayload = System.Text.Json.JsonSerializer.SerializeToElement(new { });
@@ -61,15 +73,16 @@ internal sealed class JobScheduler(
             var enabledTenants = await tenants.ListEnabledAsync(schedule.Owner, cancellationToken);
             foreach (var tenantId in enabledTenants)
             {
-                await jobs.EnqueueForTenantAsync(
+                if (await jobs.EnqueueOnceAsync(
                     tenantId,
-                    schedule.Owner,
-                    schedule.Kind,
+                    schedule,
                     EmptyPayload,
                     uniqueKey,
                     window,
-                    cancellationToken);
-                enqueued++;
+                    cancellationToken))
+                {
+                    enqueued++;
+                }
             }
         }
 

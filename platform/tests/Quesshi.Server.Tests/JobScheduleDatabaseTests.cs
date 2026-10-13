@@ -44,6 +44,28 @@ public sealed class JobScheduleDatabaseTests(PostgresFixture fixture)
         Assert.Equal(2L, await DistinctKeyCountAsync());
     }
 
+    [SkippableFact]
+    public async Task Completed_scheduled_jobs_are_not_reenqueued_in_their_window()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var time = new MutableTimeProvider(DateTimeOffset.Parse("2026-10-13T10:01:30Z"));
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+
+        var first = CreateScheduler(sources, time);
+        var second = CreateScheduler(sources, time);
+        await first.RunPassAsync();
+        await SetScheduledJobsStatusAsync("done");
+        await Task.WhenAll(first.RunPassAsync(), second.RunPassAsync());
+
+        Assert.Equal(2L, await JobCountAsync());
+        Assert.Equal(1L, await JobCountAsync("tenant_id = @tenant", ("tenant", TenantA)));
+        Assert.Equal(1L, await JobCountAsync("tenant_id = @tenant", ("tenant", TenantB)));
+        Assert.Equal(2L, await ScheduleWindowCountAsync());
+    }
+
     private static JobScheduler CreateScheduler(DatabaseSources sources, TimeProvider time)
     {
         var handlers = new JobHandlerRegistry();
@@ -58,7 +80,7 @@ public sealed class JobScheduleDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
-        await ExecuteAsync(owner, "delete from jobs; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await ExecuteAsync(owner, "delete from jobs; delete from job_schedule_windows; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
         foreach (var (tenant, enabled) in new[] { (TenantA, true), (TenantB, true), (DisabledTenant, false) })
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, @slug, 'en')", ("tenant", tenant), ("slug", tenant.ToString("N")));
@@ -82,6 +104,21 @@ public sealed class JobScheduleDatabaseTests(PostgresFixture fixture)
         await system.OpenAsync();
         await using var command = new NpgsqlCommand("select count(distinct unique_key) from jobs", system);
         return (long)(await command.ExecuteScalarAsync())!;
+    }
+
+    private async Task<long> ScheduleWindowCountAsync()
+    {
+        await using var system = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
+        await system.OpenAsync();
+        await using var command = new NpgsqlCommand("select count(*) from job_schedule_windows", system);
+        return (long)(await command.ExecuteScalarAsync())!;
+    }
+
+    private async Task SetScheduledJobsStatusAsync(string status)
+    {
+        await using var system = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
+        await system.OpenAsync();
+        await ExecuteAsync(system, "update jobs set status = @status where owner = 'plugin' and kind = 'sweep'", ("status", status));
     }
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)

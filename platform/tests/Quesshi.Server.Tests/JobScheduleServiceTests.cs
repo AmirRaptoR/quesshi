@@ -14,7 +14,7 @@ public sealed class JobScheduleServiceTests
         var handlers = new JobHandlerRegistry();
         var loops = new BackgroundLoopRegistry();
         var service = new JobScheduleService(
-            new JobScheduler(new JobScheduleRegistry(handlers), new NoTenants(), new UnusedJobs()),
+            new JobScheduler(new JobScheduleRegistry(handlers), new NoTenants(), new UnusedScheduledJobs()),
             loops,
             NullLogger<JobScheduleService>.Instance);
 
@@ -53,12 +53,9 @@ public sealed class JobScheduleServiceTests
             Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
-    private sealed class UnusedJobs : ISystemJobs
+    private sealed class UnusedScheduledJobs : ISystemScheduledJobs
     {
-        public Task EnqueueForTenantAsync(Guid tenantId, string owner, string kind, JsonElement payload, string? uniqueKey = null, DateTimeOffset? runAt = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("No schedules are registered.");
-
-        public Task EnqueueGlobalAsync(string owner, string kind, JsonElement payload, string? uniqueKey = null, DateTimeOffset? runAt = null, CancellationToken cancellationToken = default) =>
+        public Task<bool> EnqueueOnceAsync(Guid tenantId, JobSchedule schedule, JsonElement payload, string uniqueKey, DateTimeOffset window, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("No schedules are registered.");
     }
 }
