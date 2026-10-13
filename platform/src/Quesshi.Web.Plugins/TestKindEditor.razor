@@ -1,0 +1,10 @@
+@using Microsoft.AspNetCore.Components
+
+<div data-kind="@Kind">@Payload @Lang</div>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public object? Payload { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
+    [Parameter, EditorRequired] public string Lang { get; set; } = string.Empty;
+}

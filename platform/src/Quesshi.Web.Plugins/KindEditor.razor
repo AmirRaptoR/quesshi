@@ -1,0 +1,58 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@inject IClientRegistry Registry
+
+<ErrorBoundary>
+    <ChildContent>
+        @if (component is null)
+        {
+            <p role="alert">This kind is not supported. Reload the page.</p>
+        }
+        else
+        {
+            <DynamicComponent Type="component" Parameters="parameters" />
+        }
+    </ChildContent>
+    <ErrorContent>
+        <p role="alert">This kind is not supported. Reload the page.</p>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Kind { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public object? Payload { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<object?> PayloadChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Lang { get; set; } = string.Empty;
+
+    private Type? component;
+    private IDictionary<string, object>? parameters;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            component = (await Registry.ResolveAsync(Kind))?.Editor;
+            parameters = component is null
+                ? null
+                : new Dictionary<string, object>
+                {
+                    ["Kind"] = Kind,
+                    ["Payload"] = Payload!,
+                    ["PayloadChanged"] = PayloadChanged,
+                    ["Lang"] = Lang,
+                };
+        }
+        catch
+        {
+            component = null;
+            parameters = null;
+        }
+    }
+}

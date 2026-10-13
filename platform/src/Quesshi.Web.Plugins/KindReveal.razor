@@ -1,0 +1,54 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@inject IClientRegistry Registry
+
+<ErrorBoundary>
+    <ChildContent>
+        @if (component is null)
+        {
+            <p role="alert">This kind is not supported. Reload the page.</p>
+        }
+        else
+        {
+            <DynamicComponent Type="component" Parameters="parameters" />
+        }
+    </ChildContent>
+    <ErrorContent>
+        <p role="alert">This kind is not supported. Reload the page.</p>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    [Parameter, EditorRequired]
+    public KindCard Card { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public object? Reveal { get; set; }
+
+    [Parameter, EditorRequired]
+    public object? Answers { get; set; }
+
+    private Type? component;
+    private IDictionary<string, object>? parameters;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            component = (await Registry.ResolveAsync(Card.Kind))?.Reveal(Card.KindVersion);
+            parameters = component is null
+                ? null
+                : new Dictionary<string, object>
+                {
+                    ["Card"] = Card.Value!,
+                    ["Reveal"] = Reveal!,
+                    ["Answers"] = Answers!,
+                };
+        }
+        catch
+        {
+            component = null;
+            parameters = null;
+        }
+    }
+}
