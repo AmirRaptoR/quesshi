@@ -13,14 +13,15 @@ public sealed class TenantJobs : IJobs
         JsonElement payload,
         string? uniqueKey = null,
         DateTimeOffset? runAt = null,
+        int? maxAttempts = 10,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(transaction);
         JobArguments.Validate(owner, kind, payload);
 
         await transaction.ExecuteAsync(
-            "select enqueue_job(@owner, @kind, cast(@payload as jsonb), @uniqueKey, coalesce(@runAt, now()))",
-            new { owner, kind, payload = payload.GetRawText(), uniqueKey, runAt = runAt?.ToUniversalTime() },
+            "select enqueue_job(@owner, @kind, cast(@payload as jsonb), @uniqueKey, coalesce(@runAt, now()), @maxAttempts)",
+            new { owner, kind, payload = payload.GetRawText(), uniqueKey, runAt = runAt?.ToUniversalTime(), maxAttempts },
             cancellationToken);
     }
 }

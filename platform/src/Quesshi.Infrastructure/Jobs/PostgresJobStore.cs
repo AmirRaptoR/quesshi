@@ -27,6 +27,17 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
                 finished_at = now()
             from exhausted
             where jobs.id = exhausted.id
+            returning jobs.tenant_id, jobs.owner, jobs.kind, jobs.payload
+        ),
+        revised as (
+            insert into session_effects (tenant_id, session_id, revision)
+            select tenant_id, (payload->>'subjectId')::uuid, 1
+            from parked
+            where owner = 'core'
+              and kind = 'event'
+              and payload->>'eventType' = 'sessionEnded'
+            on conflict (tenant_id, session_id) do update
+            set revision = session_effects.revision + 1
         ),
         due as (
             select id
@@ -63,14 +74,30 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
         """;
 
     private const string Fail = """
-        update jobs
-        set status = case when max_attempts is not null and attempts >= max_attempts then 'dead' else 'ready' end,
-            run_at = case when max_attempts is null or attempts < max_attempts then now() + @retryDelay else run_at end,
-            locked_by = null,
-            locked_until = null,
-            last_error = @error,
-            finished_at = case when max_attempts is not null and attempts >= max_attempts then now() else null end
-        where id = @id and status = 'ready' and locked_by = @lockedBy
+        with transitioned as (
+            update jobs
+            set status = case when max_attempts is not null and attempts >= max_attempts then 'dead' else 'ready' end,
+                run_at = case when max_attempts is null or attempts < max_attempts then now() + @retryDelay else run_at end,
+                locked_by = null,
+                locked_until = null,
+                last_error = @error,
+                finished_at = case when max_attempts is not null and attempts >= max_attempts then now() else null end
+            where id = @id and status = 'ready' and locked_by = @lockedBy
+            returning id, tenant_id, owner, kind, payload, attempts, max_attempts
+        ),
+        revised as (
+            insert into session_effects (tenant_id, session_id, revision)
+            select tenant_id, (payload->>'subjectId')::uuid, 1
+            from transitioned
+            where max_attempts is not null
+              and attempts >= max_attempts
+              and owner = 'core'
+              and kind = 'event'
+              and payload->>'eventType' = 'sessionEnded'
+            on conflict (tenant_id, session_id) do update
+            set revision = session_effects.revision + 1
+        )
+        select id from transitioned
         """;
 
     private const string Cancel = """
@@ -95,7 +122,7 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
     public Task<bool> FailAsync(long id, Guid lockedBy, int attempts, int? maxAttempts, string error, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return UpdateAsync(Fail, new { id, lockedBy, retryDelay = RetryDelay(attempts), error }, cancellationToken);
+        return QueryUpdateAsync(Fail, new { id, lockedBy, retryDelay = RetryDelay(attempts), error }, cancellationToken);
     }
 
     public Task<bool> CancelAsync(long id, Guid lockedBy, CancellationToken cancellationToken = default) =>
@@ -110,14 +137,31 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
             """, cancellationToken: cancellationToken);
 
     public Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default) =>
-        UpdateAsync("""
-            update jobs
-            set status = 'ready', run_at = now(), locked_by = null, locked_until = null, attempts = 0, last_error = null, finished_at = null
-            where id = @id and status = 'dead'
+        QueryUpdateAsync("""
+            with rerun as (
+                update jobs
+                set status = 'ready', run_at = now(), locked_by = null, locked_until = null, attempts = 0, last_error = null, finished_at = null
+                where id = @id and status = 'dead'
+                returning id, tenant_id, owner, kind, payload
+            ),
+            revised as (
+                insert into session_effects (tenant_id, session_id, revision)
+                select tenant_id, (payload->>'subjectId')::uuid, 1
+                from rerun
+                where owner = 'core'
+                  and kind = 'event'
+                  and payload->>'eventType' = 'sessionEnded'
+                on conflict (tenant_id, session_id) do update
+                set revision = session_effects.revision + 1
+            )
+            select id from rerun
             """, new { id }, cancellationToken);
 
     private async Task<bool> UpdateAsync(string sql, object parameters, CancellationToken cancellationToken) =>
         await database.ExecuteAsync(sql, parameters, cancellationToken) == 1;
+
+    private async Task<bool> QueryUpdateAsync(string sql, object parameters, CancellationToken cancellationToken) =>
+        await database.QuerySingleOrDefaultAsync<long?>(sql, parameters, cancellationToken) is not null;
 
     private static TimeSpan RetryDelay(int attempts)
     {
