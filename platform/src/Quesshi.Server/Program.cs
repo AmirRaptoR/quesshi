@@ -108,8 +108,13 @@ public static class Program
         int? gatewayPort = null,
         Action<ILoggingBuilder>? configureLogging = null)
     {
-        var options = new WebApplicationOptions { Args = [] };
+        var options = new WebApplicationOptions
+        {
+            Args = [],
+            ApplicationName = typeof(Program).Assembly.GetName().Name
+        };
         var builder = WebApplication.CreateBuilder(options);
+        builder.WebHost.UseStaticWebAssets();
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddEnvironmentVariables();
         builder.Logging.ClearProviders();

@@ -4,4 +4,11 @@
     <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
     <Content Include="../Quesshi.Shared/maps/world.svg" Link="wwwroot/maps/world.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="UseSharedMapAsStaticAssetSource" BeforeTargets="GenerateStaticWebAssetsManifest">
+    <ItemGroup>
+      <StaticWebAsset Update="@(StaticWebAsset)" Condition="'%(StaticWebAsset.OriginalItemSpec)' == '../Quesshi.Shared/maps/world.svg'">
+        <ContentRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)/../Quesshi.Shared'))</ContentRoot>
+      </StaticWebAsset>
+    </ItemGroup>
+  </Target>
 </Project>

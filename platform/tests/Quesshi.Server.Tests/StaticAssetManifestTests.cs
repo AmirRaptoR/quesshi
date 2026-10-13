@@ -48,4 +48,15 @@ public sealed class StaticAssetManifestTests
 
         Assert.NotNull(app);
     }
+
+    [Fact]
+    public async Task Makes_client_static_assets_available_in_testhost()
+    {
+        await using var sources = new DatabaseSources(
+            "Host=127.0.0.1;Database=quesshi;Username=app;Password=test",
+            "Host=127.0.0.1;Database=quesshi;Username=system;Password=test");
+        await using var app = Program.CreateApplication(sources, 11122, 30122);
+
+        Assert.True(app.Environment.WebRootFileProvider.GetFileInfo("icon-192.png").Exists);
+    }
 }
