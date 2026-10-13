@@ -50,6 +50,12 @@ internal static class TenantResourceEndpoints
     private static async Task WriteConfigAsync(HttpContext context, ITenantDb tenantDb, CapabilityRegistry registry, CancellationToken cancellationToken)
     {
         var data = await LoadAsync(context, tenantDb, cancellationToken);
+        if (data is null)
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
         var appNames = Branding.ReadAppNames(data.Branding);
         var capabilities = CapabilityTypes.ToDictionary(
             type => type.ToString().ToLowerInvariant(),
@@ -73,6 +79,12 @@ internal static class TenantResourceEndpoints
     private static async Task WriteThemeAsync(HttpContext context, ITenantDb tenantDb, CancellationToken cancellationToken)
     {
         var data = await LoadAsync(context, tenantDb, cancellationToken);
+        if (data is null)
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
         var palette = Branding.ReadPalette(data.Branding);
         var css = new StringBuilder(320).AppendLine(":root {");
         foreach (var (name, fallback) in DefaultPalette)
@@ -86,13 +98,19 @@ internal static class TenantResourceEndpoints
     private static async Task WriteManifestAsync(HttpContext context, ITenantDb tenantDb, CancellationToken cancellationToken)
     {
         var data = await LoadAsync(context, tenantDb, cancellationToken);
+        if (data is null)
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
         var palette = Branding.ReadPalette(data.Branding);
         var color = palette.GetValueOrDefault("shab", DefaultPalette["shab"]);
         var document = new ManifestDocument(data.Name, data.Name, color, color, Branding.ReadIcons(data.Branding));
         await WriteAsync(context, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions), "application/manifest+json; charset=utf-8", cancellationToken);
     }
 
-    private static async Task<TenantResourceData> LoadAsync(HttpContext context, ITenantDb tenantDb, CancellationToken cancellationToken)
+    private static async Task<TenantResourceData?> LoadAsync(HttpContext context, ITenantDb tenantDb, CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("A tenant resource requires tenant resolution.");
         return await tenantDb.InTenantAsync(tenant.Id, async transaction =>
@@ -100,8 +118,12 @@ internal static class TenantResourceEndpoints
             var settings = await transaction.QuerySingleOrDefaultAsync<TenantSettings>("""
                 select name as Name, default_language as DefaultLanguage, branding as Branding, config_version as ConfigVersion
                 from tenants
-                """, cancellationToken: cancellationToken)
-                ?? throw new InvalidOperationException("Resolved tenant no longer exists.");
+                """, cancellationToken: cancellationToken);
+            if (settings is null)
+            {
+                return null;
+            }
+
             var languages = await transaction.QueryAsync<TenantLanguage>("""
                 select code as Code, name as Name, direction as Direction
                 from tenant_languages

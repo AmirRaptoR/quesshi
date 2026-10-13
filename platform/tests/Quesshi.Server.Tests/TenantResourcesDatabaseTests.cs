@@ -92,6 +92,9 @@ public sealed class TenantResourcesDatabaseTests(PostgresFixture fixture)
                 Assert.Equal("#090E22", document.RootElement.GetProperty("theme_color").GetString());
                 Assert.Equal("icon-192.png", document.RootElement.GetProperty("icons")[0].GetProperty("src").GetString());
             }
+            var defaultIcon = await SendAsync(client, "/icon-192.png", "second.example.test");
+            defaultIcon.EnsureSuccessStatusCode();
+            Assert.Equal("image/png", defaultIcon.Content.Headers.ContentType?.MediaType);
 
             var theme = await SendAsync(client, "/theme.css", "first.example.test");
             Assert.Equal(HttpStatusCode.OK, theme.StatusCode);
@@ -154,6 +157,15 @@ public sealed class TenantResourcesDatabaseTests(PostgresFixture fixture)
             using var updatedConfigDocument = JsonDocument.Parse(await updatedConfig.Content.ReadAsStringAsync());
             Assert.Equal("English changed", updatedConfigDocument.RootElement.GetProperty("languages")[0].GetProperty("displayName").GetString());
             Assert.Equal(["custom_questions", "guests"], updatedConfigDocument.RootElement.GetProperty("capabilities").GetProperty("switch").EnumerateArray().Select(value => value.GetString()!).Order().ToArray());
+
+            await using (var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner")))
+            {
+                await owner.OpenAsync();
+                await owner.ExecuteAsync("delete from tenants where id = @firstTenant", new { firstTenant });
+            }
+
+            var deletedTenant = await SendAsync(client, "/api/config", "first.example.test");
+            Assert.Equal(HttpStatusCode.NotFound, deletedTenant.StatusCode);
         }
         finally
         {
