@@ -3,6 +3,7 @@ using Dapper;
 using Npgsql;
 using NpgsqlTypes;
 using Quesshi.Plugin.Api;
+using System.Net.Sockets;
 
 namespace Quesshi.Infrastructure.Database;
 
@@ -40,6 +41,7 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken);
         var tenantTransaction = new TenantTransaction(connection, transaction, tenantId, _inboxBumpSink);
+        var commitStarted = false;
         try
         {
             if (readOnly)
@@ -53,10 +55,11 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
                 cancellationToken: cancellationToken));
             var result = await callback(tenantTransaction);
             await tenantTransaction.FlushInboxAsync(cancellationToken);
+            commitStarted = true;
             await transaction.CommitAsync(cancellationToken);
             return result;
         }
-        catch
+        catch (Exception exception)
         {
             try
             {
@@ -67,12 +70,17 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
                 // Npgsql disposes a transaction after some low-level write failures.
                 // Preserve the callback failure instead of hiding it behind rollback.
             }
+            if (commitStarted && IsCommitOutcomeUnknown(exception))
+                throw new TenantCommitOutcomeUnknownException(exception);
             throw;
         }
     }
 
     private static bool IsTransient(PostgresException exception) =>
         exception.SqlState is PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected;
+
+    private static bool IsCommitOutcomeUnknown(Exception exception) => exception is IOException or TimeoutException
+        || exception is NpgsqlException { InnerException: IOException or SocketException };
 }
 
 internal sealed class TenantTransaction(

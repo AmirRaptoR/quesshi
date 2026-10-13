@@ -5,6 +5,12 @@ namespace Quesshi.Engine.Contracts;
 
 public enum Pacing { Shared, Personal }
 public enum CommandType { Answer, Next, Leave, Action }
+
+/// <summary>A format rejected a well-formed command with a stable client-visible code.</summary>
+public class SessionCommandException(string code) : InvalidOperationException(code)
+{
+    public string Code { get; } = code;
+}
 public enum EndReason { Completed, Forfeit, NoContest }
 public enum SeatStatus { Active, Done, Left, Eliminated }
 
@@ -148,6 +154,7 @@ public interface ISession
     JsonElement State { get; set; }
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
+    int ItemCount { get; }
     DateTimeOffset Now { get; }
     StoredAnswer? Answer(string player, int slot);
     JsonElement Card(int slot);
@@ -175,6 +182,7 @@ public interface IViewing
     JsonElement State { get; }
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
+    int ItemCount { get; }
     string Viewer { get; }
     /// <summary>The stored answer of the viewer, or of any player once the session has ended; otherwise null.</summary>
     StoredAnswer? Answer(string player, int slot);

@@ -96,7 +96,7 @@ public sealed class AsyncDuelFormat : IFormat
         if (seat.Position.Phase != AnsweredPhase || command.Type != CommandType.Next || command.At != seat.Position) return;
 
         var nextSlot = seat.Position.Slot + 1;
-        if (nextSlot < session.Items.Count)
+        if (nextSlot < session.ItemCount)
         {
             session.Serve(seat.Player, nextSlot);
             return;
@@ -192,7 +192,7 @@ public sealed class AsyncDuelFormat : IFormat
     {
         var position = seat.Position;
         var slot = position?.Slot;
-        var served = includePrivateContent && slot is { } value && value >= 0 && value < viewing.Items.Count;
+        var served = includePrivateContent && slot is { } value && value >= 0 && value < viewing.ItemCount;
         var revealed = served && seat.ReleasedSlot >= slot;
         return new AsyncDuelRunView(
             seat.Player,

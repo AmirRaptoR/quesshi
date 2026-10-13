@@ -10,18 +10,32 @@ public sealed record SessionState(
     JsonElement FormatState,
     IReadOnlyDictionary<string, Seat> Seats,
     IReadOnlyDictionary<int, SessionItemState> Items,
-    IReadOnlyDictionary<AnswerKey, AnswerRecord> Answers)
+    IReadOnlyDictionary<AnswerKey, AnswerRecord> Answers,
+    int ItemCount = 0)
 {
     public static SessionState Create(
         SessionRow session,
         JsonElement formatState,
         IEnumerable<Seat> seats,
-        IEnumerable<SessionItemState> items) => new(
+        IEnumerable<SessionItemState> items,
+        int? itemCount = null)
+    {
+        var materializedItems = items.ToArray();
+        return new(
             session,
             formatState.Clone(),
             ReadOnly(seats.ToDictionary(seat => seat.Player, StringComparer.Ordinal)),
-            ReadOnly(items.ToDictionary(item => item.Metadata.Slot)),
-            ReadOnly(new Dictionary<AnswerKey, AnswerRecord>()));
+            ReadOnly(materializedItems.ToDictionary(item => item.Metadata.Slot)),
+            ReadOnly(new Dictionary<AnswerKey, AnswerRecord>()),
+            itemCount ?? materializedItems.Length);
+    }
+
+    public SessionState WithItems(IEnumerable<SessionItemState> items)
+    {
+        var merged = new Dictionary<int, SessionItemState>(Items);
+        foreach (var item in items) merged[item.Metadata.Slot] = item;
+        return this with { Items = ReadOnly(merged) };
+    }
 
     internal static IReadOnlyDictionary<TKey, TValue> ReadOnly<TKey, TValue>(Dictionary<TKey, TValue> values) where TKey : notnull =>
         new ReadOnlyDictionary<TKey, TValue>(values);

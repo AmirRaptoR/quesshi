@@ -28,6 +28,7 @@ internal sealed class SessionTransition : ISession
     public JsonElement State { get => Current.FormatState; set => Set(Current with { FormatState = value.Clone() }); }
     public IReadOnlyList<Seat> Seats => Current.Seats.Values.OrderBy(x => x.Player, StringComparer.Ordinal).ToArray();
     public IReadOnlyList<SessionItem> Items => Current.Items.Values.OrderBy(x => x.Metadata.Slot).Select(x => x.Metadata).ToArray();
+    public int ItemCount => Current.ItemCount;
     public DateTimeOffset Now => _clock.Now;
     public StoredAnswer? Answer(string player, int slot) => Current.Answers.TryGetValue(new(player, slot), out var answer)
         ? new(answer.Stored?.Clone(), answer.Revision, answer.Miss) : null;
@@ -47,7 +48,7 @@ internal sealed class SessionTransition : ISession
         var limit = Session.DueAt is { } deadline ? deadline - (opened ?? command.Received) : TimeSpan.MaxValue;
         if (limit >= TimeSpan.Zero && taken > limit) taken = limit;
         return new(command, stored?.Clone(), !grade.IsNone, grade.Credit, taken,
-            Session.DueAt is null || command.Received <= Session.DueAt + _grace,
+            Session.DueAt is null || (_clock.Now <= Session.DueAt + _grace && command.Received <= Session.DueAt + _grace),
             Current.Answers.ContainsKey(new(command.Player, command.At.Slot)));
     }
 

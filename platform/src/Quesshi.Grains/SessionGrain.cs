@@ -4,6 +4,7 @@ using Orleans;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Plugin.Api;
 using Quesshi.Shared;
 
 namespace Quesshi.Grains;
@@ -52,14 +53,25 @@ public sealed class SessionGrain(
             if (!TryCommand(request, out var command)) return SessionCommandResult.Error("invalid_command");
             var position = format.Spec.Pacing == Pacing.Shared ? _state.Session.Position : _state.Seats[request.PlayerId].Position;
             if (position != command.At) return View("stale_position", format, request.PlayerId);
+            await EnsureItemsAsync(command.At.Slot);
             if (!_state.Items.ContainsKey(command.At.Slot)) return SessionCommandResult.Error("not_found");
-            if (_state.Items.Keys.Any(slot => slot > command.At.Slot) && !_state.Items.ContainsKey(command.At.Slot + 1)) return SessionCommandResult.Error("not_found");
-            if (command.Type == CommandType.Answer && _state.Session.DueAt is { } dueAt && request.ReceivedAt > dueAt + format.Spec.Grace)
+            if (command.At.Slot + 1 < _state.ItemCount) await EnsureItemsAsync(command.At.Slot + 1);
+            if (command.At.Slot + 1 < _state.ItemCount && !_state.Items.ContainsKey(command.At.Slot + 1)) return SessionCommandResult.Error("not_found");
+            // Finishing formats compute a durable result from every item, so load the
+            // historical items only for their final transition.
+            if (command.At.Slot == _state.ItemCount - 1) await EnsureItemsAsync(Enumerable.Range(0, _state.ItemCount).ToArray());
+            if (command.Type == CommandType.Answer && _state.Session.DueAt is { } dueAt
+                && (request.ReceivedAt > dueAt + format.Spec.Grace || clock.Now > dueAt + format.Spec.Grace))
                 return View("late_answer", format, request.PlayerId);
 
             var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace);
             try { format.Apply(transition, command); }
-            catch (Exception exception) when (exception.Message == "revision_conflict") { return View("revision_conflict", format, request.PlayerId); }
+            catch (SessionCommandException exception) { return View(exception.Code, format, request.PlayerId); }
+            catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or KeyNotFoundException)
+            {
+                logger.LogDebug(exception, "Format rejected command for {SessionId}", _sessionId);
+                return View("invalid_command", format, request.PlayerId);
+            }
             if (!transition.Changed) return View("ok", format, request.PlayerId);
 
             var current = transition.Current;
@@ -118,6 +130,12 @@ public sealed class SessionGrain(
         return true;
     }
     private static bool TryPhase(string value, out int phase) => int.TryParse(value, out phase) || (phase = value.ToLowerInvariant() switch { "lobby" or "idle" => -1, _ => int.MinValue }) != int.MinValue;
-    private static bool IsUnknownCommit(Exception exception) => exception is System.IO.IOException or TimeoutException or System.Data.Common.DbException;
+    private static bool IsUnknownCommit(Exception exception) => exception is TenantCommitOutcomeUnknownException;
+    private async Task EnsureItemsAsync(params int[] slots)
+    {
+        var missing = slots.Where(slot => slot >= 0 && !_state!.Items.ContainsKey(slot)).Distinct().ToArray();
+        if (missing.Length == 0) return;
+        _state = _state!.WithItems(await snapshots.LoadItemsAsync(_tenantId, _sessionId, missing));
+    }
     private void DropState() { _state = null; DeactivateOnIdle(); }
 }

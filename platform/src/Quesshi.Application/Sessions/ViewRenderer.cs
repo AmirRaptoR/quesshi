@@ -28,6 +28,7 @@ internal sealed class ViewRenderer : IViewRenderer
         public JsonElement State => state.FormatState.Clone();
         public IReadOnlyList<Seat> Seats => state.Seats.Values.OrderBy(seat => seat.Player, StringComparer.Ordinal).ToArray();
         public IReadOnlyList<SessionItem> Items => state.Items.Values.OrderBy(item => item.Metadata.Slot).Select(item => item.Metadata).ToArray();
+        public int ItemCount => state.ItemCount;
         public string Viewer => viewer;
 
         public StoredAnswer? Answer(string player, int slot) =>

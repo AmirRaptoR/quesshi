@@ -1,0 +1,181 @@
+using System.Text.Json;
+using Npgsql;
+using Quesshi.Application.Sessions;
+using Quesshi.Engine.Contracts;
+using Quesshi.Infrastructure.Database;
+using Quesshi.Server;
+using Quesshi.Testing;
+using Xunit.Sdk;
+
+namespace Quesshi.Server.Tests;
+
+[Collection("PostgreSQL")]
+public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
+{
+    [SkippableFact]
+    public async Task Snapshot_loader_finds_later_insertions_and_loads_a_bounded_open_snapshot()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var ownerId = PlayerId(1);
+        await InsertTenantAsync(owner, tenant);
+        await InsertPlayersAsync(owner, tenant, 500);
+
+        await using var sources = Sources();
+        var loader = new SessionSnapshotLoader(new TenantDb(sources));
+        Assert.Null(await loader.LoadAsync(tenant, session));
+
+        await InsertRunningSessionAsync(owner, tenant, session, ownerId, 100);
+        await InsertParticipantsAsync(owner, tenant, session, 500);
+        await InsertItemsAsync(owner, tenant, session, 100);
+        await InsertAnswersAsync(owner, tenant, session, 500);
+
+        var snapshot = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
+        Assert.Equal(500, snapshot.Seats.Count);
+        Assert.Equal(100, snapshot.ItemCount);
+        Assert.Equal([0], snapshot.Items.Keys);
+        Assert.Equal(500, snapshot.Answers.Count);
+        Assert.All(snapshot.Answers.Values, answer => Assert.NotNull(answer.Hash));
+
+        var next = Assert.Single(await loader.LoadItemsAsync(tenant, session, [1]));
+        Assert.Equal(1, next.Metadata.Slot);
+    }
+
+    [SkippableFact]
+    public async Task Version_fence_persists_one_answer_revision_and_notifies_the_committed_version()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var player = PlayerId(1);
+        await InsertTenantAsync(owner, tenant);
+        await InsertPlayersAsync(owner, tenant, 1);
+        await InsertRunningSessionAsync(owner, tenant, session, player, 1);
+        await InsertParticipantsAsync(owner, tenant, session, 1);
+        await InsertItemsAsync(owner, tenant, session, 1);
+
+        await using var sources = Sources();
+        var loader = new SessionSnapshotLoader(new TenantDb(sources));
+        var persisted = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
+        var store = new SessionStateStore(new TenantDb(sources));
+        var candidate = WithAnswer(persisted, player, revision: 1, answer: "first");
+
+        await using var listener = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
+        await listener.OpenAsync();
+        var notification = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.Notification += (_, args) => notification.TrySetResult(args.Payload);
+        await ExecuteAsync(listener, "listen quesshi_session");
+        var wait = listener.WaitAsync(CancellationToken.None);
+
+        var writes = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => TrySaveAsync(store, tenant, session, candidate)));
+        Assert.Equal(1, Assert.Single(writes, version => version > 0));
+        Assert.Equal(1, writes.Count(version => version == -1));
+        await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal($"{tenant}:{session}:1", await notification.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        var saved = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
+        var answer = Assert.Single(saved.Answers);
+        Assert.Equal(1, saved.Session.Version);
+        Assert.Equal(1, answer.Value.Revision);
+        Assert.Equal("first", answer.Value.Stored?.GetProperty("value").GetString());
+
+        var revised = WithAnswer(saved, player, revision: 2, answer: "second");
+        Assert.Equal(2, await store.SaveAsync(tenant, session, saved.Session.Version, revised));
+        var rows = await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
+        var revision = await ScalarAsync<int>(owner, "select revision from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
+        Assert.Equal(1, rows);
+        Assert.Equal(2, revision);
+    }
+
+    private static async Task<long> TrySaveAsync(SessionStateStore store, Guid tenant, Guid session, SessionState state)
+    {
+        try
+        {
+            return await store.SaveAsync(tenant, session, 0, state);
+        }
+        catch (StaleActivationException)
+        {
+            return -1;
+        }
+    }
+
+    private static SessionState WithAnswer(SessionState state, Guid player, int revision, string answer)
+    {
+        using var document = JsonDocument.Parse($$"""{"value":"{{answer}}"}""");
+        var answers = new Dictionary<AnswerKey, AnswerRecord>
+        {
+            [new(player.ToString(), 0)] = new(document.RootElement.Clone(), true, 1, 10, TimeSpan.FromMilliseconds(100), DateTimeOffset.UtcNow, Revision: revision)
+        };
+        return state with { Answers = SessionState.ReadOnly(answers) };
+    }
+
+    private async Task<NpgsqlConnection> PrepareAsync()
+    {
+        await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+        var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        await ExecuteAsync(owner, "delete from sessions; delete from tenants; delete from accounts");
+        return owner;
+    }
+
+    private static Task InsertTenantAsync(NpgsqlConnection connection, Guid tenant) =>
+        ExecuteAsync(connection, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, @slug, 'en')", ("tenant", tenant), ("slug", $"session-{tenant:N}"));
+
+    private static Task InsertPlayersAsync(NpgsqlConnection connection, Guid tenant, int count) =>
+        ExecuteAsync(connection, """
+            insert into players (tenant_id, id, display_name, avatar_seed, lang)
+            select @tenant, ('00000000-0000-0000-0000-' || lpad(value::text, 12, '0'))::uuid,
+                   'Player', 'seed', 'en'
+            from generate_series(1, @count) as value
+            """, ("tenant", tenant), ("count", count));
+
+    private static Task InsertRunningSessionAsync(NpgsqlConnection connection, Guid tenant, Guid session, Guid owner, int itemCount) =>
+        ExecuteAsync(connection, """
+            insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase, slot, started_at)
+            values (@tenant, @session, @code, 'trivia', @owner, 'en', 'running', @capacity, '{}'::jsonb, '0', 0, now())
+            """, ("tenant", tenant), ("session", session), ("code", session.ToString("N")), ("owner", owner), ("capacity", itemCount));
+
+    private static Task InsertParticipantsAsync(NpgsqlConnection connection, Guid tenant, Guid session, int count) =>
+        ExecuteAsync(connection, """
+            insert into session_participants (tenant_id, session_id, player_id, seat, phase, slot)
+            select @tenant, @session, ('00000000-0000-0000-0000-' || lpad(value::text, 12, '0'))::uuid,
+                   value - 1, '0', 0
+            from generate_series(1, @count) as value
+            """, ("tenant", tenant), ("session", session), ("count", count));
+
+    private static Task InsertItemsAsync(NpgsqlConnection connection, Guid tenant, Guid session, int count) =>
+        ExecuteAsync(connection, """
+            insert into session_items (tenant_id, session_id, slot, kind, kind_version, prompt, payload, resolved, card, reveal, level)
+            select @tenant, @session, value - 1, 'trivia', 1, 'Question', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1
+            from generate_series(1, @count) as value
+            """, ("tenant", tenant), ("session", session), ("count", count));
+
+    private static Task InsertAnswersAsync(NpgsqlConnection connection, Guid tenant, Guid session, int count) =>
+        ExecuteAsync(connection, """
+            insert into session_answers (tenant_id, session_id, slot, player_id, revision, answer, credit, points, taken_ms, received_at)
+            select @tenant, @session, 0, ('00000000-0000-0000-0000-' || lpad(value::text, 12, '0'))::uuid,
+                   1, '{"value":"answer"}'::jsonb, 1, 10, 100, now()
+            from generate_series(1, @count) as value
+            """, ("tenant", tenant), ("session", session), ("count", count));
+
+    private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+    private static Guid PlayerId(int number) => Guid.Parse($"00000000-0000-0000-0000-{number:D12}");
+
+    private static async Task<T> ScalarAsync<T>(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+        return (T)(await command.ExecuteScalarAsync())!;
+    }
+
+    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+        await command.ExecuteNonQueryAsync();
+    }
+}

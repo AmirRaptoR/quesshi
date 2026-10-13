@@ -51,6 +51,9 @@ jobs:
       - run: dotnet test platform/Quesshi.Platform.slnx --no-build --configuration Release
         env:
           QUESSHI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      - run: dotnet test platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --configuration Release -p:QuesshiTestIdentity=true
+        env:
+          QUESSHI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
 
   deploy-checks:
     runs-on: ubuntu-latest
