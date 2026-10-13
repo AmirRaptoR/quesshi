@@ -108,8 +108,13 @@ public static class Program
         int? gatewayPort = null,
         Action<ILoggingBuilder>? configureLogging = null)
     {
-        var options = new WebApplicationOptions { Args = [] };
+        var options = new WebApplicationOptions
+        {
+            Args = [],
+            ApplicationName = typeof(Program).Assembly.GetName().Name
+        };
         var builder = WebApplication.CreateBuilder(options);
+        builder.WebHost.UseStaticWebAssets();
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddEnvironmentVariables();
         builder.Logging.ClearProviders();
@@ -175,6 +180,14 @@ public static class Program
         {
             FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot"))
         });
+        // The Blazor client is published through static web assets. Its index remains tenant-neutral;
+        // tenant branding and configuration are served by the host-scoped endpoints above.
+        var staticAssetsManifest = GetStaticAssetsManifestPath();
+        if (staticAssetsManifest is not null)
+        {
+            app.MapStaticAssets(staticAssetsManifest);
+        }
+        app.MapFallbackToFile("index.html");
         app.Use(async (context, next) =>
         {
             var tenant = TenantResolutionMiddleware.GetTenant(context);
@@ -185,6 +198,15 @@ public static class Program
             })) await next();
         });
         return app;
+    }
+
+    internal static string? GetStaticAssetsManifestPath(string? baseDirectory = null)
+    {
+        var manifestPath = Path.Combine(
+            baseDirectory ?? AppContext.BaseDirectory,
+            $"{typeof(Program).Assembly.GetName().Name}.staticwebassets.endpoints.json");
+
+        return File.Exists(manifestPath) ? manifestPath : null;
     }
 
     private static async Task ServeAsync(string[] args)

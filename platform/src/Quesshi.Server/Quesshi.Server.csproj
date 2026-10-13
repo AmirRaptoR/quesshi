@@ -8,16 +8,6 @@
     <ProjectReference Include="../Quesshi.Web/Quesshi.Web.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="../../../src/Quesshi.Web/wwwroot/icon-192.png"
-             Link="wwwroot/icon-192.png"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../../src/Quesshi.Web/wwwroot/icon-512.png"
-             Link="wwwroot/icon-512.png"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="Microsoft.Orleans.Clustering.AdoNet" Version="10.2.2" />
     <PackageReference Include="Microsoft.Orleans.Server" Version="10.2.2" />
   </ItemGroup>

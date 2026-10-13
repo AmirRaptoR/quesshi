@@ -1,9 +1,10 @@
 # Platform browser tests
 
 The harness serves a published platform directory locally and creates one
-isolated Playwright browser context per tenant host. Later browser tests can
-use `startPublishedPlatformHost` with a published `wwwroot` directory and
-`openTenantContexts` with the tenant hostnames they need.
+isolated Playwright browser context per tenant host. It can also model each
+host's `/api/config`, `/theme.css`, and `/manifest.webmanifest` responses,
+including ETag revalidation, so browser coverage exercises the tenant-aware
+shell without changing the browser runner.
 
 Run the smoke tests after publishing the web project:
 

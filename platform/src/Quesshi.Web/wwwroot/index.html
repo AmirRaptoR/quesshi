@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" translate="no" class="notranslate">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <base href="/" />
+    <meta name="theme-color" content="#090E22" />
+    <meta name="google" content="notranslate" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="stylesheet" href="css/app.css" />
+    <!-- These host-scoped resources deliberately stay static URLs in the tenant-neutral shell. -->
+    <link id="tenant-theme" rel="stylesheet" href="/theme.css" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+</head>
+<body>
+    <div id="app"><div class="spinner" role="status" aria-label="Loading"></div></div>
+    <div id="blazor-error-ui">Something went wrong. <a href="" class="reload">Reload</a></div>
+    <script>
+      window.quesshi = {
+        get: key => localStorage.getItem(key),
+        browserLanguages: () => navigator.languages || [navigator.language],
+        applyLanguage: (code, direction) => {
+          document.documentElement.lang = code;
+          document.documentElement.dir = direction;
+        },
+        setLanguage: code => {
+          localStorage.setItem('quesshi.lang', code);
+          document.cookie = `lang=${encodeURIComponent(code)}; Path=/; SameSite=Lax`;
+        },
+        replaceTheme: version => {
+          const theme = document.getElementById('tenant-theme');
+          theme.href = `/theme.css?v=${encodeURIComponent(version)}`;
+        },
+        reloadOnce: buildId => {
+          const key = `quesshi.outdated.${buildId}`;
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, '1');
+          location.reload();
+        },
+        sounds: (() => {
+          let context;
+          let armed = false;
+          const arm = () => {
+            if (armed) return;
+            armed = true;
+            try {
+              context = new (window.AudioContext || window.webkitAudioContext)();
+              context.resume();
+            } catch { /* Web Audio is optional. */ }
+          };
+          document.addEventListener('pointerdown', arm, { once: true });
+          document.addEventListener('keydown', arm, { once: true });
+          const note = (frequency, start, duration, type, peak) => {
+            if (!context) return;
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            oscillator.type = type;
+            oscillator.frequency.value = frequency;
+            oscillator.connect(gain).connect(context.destination);
+            const time = context.currentTime + start;
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(peak, time + 0.005);
+            gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+            oscillator.start(time);
+            oscillator.stop(time + duration + 0.02);
+          };
+          const cues = {
+            correct: () => { note(660, 0, .12, 'sine', .15); note(880, .1, .16, 'sine', .15); },
+            wrong: () => note(160, 0, .25, 'triangle', .15),
+            roundStart: () => note(880, 0, .09, 'sine', .1),
+            tick: () => note(1200, 0, .05, 'square', .08),
+            win: () => { note(523, 0, .12, 'sine', .15); note(659, .1, .12, 'sine', .15); note(784, .2, .18, 'sine', .15); },
+            loss: () => { note(440, 0, .14, 'sine', .15); note(330, .12, .2, 'sine', .15); }
+          };
+          return { armed: () => armed, play: name => { if (armed && cues[name]) cues[name](); } };
+        })()
+      };
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');
+    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>
