@@ -445,7 +445,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         public JsonElement Card(JsonElement payload, JsonElement resolved) => payload;
         public JsonElement Reveal(JsonElement payload, JsonElement resolved) => resolved;
         public JsonElement? Normalize(JsonElement payload, JsonElement resolved, JsonElement? answer) => answer?.Clone();
-        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Quesshi.Engine.Contracts.Grade.Of(1);
+        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Quesshi.Shared.Grade.Of(1);
     }
 
     private sealed class ThrowingViewRenderer : IViewRenderer

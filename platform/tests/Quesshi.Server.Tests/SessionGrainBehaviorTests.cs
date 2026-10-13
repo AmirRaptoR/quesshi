@@ -336,7 +336,7 @@ public sealed class SessionGrainBehaviorTests
             if (prior is null) { session.Record(graded, 0); return; }
             if (command.Revision == prior.Revision)
             {
-                if (prior.Value.Value is { } previous && graded.Stored is { } current
+                if (prior.Value is JsonElement previous && graded.Stored is JsonElement current
                     && JsonElement.DeepEquals(previous, current)) return;
                 throw new SessionCommandException("revision_conflict");
             }
@@ -357,6 +357,6 @@ public sealed class SessionGrainBehaviorTests
         public JsonElement Card(JsonElement payload, JsonElement resolved) => payload;
         public JsonElement Reveal(JsonElement payload, JsonElement resolved) => resolved;
         public JsonElement? Normalize(JsonElement payload, JsonElement resolved, JsonElement? answer) => answer?.Clone();
-        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Quesshi.Engine.Contracts.Grade.Of(1);
+        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Quesshi.Shared.Grade.Of(1);
     }
 }
