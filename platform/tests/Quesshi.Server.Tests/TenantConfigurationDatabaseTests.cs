@@ -29,6 +29,11 @@ public sealed class TenantConfigurationDatabaseTests(PostgresFixture fixture)
         Assert.Equal("23505", primaryHostFailure.SqlState);
         var hostFailure = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(owner, "insert into tenant_hosts (host, tenant_id) values ('UPPER.example.test', @tenant)", ("tenant", TenantA)));
         Assert.Equal("23514", hostFailure.SqlState);
+        foreach (var invalidHost in new[] { "example.test.", "a.example.test:8080", "a.example.test/path" })
+        {
+            var invalidHostFailure = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(owner, "insert into tenant_hosts (host, tenant_id) values (@host, @tenant)", ("host", invalidHost), ("tenant", TenantA)));
+            Assert.Equal("23514", invalidHostFailure.SqlState);
+        }
         var slugFailure = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@id, 'invalid slug', 'Invalid', 'en')", ("id", Guid.NewGuid())));
         Assert.Equal("23514", slugFailure.SqlState);
         var languageFailure = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(owner, "insert into tenant_languages (tenant_id, code, name, english_name, direction) values (@tenant, 'de', 'Deutsch', 'German', 'sideways')", ("tenant", TenantA)));
@@ -102,17 +107,28 @@ public sealed class TenantConfigurationDatabaseTests(PostgresFixture fixture)
         await using var owner = await OpenAsync("quesshi_owner");
         await SeedAsync(owner);
         await ExecuteAsync(owner, "drop table if exists catalogue_probe cascade");
-        await ExecuteAsync(owner, "create table catalogue_probe (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))");
-        await ExecuteAsync(owner, "select quesshi_tenant_table('catalogue_probe', 'test')");
-        await TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables);
+        await ExecuteAsync(owner, "drop table if exists catalogue_missing_policy cascade");
+        await ExecuteAsync(owner, "drop table if exists catalogue_wrong_key cascade");
+        try
+        {
+            await ExecuteAsync(owner, "create table catalogue_probe (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))");
+            await ExecuteAsync(owner, "select quesshi_tenant_table('catalogue_probe', 'test')");
+            await TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables);
 
-        await ExecuteAsync(owner, "create table catalogue_missing_policy (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))");
-        var policyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables));
-        Assert.Contains("catalogue_missing_policy", policyFailure.Message);
-        await ExecuteAsync(owner, "drop table catalogue_missing_policy");
-        await ExecuteAsync(owner, "create table catalogue_wrong_key (tenant_id uuid not null, id uuid primary key)");
-        var keyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables));
-        Assert.Contains("catalogue_wrong_key", keyFailure.Message);
+            await ExecuteAsync(owner, "create table catalogue_missing_policy (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))");
+            var policyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables));
+            Assert.Contains("catalogue_missing_policy", policyFailure.Message);
+            await ExecuteAsync(owner, "drop table catalogue_missing_policy");
+            await ExecuteAsync(owner, "create table catalogue_wrong_key (tenant_id uuid not null, id uuid primary key)");
+            var keyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables));
+            Assert.Contains("catalogue_wrong_key", keyFailure.Message);
+        }
+        finally
+        {
+            await ExecuteAsync(owner, "drop table if exists catalogue_missing_policy cascade");
+            await ExecuteAsync(owner, "drop table if exists catalogue_wrong_key cascade");
+            await ExecuteAsync(owner, "drop table if exists catalogue_probe cascade");
+        }
     }
 
     private async Task MigrateAsync() => await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));

@@ -23,7 +23,7 @@ create table tenant_languages (
 );
 
 create table tenant_hosts (
-  host       text primary key check (host = lower(host) and host !~ '[:/]' and host !~ '\\.$'),
+  host       text primary key check (host = lower(host) and host !~ '[:/]' and host !~ '\.$'),
   tenant_id  uuid not null references tenants on delete cascade,
   is_primary boolean not null default false
 );
