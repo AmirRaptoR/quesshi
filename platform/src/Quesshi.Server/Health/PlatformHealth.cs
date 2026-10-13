@@ -10,15 +10,14 @@ public sealed record PlatformHealthReport(bool Database, bool Clock, bool Silo, 
     public bool IsHealthy => Database && Clock && Silo && Loops.All(loop => loop.IsHealthy);
 }
 
-public sealed class PlatformHealth(DatabaseSources sources, IClockHealth clock, ISiloStatusOracle silo, IBackgroundLoopRegistry loops)
+public interface IPlatformDatabaseHealth
 {
-    public async Task<PlatformHealthReport> CheckAsync(CancellationToken cancellationToken)
-    {
-        var database = await CanReachDatabaseAsync(cancellationToken);
-        return new PlatformHealthReport(database, clock.IsHealthy, silo.CurrentStatus == SiloStatus.Active, loops.Snapshot());
-    }
+    Task<bool> CanReachAsync(CancellationToken cancellationToken);
+}
 
-    private async Task<bool> CanReachDatabaseAsync(CancellationToken cancellationToken)
+public sealed class PlatformDatabaseHealth(DatabaseSources sources, ILogger<PlatformDatabaseHealth> logger) : IPlatformDatabaseHealth
+{
+    public async Task<bool> CanReachAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -26,6 +25,29 @@ public sealed class PlatformHealth(DatabaseSources sources, IClockHealth clock, 
             await connection.ExecuteScalarAsync<int>(new CommandDefinition("select 1", cancellationToken: cancellationToken));
             return true;
         }
-        catch { return false; }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Platform health database reachability check failed.");
+            return false;
+        }
+    }
+}
+
+public interface IPlatformSiloHealth
+{
+    bool IsActive { get; }
+}
+
+public sealed class PlatformSiloHealth(ISiloStatusOracle silo) : IPlatformSiloHealth
+{
+    public bool IsActive => silo.CurrentStatus == SiloStatus.Active;
+}
+
+public sealed class PlatformHealth(IPlatformDatabaseHealth databaseHealth, IClockHealth clock, IPlatformSiloHealth silo, IBackgroundLoopRegistry loops)
+{
+    public async Task<PlatformHealthReport> CheckAsync(CancellationToken cancellationToken)
+    {
+        var database = await databaseHealth.CanReachAsync(cancellationToken);
+        return new PlatformHealthReport(database, clock.IsHealthy, silo.IsActive, loops.Snapshot());
     }
 }

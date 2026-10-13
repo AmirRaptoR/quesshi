@@ -95,7 +95,11 @@ public static class Program
             .ExecuteAsync(options, cancellationToken);
     }
 
-    internal static WebApplication CreateApplication(DatabaseSources? configuredSources = null, int? siloPort = null, int? gatewayPort = null)
+    internal static WebApplication CreateApplication(
+        DatabaseSources? configuredSources = null,
+        int? siloPort = null,
+        int? gatewayPort = null,
+        Action<ILoggingBuilder>? configureLogging = null)
     {
         var options = new WebApplicationOptions { Args = [] };
         var builder = WebApplication.CreateBuilder(options);
@@ -103,6 +107,7 @@ public static class Program
         builder.Configuration.AddEnvironmentVariables();
         builder.Logging.ClearProviders();
         builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+        configureLogging?.Invoke(builder.Logging);
 
         var sources = configuredSources ?? DatabaseSources.FromEnvironment();
         builder.Services.AddSingleton(sources);
@@ -111,6 +116,8 @@ public static class Program
         builder.Services.AddSingleton<IClock>(provider => provider.GetRequiredService<PostgresClock>());
         builder.Services.AddSingleton<IClockHealth>(provider => provider.GetRequiredService<PostgresClock>());
         builder.Services.AddSingleton<IBackgroundLoopRegistry, BackgroundLoopRegistry>();
+        builder.Services.AddSingleton<IPlatformDatabaseHealth, PlatformDatabaseHealth>();
+        builder.Services.AddSingleton<IPlatformSiloHealth, PlatformSiloHealth>();
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
         builder.Host.UseOrleans(silo =>
@@ -153,12 +160,23 @@ public static class Program
 
     private static async Task ServeAsync(string[] args)
     {
-        await using var app = CreateApplication();
-        var sources = app.Services.GetRequiredService<DatabaseSources>();
+        await using var sources = DatabaseSources.FromEnvironment();
+        await ServeAsync(sources);
+    }
+
+    internal static async Task ServeAsync(
+        DatabaseSources sources,
+        Func<WebApplication, Task>? run = null,
+        CancellationToken cancellationToken = default)
+    {
         var migrations = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly, typeof(FeaturesMarker).Assembly);
-        await using var connection = await sources.System.OpenConnectionAsync();
-        await new MigrationRunner(migrations).EnsureCurrentAsync(connection);
+        await using (var connection = await sources.System.OpenConnectionAsync(cancellationToken))
+        {
+            await new MigrationRunner(migrations).EnsureCurrentAsync(connection, cancellationToken);
+        }
+
+        await using var app = CreateApplication(sources);
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
-        await app.RunAsync();
+        await (run ?? (application => application.RunAsync(cancellationToken)))(app);
     }
 }
