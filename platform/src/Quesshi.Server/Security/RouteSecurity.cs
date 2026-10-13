@@ -1,0 +1,164 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Quesshi.Application;
+using Quesshi.Plugin.Api;
+using Quesshi.Server.Sessions;
+using Quesshi.Server.Tenants;
+
+namespace Quesshi.Server.Security;
+
+/// <summary>Lets a core endpoint module register routes without changing host startup.</summary>
+public interface ICoreRouteModule
+{
+    void Map(CoreRouteBuilder routes);
+}
+
+/// <summary>Provides the only route groups used by core endpoint modules.</summary>
+public sealed class CoreRouteBuilder
+{
+    internal CoreRouteBuilder(RouteGroupBuilder playerRoutes, RouteGroupBuilder openRoutes)
+    {
+        PlayerRoutes = playerRoutes;
+        OpenRoutes = openRoutes;
+    }
+
+    public RouteGroupBuilder PlayerRoutes { get; }
+
+    public RouteGroupBuilder OpenRoutes { get; }
+}
+
+internal static class RouteSecurity
+{
+    public static void MapRoutes(this WebApplication app)
+    {
+        var api = app.MapGroup("/api");
+        var playerRoutes = SecurePlayerRoutes(api.MapGroup(string.Empty));
+        var openRoutes = SecureOpenRoutes(api.MapGroup(string.Empty));
+
+        api.MapGet("/antiforgery", (HttpContext context, PlayerAntiforgery antiforgery) =>
+        {
+            context.Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
+            context.Response.Headers.Pragma = "no-cache";
+            return Results.Ok(new { token = antiforgery.Issue(context) });
+        });
+
+        openRoutes.MapPost("/auth/sign-out", SignOutAsync);
+        playerRoutes.MapSessionCommands();
+
+        var routes = new CoreRouteBuilder(playerRoutes, openRoutes);
+        foreach (var module in DiscoverCoreModules()) module.Map(routes);
+
+        var features = app.Services.GetRequiredService<FeatureRegistry>();
+        foreach (var feature in features.Routes)
+        {
+            var featureApi = app.MapGroup($"/api/x/{feature.Id}");
+            var featurePlayerRoutes = SecurePlayerRoutes(featureApi.MapGroup(string.Empty));
+            var featureOpenRoutes = SecureOpenRoutes(featureApi.MapGroup(string.Empty));
+            featurePlayerRoutes.AddEndpointFilter(RequireCapabilityAsync(feature.Id));
+            featureOpenRoutes.AddEndpointFilter(RequireCapabilityAsync(feature.Id));
+
+            foreach (var contribution in feature.Player) contribution(featurePlayerRoutes);
+            foreach (var contribution in feature.Open) contribution(featureOpenRoutes);
+        }
+    }
+
+    private static RouteGroupBuilder SecurePlayerRoutes(RouteGroupBuilder group)
+    {
+        group.AddEndpointFilter(RequirePlayerAsync);
+        group.AddEndpointFilter(RequireAntiforgeryAsync);
+        return group;
+    }
+
+    private static RouteGroupBuilder SecureOpenRoutes(RouteGroupBuilder group)
+    {
+        group.AddEndpointFilter(RequireAntiforgeryAsync);
+        return group;
+    }
+
+    private static async ValueTask<object?> SignOutAsync(HttpContext context, IPlayerSessionResolver sessions)
+    {
+        if (context.Request.Cookies.TryGetValue(PlayerSessionService.CookieName, out var token))
+        {
+            await sessions.RevokeAsync(token, context.RequestAborted);
+        }
+
+        context.Response.Cookies.Delete(PlayerSessionService.CookieName, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+        });
+        return Results.NoContent();
+    }
+
+    private static async ValueTask<object?> RequirePlayerAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var player = context.HttpContext.Player();
+        if (player is null) return Results.Unauthorized();
+        if (player.IsGuest && context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<AllowGuestsMetadata>() is null)
+        {
+            return Results.Forbid();
+        }
+
+        return await next(context);
+    }
+
+    private static async ValueTask<object?> RequireAntiforgeryAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.HttpContext.Request;
+        if (HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method) || HttpMethods.IsOptions(request.Method))
+        {
+            return await next(context);
+        }
+
+        if (!IsSameTenantOrigin(context.HttpContext)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!request.Headers.TryGetValue("X-CSRF", out var token)
+            || !context.HttpContext.RequestServices.GetRequiredService<PlayerAntiforgery>().IsValid(context.HttpContext, token.ToString()))
+        {
+            return Results.BadRequest();
+        }
+
+        return await next(context);
+    }
+
+    private static Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> RequireCapabilityAsync(string featureId) =>
+        async (context, next) =>
+        {
+            var tenant = TenantResolutionMiddleware.GetTenant(context.HttpContext);
+            if (tenant is null) return Results.NotFound();
+
+            var capabilities = context.HttpContext.RequestServices.GetRequiredService<ICapabilities>();
+            if (!await capabilities.IsOnAsync(tenant.Id, CapabilityType.Feature, featureId, context.HttpContext.RequestAborted))
+            {
+                return Results.NotFound();
+            }
+
+            return await next(context);
+        };
+
+    private static bool IsSameTenantOrigin(HttpContext context)
+    {
+        if (!context.Request.Headers.TryGetValue("Origin", out var origin)
+            || !Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+        {
+            return false;
+        }
+
+        var host = context.Request.Host;
+        return (string.Equals(originUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(originUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            && string.Equals(originUri.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(originUri.Host, host.Host, StringComparison.OrdinalIgnoreCase)
+            && originUri.Port == (host.Port ?? DefaultPort(originUri.Scheme));
+    }
+
+    private static int DefaultPort(string scheme) => string.Equals(scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ? 443 : 80;
+
+    private static IEnumerable<ICoreRouteModule> DiscoverCoreModules() =>
+        typeof(Program).Assembly.GetTypes()
+            .Where(type => !type.IsAbstract && typeof(ICoreRouteModule).IsAssignableFrom(type))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .Select(type => Activator.CreateInstance(type) as ICoreRouteModule
+                ?? throw new InvalidOperationException($"Core route module '{type.FullName}' requires a public parameterless constructor."));
+}

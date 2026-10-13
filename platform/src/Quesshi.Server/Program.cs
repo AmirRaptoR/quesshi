@@ -9,6 +9,7 @@ using Quesshi.Infrastructure.Migrations;
 using Quesshi.Server.Commands;
 using Quesshi.Server.Health;
 using Quesshi.Server.Jobs;
+using Quesshi.Server.Security;
 using Quesshi.Server.Tenants;
 using Npgsql;
 using Orleans.Configuration;
@@ -112,7 +113,8 @@ public static class Program
         DatabaseSources? configuredSources = null,
         int? siloPort = null,
         int? gatewayPort = null,
-        Action<ILoggingBuilder>? configureLogging = null)
+        Action<ILoggingBuilder>? configureLogging = null,
+        FeatureRegistry? configuredFeatures = null)
     {
         var options = new WebApplicationOptions
         {
@@ -138,6 +140,7 @@ public static class Program
         builder.Services.AddSingleton<IPlatformSiloHealth, PlatformSiloHealth>();
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
+        builder.Services.AddPlayerSecurity();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
         builder.Services.AddSingleton<SessionStateStore>();
@@ -147,7 +150,7 @@ public static class Program
         builder.Services.AddSingleton<IKindRegistry>(_ => new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(provider =>
         {
-            var registry = FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
+            var registry = configuredFeatures ?? FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
             registry.Jobs.Register("core", "event", (context, cancellationToken) =>
                 provider.GetRequiredService<DurableEvents>().HandleEventJobAsync(context, cancellationToken));
             registry.Jobs.Register("core", "cleanup-player", (context, cancellationToken) =>
@@ -203,8 +206,9 @@ public static class Program
             return report.IsHealthy ? Results.Ok(report) : Results.Json(report, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
         app.MapTenantResources();
-        app.MapSessionCommands();
+        app.MapRoutes();
         app.UseWhen(context => !context.Request.Path.StartsWithSegments("/health"), tenant => tenant.UseTenantResolution());
+        app.UsePlayerSessionAuthentication();
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot"))

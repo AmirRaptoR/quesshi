@@ -75,7 +75,7 @@ internal static class SessionCommandEndpoints
 #if QUESSHI_TEST_IDENTITY
         return context.Request.Headers.TryGetValue("X-Quesshi-Test-Player", out var value) && Guid.TryParse(value, out var id) ? id.ToString() : null;
 #else
-        return null;
+        return context.Player()?.PlayerId.ToString();
 #endif
     }
     private static IResult Error(string code, int status) => Results.Json(new { error = code }, statusCode: status);

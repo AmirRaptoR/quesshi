@@ -65,8 +65,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @account", ("account", account)));
         Assert.Equal(0L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @account", ("account", deletedProfileAccount)));
         await AssertSqlStateAsync(() => ExecuteAsync(app, "update accounts set email = 'forbidden@example.test' where id = @account", ("account", account)), "42501");
-        foreach (var table in new[] { "account_identities", "login_codes", "auth_sessions" })
+        foreach (var table in new[] { "account_identities", "login_codes", "auth_sessions", "data_protection_keys" })
             await AssertSqlStateAsync(() => ScalarAsync<long>(app, $"select count(*) from {table}"), "42501");
+        await AssertSqlStateAsync(() => ExecuteAsync(app, "insert into data_protection_keys (friendly_name, xml) values ('app-key', '<key />')"), "42501");
         await AssertSqlStateAsync(() => ScalarAsync<long>(app, "select count(*) from account_players(@account)", ("account", account)), "42501");
 
         await using var system = await OpenAsync("quesshi_system");
