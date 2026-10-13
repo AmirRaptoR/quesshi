@@ -226,6 +226,10 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
             publicHealth.Headers.Host = "no-tenant.example.test";
             Assert.NotEqual(System.Net.HttpStatusCode.NotFound, (await client.SendAsync(publicHealth)).StatusCode);
 
+            using var unknownTenant = new HttpRequestMessage(HttpMethod.Get, "/tenant-probe");
+            unknownTenant.Headers.Host = "no-tenant.example.test";
+            Assert.Equal(System.Net.HttpStatusCode.NotFound, (await client.SendAsync(unknownTenant)).StatusCode);
+
             using var tenantRequest = new HttpRequestMessage(HttpMethod.Get, "/tenant-probe");
             tenantRequest.Headers.Host = "proxy.example.test";
             tenantRequest.Headers.TryAddWithoutValidation("X-Forwarded-Host", "tenant.example.test");
