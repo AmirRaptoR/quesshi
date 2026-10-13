@@ -93,6 +93,10 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
         await InsertItemAsync(app, TenantA, appSession, 0);
         await InsertAnswerAsync(app, TenantA, appSession, appPlayer, 0);
 
+        Assert.Equal(0L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountB)));
+        await AssertSqlStateAsync(() => ExecuteAsync(app, "update players set account_id = @account where tenant_id = @tenant and id = @player", ("account", accountB), ("tenant", TenantA), ("player", appPlayer)), "42501");
+        await AssertSqlStateAsync(() => ExecuteAsync(app, "insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang) values (@tenant, @id, @account, 'unverified', 'seed', 'en')", ("tenant", TenantA), ("id", Guid.NewGuid()), ("account", accountB)), "42501");
+        Assert.Equal(0L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountB)));
         await AssertSqlStateAsync(() => InsertPlayerAsync(app, TenantB, Guid.NewGuid()), "42501");
         await AssertSqlStateAsync(() => InsertSessionAsync(app, TenantB, Guid.NewGuid(), OwnerB, "cross-tenant"), "42501");
         await AssertSqlStateAsync(() => InsertParticipantAsync(app, TenantB, sessionB, OwnerB, 1), "42501");
