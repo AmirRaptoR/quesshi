@@ -151,6 +151,17 @@ public sealed class SessionCommandEndpointTests
             using var busy = CommandRequest(CommandBody, player, session, "first.example.test");
             await AssertErrorAsync(await client.SendAsync(busy), HttpStatusCode.Conflict, "session_busy");
 
+            grainProxy.Result = SessionCommandResult.Error("stale_activation", retryable: true);
+            using var stale = CommandRequest(CommandBody, player, session, "first.example.test");
+            await AssertErrorAsync(await client.SendAsync(stale), HttpStatusCode.Conflict, "stale_activation");
+
+            grainProxy.Result = SessionCommandResult.Error("late_answer");
+            using var late = CommandRequest(CommandBody, player, session, "first.example.test");
+            await AssertErrorAsync(await client.SendAsync(late), HttpStatusCode.Conflict, "late_answer");
+
+            using var missingFields = CommandRequest("{}", player, session, "first.example.test");
+            await AssertErrorAsync(await client.SendAsync(missingFields), HttpStatusCode.BadRequest, "malformed_command");
+
             grainProxy.Result = new SessionCommandResult("ok", false, 1, "{}");
             var exact = CommandBody + new string(' ', 16 * 1024 - Encoding.UTF8.GetByteCount(CommandBody));
             using var bounded = CommandRequest(exact, player, session, "first.example.test");

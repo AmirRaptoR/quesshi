@@ -72,6 +72,7 @@ public sealed class SessionGrainBehaviorTests
 
         Assert.Equal("write_failed", failure.Code);
         Assert.Same(original, StateOf(rolledBack));
+        Assert.Equal("{}", original.FormatState.GetRawText());
 
         var committed = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now, database: new SavingDatabase(), renderer: new ThrowingRenderer());
         var unavailable = await committed.ExecuteAsync(Command(now));
@@ -147,29 +148,36 @@ public sealed class SessionGrainBehaviorTests
     {
         var opened = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
         var due = opened.AddSeconds(10);
-        var atBoundary = due.AddMilliseconds(5);
+        var beforeGrace = due.AddMilliseconds(4);
         var saving = new SavingDatabase();
-        var accepted = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), atBoundary,
+        var accepted = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), beforeGrace,
             database: saving, kinds: new KindRegistry([new EchoKind()]));
 
-        var result = await accepted.ExecuteAsync(Command(atBoundary, payload: "{\"value\":\"a\"}"));
+        var result = await accepted.ExecuteAsync(Command(beforeGrace, payload: "{\"value\":\"a\"}"));
 
         Assert.Equal("ok", result.Code);
         var answer = Assert.Single(StateOf(accepted)!.Answers).Value;
         Assert.Equal(TimeSpan.FromSeconds(10), answer.Taken);
         Assert.Equal(1, saving.CallCount);
 
-        var duplicate = await accepted.ExecuteAsync(Command(atBoundary, payload: "{\"value\":\"a\"}"));
+        var duplicate = await accepted.ExecuteAsync(Command(beforeGrace, payload: "{\"value\":\"a\"}"));
 
         Assert.Equal("invalid_command", duplicate.Code);
         Assert.Equal(1, saving.CallCount);
 
-        var late = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), atBoundary.AddMilliseconds(1),
+        var lateReceipt = due.AddMilliseconds(6);
+        var late = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), lateReceipt,
             database: new SavingDatabase(), kinds: new KindRegistry([new EchoKind()]));
-        var lateResult = await late.ExecuteAsync(Command(atBoundary, payload: "{\"value\":\"a\"}"));
+        var lateResult = await late.ExecuteAsync(Command(lateReceipt, payload: "{\"value\":\"a\"}"));
 
         Assert.Equal("late_answer", lateResult.Code);
         Assert.Empty(StateOf(late)!.Answers);
+
+        var lateHandling = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), lateReceipt,
+            database: new SavingDatabase(), kinds: new KindRegistry([new EchoKind()]));
+        var lateHandlingResult = await lateHandling.ExecuteAsync(Command(beforeGrace, payload: "{\"value\":\"a\"}"));
+
+        Assert.Equal("late_answer", lateHandlingResult.Code);
     }
 
     [Fact]
@@ -328,7 +336,8 @@ public sealed class SessionGrainBehaviorTests
             if (prior is null) { session.Record(graded, 0); return; }
             if (command.Revision == prior.Revision)
             {
-                if (JsonElement.DeepEquals(prior.Value, graded.Stored)) return;
+                if (prior.Value.Value is { } previous && graded.Stored is { } current
+                    && JsonElement.DeepEquals(previous, current)) return;
                 throw new SessionCommandException("revision_conflict");
             }
             session.Replace(graded, command.Revision);
@@ -348,6 +357,6 @@ public sealed class SessionGrainBehaviorTests
         public JsonElement Card(JsonElement payload, JsonElement resolved) => payload;
         public JsonElement Reveal(JsonElement payload, JsonElement resolved) => resolved;
         public JsonElement? Normalize(JsonElement payload, JsonElement resolved, JsonElement? answer) => answer?.Clone();
-        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Grade.Of(1);
+        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Quesshi.Engine.Contracts.Grade.Of(1);
     }
 }
