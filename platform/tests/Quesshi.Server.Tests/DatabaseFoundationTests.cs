@@ -62,86 +62,94 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await ApplyCoreAsync();
-        var discovered = MigrationRunner.Discover(typeof(DatabaseFoundationTests).Assembly);
-        Assert.Collection(discovered,
-            migration => Assert.Equal("20261013T0105_ai_generation_before.sql", migration.Name),
-            migration => Assert.Equal("20261013T0110_core_after.sql", migration.Name));
 
-        var scripts = CoreScripts().Concat(discovered).ToArray();
-        await RunAsync(scripts);
-        await RunAsync(scripts);
-        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
-        await owner.OpenAsync();
-        Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0105_ai_generation_before.sql' and owner = 'ai_generation'"));
-        Assert.Equal(5L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations"));
-
-        var changed = new MigrationScript("20261013T0105_ai_generation_before.sql", "ai_generation", "create table changed_bytes (id int);"u8.ToArray());
-        var later = Script("20261013T0120_core_later", "create table runner_later (id integer primary key);");
-        var checksumFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([.. CoreScripts(), changed, discovered[1], later]));
-        Assert.Contains(changed.Name, checksumFailure.Message);
-        Assert.False(await ScalarAsync<bool>(owner, "select to_regclass('runner_later') is not null"));
-
-        var earlier = Script("20261013T0106_core_too_early", "create table runner_too_early (id integer primary key);");
-        var orderFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([.. scripts, earlier]));
-        Assert.Contains(earlier.Name, orderFailure.Message);
-        Assert.Contains("20261013T0110_core_after.sql", orderFailure.Message);
-
-        var rollback = Script("20261013T0115_core_rollback", "create table runner_rollback (id integer primary key); select missing_function();");
-        await Assert.ThrowsAsync<PostgresException>(() => RunAsync([.. scripts, rollback]));
-        Assert.False(await ScalarAsync<bool>(owner, "select to_regclass('runner_rollback') is not null"));
-        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0115_core_rollback.sql'"));
-
-        var delayed = Script("20261013T0125_core_concurrent", "select pg_sleep(1); create table runner_concurrent (id integer primary key);");
-        var concurrentScripts = scripts.Append(delayed).ToArray();
-        await using var admin = new NpgsqlConnection(fixture.ConnectionString);
-        await admin.OpenAsync();
-        var first = RunAsync(concurrentScripts);
-        await WaitUntilAsync(
-            () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and state = 'active' and query like '%pg_sleep(1)%')"),
-            "the first migration run did not begin its delayed migration");
-        var second = RunAsync(concurrentScripts);
-        await WaitUntilAsync(
-            () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and wait_event_type = 'Lock' and wait_event = 'advisory')"),
-            "the second migration run did not wait for the advisory lock");
-        await Task.WhenAll(first, second);
-        Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0125_core_concurrent.sql'"));
-
-        await ExecuteAsync(admin, "create schema runner_shadow");
-        await ExecuteAsync(admin, "create table runner_shadow.schema_migrations (name text primary key, owner text not null, checksum text not null, applied_at timestamptz not null default now())");
-        await ExecuteAsync(admin, "grant usage, create on schema runner_shadow to quesshi_owner");
-        await ExecuteAsync(admin, "grant select, insert on runner_shadow.schema_migrations to quesshi_owner");
-        foreach (var script in concurrentScripts)
+        try
         {
-            await RecordMigrationAsync(admin, "runner_shadow.schema_migrations", script);
+            var discovered = MigrationRunner.Discover(typeof(DatabaseFoundationTests).Assembly);
+            Assert.Collection(discovered,
+                migration => Assert.Equal("20261013T0105_ai_generation_before.sql", migration.Name),
+                migration => Assert.Equal("20261013T0110_core_after.sql", migration.Name));
+
+            var scripts = CoreScripts().Concat(discovered).ToArray();
+            await RunAsync(scripts);
+            await RunAsync(scripts);
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0105_ai_generation_before.sql' and owner = 'ai_generation'"));
+            Assert.Equal(5L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations"));
+
+            var changed = new MigrationScript("20261013T0105_ai_generation_before.sql", "ai_generation", "create table changed_bytes (id int);"u8.ToArray());
+            var later = Script("20261013T0120_core_later", "create table runner_later (id integer primary key);");
+            var checksumFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([.. CoreScripts(), changed, discovered[1], later]));
+            Assert.Contains(changed.Name, checksumFailure.Message);
+            Assert.False(await ScalarAsync<bool>(owner, "select to_regclass('runner_later') is not null"));
+
+            var earlier = Script("20261013T0106_core_too_early", "create table runner_too_early (id integer primary key);");
+            var orderFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([.. scripts, earlier]));
+            Assert.Contains(earlier.Name, orderFailure.Message);
+            Assert.Contains("20261013T0110_core_after.sql", orderFailure.Message);
+
+            var rollback = Script("20261013T0115_core_rollback", "create table runner_rollback (id integer primary key); select missing_function();");
+            await Assert.ThrowsAsync<PostgresException>(() => RunAsync([.. scripts, rollback]));
+            Assert.False(await ScalarAsync<bool>(owner, "select to_regclass('runner_rollback') is not null"));
+            Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0115_core_rollback.sql'"));
+
+            var delayed = Script("20261013T0125_core_concurrent", "select pg_sleep(1); create table runner_concurrent (id integer primary key);");
+            var concurrentScripts = scripts.Append(delayed).ToArray();
+            await using var admin = new NpgsqlConnection(fixture.ConnectionString);
+            await admin.OpenAsync();
+            var first = RunAsync(concurrentScripts);
+            await WaitUntilAsync(
+                () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and state = 'active' and query like '%pg_sleep(1)%')"),
+                "the first migration run did not begin its delayed migration");
+            var second = RunAsync(concurrentScripts);
+            await WaitUntilAsync(
+                () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and wait_event_type = 'Lock' and wait_event = 'advisory')"),
+                "the second migration run did not wait for the advisory lock");
+            await Task.WhenAll(first, second);
+            Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0125_core_concurrent.sql'"));
+
+            await ExecuteAsync(admin, "create schema runner_shadow");
+            await ExecuteAsync(admin, "create table runner_shadow.schema_migrations (name text primary key, owner text not null, checksum text not null, applied_at timestamptz not null default now())");
+            await ExecuteAsync(admin, "grant usage, create on schema runner_shadow to quesshi_owner");
+            await ExecuteAsync(admin, "grant select, insert on runner_shadow.schema_migrations to quesshi_owner");
+            foreach (var script in concurrentScripts)
+            {
+                await RecordMigrationAsync(admin, "runner_shadow.schema_migrations", script);
+            }
+
+            var pathMigration = Script("20261013T0130_core_search_path", "create table runner_public_path (id integer primary key);");
+            await using (var customPath = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(fixture.ConnectionStringForRole("quesshi_owner"))
+            {
+                SearchPath = "runner_shadow, public"
+            }.ConnectionString))
+            {
+                await customPath.OpenAsync();
+                await new MigrationRunner(concurrentScripts.Append(pathMigration)).RunAsync(customPath);
+            }
+            Assert.True(await ScalarAsync<bool>(admin, "select to_regclass('public.runner_public_path') is not null"));
+            Assert.Equal(1L, await ScalarAsync<long>(admin, "select count(*) from public.schema_migrations where name = '20261013T0130_core_search_path.sql'"));
+            Assert.Equal(0L, await ScalarAsync<long>(admin, "select count(*) from runner_shadow.schema_migrations where name = '20261013T0130_core_search_path.sql'"));
+
+            var cancellationMigration = Script("20261013T0135_core_cancellation", "select pg_sleep(5);");
+            await using var callerConnection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await callerConnection.OpenAsync();
+            using var cancellation = new CancellationTokenSource();
+            var cancelledRun = new MigrationRunner(concurrentScripts.Append(pathMigration).Append(cancellationMigration)).RunAsync(callerConnection, cancellation.Token);
+            await WaitUntilAsync(
+                () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and state = 'active' and query like '%pg_sleep(5)%')"),
+                "the cancellation migration did not begin its delayed statement");
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledRun);
+
+            using var releaseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            await using var verifyingConnection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await new MigrationRunner(concurrentScripts.Append(pathMigration)).RunAsync(verifyingConnection, releaseTimeout.Token);
         }
-
-        var pathMigration = Script("20261013T0130_core_search_path", "create table runner_public_path (id integer primary key);");
-        await using (var customPath = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(fixture.ConnectionStringForRole("quesshi_owner"))
+        finally
         {
-            SearchPath = "runner_shadow, public"
-        }.ConnectionString))
-        {
-            await customPath.OpenAsync();
-            await new MigrationRunner(concurrentScripts.Append(pathMigration)).RunAsync(customPath);
+            await RemoveRunnerArtifactsAsync();
         }
-        Assert.True(await ScalarAsync<bool>(admin, "select to_regclass('public.runner_public_path') is not null"));
-        Assert.Equal(1L, await ScalarAsync<long>(admin, "select count(*) from public.schema_migrations where name = '20261013T0130_core_search_path.sql'"));
-        Assert.Equal(0L, await ScalarAsync<long>(admin, "select count(*) from runner_shadow.schema_migrations where name = '20261013T0130_core_search_path.sql'"));
-
-        var cancellationMigration = Script("20261013T0135_core_cancellation", "select pg_sleep(5);");
-        await using var callerConnection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
-        await callerConnection.OpenAsync();
-        using var cancellation = new CancellationTokenSource();
-        var cancelledRun = new MigrationRunner(concurrentScripts.Append(pathMigration).Append(cancellationMigration)).RunAsync(callerConnection, cancellation.Token);
-        await WaitUntilAsync(
-            () => ScalarAsync<bool>(admin, "select exists (select 1 from pg_stat_activity where usename = 'quesshi_owner' and state = 'active' and query like '%pg_sleep(5)%')"),
-            "the cancellation migration did not begin its delayed statement");
-        cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledRun);
-
-        using var releaseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-        await using var verifyingConnection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
-        await new MigrationRunner(concurrentScripts.Append(pathMigration)).RunAsync(verifyingConnection, releaseTimeout.Token);
     }
 
     [SkippableFact]
@@ -188,6 +196,22 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
     }
 
     private async Task ApplyCoreAsync() => await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+
+    private async Task RemoveRunnerArtifactsAsync()
+    {
+        await using var admin = new NpgsqlConnection(fixture.ConnectionString);
+        await admin.OpenAsync();
+        await ExecuteAsync(admin, """
+            drop schema if exists runner_shadow cascade;
+            drop table if exists runner_ai_generation_before, runner_core_after, runner_concurrent, runner_public_path;
+            delete from schema_migrations
+            where name in (
+                '20261013T0105_ai_generation_before.sql',
+                '20261013T0110_core_after.sql',
+                '20261013T0125_core_concurrent.sql',
+                '20261013T0130_core_search_path.sql');
+            """);
+    }
 
     private static IReadOnlyList<MigrationScript> CoreScripts() => MigrationRunner.Discover(typeof(ApplicationMarker).Assembly);
 

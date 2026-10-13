@@ -7,4 +7,7 @@
     <ProjectReference Include="../Quesshi.Grains.Abstractions/Quesshi.Grains.Abstractions.csproj" />
     <ProjectReference Include="../Quesshi.Web/Quesshi.Web.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quesshi.Server.Tests" />
+  </ItemGroup>
 </Project>
