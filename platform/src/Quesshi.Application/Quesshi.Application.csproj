@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../Quesshi.Domain/Quesshi.Domain.csproj" />
+    <ProjectReference Include="../Quesshi.Engine.Contracts/Quesshi.Engine.Contracts.csproj" />
     <ProjectReference Include="../Quesshi.Plugin.Api/Quesshi.Plugin.Api.csproj" />
     <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
   </ItemGroup>

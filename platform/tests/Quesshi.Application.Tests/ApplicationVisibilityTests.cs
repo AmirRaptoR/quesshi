@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using Quesshi.Application;
+using Quesshi.Application.Sessions;
 using Quesshi.Application.Tenancy;
 
 namespace Quesshi.Application.Tests;
@@ -8,14 +9,25 @@ namespace Quesshi.Application.Tests;
 public sealed class ApplicationVisibilityTests
 {
     [Fact]
-    public void Tenancy_contract_exposes_only_the_intended_core_types()
+    public void Application_contract_exposes_only_the_intended_core_types()
     {
         _ = new ApplicationMarker();
         var exportedTypes = typeof(ApplicationMarker).Assembly.GetExportedTypes()
             .OrderBy(type => type.FullName)
             .ToArray();
 
-        Assert.Equal([typeof(ITenants), typeof(Tenant)], exportedTypes);
+        Assert.Equal(
+            [
+                typeof(AnswerKey),
+                typeof(AnswerState),
+                typeof(ChangeSet),
+                typeof(RowChange),
+                typeof(SessionItemState),
+                typeof(SessionState),
+                typeof(ITenants),
+                typeof(Tenant),
+            ],
+            exportedTypes);
     }
 
     [Fact]
