@@ -38,9 +38,9 @@ public sealed class FixtureTests
                 : target with { Latitude = target.Latitude == 0 ? 1 : 0 };
 
             return JsonSerializer.SerializeToElement(
-                 value with { Target = changedTarget },
-                 MapPickJsonContext.Default.MapPickPayload);
-         });
+                value with { Target = changedTarget },
+                MapPickJsonContext.Default.MapPickPayload);
+        });
 
     [Fact]
     public void Fixture_runner_detects_a_card_that_leaks_the_correct_answer()

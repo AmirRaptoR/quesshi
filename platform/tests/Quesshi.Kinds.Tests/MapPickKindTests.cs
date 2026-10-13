@@ -89,6 +89,22 @@ public sealed class MapPickKindTests
     }
 
     [Fact]
+    public void Snapshot_preserves_recorded_map_values_without_regrading_them()
+    {
+        IKindRuntime runtime = _kind;
+        var original = Json("{\"baseLayer\":\"Blank\",\"target\":{\"shape\":\"Country\",\"countryCode\":\"DE\"}}");
+        var changed = Json("{\"baseLayer\":\"Blank\",\"target\":{\"shape\":\"Country\",\"countryCode\":\"NL\"}}");
+        var resolved = runtime.Resolve(original, new ResolveContext("session", 0, []));
+        var changedResolved = runtime.Resolve(changed, new ResolveContext("session", 0, []));
+        var snapshot = Json("{\"card\":{\"baseLayer\":\"Blank\",\"shape\":\"Country\"},\"reveal\":{\"target\":{\"shape\":\"Country\",\"countryCode\":\"DE\",\"latitude\":null,\"longitude\":null,\"radiusKm\":null}},\"answers\":[{\"shape\":\"Country\",\"countryCode\":\"DE\",\"latitude\":null,\"longitude\":null},{\"shape\":\"Point\",\"countryCode\":null,\"latitude\":0,\"longitude\":179.9}]}");
+
+        Assert.Equal(1, runtime.Grade(original, resolved, Json("{\"shape\":\"Country\",\"countryCode\":\"DE\",\"latitude\":null,\"longitude\":null}")).Credit);
+        Assert.Equal(0, runtime.Grade(changed, changedResolved, Json("{\"shape\":\"Country\",\"countryCode\":\"DE\",\"latitude\":null,\"longitude\":null}")).Credit);
+        Assert.Equal(snapshot.GetRawText(), runtime.UpgradeSnapshot(1, snapshot).GetRawText());
+        Assert.Throws<NotSupportedException>(() => runtime.UpgradeSnapshot(2, snapshot));
+    }
+
+    [Fact]
     public void Map_helpers_are_culture_invariant_and_agree_with_the_bundled_asset()
     {
         var before = CultureInfo.CurrentCulture;
