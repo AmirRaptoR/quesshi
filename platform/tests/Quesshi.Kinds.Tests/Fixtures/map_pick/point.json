@@ -1,0 +1,17 @@
+{
+  "payload": {
+    "baseLayer": "Borders",
+    "target": { "shape": "Point", "latitude": 0, "longitude": 179.9, "radiusKm": 50 }
+  },
+  "seed": { "sessionId": "map-pick-point", "slot": 4 },
+  "resolved": { "target": { "shape": "Point", "countryCode": null, "latitude": 0, "longitude": 179.9, "radiusKm": 50 } },
+  "card": { "baseLayer": "Borders", "shape": "Point" },
+  "reveal": { "target": { "shape": "Point", "countryCode": null, "latitude": 0, "longitude": 179.9, "radiusKm": 50 } },
+  "answers": [
+    { "submitted": { "shape": "Point", "latitude": 0, "longitude": -179.9 }, "stored": { "shape": "Point", "countryCode": null, "latitude": 0, "longitude": -179.9 }, "credit": 1 },
+    { "submitted": { "shape": "Point", "latitude": 0, "longitude": 179 }, "stored": { "shape": "Point", "countryCode": null, "latitude": 0, "longitude": 179 }, "credit": 0 },
+    { "credit": 0 },
+    { "submitted": { "shape": "Point", "latitude": "0,1", "longitude": 0 }, "malformed": true },
+    { "submitted": { "shape": "Country", "countryCode": "DE" }, "malformed": true }
+  ]
+}

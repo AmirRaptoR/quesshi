@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup><RazorLangVersion>Latest</RazorLangVersion></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+    <Content Include="../Quesshi.Shared/maps/world.svg" Link="wwwroot/maps/world.svg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
