@@ -56,6 +56,41 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Roster_pages_all_seats_in_order_and_hides_unseated_or_cross_tenant_sessions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var viewer = PlayerId(1);
+        await InsertTenantAsync(owner, tenant);
+        await InsertTenantAsync(owner, otherTenant);
+        await InsertPlayersAsync(owner, tenant, 500);
+        await InsertRunningSessionAsync(owner, tenant, session, viewer, 1);
+        await InsertParticipantsAsync(owner, tenant, session, 500);
+
+        await using var sources = Sources();
+        var database = new CountingTenantDatabase(new TenantDb(sources));
+        var loader = new SessionSnapshotLoader(database);
+        var ids = new List<string>();
+        int? after = null;
+        do
+        {
+            var page = Assert.IsType<RosterPage>(await loader.LoadRosterPageAsync(tenant, session, viewer.ToString(), after, 73));
+            ids.AddRange(page.Seats.Select(seat => seat.Id));
+            after = page.NextSeat;
+        } while (after is not null);
+
+        Assert.Equal(Enumerable.Range(1, 500).Select(number => PlayerId(number).ToString()), ids);
+        Assert.Equal(500, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.Null(await loader.LoadRosterPageAsync(tenant, session, Guid.NewGuid().ToString(), null, 50));
+        Assert.Null(await loader.LoadRosterPageAsync(otherTenant, session, viewer.ToString(), null, 50));
+        Assert.Equal(System.Data.IsolationLevel.RepeatableRead, database.IsolationLevel);
+        Assert.True(database.ReadOnly);
+    }
+
+    [SkippableFact]
     public async Task Version_fence_persists_one_answer_revision_and_notifies_the_committed_version()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -240,6 +275,13 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
             Assert.Equal("revision_conflict", conflict.Code);
             Assert.Equal("ok", lower.Code);
             Assert.Equal("ok", replacement.Code);
+            using var view = JsonDocument.Parse(first.ViewJson!);
+            Assert.Equal(session.ToString(), view.RootElement.GetProperty("Id").GetString());
+            Assert.Equal(1, view.RootElement.GetProperty("Version").GetInt64());
+            Assert.Equal(0, view.RootElement.GetProperty("ConfigVersion").GetInt64());
+            Assert.Equal(player.ToString(), view.RootElement.GetProperty("Me").GetProperty("Id").GetString());
+            Assert.Equal(2, view.RootElement.GetProperty("Roster").GetProperty("Seats").GetArrayLength());
+            Assert.True(view.RootElement.TryGetProperty("Body", out _));
             Assert.Equal(2, await ScalarAsync<int>(owner, "select revision from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));
             Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));
             Assert.Equal("b", await ScalarAsync<string>(owner, "select answer ->> 'option' from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));

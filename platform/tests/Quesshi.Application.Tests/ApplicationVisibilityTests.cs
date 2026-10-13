@@ -30,6 +30,7 @@ public sealed class ApplicationVisibilityTests
                 typeof(SessionState),
                 typeof(SessionStateStore),
                 typeof(SessionView),
+                typeof(SessionViewSnapshot),
                 typeof(StaleActivationException),
                 typeof(ITenants),
                 typeof(Tenant),

@@ -106,7 +106,11 @@ public sealed record SessionRow(
     string? Format = null,
     long Version = 0,
     DateTimeOffset? RetryAt = null,
-    string Status = "running");
+    string Status = "running",
+    string? Code = null,
+    JsonElement? Content = null,
+    JsonElement? Rules = null,
+    long ConfigVersion = 0);
 
 public sealed record Seat(
     string Player,
@@ -119,7 +123,9 @@ public sealed record Seat(
     int? Place = null,
     string? Outcome = null,
     SeatStatus Status = SeatStatus.Active,
-    JsonElement? Result = null);
+    JsonElement? Result = null,
+    int Number = 0,
+    string? DisplayName = null);
 
 /// <summary>Item metadata deliberately excludes question payload and resolved answer data.</summary>
 public sealed record SessionItem(int Slot, string Kind, int KindVersion, int? Level, string? Category);

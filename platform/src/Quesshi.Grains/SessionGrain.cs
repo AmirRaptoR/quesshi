@@ -87,7 +87,11 @@ public class SessionGrain(
                 logger.LogWarning(exception, "Session command rolled back for {SessionId}", _sessionId);
                 return SessionCommandResult.Error("write_failed", retryable: true);
             }
-            _state = current with { Session = current.Session with { Version = version } };
+            // Command responses use a new immutable durable snapshot.  This keeps the
+            // command path on the same rendering contract as a future stream and prevents
+            // a cached activation from combining the committed session row with old children.
+            _state = await snapshots.LoadAsync(_tenantId, _sessionId)
+                ?? throw new StaleActivationException();
             try { return View("ok", format, request.PlayerId); }
             catch (Exception exception)
             {
@@ -110,7 +114,7 @@ public class SessionGrain(
 
     private SessionCommandResult View(string code, IFormat format, string viewer)
     {
-        var view = views.Render(_state!, format, viewer);
+        var view = views.Render(_state!, format, viewer, clock.Now);
         return new SessionCommandResult(code, false, view.Version, view.Json);
     }
 
