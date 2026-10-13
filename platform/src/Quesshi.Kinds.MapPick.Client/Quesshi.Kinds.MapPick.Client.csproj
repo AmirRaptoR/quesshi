@@ -2,7 +2,12 @@
   <PropertyGroup><RazorLangVersion>Latest</RazorLangVersion></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+    <ProjectReference Include="../Quesshi.Kinds/Quesshi.Kinds.csproj" />
+    <ProjectReference Include="../Quesshi.Web.Plugins/Quesshi.Web.Plugins.csproj" />
     <Content Include="../Quesshi.Shared/maps/world.svg" Link="wwwroot/maps/world.svg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.11" />
   </ItemGroup>
   <Target Name="UseSharedMapAsStaticAssetSource" BeforeTargets="GenerateStaticWebAssetsManifest">
     <ItemGroup>

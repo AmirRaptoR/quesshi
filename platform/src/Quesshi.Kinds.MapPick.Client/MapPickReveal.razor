@@ -1,0 +1,14 @@
+@using Microsoft.AspNetCore.Components
+@using Quesshi.Kinds.MapPick
+
+<div data-kind="map_pick" data-version="1"></div>
+
+@code {
+    // The map UI is delivered by the map_pick child; this component is the lazy client's typed root.
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public object? Reveal { get; set; }
+    [Parameter, EditorRequired] public object? Answers { get; set; }
+
+    private MapPickCard? MapCard => Card as MapPickCard;
+    private Quesshi.Kinds.MapPick.MapPickReveal? MapRevealValue => Reveal as Quesshi.Kinds.MapPick.MapPickReveal;
+}

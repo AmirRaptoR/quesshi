@@ -1,4 +1,5 @@
 using System.Reflection;
+using Quesshi.Kinds.MapPick.Client;
 using Quesshi.Web.Plugins;
 
 namespace Quesshi.Web.Tests;
@@ -46,6 +47,25 @@ public sealed class ClientRegistryTests
 
         Assert.NotNull(client);
         Assert.Empty(loader.AssemblyNames);
+    }
+
+    [Fact]
+    public async Task Loads_the_configured_map_client_assembly_and_registers_its_components()
+    {
+        var loader = new RecordingLoader(typeof(MapPickClientEntry).Assembly);
+        var registry = new ClientRegistry(loader);
+        registry.RegisterLazy("map_pick", "Quesshi.Kinds.MapPick.Client.dll");
+
+        var client = await registry.ResolveAsync("map_pick");
+        var resolvedAgain = await registry.ResolveAsync("map_pick");
+
+        Assert.Equal(["Quesshi.Kinds.MapPick.Client.dll"], loader.AssemblyNames);
+        Assert.Same(client, resolvedAgain);
+        Assert.Same(typeof(MapPickPlay), client!.Play(1));
+        Assert.Same(typeof(MapPickReveal), client.Reveal(1));
+        Assert.Same(typeof(MapPickEditor), client.Editor);
+        Assert.Null(client.Play(2));
+        Assert.Null(client.Reveal(2));
     }
 
     [Fact]
