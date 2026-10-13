@@ -13,12 +13,12 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     private static readonly Guid TenantB = Guid.Parse("b2461b37-f799-4a3b-96b3-ff5446c64d95");
 
     [Fact]
-    public void Core_migrations_include_the_identity_security_contract_after_sessions()
+    public void Core_migrations_include_the_identity_security_contract_after_shipped_core_migrations()
     {
         var names = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly).Select(migration => migration.Name).ToArray();
 
-        Assert.Contains("20261013T0103_core_identity_security.sql", names);
-        Assert.True(Array.IndexOf(names, "20261013T0102_core_sessions.sql") < Array.IndexOf(names, "20261013T0103_core_identity_security.sql"));
+        Assert.Contains("20261013T0202_core_identity_security.sql", names);
+        Assert.True(Array.IndexOf(names, "20261013T0201_core_job_schedule_windows.sql") < Array.IndexOf(names, "20261013T0202_core_identity_security.sql"));
     }
 
     [SkippableFact]

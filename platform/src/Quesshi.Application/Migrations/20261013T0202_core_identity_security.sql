@@ -77,10 +77,10 @@ create function account_players(for_account uuid)
   returns table (tenant_id uuid, player_id uuid, display_name text, avatar_seed text, lang text,
                  last_seen_at timestamptz)
   language sql stable security definer set search_path = public
-  begin atomic
+  as $$
     select p.tenant_id, p.id, p.display_name, p.avatar_seed, p.lang, p.last_seen_at
     from players p where p.account_id = for_account and p.deleted_at is null;
-  end;
+  $$;
 
 create function claim_account(for_account uuid) returns void
   language plpgsql security definer set search_path = public as $$
