@@ -1,0 +1,34 @@
+{
+  "payload": {},
+  "seed": {
+    "sessionId": "poll-roster-fixture",
+    "slot": 2,
+    "roster": [
+      { "seat": 1, "role": "player", "status": "active", "name": "Ada" },
+      { "seat": 2, "role": "spectator", "status": "active", "name": "Bea" },
+      { "seat": 3, "role": "player", "status": "left", "name": "Cy" },
+      { "seat": 4, "role": "player", "status": "active", "name": "Dee" },
+      { "seat": 5, "role": "player", "status": "active", "name": "Eve" },
+      { "seat": 6, "role": "player", "status": "active", "name": "Fox" },
+      { "seat": 7, "role": "player", "status": "active", "name": "Gia" }
+    ]
+  },
+  "resolved": { "options": [{ "seat": 1, "name": "Ada" }, { "seat": 4, "name": "Dee" }, { "seat": 5, "name": "Eve" }, { "seat": 6, "name": "Fox" }, { "seat": 7, "name": "Gia" }] },
+  "card": { "options": [{ "seat": 1, "name": "Ada" }, { "seat": 4, "name": "Dee" }, { "seat": 5, "name": "Eve" }, { "seat": 6, "name": "Fox" }, { "seat": 7, "name": "Gia" }] },
+  "reveal": {},
+  "answers": [
+    { "submitted": { "seat": 4 }, "stored": { "seat": 4 }, "credit": 0, "isNone": true },
+    { "submitted": { "several": true }, "stored": { "several": true }, "credit": 0, "isNone": true },
+    { "submitted": { "none": true }, "stored": { "none": true }, "credit": 0, "isNone": true },
+    { "submitted": { "notApplicable": true }, "stored": { "notApplicable": true }, "credit": 0, "isNone": true },
+    { "credit": 0, "isNone": true },
+    { "submitted": { "seat": 9 }, "malformed": true },
+    { "submitted": { "option": "green" }, "malformed": true },
+    { "submitted": { "seat": "4" }, "malformed": true },
+    { "submitted": {}, "malformed": true },
+    { "submitted": { "seat": 4, "none": true }, "malformed": true }
+  ],
+  "validation": [
+    { "payload": { "unexpected": true }, "codes": ["payload.unexpected"] }
+  ]
+}

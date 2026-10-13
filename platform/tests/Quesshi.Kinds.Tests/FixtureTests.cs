@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Quesshi.Kinds.Choice;
+using Quesshi.Kinds.PollChoice;
+using Quesshi.Kinds.PollRoster;
 using Quesshi.Shared;
 
 namespace Quesshi.Kinds.Tests;
@@ -15,6 +17,14 @@ public sealed class FixtureTests
             var options = document.RootElement.GetProperty("options").EnumerateArray().Select(option => option.GetString()!).ToArray();
             return JsonSerializer.SerializeToElement(new ChoicePayload(options, 0), ChoiceJsonContext.Default.ChoicePayload);
         });
+
+    [Fact]
+    public void Poll_choice_fixtures_cover_runtime_behavior() =>
+        KindFixtureRunner.Run("poll_choice", new PollChoiceKind(), payload => payload);
+
+    [Fact]
+    public void Poll_roster_fixtures_cover_runtime_behavior() =>
+        KindFixtureRunner.Run("poll_roster", new PollRosterKind(), payload => payload);
 
     [Fact]
     public void Fixture_runner_detects_a_card_that_leaks_the_correct_answer()
