@@ -25,7 +25,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     public async Task Identity_migration_preserves_existing_accounts_and_players_and_is_idempotent()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
-        await using var owner = await PrepareAsync();
+        await using var owner = await PrepareBeforeIdentityMigrationAsync();
         var account = Guid.NewGuid();
         var player = Guid.NewGuid();
         await ExecuteAsync(owner, "insert into accounts (id, email) values (@account, 'existing@example.test')", ("account", account));
@@ -35,8 +35,12 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
         foreach (var table in new[] { "account_identities", "login_codes", "auth_sessions", "auth_rate_limits", "rate_limits", "data_protection_keys" })
             Assert.True(await ScalarAsync<bool>(owner, "select to_regclass(@table) is not null", ("table", table)));
+        foreach (var function in new[] { "account_players(uuid)", "claim_account(uuid)" })
+            Assert.True(await ScalarAsync<bool>(owner, "select to_regprocedure(@function) is not null", ("function", function)));
         Assert.True(await ScalarAsync<bool>(owner, "select exists (select 1 from accounts where id = @account)", ("account", account)));
         Assert.True(await ScalarAsync<bool>(owner, "select exists (select 1 from players where tenant_id = @tenant and id = @player)", ("tenant", TenantA), ("player", player)));
+
+        await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
     }
 
     [SkippableFact]
@@ -137,6 +141,30 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
+        await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'identity-a', 'Identity A', 'en'), (@b, 'identity-b', 'Identity B', 'en')", ("a", TenantA), ("b", TenantB));
+        return owner;
+    }
+
+    private async Task<NpgsqlConnection> PrepareBeforeIdentityMigrationAsync()
+    {
+        await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+        var owner = await OpenAsync("quesshi_owner");
+        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
+        await ExecuteAsync(owner, """
+            drop function account_players(uuid);
+            drop function claim_account(uuid);
+            drop table account_identities;
+            drop table login_codes;
+            drop table auth_sessions;
+            drop table auth_rate_limits;
+            drop table rate_limits;
+            drop table data_protection_keys;
+            delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
+            alter policy members_only on accounts
+              using (exists (select 1 from players p
+                            where p.account_id = accounts.id
+                              and p.tenant_id = (select app_tenant())));
+            """);
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'identity-a', 'Identity A', 'en'), (@b, 'identity-b', 'Identity B', 'en')", ("a", TenantA), ("b", TenantB));
         return owner;
     }
