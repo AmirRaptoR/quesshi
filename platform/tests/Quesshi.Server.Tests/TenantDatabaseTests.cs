@@ -363,7 +363,7 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
                 ("tableName", table),
                 ("owner", table == "plugin_rows" ? "demo_plugin" : "core"));
         }
-        await ExecuteAsync(owner, "delete from tenants");
+        await ExecuteAsync(owner, "delete from sessions; delete from tenants");
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'tenant-a', 'Tenant A', 'en'), (@b, 'tenant-b', 'Tenant B', 'en')", ("a", TenantA), ("b", TenantB));
         await ExecuteAsync(owner, "grant usage, select on sequence inbox_events_sequence_seq to quesshi_app");
     }

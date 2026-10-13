@@ -80,7 +80,7 @@ public sealed class JobScheduleDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
-        await ExecuteAsync(owner, "delete from jobs; delete from job_schedule_windows; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await ExecuteAsync(owner, "delete from sessions; delete from jobs; delete from job_schedule_windows; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
         foreach (var (tenant, enabled) in new[] { (TenantA, true), (TenantB, true), (DisabledTenant, false) })
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, @slug, 'en')", ("tenant", tenant), ("slug", tenant.ToString("N")));

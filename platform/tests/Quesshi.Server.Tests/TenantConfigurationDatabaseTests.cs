@@ -139,7 +139,7 @@ public sealed class TenantConfigurationDatabaseTests(PostgresFixture fixture)
 
     private async Task SeedAsync(NpgsqlConnection owner)
     {
-        await ExecuteAsync(owner, "delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await ExecuteAsync(owner, "delete from sessions; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
         foreach (var (tenant, slug, host) in new[] { (TenantA, "tenant-a", "a.example.test"), (TenantB, "tenant-b", "b.example.test") })
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@id, @slug, @slug, 'en')", ("id", tenant), ("slug", slug));

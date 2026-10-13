@@ -17,7 +17,7 @@ public sealed class TenantAddDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         await using var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await ExecuteAsync(owner, "delete from sessions; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
         await using var sources = Sources();
 
         var tenant = await Program.AddTenantAsync([
@@ -41,7 +41,7 @@ public sealed class TenantAddDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         await using var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await ExecuteAsync(owner, "delete from sessions; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
         await using var sources = Sources();
 
         await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
