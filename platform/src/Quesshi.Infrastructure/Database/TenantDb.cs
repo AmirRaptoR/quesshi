@@ -84,6 +84,10 @@ internal sealed class TenantTransaction(
 
     internal HashSet<(string Table, Guid Key)> HeldLocks { get; } = [];
 
+    // A request that found no row cannot acquire a lock, but repeating it must not
+    // later look like a new, out-of-order request within the same lock step.
+    internal HashSet<(string Table, Guid Key)> RequestedLocks { get; } = [];
+
     internal Dictionary<string, Guid> HighestLockKeyByTable { get; } = new(StringComparer.Ordinal);
 
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default)

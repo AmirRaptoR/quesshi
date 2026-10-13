@@ -1,4 +1,5 @@
 using System.Data;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Npgsql;
@@ -26,6 +27,22 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
 
         Assert.DoesNotContain(signatures, type => type.FullName is "Npgsql.NpgsqlConnection" or "Npgsql.NpgsqlTransaction" or "Npgsql.NpgsqlDataSource");
         Assert.DoesNotContain(typeof(TenantDb).Assembly.GetExportedTypes(), type => type.Name == "ISystemDb");
+    }
+
+    [Fact]
+    public async Task Database_sources_pin_runtime_roles_and_pool_sizes()
+    {
+        await using var sources = new DatabaseSources(
+            "Host=localhost;Database=quesshi;Username=migration_owner;Maximum Pool Size=1",
+            "Host=localhost;Database=quesshi;Username=migration_owner;Maximum Pool Size=1");
+
+        var app = new NpgsqlConnectionStringBuilder(Source(sources, "App").ConnectionString);
+        var system = new NpgsqlConnectionStringBuilder(Source(sources, "System").ConnectionString);
+
+        Assert.Equal("quesshi_app", app.Username);
+        Assert.Equal(40, app.MaxPoolSize);
+        Assert.Equal("quesshi_system", system.Username);
+        Assert.Equal(10, system.MaxPoolSize);
     }
 
     [SkippableFact]
@@ -59,14 +76,42 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
 
         await using var outside = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_app"));
         await outside.OpenAsync();
-        await Assert.ThrowsAsync<PostgresException>(async () => await new NpgsqlCommand("select count(*) from tenant_rows", outside).ExecuteScalarAsync());
+        var outsideFailure = await Assert.ThrowsAsync<PostgresException>(async () => await new NpgsqlCommand("select count(*) from tenant_rows", outside).ExecuteScalarAsync());
+        Assert.Equal("42704", outsideFailure.SqlState);
+        Assert.Contains("unrecognized configuration parameter", outsideFailure.Message);
         await using var system = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
         await system.OpenAsync();
         var systemFailure = await Assert.ThrowsAsync<PostgresException>(async () => await new NpgsqlCommand("select count(*) from tenant_rows", system).ExecuteScalarAsync());
         Assert.Equal("42501", systemFailure.SqlState);
-        await Assert.ThrowsAsync<PostgresException>(() => database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+        var crossTenantFailure = await Assert.ThrowsAsync<PostgresException>(() => database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
             "insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)",
             new { tenantId = TenantB, id = Guid.NewGuid(), value = "forbidden" })));
+        Assert.Equal("42501", crossTenantFailure.SqlState);
+    }
+
+    [SkippableFact]
+    public async Task Tenant_helpers_share_the_requested_transaction_and_roll_back()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        var row = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, async tx =>
+        {
+            Assert.Equal("serializable", await tx.QuerySingleOrDefaultAsync<string>("show transaction_isolation"));
+            Assert.Equal(TenantA, await tx.QuerySingleOrDefaultAsync<Guid>("select current_setting('app.tenant_id')::uuid"));
+            await tx.ExecuteAsync(
+                "insert into tenant_rows (tenant_id, id, value) values (@tenantId, @id, @value)",
+                new { tenantId = TenantA, id = row, value = "uncommitted" });
+            Assert.Contains(row, await tx.QueryAsync<Guid>("select id from tenant_rows where id = @row", new { row }));
+            Assert.Equal(row, await tx.QuerySingleOrDefaultAsync<Guid>("select id from tenant_rows where id = @row", new { row }));
+            throw new InvalidOperationException("rollback");
+        }, IsolationLevel.Serializable));
+
+        Assert.Null(await database.InTenantAsync(TenantA, tx => tx.QuerySingleOrDefaultAsync<Guid?>(
+            "select id from tenant_rows where id = @row", new { row })));
     }
 
     [SkippableFact]
@@ -212,6 +257,40 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Repeated_content_and_unmatched_lock_requests_do_not_violate_order()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        var locks = new TenantLocks();
+        var missingPlayer = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var player = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        var question = Guid.Parse("00000000-0000-0000-0000-000000000010");
+        var pack = Guid.Parse("00000000-0000-0000-0000-000000000020");
+        var owned = Guid.Parse("00000000-0000-0000-0000-000000000030");
+        await SeedAsync(player, Guid.NewGuid(), question, owned);
+        await using (var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner")))
+        {
+            await owner.OpenAsync();
+            await ExecuteAsync(owner, "insert into packs (tenant_id, id) values (@tenant, @id)", ("tenant", TenantA), ("id", pack));
+        }
+
+        await database.InTenantAsync(TenantA, async tx =>
+        {
+            await locks.PlayersAsync(tx, [missingPlayer]);
+            await locks.PlayersAsync(tx, [player]);
+            await locks.PlayersAsync(tx, [missingPlayer]);
+            await locks.ContentAsync(tx, [question, pack]);
+            await locks.ContentAsync(tx, [question, pack]);
+            await locks.ContentAsync(tx, [question]);
+            await locks.OwnAsync(tx, "plugin_rows", [owned]);
+            await locks.ContentAsync(tx, [question, pack]);
+            return 0;
+        });
+    }
+
+    [SkippableFact]
     public async Task Player_lock_order_avoids_deadlock_and_does_not_block_foreign_key_inserts()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -247,30 +326,43 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
 
+    private static NpgsqlDataSource Source(DatabaseSources sources, string name) =>
+        (NpgsqlDataSource)(typeof(DatabaseSources).GetProperty(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(sources)
+            ?? throw new InvalidOperationException($"Missing {name} data source."));
+
     private async Task PrepareAsync()
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
+
+        foreach (var table in new[]
+                 {
+                     "player_references", "inbox_events", "plugin_rows", "packs",
+                     "questions", "players", "typed_rows", "tenant_rows"
+                 })
+        {
+            await ExecuteAsync(owner, $"drop table if exists {table} cascade");
+        }
+
         foreach (var statement in new[]
         {
-            "create table if not exists tenant_rows (tenant_id uuid not null, id uuid not null, value text not null, primary key (tenant_id, id))",
-            "create table if not exists typed_rows (tenant_id uuid not null, id uuid not null, guid_value uuid not null, happened_at timestamptz not null, payload jsonb not null, primary key (tenant_id, id))",
-            "create table if not exists players (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
-            "create table if not exists questions (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
-            "create table if not exists packs (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
-            "create table if not exists plugin_rows (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
-            "create table if not exists player_references (tenant_id uuid not null, id uuid not null, player_id uuid not null, primary key (tenant_id, id), foreign key (tenant_id, player_id) references players (tenant_id, id))",
-            "create table if not exists inbox_events (tenant_id uuid not null, sequence bigserial primary key, player_id uuid not null)"
+            "create table tenant_rows (tenant_id uuid not null, id uuid not null, value text not null, primary key (tenant_id, id))",
+            "create table typed_rows (tenant_id uuid not null, id uuid not null, guid_value uuid not null, happened_at timestamptz not null, payload jsonb not null, primary key (tenant_id, id))",
+            "create table players (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table questions (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table packs (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table plugin_rows (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))",
+            "create table player_references (tenant_id uuid not null, id uuid not null, player_id uuid not null, primary key (tenant_id, id), foreign key (tenant_id, player_id) references players (tenant_id, id))",
+            "create table inbox_events (tenant_id uuid not null, sequence bigserial not null, player_id uuid not null, primary key (tenant_id, sequence))"
         }) await ExecuteAsync(owner, statement);
         foreach (var table in new[] { "tenant_rows", "typed_rows", "players", "questions", "packs", "plugin_rows", "player_references", "inbox_events" })
         {
-            await ExecuteAsync(owner, $"alter table {table} enable row level security");
-            await ExecuteAsync(owner, $"grant select, insert, update, delete on {table} to quesshi_app");
-            await ExecuteAsync(owner, $"comment on table {table} is 'owner:{(table == "plugin_rows" ? "demo_plugin" : "core")}'");
-            await ExecuteAsync(owner, $"drop policy if exists tenant_isolation on {table}");
-            await ExecuteAsync(owner, $"create policy tenant_isolation on {table} using (tenant_id = app_tenant()) with check (tenant_id = app_tenant())");
-            await ExecuteAsync(owner, $"truncate table {table} restart identity cascade");
+            await ExecuteAsync(
+                owner,
+                "select quesshi_tenant_table(@tableName::regclass, @owner)",
+                ("tableName", table),
+                ("owner", table == "plugin_rows" ? "demo_plugin" : "core"));
         }
         await ExecuteAsync(owner, "grant usage, select on sequence inbox_events_sequence_seq to quesshi_app");
     }

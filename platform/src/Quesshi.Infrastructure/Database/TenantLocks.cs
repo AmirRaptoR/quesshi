@@ -72,16 +72,22 @@ public sealed partial class TenantLocks(bool enforceOrder = true) : ILocks
             throw new LockOrderViolation($"Cannot lock {name} at step {requestedStep} after step {transaction.LastLockStep}.");
         }
 
-        if (requestedStep != transaction.LastLockStep) return;
+        if (requestedStep == transaction.LastLockStep)
+        {
+            var newKeys = keys.Where(key => !tables.Any(table => transaction.RequestedLocks.Contains((table, key))));
+            foreach (var table in tables)
+            {
+                if (transaction.HighestLockKeyByTable.TryGetValue(table, out var highestKey)
+                    && newKeys.Any(key => key.CompareTo(highestKey) < 0))
+                {
+                    throw new LockOrderViolation($"Cannot lock {name} keys out of ascending order within step {requestedStep}.");
+                }
+            }
+        }
 
         foreach (var table in tables)
         {
-            var newKeys = keys.Where(key => !transaction.HeldLocks.Contains((table, key)));
-            if (transaction.HighestLockKeyByTable.TryGetValue(table, out var highestKey)
-                && newKeys.Any(key => key.CompareTo(highestKey) < 0))
-            {
-                throw new LockOrderViolation($"Cannot lock {name} keys out of ascending order within step {requestedStep}.");
-            }
+            foreach (var key in keys) transaction.RequestedLocks.Add((table, key));
         }
     }
 
