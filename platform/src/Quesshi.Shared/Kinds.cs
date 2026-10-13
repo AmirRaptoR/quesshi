@@ -188,11 +188,14 @@ public sealed record MediaInfo(string Kind, int? Width = null, int? Height = nul
 public sealed class MalformedAnswer(string message) : Exception(message);
 
 /// <summary>Context for resolution. The RNG is SplitMix64, seeded by FNV-1a(session id) mixed with slot.</summary>
-public sealed class ResolveContext(string sessionId, int slot, IReadOnlyList<string> roster)
+public sealed class ResolveContext(string sessionId, int slot, IReadOnlyList<RosterSeat> roster)
 {
     public DeterministicRng Rng { get; } = DeterministicRng.For(sessionId, slot);
-    public IReadOnlyList<string> Roster { get; } = roster;
+    public IReadOnlyList<RosterSeat> Roster { get; } = roster;
 }
+
+/// <summary>The roster as it stood when a session item is resolved.</summary>
+public sealed record RosterSeat(int Seat, string Role, string Status, string Name);
 
 public sealed class DeterministicRng
 {

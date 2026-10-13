@@ -1,0 +1,34 @@
+{
+  "payload": {
+    "options": [
+      { "id": "green", "text": " Green " },
+      { "id": "blue", "text": "Blue" }
+    ]
+  },
+  "seed": { "sessionId": "poll-choice-fixture", "slot": 4 },
+  "resolved": {},
+  "card": {
+    "options": [
+      { "id": "green", "text": "Green" },
+      { "id": "blue", "text": "Blue" }
+    ]
+  },
+  "reveal": {},
+  "answers": [
+    { "submitted": { "option": "green" }, "stored": { "option": "green" }, "credit": 0, "isNone": true },
+    { "submitted": { "notApplicable": true }, "stored": { "notApplicable": true }, "credit": 0, "isNone": true },
+    { "credit": 0, "isNone": true },
+    { "submitted": { "option": "unknown" }, "malformed": true },
+    { "submitted": { "seat": 1 }, "malformed": true },
+    { "submitted": { "option": 1 }, "malformed": true },
+    { "submitted": {}, "malformed": true },
+    { "submitted": { "option": "green", "notApplicable": true }, "malformed": true }
+  ],
+  "validation": [
+    { "payload": { "options": [{ "id": "one", "text": "One" }] }, "codes": ["options.tooFew"] },
+    { "payload": { "options": [{ "id": "1", "text": "One" }, { "id": "2", "text": "Two" }, { "id": "3", "text": "Three" }, { "id": "4", "text": "Four" }, { "id": "5", "text": "Five" }, { "id": "6", "text": "Six" }, { "id": "7", "text": "Seven" }, { "id": "8", "text": "Eight" }, { "id": "9", "text": "Nine" }] }, "codes": ["options.tooMany"] },
+    { "payload": { "options": [{ "id": "one", "text": " " }, { "id": "two", "text": "Two" }] }, "codes": ["options.blank"] },
+    { "payload": { "options": [{ "id": "same", "text": "One" }, { "id": "same", "text": "Two" }] }, "codes": ["options.duplicateId"] },
+    { "payload": { "options": [{ "id": "one", "text": " One " }, { "id": "two", "text": "one" }] }, "codes": ["options.duplicateText"] }
+  ]
+}

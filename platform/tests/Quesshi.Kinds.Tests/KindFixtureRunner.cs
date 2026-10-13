@@ -32,6 +32,15 @@ internal static class KindFixtureRunner
             if (verifyExpected)
                 foreach (var answerCase in Required(fixture, "answers").EnumerateArray())
                     CheckAnswer(runtime, payload, resolved, answerCase, path);
+
+            if (fixture.TryGetProperty("validation", out var validation))
+                foreach (var validationCase in validation.EnumerateArray())
+                {
+                    var validationPayload = runtime.Upgrade(runtime.Version, Required(validationCase, "payload"));
+                    var codes = runtime.Validate(validationPayload, new ValidateEnv("en")).Select(problem => problem.Code);
+                    foreach (var code in Required(validationCase, "codes").EnumerateArray().Select(value => value.GetString()))
+                        Assert.Contains(code, codes);
+                }
         }
     }
 
@@ -52,10 +61,21 @@ internal static class KindFixtureRunner
         }
         else Assert.Null(stored);
 
-        Assert.Equal(answerCase.GetProperty("credit").GetDouble(), runtime.Grade(payload, resolved, stored).Credit);
+        var grade = runtime.Grade(payload, resolved, stored);
+        Assert.Equal(answerCase.GetProperty("credit").GetDouble(), grade.Credit);
+        if (answerCase.TryGetProperty("isNone", out var isNone)) Assert.Equal(isNone.GetBoolean(), grade.IsNone);
     }
 
-    private static ResolveContext Context(JsonElement seed) => new(seed.GetProperty("sessionId").GetString()!, seed.GetProperty("slot").GetInt32(), []);
+    private static ResolveContext Context(JsonElement seed) => new(
+        seed.GetProperty("sessionId").GetString()!,
+        seed.GetProperty("slot").GetInt32(),
+        seed.TryGetProperty("roster", out var roster)
+            ? roster.EnumerateArray().Select(value => new RosterSeat(
+                value.GetProperty("seat").GetInt32(),
+                value.GetProperty("role").GetString()!,
+                value.GetProperty("status").GetString()!,
+                value.GetProperty("name").GetString()!)).ToArray()
+            : []);
     private static JsonElement Required(JsonElement source, string property) => source.TryGetProperty(property, out var value)
         ? value
         : throw new InvalidDataException($"Fixture is missing '{property}'.");
