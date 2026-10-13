@@ -1,45 +1,16 @@
 using Dapper;
+using Quesshi.Application;
 using Quesshi.Application.Jobs;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Plugin.Api;
 
 namespace Quesshi.Infrastructure.Jobs;
 
 /// <summary>System-role lease and state operations for durable jobs.</summary>
-internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
+internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifier notifications) : IJobStore
 {
     private const string Claim = """
-        with exhausted as (
-            select id
-            from jobs
-            where status = 'ready'
-              and max_attempts is not null
-              and attempts >= max_attempts
-              and locked_until is not null
-              and locked_until <= now()
-            for update skip locked
-        ),
-        parked as (
-            update jobs
-            set status = 'dead',
-                locked_by = null,
-                locked_until = null,
-                last_error = coalesce(last_error, 'Job lease expired after reaching its maximum attempts.'),
-                finished_at = now()
-            from exhausted
-            where jobs.id = exhausted.id
-            returning jobs.tenant_id, jobs.owner, jobs.kind, jobs.payload
-        ),
-        revised as (
-            insert into session_effects (tenant_id, session_id, revision)
-            select tenant_id, (payload->>'subjectId')::uuid, 1
-            from parked
-            where owner = 'core'
-              and kind = 'event'
-              and payload->>'eventType' = 'sessionEnded'
-            on conflict (tenant_id, session_id) do update
-            set revision = session_effects.revision + 1
-        ),
-        due as (
+        with due as (
             select id
             from jobs
             where status = 'ready'
@@ -65,6 +36,41 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
                   jobs.locked_until as LockedUntil,
                   jobs.attempts as Attempts,
                   jobs.max_attempts as MaxAttempts
+        """;
+
+    private const string ParkExpired = """
+        with exhausted as (
+            select id
+            from jobs
+            where status = 'ready'
+              and max_attempts is not null
+              and attempts >= max_attempts
+              and locked_until is not null
+              and locked_until <= now()
+            for update skip locked
+        ), parked as (
+            update jobs
+            set status = 'dead',
+                locked_by = null,
+                locked_until = null,
+                last_error = coalesce(last_error, 'Job lease expired after reaching its maximum attempts.'),
+                finished_at = now()
+            from exhausted
+            where jobs.id = exhausted.id
+            returning jobs.tenant_id, jobs.owner, jobs.kind, jobs.payload
+        ),
+        revised as (
+            insert into session_effects (tenant_id, session_id, revision)
+            select tenant_id, (payload->>'subjectId')::uuid, 1
+            from parked
+            where owner = 'core'
+              and kind = 'event'
+              and payload->>'eventType' = 'sessionEnded'
+            on conflict (tenant_id, session_id) do update
+            set revision = session_effects.revision + 1
+            returning session_id
+        )
+        select session_id from revised
         """;
 
     private const string Complete = """
@@ -96,8 +102,9 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
               and payload->>'eventType' = 'sessionEnded'
             on conflict (tenant_id, session_id) do update
             set revision = session_effects.revision + 1
+            returning session_id
         )
-        select id from transitioned
+        select id as Id, (select session_id from revised limit 1) as SessionId from transitioned
         """;
 
     private const string Cancel = """
@@ -106,14 +113,25 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
         where id = @id and status = 'ready' and locked_by = @lockedBy
         """;
 
-    public PostgresJobStore(DatabaseSources sources) : this(new SystemDb(sources)) { }
+    public PostgresJobStore(DatabaseSources sources) : this(sources, new NullSessionEffectsNotifier()) { }
+
+    public PostgresJobStore(DatabaseSources sources, ISessionEffectsNotifier notifications) : this(new SystemDb(sources), notifications) { }
 
     public async Task<IReadOnlyList<LeasedJob>> ClaimAsync(int batchSize, TimeSpan leaseDuration, CancellationToken cancellationToken = default)
     {
         if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
         if (leaseDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(leaseDuration));
 
-        return await database.QueryAsync<LeasedJob>(Claim, new { batchSize, lockedBy = Guid.NewGuid(), leaseDuration }, cancellationToken);
+        return await database.InTransactionAsync(async transaction =>
+        {
+            var effectsTransaction = new SystemEffectsTransaction(transaction);
+            foreach (var sessionId in await transaction.QueryAsync<Guid>(ParkExpired, cancellationToken: cancellationToken))
+            {
+                notifications.Changed(effectsTransaction, sessionId);
+            }
+
+            return await transaction.QueryAsync<LeasedJob>(Claim, new { batchSize, lockedBy = Guid.NewGuid(), leaseDuration }, cancellationToken);
+        }, cancellationToken);
     }
 
     public Task<bool> CompleteAsync(long id, Guid lockedBy, CancellationToken cancellationToken = default) =>
@@ -122,7 +140,7 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
     public Task<bool> FailAsync(long id, Guid lockedBy, int attempts, int? maxAttempts, string error, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return QueryUpdateAsync(Fail, new { id, lockedBy, retryDelay = RetryDelay(attempts), error }, cancellationToken);
+        return TransitionAsync(Fail, new { id, lockedBy, retryDelay = RetryDelay(attempts), error }, cancellationToken);
     }
 
     public Task<bool> CancelAsync(long id, Guid lockedBy, CancellationToken cancellationToken = default) =>
@@ -137,7 +155,7 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
             """, cancellationToken: cancellationToken);
 
     public Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default) =>
-        QueryUpdateAsync("""
+        TransitionAsync("""
             with rerun as (
                 update jobs
                 set status = 'ready', run_at = now(), locked_by = null, locked_until = null, attempts = 0, last_error = null, finished_at = null
@@ -153,15 +171,41 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
                   and payload->>'eventType' = 'sessionEnded'
                 on conflict (tenant_id, session_id) do update
                 set revision = session_effects.revision + 1
+                returning session_id
             )
-            select id from rerun
+            select id as Id, (select session_id from revised limit 1) as SessionId from rerun
             """, new { id }, cancellationToken);
 
     private async Task<bool> UpdateAsync(string sql, object parameters, CancellationToken cancellationToken) =>
         await database.ExecuteAsync(sql, parameters, cancellationToken) == 1;
 
-    private async Task<bool> QueryUpdateAsync(string sql, object parameters, CancellationToken cancellationToken) =>
-        await database.QuerySingleOrDefaultAsync<long?>(sql, parameters, cancellationToken) is not null;
+    private async Task<bool> TransitionAsync(string sql, object parameters, CancellationToken cancellationToken) =>
+        await database.InTransactionAsync(async transaction =>
+        {
+            var transition = await transaction.QuerySingleOrDefaultAsync<EffectTransition?>(sql, parameters, cancellationToken);
+            if (transition is null) return false;
+            if (transition.SessionId is { } sessionId)
+            {
+                notifications.Changed(new SystemEffectsTransaction(transaction), sessionId);
+            }
+
+            return true;
+        }, cancellationToken);
+
+    private sealed record EffectTransition(long Id, Guid? SessionId);
+
+    /// <summary>Adapts the worker's transaction for the transaction-bound notification seam.</summary>
+    private sealed class SystemEffectsTransaction(ISystemTx inner) : ITenantTx
+    {
+        public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
+            inner.QueryAsync<T>(sql, parameters, cancellationToken);
+
+        public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
+            inner.ExecuteAsync(sql, parameters, cancellationToken);
+
+        public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
+            inner.QuerySingleOrDefaultAsync<T>(sql, parameters, cancellationToken);
+    }
 
     private static TimeSpan RetryDelay(int attempts)
     {
