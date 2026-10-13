@@ -196,6 +196,7 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
     private async Task PrepareAsync()
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+        await ExecuteSystemAsync("delete from jobs");
     }
 
     private DatabaseSources Sources() => new(
