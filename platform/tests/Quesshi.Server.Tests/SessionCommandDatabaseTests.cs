@@ -104,6 +104,53 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         Assert.Equal("second", storedAnswer);
     }
 
+    [SkippableFact]
+    public async Task State_store_updates_only_rows_changed_by_the_immutable_transition()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var first = PlayerId(1);
+        var untouched = PlayerId(2);
+        await InsertTenantAsync(owner, tenant);
+        await InsertPlayersAsync(owner, tenant, 2);
+        await InsertRunningSessionAsync(owner, tenant, session, first, 1);
+        await InsertParticipantsAsync(owner, tenant, session, 2);
+        await InsertItemsAsync(owner, tenant, session, 1);
+        await InsertAnswersAsync(owner, tenant, session, 2);
+
+        await using var sources = Sources();
+        var loader = new SessionSnapshotLoader(new TenantDb(sources));
+        var initial = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
+        var changedAnswerVersion = await XminAsync(owner, "session_answers", tenant, session, first);
+        var untouchedAnswerVersion = await XminAsync(owner, "session_answers", tenant, session, untouched);
+        var changedSeatVersion = await XminAsync(owner, "session_participants", tenant, session, first);
+        var untouchedSeatVersion = await XminAsync(owner, "session_participants", tenant, session, untouched);
+
+        var changedAnswers = new Dictionary<AnswerKey, AnswerRecord>(initial.Answers)
+        {
+            [new(first.ToString(), 0)] = initial.Answers[new(first.ToString(), 0)] with { Revision = 2 },
+        };
+        var changedSeats = new Dictionary<string, Seat>(initial.Seats)
+        {
+            [first.ToString()] = initial.Seats[first.ToString()] with { Score = 9 },
+        };
+        var current = initial with
+        {
+            Answers = SessionState.ReadOnly(changedAnswers),
+            Seats = SessionState.ReadOnly(changedSeats),
+        };
+
+        var store = new SessionStateStore(new TenantDb(sources));
+        Assert.Equal(1, await store.SaveAsync(tenant, session, initial.Session.Version, initial, current));
+
+        Assert.Equal(untouchedAnswerVersion, await XminAsync(owner, "session_answers", tenant, session, untouched));
+        Assert.Equal(untouchedSeatVersion, await XminAsync(owner, "session_participants", tenant, session, untouched));
+        Assert.NotEqual(changedAnswerVersion, await XminAsync(owner, "session_answers", tenant, session, first));
+        Assert.NotEqual(changedSeatVersion, await XminAsync(owner, "session_participants", tenant, session, first));
+    }
+
     private static async Task<long> TrySaveAsync(SessionStateStore store, Guid tenant, Guid session, SessionState state)
     {
         try
@@ -223,6 +270,10 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
         return (T)(await command.ExecuteScalarAsync())!;
     }
+
+    private static Task<string> XminAsync(NpgsqlConnection connection, string table, Guid tenant, Guid session, Guid player) =>
+        ScalarAsync<string>(connection, $"select xmin::text from {table} where tenant_id = @tenant and session_id = @session and player_id = @player",
+            ("tenant", tenant), ("session", session), ("player", player));
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
     {

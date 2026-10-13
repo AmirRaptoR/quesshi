@@ -34,6 +34,38 @@ public sealed class SessionStateStoreTests
         Assert.StartsWith("select pg_notify", database.Transaction.Commands[^1], StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Save_writes_only_answer_and_seat_rows_changed_by_the_transition()
+    {
+        var database = new RecordingTenantDb();
+        var tenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var first = Guid.NewGuid().ToString();
+        var second = Guid.NewGuid().ToString();
+        var row = new SessionRow(session.ToString(), null, null, new Position(0, 0), Format: "poll", Version: 4);
+        var initial = SessionState.Create(row, Json("{}"), [new Seat(first, "player", new Position(0, 0)), new Seat(second, "player", new Position(0, 0))], []) with
+        {
+            Answers = new Dictionary<AnswerKey, AnswerRecord>
+            {
+                [new(first, 0)] = new(Json("{\"choice\":\"a\"}"), true, 1, 10, TimeSpan.FromSeconds(2), DateTimeOffset.UnixEpoch, Revision: 1),
+            },
+        };
+        var current = initial with
+        {
+            Seats = new Dictionary<string, Seat>(initial.Seats) { [first] = initial.Seats[first] with { Score = 20 } },
+            Answers = new Dictionary<AnswerKey, AnswerRecord>(initial.Answers)
+            {
+                [new(first, 0)] = initial.Answers[new(first, 0)] with { Revision = 2 },
+            },
+        };
+
+        await new SessionStateStore(database).SaveAsync(tenant, session, 4, initial, current);
+
+        Assert.Equal(3, database.Transaction.Commands.Count);
+        Assert.Single(database.Transaction.Commands, sql => sql.StartsWith("insert into session_answers", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(database.Transaction.Commands, sql => sql.StartsWith("update session_participants", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
 
     private sealed class RecordingTenantDb : ITenantDb

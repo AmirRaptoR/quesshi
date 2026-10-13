@@ -14,11 +14,15 @@ public sealed class StaleActivationException : Exception
 public sealed class SessionStateStore(ITenantDb database)
 {
     public Task<long> SaveAsync(Guid tenantId, Guid sessionId, long expectedVersion, SessionState state, CancellationToken cancellationToken = default) =>
-        database.InTenantAsync(tenantId, tx => SaveAsync(tx, tenantId, sessionId, expectedVersion, state, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+        SaveAsync(tenantId, sessionId, expectedVersion, SessionState.Create(state.Session, state.FormatState, [], []), state, cancellationToken);
 
-    private static async Task<long> SaveAsync(ITenantTx tx, Guid tenantId, Guid sessionId, long expectedVersion, SessionState state, CancellationToken cancellationToken)
+    /// <summary>Persists only changes made by one immutable format transition.</summary>
+    public Task<long> SaveAsync(Guid tenantId, Guid sessionId, long expectedVersion, SessionState initial, SessionState current, CancellationToken cancellationToken = default) =>
+        database.InTenantAsync(tenantId, tx => SaveAsync(tx, tenantId, sessionId, expectedVersion, initial, current, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+
+    private static async Task<long> SaveAsync(ITenantTx tx, Guid tenantId, Guid sessionId, long expectedVersion, SessionState initial, SessionState current, CancellationToken cancellationToken)
     {
-        var session = state.Session;
+        var session = current.Session;
         // This is deliberately the first session-changing statement in the transaction.
         var version = await tx.QuerySingleOrDefaultAsync<long?>("""
             update sessions set version = version + 1, status = @status, phase = @phase, slot = @slot, step = @step,
@@ -38,13 +42,14 @@ public sealed class SessionStateStore(ITenantDb database)
             step = session.Position?.Step ?? 0,
             session.PositionStartedAt,
             session.DueAt,
-            state = JsonSerializer.Serialize(state.FormatState),
+            state = JsonSerializer.Serialize(current.FormatState),
             result = JsonSerializer.Serialize(session.Result ?? JsonSerializer.SerializeToElement(new { })),
             endReason = session.EndReason?.ToString().ToLowerInvariant(),
         }, cancellationToken);
         if (version is null) throw new StaleActivationException();
 
-        foreach (var (key, answer) in state.Answers)
+        foreach (var (key, answer) in current.Answers.Where(pair =>
+                     !initial.Answers.TryGetValue(pair.Key, out var previous) || !AnswerEquals(previous, pair.Value)))
         {
             var playerId = Guid.Parse(key.Player);
             await tx.ExecuteAsync("""
@@ -67,7 +72,8 @@ public sealed class SessionStateStore(ITenantDb database)
                 receivedAt = answer.Received
             }, cancellationToken);
         }
-        foreach (var seat in state.Seats.Values)
+        foreach (var seat in current.Seats.Values.Where(seat =>
+                     !initial.Seats.TryGetValue(seat.Player, out var previous) || !SeatEquals(previous, seat)))
         {
             await tx.ExecuteAsync("""
                 update session_participants set status = @status, phase = @phase, slot = @slot, step = @step,
@@ -102,4 +108,31 @@ public sealed class SessionStateStore(ITenantDb database)
         SeatStatus.Eliminated => "eliminated",
         _ => "active",
     };
+
+    private static bool AnswerEquals(AnswerRecord left, AnswerRecord right) =>
+        left.IsGraded == right.IsGraded
+        && left.Credit == right.Credit
+        && left.Points == right.Points
+        && left.Taken == right.Taken
+        && left.Received == right.Received
+        && left.Miss == right.Miss
+        && left.Revision == right.Revision
+        && left.Hash == right.Hash
+        && JsonEquals(left.Stored, right.Stored);
+
+    private static bool SeatEquals(Seat left, Seat right) =>
+        left.Player == right.Player
+        && left.Role == right.Role
+        && left.Position == right.Position
+        && left.Score == right.Score
+        && left.Eliminated == right.Eliminated
+        && left.ReleasedSlot == right.ReleasedSlot
+        && left.PositionStartedAt == right.PositionStartedAt
+        && left.Place == right.Place
+        && left.Outcome == right.Outcome
+        && left.Status == right.Status
+        && JsonEquals(left.Result, right.Result);
+
+    private static bool JsonEquals(JsonElement? left, JsonElement? right) =>
+        left is null || right is null ? left is null && right is null : left.Value.GetRawText() == right.Value.GetRawText();
 }

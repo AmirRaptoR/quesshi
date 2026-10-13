@@ -108,6 +108,95 @@ public sealed class SessionCommandEndpointTests
     }
 
     [Fact]
+    public async Task Mapped_route_maps_grain_errors_uses_the_resolved_tenant_and_accepts_an_exact_bounded_body()
+    {
+        var port = AvailablePort();
+        var firstTenant = new Tenant(Guid.NewGuid(), "first", "First", "en");
+        var secondTenant = new Tenant(Guid.NewGuid(), "second", "Second", "en");
+        var clock = new TestClock(DateTimeOffset.UnixEpoch);
+        var grain = DispatchProxy.Create<ISessionGrain, SessionGrainProxy>();
+        var grainProxy = (SessionGrainProxy)(object)grain;
+        var factory = DispatchProxy.Create<IGrainFactory, GrainFactoryProxy>();
+        var factoryProxy = (GrainFactoryProxy)(object)factory;
+        factoryProxy.Grain = grain;
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.Services.AddSingleton<ITenants>(new MultipleTenants(firstTenant, secondTenant));
+        builder.Services.AddSingleton(factory);
+        builder.Services.AddSingleton<IClock>(clock);
+        await using var app = builder.Build();
+        app.UseTenantResolution();
+        app.MapSessionCommands();
+        await app.StartAsync();
+        try
+        {
+            var player = Guid.NewGuid();
+            var session = Guid.NewGuid();
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            grainProxy.Result = SessionCommandResult.Error("not_found");
+            using var missing = CommandRequest(CommandBody, player, session, "first.example.test");
+            await AssertErrorAsync(await client.SendAsync(missing), HttpStatusCode.NotFound, "not_found");
+            Assert.Equal($"{firstTenant.Id}/{session}", factoryProxy.Key);
+
+            grainProxy.Result = SessionCommandResult.Error("absent_seat");
+            using var absent = CommandRequest(CommandBody, player, session, "first.example.test");
+            await AssertErrorAsync(await client.SendAsync(absent), HttpStatusCode.Forbidden, "absent_seat");
+
+            grainProxy.Result = SessionCommandResult.Error("invalid_command");
+            using var invalid = CommandRequest(CommandBody, player, session, "second.example.test");
+            await AssertErrorAsync(await client.SendAsync(invalid), HttpStatusCode.BadRequest, "invalid_command");
+            Assert.Equal($"{secondTenant.Id}/{session}", factoryProxy.Key);
+
+            grainProxy.Result = SessionCommandResult.Error("session_busy", retryable: true);
+            using var busy = CommandRequest(CommandBody, player, session, "first.example.test");
+            await AssertErrorAsync(await client.SendAsync(busy), HttpStatusCode.Conflict, "session_busy");
+
+            grainProxy.Result = new SessionCommandResult("ok", false, 1, "{}");
+            var exact = CommandBody + new string(' ', 16 * 1024 - Encoding.UTF8.GetByteCount(CommandBody));
+            using var bounded = CommandRequest(exact, player, session, "first.example.test");
+            Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(bounded)).StatusCode);
+        }
+        finally { await app.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task Mapped_route_stamps_receipt_after_a_chunked_body_finishes()
+    {
+        var port = AvailablePort();
+        var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
+        var clock = new TestClock(DateTimeOffset.UnixEpoch);
+        var grain = DispatchProxy.Create<ISessionGrain, SessionGrainProxy>();
+        var grainProxy = (SessionGrainProxy)(object)grain;
+        var factory = DispatchProxy.Create<IGrainFactory, GrainFactoryProxy>();
+        ((GrainFactoryProxy)(object)factory).Grain = grain;
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
+        builder.Services.AddSingleton(factory);
+        builder.Services.AddSingleton<IClock>(clock);
+        await using var app = builder.Build();
+        app.UseTenantResolution();
+        app.MapSessionCommands();
+        await app.StartAsync();
+        try
+        {
+            var player = Guid.NewGuid();
+            var body = Encoding.UTF8.GetBytes(CommandBody);
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/sessions/{Guid.NewGuid()}/commands")
+            {
+                Content = new ChunkedContent(body, () => clock.Set(DateTimeOffset.UnixEpoch.AddSeconds(2))),
+                Headers = { Host = "tenant.example.test" },
+            };
+            request.Headers.Add("X-Quesshi-Test-Player", player.ToString());
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+
+            Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
+            Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(2), grainProxy.Command!.ReceivedAt);
+        }
+        finally { await app.StopAsync(); }
+    }
+
+    [Fact]
     public async Task Test_identity_is_compile_time_gated_and_receipt_is_taken_after_the_body()
     {
         var playerId = Guid.NewGuid();
@@ -157,13 +246,15 @@ public sealed class SessionCommandEndpointTests
         return context;
     }
 
-    private static HttpRequestMessage CommandRequest(string body, Guid player)
+    private const string CommandBody = """{"type":"answer","at":{"phase":"0","slot":0,"step":0}}""";
+
+    private static HttpRequestMessage CommandRequest(string body, Guid player, Guid? session = null, string host = "tenant.example.test")
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/sessions/{Guid.NewGuid()}/commands")
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/sessions/{session ?? Guid.NewGuid()}/commands")
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
         };
-        request.Headers.Host = "tenant.example.test";
+        request.Headers.Host = host;
         request.Headers.Add("X-Quesshi-Test-Player", player.ToString());
         return request;
     }
@@ -193,23 +284,39 @@ public sealed class SessionCommandEndpointTests
             Task.FromResult<Tenant?>(host == "tenant.example.test" ? tenant : null);
     }
 
+    private sealed class MultipleTenants(Tenant first, Tenant second) : ITenants
+    {
+        public Task<Tenant?> ResolveAsync(string host, CancellationToken cancellationToken = default) => Task.FromResult<Tenant?>(host switch
+        {
+            "first.example.test" => first,
+            "second.example.test" => second,
+            _ => null,
+        });
+    }
+
     private class GrainFactoryProxy : DispatchProxy
     {
         public ISessionGrain Grain { get; set; } = null!;
+        public string? Key { get; private set; }
 
-        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
-            targetMethod!.Name == "GetGrain" ? Grain : throw new NotSupportedException(targetMethod.Name);
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name != "GetGrain") throw new NotSupportedException(targetMethod.Name);
+            Key = args!.OfType<string>().SingleOrDefault();
+            return Grain;
+        }
     }
 
     private class SessionGrainProxy : DispatchProxy
     {
         public SessionCommand? Command { get; private set; }
+        public SessionCommandResult Result { get; set; } = new("ok", false, 1, "{}");
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             if (targetMethod!.Name != nameof(ISessionGrain.ExecuteAsync)) throw new NotSupportedException(targetMethod.Name);
             Command = (SessionCommand)args![0]!;
-            return Task.FromResult(new SessionCommandResult("ok", false, 1, "{}"));
+            return Task.FromResult(Result);
         }
     }
 
@@ -220,6 +327,21 @@ public sealed class SessionCommandEndpointTests
             var read = await base.ReadAsync(buffer, cancellationToken);
             if (read == 0) completed();
             return read;
+        }
+    }
+
+    private sealed class ChunkedContent(byte[] bytes, Action completed) : HttpContent
+    {
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) => WriteAsync(stream, CancellationToken.None);
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context, CancellationToken cancellationToken) => WriteAsync(stream, cancellationToken);
+
+        private async Task WriteAsync(Stream stream, CancellationToken cancellationToken)
+        {
+            var split = Math.Max(1, bytes.Length / 2);
+            await stream.WriteAsync(bytes.AsMemory(0, split), cancellationToken);
+            completed();
+            await stream.WriteAsync(bytes.AsMemory(split), cancellationToken);
         }
     }
 }

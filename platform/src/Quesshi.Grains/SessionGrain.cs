@@ -78,7 +78,7 @@ public sealed class SessionGrain(
             long version;
             try
             {
-                version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, current);
+                version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, current);
             }
             catch (StaleActivationException) { throw; }
             catch (Exception exception) when (IsUnknownCommit(exception)) { throw; }

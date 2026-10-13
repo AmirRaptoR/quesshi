@@ -7,6 +7,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Plugin.Api;
+using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
 
@@ -79,33 +80,156 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(1, StateOf(committed)!.Session.Version);
     }
 
-    private static SessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null)
+    [Fact]
+    public async Task Stale_and_unknown_commit_outcomes_discard_the_cached_snapshot()
     {
-        var grain = new SessionGrain(new SnapshotLoader(), new SessionStateStore(database ?? new ThrowingDatabase()),
-            new FormatRegistry([format]), null!, new TestClock(now), renderer ?? new Renderer(), deadlines,
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var stale = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now, database: new FailingDatabase(new StaleActivationException()));
+
+        var staleResult = await stale.ExecuteAsync(Command(now));
+
+        Assert.Equal("stale_activation", staleResult.Code);
+        Assert.True(staleResult.Retryable);
+        Assert.Null(StateOf(stale));
+
+        var unknown = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now,
+            database: new FailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost"))));
+
+        var unknownResult = await unknown.ExecuteAsync(Command(now));
+
+        Assert.Equal("retryable", unknownResult.Code);
+        Assert.True(unknownResult.Retryable);
+        Assert.Null(StateOf(unknown));
+    }
+
+    [Fact]
+    public async Task Missing_sessions_are_not_cached_and_can_be_loaded_after_insertion()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var loader = new ToggleSnapshotLoader();
+        var grain = CreateGrain(loader, new RecordingFormat(), new RecordingDeadlines(), now);
+
+        Assert.Equal("not_found", (await grain.ExecuteAsync(Command(now))).Code);
+        Assert.Null(StateOf(grain));
+
+        loader.State = State();
+        var found = await grain.ExecuteAsync(Command(now));
+
+        Assert.Equal("ok", found.Code);
+        Assert.NotNull(StateOf(grain));
+        Assert.Equal(2, loader.LoadCount);
+    }
+
+    [Fact]
+    public async Task Stale_positions_and_repeated_personal_nexts_do_not_write_again()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var sharedStore = new SavingDatabase();
+        var stale = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now, database: sharedStore);
+
+        var staleResult = await stale.ExecuteAsync(Command(now, slot: 1));
+
+        Assert.Equal("stale_position", staleResult.Code);
+        Assert.Equal(0, sharedStore.CallCount);
+
+        var personalStore = new SavingDatabase();
+        var personal = CreateGrain(State(), new AdvancingFormat(), new RecordingDeadlines(), now, database: personalStore);
+        var first = await personal.ExecuteAsync(Command(now, type: "next"));
+        var repeated = await personal.ExecuteAsync(Command(now, type: "next"));
+
+        Assert.Equal("ok", first.Code);
+        Assert.Equal("stale_position", repeated.Code);
+        Assert.Equal(1, personalStore.CallCount);
+    }
+
+    [Fact]
+    public async Task Answer_grading_honours_grace_boundaries_and_caps_taken_time()
+    {
+        var opened = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var due = opened.AddSeconds(10);
+        var atBoundary = due.AddMilliseconds(5);
+        var saving = new SavingDatabase();
+        var accepted = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), atBoundary,
+            database: saving, kinds: new KindRegistry([new EchoKind()]));
+
+        var result = await accepted.ExecuteAsync(Command(atBoundary, payload: "{\"value\":\"a\"}"));
+
+        Assert.Equal("ok", result.Code);
+        var answer = Assert.Single(StateOf(accepted)!.Answers).Value;
+        Assert.Equal(TimeSpan.FromSeconds(10), answer.Taken);
+        Assert.Equal(1, saving.CallCount);
+
+        var duplicate = await accepted.ExecuteAsync(Command(atBoundary, payload: "{\"value\":\"a\"}"));
+
+        Assert.Equal("invalid_command", duplicate.Code);
+        Assert.Equal(1, saving.CallCount);
+
+        var late = CreateGrain(State(dueAt: due, startedAt: opened), new AnsweringFormat(TimeSpan.FromMilliseconds(5)), new RecordingDeadlines(), atBoundary.AddMilliseconds(1),
+            database: new SavingDatabase(), kinds: new KindRegistry([new EchoKind()]));
+        var lateResult = await late.ExecuteAsync(Command(atBoundary, payload: "{\"value\":\"a\"}"));
+
+        Assert.Equal("late_answer", lateResult.Code);
+        Assert.Empty(StateOf(late)!.Answers);
+    }
+
+    [Fact]
+    public async Task Revisions_replace_in_place_and_retries_or_conflicts_do_not_write()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var saving = new SavingDatabase();
+        var grain = CreateGrain(State(), new RevisionFormat(), new RecordingDeadlines(), now, database: saving,
+            kinds: new KindRegistry([new EchoKind()]));
+
+        Assert.Equal("ok", (await grain.ExecuteAsync(Command(now, payload: "{\"value\":\"first\"}", revision: 1))).Code);
+        Assert.Equal("ok", (await grain.ExecuteAsync(Command(now, payload: "{\"value\":\"first\"}", revision: 1))).Code);
+        Assert.Equal("revision_conflict", (await grain.ExecuteAsync(Command(now, payload: "{\"value\":\"different\"}", revision: 1))).Code);
+        Assert.Equal("ok", (await grain.ExecuteAsync(Command(now, payload: "{\"value\":\"ignored\"}", revision: 0))).Code);
+        Assert.Equal("ok", (await grain.ExecuteAsync(Command(now, payload: "{\"value\":\"second\"}", revision: 2))).Code);
+
+        var answer = Assert.Single(StateOf(grain)!.Answers).Value;
+        Assert.Equal(2, answer.Revision);
+        Assert.Equal("second", answer.Stored?.GetProperty("value").GetString());
+        Assert.Equal(2, saving.CallCount);
+    }
+
+    private static SessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null) =>
+        CreateGrain(new FixedSnapshotLoader(state), format, deadlines, now, database, renderer, kinds, state);
+
+    private static SessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
+    {
+        var grain = new SessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
+            new FormatRegistry([format]), kinds ?? new KindRegistry([]), new TestClock(now), renderer ?? new Renderer(), deadlines,
             NullLogger<SessionGrain>.Instance);
-        typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(grain, state);
+        if (initialState is not null) typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(grain, initialState);
         return grain;
     }
 
-    private static SessionState State(bool ended = false, DateTimeOffset? retryAt = null, DateTimeOffset? dueAt = null)
+    private static SessionState State(bool ended = false, DateTimeOffset? retryAt = null, DateTimeOffset? dueAt = null, DateTimeOffset? startedAt = null)
     {
         var position = new Position(0, 0);
-        var session = new SessionRow("session", null, dueAt, position, ended, Format: "recording", Version: 3, RetryAt: retryAt);
+        var session = new SessionRow("session", null, dueAt, position, ended, Format: "recording", Version: 3, RetryAt: retryAt, PositionStartedAt: startedAt);
         var item = SessionItemState.Create(new SessionItem(0, "kind", 1, null, null), Json("{}"), Json("{}"), Json("{}"), Json("{}"));
         return SessionState.Create(session, Json("{}"), [new Seat(Player, "player", position)], [item]);
     }
 
-    private static SessionCommand Command(DateTimeOffset received, string type = "answer") =>
-        new(Player, type, "0", 0, 0, null, null, "{}", received);
+    private static SessionCommand Command(DateTimeOffset received, string type = "answer", int slot = 0, string payload = "{}", int? revision = null) =>
+        new(Player, type, "0", slot, 0, revision, null, payload, received);
 
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
 
     private static SessionState? StateOf(SessionGrain grain) => (SessionState?)typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(grain);
 
-    private sealed class SnapshotLoader : ISessionSnapshotLoader
+    private sealed class FixedSnapshotLoader(SessionState state) : ISessionSnapshotLoader
     {
-        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult<SessionState?>(null);
+        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult<SessionState?>(state);
+        public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
+    }
+
+    private sealed class ToggleSnapshotLoader : ISessionSnapshotLoader
+    {
+        public SessionState? State { get; set; }
+        public int LoadCount { get; private set; }
+        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) { LoadCount++; return Task.FromResult(State); }
         public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
     }
 
@@ -121,7 +245,9 @@ public sealed class SessionGrainBehaviorTests
 
     private sealed class SavingDatabase : ITenantDb
     {
-        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false) => callback(new SavingTransaction());
+        public int CallCount { get; private set; }
+        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false) => Run(callback);
+        private async Task<T> Run<T>(Func<ITenantTx, Task<T>> callback) { CallCount++; return await callback(new SavingTransaction()); }
     }
 
     private sealed class SavingTransaction : ITenantTx
@@ -157,7 +283,7 @@ public sealed class SessionGrainBehaviorTests
         public int ApplyCount { get; private set; }
         public Exception? Rejection { get; init; }
         public string Id => "recording";
-        public FormatSpec Spec { get; } = new(Pacing.Shared, 1, 2, false, false, _ => true, false, null, false, [], TimeSpan.Zero, new Dictionary<string, Type>());
+        public virtual FormatSpec Spec { get; } = new(Pacing.Shared, 1, 2, false, false, _ => true, false, null, false, [], TimeSpan.Zero, new Dictionary<string, Type>());
         public FormatVersions Versions { get; } = new(1, 1, 1);
         public virtual void Apply(ISession session, Command command) { ApplyCount++; if (Rejection is not null) throw Rejection; }
         public object View(IViewing viewing) => new { };
@@ -177,5 +303,51 @@ public sealed class SessionGrainBehaviorTests
             base.Apply(session, command);
             session.State = Json("{\"changed\":true}");
         }
+    }
+
+    private sealed class AdvancingFormat : RecordingFormat
+    {
+        public override FormatSpec Spec { get; } = new(Pacing.Personal, 1, 2, false, false, _ => true, false, null, false, [], TimeSpan.Zero, new Dictionary<string, Type>());
+        public override void Apply(ISession session, Command command) { base.Apply(session, command); session.SetSeatPosition(command.Player, 0, command.At.Slot + 1); }
+    }
+
+    private sealed class AnsweringFormat(TimeSpan grace) : RecordingFormat
+    {
+        public override FormatSpec Spec { get; } = new(Pacing.Shared, 1, 2, false, false, _ => true, false, null, false, [], grace, new Dictionary<string, Type>());
+        public override void Apply(ISession session, Command command) { base.Apply(session, command); session.Record(session.Grade(command), 1); }
+    }
+
+    private sealed class RevisionFormat : RecordingFormat
+    {
+        public override void Apply(ISession session, Command command)
+        {
+            base.Apply(session, command);
+            var prior = session.Answer(command.Player, command.At.Slot);
+            if (prior is not null && command.Revision < prior.Revision) return;
+            var graded = session.Grade(command);
+            if (prior is null) { session.Record(graded, 0); return; }
+            if (command.Revision == prior.Revision)
+            {
+                if (JsonElement.DeepEquals(prior.Value, graded.Stored)) return;
+                throw new SessionCommandException("revision_conflict");
+            }
+            session.Replace(graded, command.Revision);
+        }
+    }
+
+    private sealed class EchoKind : IKindRuntime
+    {
+        public string Id => "kind";
+        public int Version => 1;
+        public string Family => "test";
+        public bool Gradable => true;
+        public JsonElement Upgrade(int from, JsonElement payload) => payload;
+        public JsonElement UpgradeSnapshot(int from, JsonElement snapshot) => snapshot;
+        public IReadOnlyList<Problem> Validate(JsonElement payload, ValidateEnv env) => [];
+        public JsonElement Resolve(JsonElement payload, ResolveContext context) => payload;
+        public JsonElement Card(JsonElement payload, JsonElement resolved) => payload;
+        public JsonElement Reveal(JsonElement payload, JsonElement resolved) => resolved;
+        public JsonElement? Normalize(JsonElement payload, JsonElement resolved, JsonElement? answer) => answer?.Clone();
+        public Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored) => Grade.Of(1);
     }
 }

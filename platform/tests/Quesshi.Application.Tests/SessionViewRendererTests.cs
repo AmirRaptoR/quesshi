@@ -11,16 +11,22 @@ public sealed class SessionViewRendererTests
     {
         var state = SessionState.Create(
             new SessionRow("session", null, null, new Position(0, 0), Version: 7), Json("{}"),
-            [new Seat("alice", "player"), new Seat("bob", "player")],
+            [new Seat("alice", "player"), new Seat("bob", "player", ReleasedSlot: 0)],
             [SessionItemState.Create(new SessionItem(0, "kind", 1, null, null), Json("{}"), Json("{}"), Json("{\"card\":true}"), Json("{\"secret\":true}"))])
             with
         { Answers = new Dictionary<AnswerKey, AnswerRecord> { [new("bob", 0)] = new(Json("{\"secret\":\"bob-answer\"}"), false, 0, 0, TimeSpan.Zero, DateTimeOffset.UnixEpoch) } };
 
-        var view = new ViewRenderer().Render(state, new ProbeFormat(), "alice");
+        var renderer = new ViewRenderer();
+        var view = renderer.Render(state, new ProbeFormat(), "alice");
+        var bobView = renderer.Render(state, new ProbeFormat(), "bob");
 
         Assert.Equal(7, view.Version);
+        Assert.Equal(view.Version, bobView.Version);
         Assert.DoesNotContain("bob-answer", view.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", view.Json, StringComparison.Ordinal);
         Assert.Contains("card", view.Json, StringComparison.Ordinal);
+        Assert.Contains("bob-answer", bobView.Json, StringComparison.Ordinal);
+        Assert.Contains("secret", bobView.Json, StringComparison.Ordinal);
     }
 
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
