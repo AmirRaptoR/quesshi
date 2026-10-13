@@ -14,7 +14,8 @@ public interface ITenantDb
         Guid tenantId,
         Func<ITenantTx, Task<T>> callback,
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool readOnly = false);
 }
 
 /// <summary>Database operations bound to the tenant transaction supplied by <see cref="ITenantDb" />.</summary>

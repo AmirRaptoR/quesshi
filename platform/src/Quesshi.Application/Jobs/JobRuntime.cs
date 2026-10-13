@@ -148,14 +148,15 @@ internal sealed class JobWorker(IJobStore jobs, JobHandlerRegistry handlers, ITe
             Guid requestedTenantId,
             Func<ITenantTx, Task<T>> callback,
             IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool readOnly = false)
         {
             if (requestedTenantId != tenantId)
             {
                 throw new InvalidOperationException("A job handler can only access its job tenant.");
             }
 
-            return inner.InTenantAsync(tenantId, callback, isolationLevel, cancellationToken);
+            return inner.InTenantAsync(tenantId, callback, isolationLevel, cancellationToken, readOnly);
         }
     }
 }

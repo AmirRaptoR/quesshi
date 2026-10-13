@@ -5,8 +5,13 @@
     <ProjectReference Include="../Quesshi.Infrastructure/Quesshi.Infrastructure.csproj" />
     <ProjectReference Include="../Quesshi.Grains/Quesshi.Grains.csproj" />
     <ProjectReference Include="../Quesshi.Grains.Abstractions/Quesshi.Grains.Abstractions.csproj" />
+    <ProjectReference Include="../Quesshi.Formats/Quesshi.Formats.csproj" />
+    <ProjectReference Include="../Quesshi.Kinds/Quesshi.Kinds.csproj" />
     <ProjectReference Include="../Quesshi.Web/Quesshi.Web.csproj" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(QuesshiTestIdentity)' == 'true'">
+    <DefineConstants>$(DefineConstants);QUESSHI_TEST_IDENTITY</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Orleans.Clustering.AdoNet" Version="10.2.2" />
     <PackageReference Include="Microsoft.Orleans.Server" Version="10.2.2" />

@@ -14,6 +14,12 @@ using Npgsql;
 using Orleans.Configuration;
 using Orleans.Hosting;
 using Quesshi.Engine.Contracts;
+using Quesshi.Application.Sessions;
+using Quesshi.Formats;
+using Quesshi.Kinds.PollChoice;
+using Quesshi.Kinds.PollRoster;
+using Quesshi.Server.Sessions;
+using Quesshi.Shared;
 using Quesshi.Infrastructure.Clock;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -45,12 +51,12 @@ public static class Program
                 case ["tenant", "add", .. var tenantArgs]:
                     await (tenantAdd ?? (async values => _ = await AddTenantAsync(values)))(tenantArgs);
                     return 0;
-            case []:
-            case ["serve"]:
-                await (serve ?? (() => ServeAsync(args)))();
-                return 0;
-            default:
-                throw new CommandException("Expected 'serve', 'migrate', 'sync', or 'tenant add'.");
+                case []:
+                case ["serve"]:
+                    await (serve ?? (() => ServeAsync(args)))();
+                    return 0;
+                default:
+                    throw new CommandException("Expected 'serve', 'migrate', 'sync', or 'tenant add'.");
             }
         }
         catch (CommandException exception)
@@ -133,6 +139,12 @@ public static class Program
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+        builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
+        builder.Services.AddSingleton<SessionStateStore>();
+        builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
+        builder.Services.AddSingleton<ISessionDeadlineReconciler, NoopSessionDeadlineReconciler>();
+        builder.Services.AddSingleton<IFormatRegistry>(_ => PlatformFormats.CreateRegistry());
+        builder.Services.AddSingleton<IKindRegistry>(_ => new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(_ => FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly)));
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Capabilities);
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Jobs);
@@ -176,6 +188,7 @@ public static class Program
             return report.IsHealthy ? Results.Ok(report) : Results.Json(report, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
         app.MapTenantResources();
+        app.MapSessionCommands();
         app.UseWhen(context => !context.Request.Path.StartsWithSegments("/health"), tenant => tenant.UseTenantResolution());
         app.UseStaticFiles(new StaticFileOptions
         {

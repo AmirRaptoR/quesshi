@@ -17,7 +17,8 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         Guid tenantId,
         Func<ITenantTx, Task<T>> callback,
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool readOnly = false)
     {
         ArgumentNullException.ThrowIfNull(callback);
 
@@ -25,7 +26,7 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         {
             try
             {
-                return await RunAttemptAsync(tenantId, callback, isolationLevel, cancellationToken);
+                return await RunAttemptAsync(tenantId, callback, isolationLevel, cancellationToken, readOnly);
             }
             catch (PostgresException exception) when (IsTransient(exception) && attempt < MaximumAttempts)
             {
@@ -34,13 +35,17 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         }
     }
 
-    private async Task<T> RunAttemptAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel, CancellationToken cancellationToken)
+    private async Task<T> RunAttemptAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel, CancellationToken cancellationToken, bool readOnly)
     {
         await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken);
         var tenantTransaction = new TenantTransaction(connection, transaction, tenantId, _inboxBumpSink);
         try
         {
+            if (readOnly)
+            {
+                await connection.ExecuteAsync(new CommandDefinition("set transaction read only", transaction: transaction, cancellationToken: cancellationToken));
+            }
             await connection.ExecuteAsync(new CommandDefinition(
                 "select set_config('app.tenant_id', @tenantId, true)",
                 new { tenantId = tenantId.ToString() },

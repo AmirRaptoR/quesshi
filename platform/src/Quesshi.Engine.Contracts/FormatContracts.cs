@@ -96,7 +96,11 @@ public sealed record SessionRow(
     EndReason? EndReason = null,
     JsonElement? Result = null,
     DateTimeOffset? PositionStartedAt = null,
-    DateTimeOffset CreatedAt = default);
+    DateTimeOffset CreatedAt = default,
+    string? Format = null,
+    long Version = 0,
+    DateTimeOffset? RetryAt = null,
+    string Status = "running");
 
 public sealed record Seat(
     string Player,
@@ -123,7 +127,8 @@ public sealed record AnswerRecord(
     TimeSpan Taken,
     DateTimeOffset Received,
     bool Miss = false,
-    int Revision = 0);
+    int Revision = 0,
+    string? Hash = null);
 
 public sealed record Graded(
     Command Command,
