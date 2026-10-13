@@ -1,0 +1,68 @@
+# This stack has its own project, container names, volume names, and host ports. It can therefore
+# run beside today's production Compose stack without sharing data or a public listener.
+name: ${PLATFORM_COMPOSE_PROJECT:-quesshi-platform-staging}
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quesshi_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - quesshi-platform-staging-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+
+  app:
+    build:
+      context: ../..
+      dockerfile: platform/Dockerfile
+    image: quesshi-platform:${RELEASE_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-5011}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-quesshi_platform}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
+      DB_SYSTEM_PASSWORD: ${DB_SYSTEM_PASSWORD:?DB_SYSTEM_PASSWORD is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      Smtp__Host: ${SMTP_HOST:-mailpit}
+      Smtp__Port: ${SMTP_PORT:-1025}
+      Smtp__UseTls: ${SMTP_TLS:-false}
+      MEDIA_DIR: /app/wwwroot/media
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?TRUSTED_PROXIES is required}
+    volumes:
+      - quesshi-platform-staging-media:/app/wwwroot/media
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080${APP_HEALTH_PATH:-/health} >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+
+  mailpit:
+    image: axllent/mailpit:v1.28
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_BIND:-127.0.0.1}:${MAILPIT_UI_PORT:-8026}:8025"
+      - "${MAILPIT_BIND:-127.0.0.1}:${MAILPIT_SMTP_PORT:-1026}:1025"
+
+volumes:
+  quesshi-platform-staging-postgres:
+    name: ${POSTGRES_VOLUME:-quesshi-platform-staging-postgres}
+  quesshi-platform-staging-media:
+    name: ${MEDIA_VOLUME:-quesshi-platform-staging-media}
