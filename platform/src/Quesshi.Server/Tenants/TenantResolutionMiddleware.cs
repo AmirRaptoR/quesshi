@@ -67,7 +67,7 @@ public static class TenantResolutionApplicationBuilderExtensions
         services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
-            options.KnownNetworks.Clear();
+            options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
             foreach (var proxy in TenantResolutionMiddleware.TrustedProxiesFromEnvironment()) options.KnownProxies.Add(proxy);
         });
