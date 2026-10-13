@@ -177,10 +177,14 @@ public sealed class AsyncDuelFormat : IFormat
             places[index] == 1 ? tiedFirst ? "draw" : "win" : "loss")).ToArray();
     }
 
-    private static JsonElement SeatResult(ISession session, Seat seat, bool forfeited) => Json(new AsyncDuelSeatResult(
-        session.Answers(seat.Player).Count,
-        RunBegan: seat.Position is not null || session.Answers(seat.Player).Count > 0,
-        Forfeited: forfeited));
+    private static JsonElement SeatResult(ISession session, Seat seat, bool forfeited)
+    {
+        var answers = session.Answers(seat.Player);
+        return Json(new AsyncDuelSeatResult(
+            answers.Count(answer => !answer.Miss),
+            RunBegan: seat.Position is not null || answers.Count > 0,
+            Forfeited: forfeited));
+    }
 
     private static JsonElement Result(IReadOnlyList<Standing> standings) => Json(new AsyncDuelResult(standings));
 

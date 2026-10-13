@@ -146,6 +146,35 @@ public sealed class FormatContractTests
     }
 
     [Fact]
+    public void Eliminating_a_seat_records_its_terminal_status()
+    {
+        var session = Harness(State(players: 1, slots: 1));
+
+        session.Eliminate("a", "out");
+
+        var seat = Assert.Single(session.Seats);
+        Assert.True(seat.Eliminated);
+        Assert.Equal(SeatStatus.Eliminated, seat.Status);
+    }
+
+    [Fact]
+    public void Ending_a_session_marks_active_seats_done_and_preserves_terminal_statuses()
+    {
+        var session = Harness(State(players: 3, slots: 1));
+        session.Eliminate("b", "out");
+        session.SetSeatResult("c", SeatStatus.Left, Json("{\"forfeited\":true}"));
+
+        session.End(EndReason.Completed, [
+            new Standing("a", 1, "win"),
+            new Standing("b", 2, "loss"),
+            new Standing("c", 3, "loss")], Json("{}"));
+
+        Assert.Equal(SeatStatus.Done, session.Seats.Single(seat => seat.Player == "a").Status);
+        Assert.Equal(SeatStatus.Eliminated, session.Seats.Single(seat => seat.Player == "b").Status);
+        Assert.Equal(SeatStatus.Left, session.Seats.Single(seat => seat.Player == "c").Status);
+    }
+
+    [Fact]
     public void Echo_completes_a_three_player_two_slot_session()
     {
         var session = Harness(State(players: 3, slots: 2));

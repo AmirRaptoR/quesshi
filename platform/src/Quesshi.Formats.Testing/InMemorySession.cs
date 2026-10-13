@@ -152,7 +152,7 @@ public sealed class InMemorySession : ISession, IViewing
     public void Eliminate(string player, string why)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(why);
-        var seat = SeatFor(player) with { Eliminated = true };
+        var seat = SeatFor(player) with { Eliminated = true, Status = SeatStatus.Eliminated };
         var seats = Copy(CurrentState.Seats);
         seats[player] = seat;
         Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);
@@ -184,7 +184,15 @@ public sealed class InMemorySession : ISession, IViewing
             throw new InvalidOperationException("Standings must cover every player seat.");
         var seats = Copy(CurrentState.Seats);
         foreach (var standing in standings)
-            seats[standing.Player] = seats[standing.Player] with { Place = standing.Place, Outcome = standing.Outcome };
+        {
+            var seat = seats[standing.Player];
+            seats[standing.Player] = seat with
+            {
+                Place = standing.Place,
+                Outcome = standing.Outcome,
+                Status = seat.Status == SeatStatus.Active ? SeatStatus.Done : seat.Status,
+            };
+        }
         var row = Session with { Ended = true, EndReason = reason, Result = result.Clone(), DueAt = null };
         Transition(
             CurrentState with

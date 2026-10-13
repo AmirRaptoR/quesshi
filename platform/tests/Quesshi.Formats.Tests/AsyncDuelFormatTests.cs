@@ -220,6 +220,41 @@ public sealed class AsyncDuelFormatTests
         Assert.Equal(["draw", "draw", "loss"], session.Seats.Select(seat => seat.Outcome));
     }
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(20)]
+    [InlineData(100)]
+    public void A_run_finishes_after_every_supported_question_count(int count)
+    {
+        var session = Harness(State(["a"], slots: count));
+        var format = Started(session);
+
+        for (var slot = 0; slot < count; slot++)
+        {
+            format.Apply(session, Next("a", Math.Max(0, slot - 1)));
+            format.Apply(session, Answer("a", slot, Created));
+        }
+        format.Apply(session, Next("a", count - 1));
+
+        Assert.Equal(SeatStatus.Done, Seat(session, "a").Status);
+        Assert.Equal(count, session.Answers("a").Count);
+    }
+
+    [Fact]
+    public void A_completed_session_cannot_be_forfeited()
+    {
+        var session = Harness(State(["a", "b"], slots: 1));
+        var format = Started(session);
+        PlayAndFinish(format, session, "a", 1, Created);
+        PlayAndFinish(format, session, "b", 1, Created);
+        var result = session.Session.Result;
+
+        format.Timeout(session);
+
+        Assert.Equal(EndReason.Completed, session.Session.EndReason);
+        Assert.Equal(result, session.Session.Result);
+    }
+
     [Fact]
     public void Forfeit_is_anchored_to_creation_and_keeps_finished_runs_while_marking_unfinished_seats_left()
     {
@@ -266,6 +301,43 @@ public sealed class AsyncDuelFormatTests
         Assert.True(SeatResult(session, "a").GetProperty("runBegan").GetBoolean());
         Assert.False(SeatResult(session, "b").GetProperty("runBegan").GetBoolean());
         Assert.All(session.Seats, seat => Assert.Equal(SeatStatus.Left, seat.Status));
+    }
+
+    [Fact]
+    public void A_forfeit_does_not_count_an_expired_slot_as_answered()
+    {
+        var session = Harness(State(["a", "b"], slots: 1));
+        var format = Started(session);
+        format.Apply(session, Next("a"));
+        format.Apply(session, Next("a", received: Created + MatchRules.QuestionTime + MatchRules.NetworkGrace + TimeSpan.FromMilliseconds(1)));
+
+        format.Timeout(session);
+
+        Assert.True(session.Answers("a").Single().Miss);
+        Assert.Equal(0, SeatResult(session, "a").GetProperty("answered").GetInt32());
+        Assert.True(SeatResult(session, "a").GetProperty("runBegan").GetBoolean());
+    }
+
+    [Fact]
+    public void A_forfeit_ranks_an_unfinished_run_by_its_banked_score()
+    {
+        var session = Harness(State(["a", "b", "c"], slots: 2));
+        var format = Started(session);
+        format.Apply(session, Next("a"));
+        format.Apply(session, Answer("a", 0, Created));
+        format.Apply(session, Next("a", 0));
+        format.Apply(session, Answer("a", 1, Created));
+        format.Apply(session, Next("a", 1));
+        format.Apply(session, Next("b"));
+        format.Apply(session, Answer("b", 0, Created));
+
+        format.Timeout(session);
+
+        Assert.Equal([1, 2, 3], session.Seats.Select(seat => seat.Place));
+        Assert.Equal(SeatStatus.Left, Seat(session, "b").Status);
+        Assert.Equal(1, SeatResult(session, "b").GetProperty("answered").GetInt32());
+        Assert.True(Seat(session, "a").Score > Seat(session, "b").Score);
+        Assert.True(Seat(session, "b").Score > Seat(session, "c").Score);
     }
 
     private static AsyncDuelFormat Started(InMemorySession session)
