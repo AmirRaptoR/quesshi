@@ -10,7 +10,7 @@ public sealed record SessionState(
     JsonElement FormatState,
     IReadOnlyDictionary<string, Seat> Seats,
     IReadOnlyDictionary<int, SessionItemState> Items,
-    IReadOnlyDictionary<AnswerKey, AnswerState> Answers)
+    IReadOnlyDictionary<AnswerKey, AnswerRecord> Answers)
 {
     public static SessionState Create(
         SessionRow session,
@@ -21,7 +21,7 @@ public sealed record SessionState(
             formatState.Clone(),
             ReadOnly(seats.ToDictionary(seat => seat.Player, StringComparer.Ordinal)),
             ReadOnly(items.ToDictionary(item => item.Metadata.Slot)),
-            ReadOnly(new Dictionary<AnswerKey, AnswerState>()));
+            ReadOnly(new Dictionary<AnswerKey, AnswerRecord>()));
 
     internal static IReadOnlyDictionary<TKey, TValue> ReadOnly<TKey, TValue>(Dictionary<TKey, TValue> values) where TKey : notnull =>
         new ReadOnlyDictionary<TKey, TValue>(values);
@@ -44,13 +44,3 @@ public sealed record SessionItemState(
 }
 
 public sealed record AnswerKey(string Player, int Slot);
-
-public sealed record AnswerState(
-    JsonElement? Stored,
-    bool IsGraded,
-    double Credit,
-    int Points,
-    TimeSpan Taken,
-    DateTimeOffset Received,
-    bool Miss = false,
-    int Revision = 0);

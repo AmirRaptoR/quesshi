@@ -6,6 +6,7 @@ namespace Quesshi.Engine.Contracts;
 public enum Pacing { Shared, Personal }
 public enum CommandType { Answer, Next, Leave, Action }
 public enum EndReason { Completed, Forfeit, NoContest }
+public enum SeatStatus { Active, Done, Left, Eliminated }
 
 public sealed record Role(string Id, bool Plays = true);
 public sealed record MatchRule(IReadOnlyList<string> Settings, bool RequireOnline);
@@ -94,7 +95,8 @@ public sealed record SessionRow(
     bool Ended = false,
     EndReason? EndReason = null,
     JsonElement? Result = null,
-    DateTimeOffset? PositionStartedAt = null);
+    DateTimeOffset? PositionStartedAt = null,
+    DateTimeOffset CreatedAt = default);
 
 public sealed record Seat(
     string Player,
@@ -105,10 +107,23 @@ public sealed record Seat(
     int? ReleasedSlot = null,
     DateTimeOffset? PositionStartedAt = null,
     int? Place = null,
-    string? Outcome = null);
+    string? Outcome = null,
+    SeatStatus Status = SeatStatus.Active,
+    JsonElement? Result = null);
 
 /// <summary>Item metadata deliberately excludes question payload and resolved answer data.</summary>
 public sealed record SessionItem(int Slot, string Kind, int KindVersion, int? Level, string? Category);
+
+/// <summary>The authoritative answer or miss stored for one player's served slot.</summary>
+public sealed record AnswerRecord(
+    JsonElement? Stored,
+    bool IsGraded,
+    double Credit,
+    int Points,
+    TimeSpan Taken,
+    DateTimeOffset Received,
+    bool Miss = false,
+    int Revision = 0);
 
 public sealed record Graded(
     Command Command,
@@ -138,6 +153,8 @@ public interface ISession
     void SetDeadline(DateTimeOffset at);
     void ClearDeadline();
     void Eliminate(string player, string why);
+    void SetSeatResult(string player, SeatStatus status, JsonElement result);
+    IReadOnlyList<AnswerRecord> Answers(string player);
     void End(EndReason reason, IReadOnlyList<Standing> standings, JsonElement result);
 }
 
@@ -150,4 +167,5 @@ public interface IViewing
     string Viewer { get; }
     JsonElement Card(int slot);
     JsonElement? Reveal(int slot);
+    IReadOnlyList<AnswerRecord> Answers(string player);
 }

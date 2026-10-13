@@ -67,7 +67,7 @@ public sealed class InMemorySession : ISession, IViewing
             throw new InvalidOperationException("A gradable answer cannot be recorded after its reveal was released.");
         if (graded.Duplicate || CurrentState.Answers.ContainsKey(key))
             throw new InvalidOperationException("An answer is already recorded for this player and slot.");
-        var answer = new AnswerState(graded.Stored?.Clone(), graded.IsGraded, graded.Credit, points, graded.Taken, graded.Command.Received, Revision: graded.Command.Revision);
+        var answer = new AnswerRecord(graded.Stored?.Clone(), graded.IsGraded, graded.Credit, points, graded.Taken, graded.Command.Received, Revision: graded.Command.Revision);
         var answers = Copy(CurrentState.Answers);
         answers.Add(key, answer);
         var seats = Copy(CurrentState.Seats);
@@ -83,7 +83,7 @@ public sealed class InMemorySession : ISession, IViewing
         var key = new AnswerKey(graded.Command.Player, graded.Command.At.Slot);
         if (!CurrentState.Answers.TryGetValue(key, out var old) || revision <= old.Revision)
             throw new InvalidOperationException("Only a higher revision can replace a recorded answer.");
-        var replacement = new AnswerState(graded.Stored?.Clone(), graded.IsGraded, graded.Credit, old.Points, graded.Taken, graded.Command.Received, Revision: revision);
+        var replacement = new AnswerRecord(graded.Stored?.Clone(), graded.IsGraded, graded.Credit, old.Points, graded.Taken, graded.Command.Received, Revision: revision);
         var answers = Copy(CurrentState.Answers);
         answers[key] = replacement;
         Transition(CurrentState with { Answers = ReadOnly(answers) }, "session_answers", $"{key.Player}:{key.Slot}", replacement);
@@ -152,10 +152,28 @@ public sealed class InMemorySession : ISession, IViewing
     public void Eliminate(string player, string why)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(why);
-        var seat = SeatFor(player) with { Eliminated = true };
+        var seat = SeatFor(player) with { Eliminated = true, Status = SeatStatus.Eliminated };
         var seats = Copy(CurrentState.Seats);
         seats[player] = seat;
         Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);
+    }
+
+    public void SetSeatResult(string player, SeatStatus status, JsonElement result)
+    {
+        var seat = SeatFor(player) with { Status = status, Result = result.Clone() };
+        var seats = Copy(CurrentState.Seats);
+        seats[player] = seat;
+        Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);
+    }
+
+    /// <summary>Adds a player seat without changing the already-drawn session state.</summary>
+    public void AddSeat(Seat seat)
+    {
+        ArgumentNullException.ThrowIfNull(seat);
+        var seats = Copy(CurrentState.Seats);
+        if (!seats.TryAdd(seat.Player, seat))
+            throw new InvalidOperationException($"Player '{seat.Player}' is already seated.");
+        Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", seat.Player, seat);
     }
 
     public void End(EndReason reason, IReadOnlyList<Standing> standings, JsonElement result)
@@ -166,7 +184,15 @@ public sealed class InMemorySession : ISession, IViewing
             throw new InvalidOperationException("Standings must cover every player seat.");
         var seats = Copy(CurrentState.Seats);
         foreach (var standing in standings)
-            seats[standing.Player] = seats[standing.Player] with { Place = standing.Place, Outcome = standing.Outcome };
+        {
+            var seat = seats[standing.Player];
+            seats[standing.Player] = seat with
+            {
+                Place = standing.Place,
+                Outcome = standing.Outcome,
+                Status = seat.Status == SeatStatus.Active ? SeatStatus.Done : seat.Status,
+            };
+        }
         var row = Session with { Ended = true, EndReason = reason, Result = result.Clone(), DueAt = null };
         Transition(
             CurrentState with
@@ -190,10 +216,16 @@ public sealed class InMemorySession : ISession, IViewing
         return seat.ReleasedSlot >= slot ? Item(slot).Reveal.Clone() : null;
     }
 
+    public IReadOnlyList<AnswerRecord> Answers(string player) => CurrentState.Answers
+        .Where(pair => pair.Key.Player == player)
+        .OrderBy(pair => pair.Key.Slot)
+        .Select(pair => pair.Value)
+        .ToArray();
+
     private void RecordMiss(AnswerKey key)
     {
         if (CurrentState.Answers.ContainsKey(key)) return;
-        var answer = new AnswerState(null, false, 0, 0, TimeSpan.Zero, _clock.Now, Miss: true);
+        var answer = new AnswerRecord(null, false, 0, 0, TimeSpan.Zero, _clock.Now, Miss: true);
         var answers = Copy(CurrentState.Answers);
         answers.Add(key, answer);
         Transition(CurrentState with { Answers = ReadOnly(answers) }, "session_answers", $"{key.Player}:{key.Slot}", answer);
