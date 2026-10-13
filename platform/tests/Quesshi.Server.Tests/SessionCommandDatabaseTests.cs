@@ -3,6 +3,7 @@ using Npgsql;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Plugin.Api;
 using Quesshi.Server;
 using Quesshi.Testing;
 using Xunit.Sdk;
@@ -24,7 +25,8 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertPlayersAsync(owner, tenant, 500);
 
         await using var sources = Sources();
-        var loader = new SessionSnapshotLoader(new TenantDb(sources));
+        var database = new CountingTenantDatabase(new TenantDb(sources));
+        var loader = new SessionSnapshotLoader(database);
         Assert.Null(await loader.LoadAsync(tenant, session));
 
         await InsertRunningSessionAsync(owner, tenant, session, ownerId, 100);
@@ -32,12 +34,16 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertItemsAsync(owner, tenant, session, 100);
         await InsertAnswersAsync(owner, tenant, session, 500);
 
+        database.Reset();
         var snapshot = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
         Assert.Equal(500, snapshot.Seats.Count);
         Assert.Equal(100, snapshot.ItemCount);
         Assert.Equal([0], snapshot.Items.Keys);
         Assert.Equal(500, snapshot.Answers.Count);
         Assert.All(snapshot.Answers.Values, answer => Assert.NotNull(answer.Hash));
+        Assert.Equal(System.Data.IsolationLevel.RepeatableRead, database.IsolationLevel);
+        Assert.True(database.ReadOnly);
+        Assert.Equal(3, database.QueryCount);
 
         var next = Assert.Single(await loader.LoadItemsAsync(tenant, session, [1]));
         Assert.Equal(1, next.Metadata.Slot);
@@ -66,7 +72,12 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await using var listener = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
         await listener.OpenAsync();
         var notification = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        listener.Notification += (_, args) => notification.TrySetResult(args.Payload);
+        var notificationCount = 0;
+        listener.Notification += (_, args) =>
+        {
+            notificationCount++;
+            notification.TrySetResult(args.Payload);
+        };
         await ExecuteAsync(listener, "listen quesshi_session");
         var wait = listener.WaitAsync(CancellationToken.None);
 
@@ -75,6 +86,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1, writes.Count(version => version == -1));
         await wait.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal($"{tenant}:{session}:1", await notification.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, notificationCount);
 
         var saved = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
         var answer = Assert.Single(saved.Answers);
@@ -86,8 +98,10 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         Assert.Equal(2, await store.SaveAsync(tenant, session, saved.Session.Version, revised));
         var rows = await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
         var revision = await ScalarAsync<int>(owner, "select revision from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
+        var storedAnswer = await ScalarAsync<string>(owner, "select answer ->> 'value' from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
         Assert.Equal(1, rows);
         Assert.Equal(2, revision);
+        Assert.Equal("second", storedAnswer);
     }
 
     private static async Task<long> TrySaveAsync(SessionStateStore store, Guid tenant, Guid session, SessionState state)
@@ -162,6 +176,44 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
             """, ("tenant", tenant), ("session", session), ("count", count));
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+    private sealed class CountingTenantDatabase(ITenantDb inner) : ITenantDb
+    {
+        public int QueryCount { get; private set; }
+        public System.Data.IsolationLevel? IsolationLevel { get; private set; }
+        public bool? ReadOnly { get; private set; }
+
+        public async Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false)
+        {
+            IsolationLevel = isolationLevel;
+            ReadOnly = readOnly;
+            return await inner.InTenantAsync(tenantId, transaction => callback(new CountingTenantTransaction(transaction, this)), isolationLevel, cancellationToken, readOnly);
+        }
+
+        public void Reset()
+        {
+            QueryCount = 0;
+            IsolationLevel = null;
+            ReadOnly = null;
+        }
+
+        private sealed class CountingTenantTransaction(ITenantTx inner, CountingTenantDatabase database) : ITenantTx
+        {
+            public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default)
+            {
+                database.QueryCount++;
+                return inner.QueryAsync<T>(sql, parameters, cancellationToken);
+            }
+
+            public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) => inner.ExecuteAsync(sql, parameters, cancellationToken);
+
+            public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default)
+            {
+                database.QueryCount++;
+                return inner.QuerySingleOrDefaultAsync<T>(sql, parameters, cancellationToken);
+            }
+        }
+    }
 
     private static Guid PlayerId(int number) => Guid.Parse($"00000000-0000-0000-0000-{number:D12}");
 
