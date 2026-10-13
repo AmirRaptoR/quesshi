@@ -16,7 +16,7 @@ public sealed class TenantConfigurationDatabaseTests(PostgresFixture fixture)
     };
     private static readonly IReadOnlySet<string> CatalogueGlobalTables = new HashSet<string>(GlobalTables, StringComparer.Ordinal)
     {
-        "jobs"
+        "accounts", "jobs"
     };
 
     [SkippableFact]
