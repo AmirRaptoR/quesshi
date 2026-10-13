@@ -34,6 +34,16 @@ public sealed class InMemorySession : ISession, IViewing
     }
     public IReadOnlyList<Seat> Seats => CurrentState.Seats.Values.OrderBy(seat => seat.Player, StringComparer.Ordinal).ToArray();
     public IReadOnlyList<SessionItem> Items => CurrentState.Items.Values.OrderBy(item => item.Metadata.Slot).Select(item => item.Metadata).ToArray();
+    public DateTimeOffset Now => _clock.Now;
+
+    public StoredAnswer? Answer(string player, int slot) => CurrentState.Answers.TryGetValue(new AnswerKey(player, slot), out var answer)
+        ? new StoredAnswer(answer.Stored?.Clone(), answer.Revision, answer.Miss)
+        : null;
+
+    StoredAnswer? IViewing.Answer(string player, int slot) =>
+        player == Viewer || Session.Ended ? Answer(player, slot) : null;
+
+    bool IViewing.HasAnswered(string player, int slot) => CurrentState.Answers.ContainsKey(new AnswerKey(player, slot));
 
     public Graded Grade(Command command)
     {
