@@ -94,15 +94,19 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
         await InsertAnswerAsync(app, TenantA, appSession, appPlayer, 0);
 
         Assert.Equal(0L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountB)));
-        await AssertSqlStateAsync(() => ExecuteAsync(app, "update players set account_id = @account where tenant_id = @tenant and id = @player", ("account", accountB), ("tenant", TenantA), ("player", appPlayer)), "42501");
-        await AssertSqlStateAsync(() => ExecuteAsync(app, "insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang) values (@tenant, @id, @account, 'unverified', 'seed', 'en')", ("tenant", TenantA), ("id", Guid.NewGuid()), ("account", accountB)), "42501");
-        Assert.Equal(0L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountB)));
+        await ExecuteAsync(app, "update players set account_id = @account where tenant_id = @tenant and id = @player", ("account", accountB), ("tenant", TenantA), ("player", appPlayer));
+        Assert.Equal(1L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountB)));
+        var accountC = Guid.NewGuid();
+        await ExecuteAsync(owner, "insert into accounts (id, email) values (@id, 'c@example.test')", ("id", accountC));
+        Assert.Equal(0L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountC)));
+        await ExecuteAsync(app, "insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang) values (@tenant, @id, @account, 'linked', 'seed', 'en')", ("tenant", TenantA), ("id", Guid.NewGuid()), ("account", accountC));
+        Assert.Equal(1L, await ScalarAsync<long>(app, "select count(*) from accounts where id = @id", ("id", accountC)));
         await AssertSqlStateAsync(() => InsertPlayerAsync(app, TenantB, Guid.NewGuid()), "42501");
         await AssertSqlStateAsync(() => InsertSessionAsync(app, TenantB, Guid.NewGuid(), OwnerB, "cross-tenant"), "42501");
         await AssertSqlStateAsync(() => InsertParticipantAsync(app, TenantB, sessionB, OwnerB, 1), "42501");
         await AssertSqlStateAsync(() => InsertItemAsync(app, TenantB, sessionB, 1), "42501");
         await AssertSqlStateAsync(() => InsertAnswerAsync(app, TenantB, sessionB, OwnerB, 0, 1), "42501");
-        Assert.Equal(1L, await ScalarAsync<long>(app, "select count(*) from accounts"));
+        Assert.Equal(3L, await ScalarAsync<long>(app, "select count(*) from accounts"));
         await AssertSqlStateAsync(() => ExecuteAsync(app, "insert into accounts (id, email) values (@id, 'forbidden@example.test')", ("id", Guid.NewGuid())), "42501");
         await AssertSqlStateAsync(() => ExecuteAsync(app, "update accounts set email = 'forbidden@example.test'"), "42501");
 
@@ -116,7 +120,7 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
         var systemAccount = Guid.NewGuid();
         await ExecuteAsync(system, "insert into accounts (id, email) values (@id, 'system@example.test')", ("id", systemAccount));
         await ExecuteAsync(system, "update accounts set email = 'updated-system@example.test' where id = @id", ("id", systemAccount));
-        Assert.Equal(3L, await ScalarAsync<long>(system, "select count(*) from accounts"));
+        Assert.Equal(4L, await ScalarAsync<long>(system, "select count(*) from accounts"));
         Assert.Equal("updated-system@example.test", await ScalarAsync<string>(system, "select email from accounts where id = @id", ("id", systemAccount)));
 
         await AssertSqlStateAsync(() => ExecuteAsync(owner, "insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang) values (@tenant, @id, @account, 'duplicate', 'seed', 'en')", ("tenant", TenantA), ("id", Guid.NewGuid()), ("account", accountA)), "23505");

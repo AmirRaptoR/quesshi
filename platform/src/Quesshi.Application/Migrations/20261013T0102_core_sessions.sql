@@ -144,13 +144,6 @@ select quesshi_tenant_table(t, 'core') from unnest(array[
   'players', 'sessions', 'session_participants', 'session_items', 'session_answers'
 ]::regclass[]) as t;
 
--- Account attachment is verified by the identity flow. Tenant applications may
--- create and maintain guest players, but cannot make the account policy true
--- merely by writing an arbitrary account id to one of those rows.
-revoke insert, update on players from quesshi_app;
-grant insert (tenant_id, id, display_name, avatar_seed, lang, banned_at, deleted_at, created_at, last_seen_at) on players to quesshi_app;
-grant update (tenant_id, id, display_name, avatar_seed, lang, banned_at, deleted_at, created_at, last_seen_at) on players to quesshi_app;
-
 revoke all on accounts from public, quesshi_app, quesshi_system;
 alter table accounts enable row level security;
 create policy members_only on accounts for select to quesshi_app
