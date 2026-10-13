@@ -8,5 +8,8 @@
     <EmbeddedResource Include="Migrations/Application/*.sql" LogicalName="Quesshi.Application.Migrations.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Migrations/Features/ai_generation/*.sql" LogicalName="Quesshi.Features.Features.ai_generation.Migrations.%(Filename)%(Extension)" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(QuesshiTestIdentity)' == 'true'">
+    <DefineConstants>$(DefineConstants);QUESSHI_TEST_IDENTITY</DefineConstants>
+  </PropertyGroup>
   <Import Project="../TestProject.props" />
 </Project>

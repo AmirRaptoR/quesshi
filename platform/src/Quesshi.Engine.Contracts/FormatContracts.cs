@@ -5,6 +5,12 @@ namespace Quesshi.Engine.Contracts;
 
 public enum Pacing { Shared, Personal }
 public enum CommandType { Answer, Next, Leave, Action }
+
+/// <summary>A format rejected a well-formed command with a stable client-visible code.</summary>
+public class SessionCommandException(string code) : InvalidOperationException(code)
+{
+    public string Code { get; } = code;
+}
 public enum EndReason { Completed, Forfeit, NoContest }
 public enum SeatStatus { Active, Done, Left, Eliminated }
 
@@ -96,7 +102,11 @@ public sealed record SessionRow(
     EndReason? EndReason = null,
     JsonElement? Result = null,
     DateTimeOffset? PositionStartedAt = null,
-    DateTimeOffset CreatedAt = default);
+    DateTimeOffset CreatedAt = default,
+    string? Format = null,
+    long Version = 0,
+    DateTimeOffset? RetryAt = null,
+    string Status = "running");
 
 public sealed record Seat(
     string Player,
@@ -123,7 +133,8 @@ public sealed record AnswerRecord(
     TimeSpan Taken,
     DateTimeOffset Received,
     bool Miss = false,
-    int Revision = 0);
+    int Revision = 0,
+    string? Hash = null);
 
 public sealed record Graded(
     Command Command,
@@ -143,6 +154,7 @@ public interface ISession
     JsonElement State { get; set; }
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
+    int ItemCount { get; }
     DateTimeOffset Now { get; }
     StoredAnswer? Answer(string player, int slot);
     JsonElement Card(int slot);
@@ -170,6 +182,7 @@ public interface IViewing
     JsonElement State { get; }
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
+    int ItemCount { get; }
     string Viewer { get; }
     /// <summary>The stored answer of the viewer, or of any player once the session has ended; otherwise null.</summary>
     StoredAnswer? Answer(string player, int slot);

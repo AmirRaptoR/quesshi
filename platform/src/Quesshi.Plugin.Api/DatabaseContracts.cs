@@ -14,8 +14,16 @@ public interface ITenantDb
         Guid tenantId,
         Func<ITenantTx, Task<T>> callback,
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool readOnly = false);
 }
+
+/// <summary>
+/// The connection failed while the database was deciding a commit outcome. Callers
+/// must reload durable state instead of assuming either rollback or success.
+/// </summary>
+public sealed class TenantCommitOutcomeUnknownException(Exception innerException)
+    : Exception("The tenant transaction commit outcome is unknown.", innerException);
 
 /// <summary>Database operations bound to the tenant transaction supplied by <see cref="ITenantDb" />.</summary>
 public interface ITenantTx

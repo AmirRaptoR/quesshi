@@ -3,6 +3,7 @@ using Dapper;
 using Npgsql;
 using NpgsqlTypes;
 using Quesshi.Plugin.Api;
+using System.Net.Sockets;
 
 namespace Quesshi.Infrastructure.Database;
 
@@ -17,7 +18,8 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         Guid tenantId,
         Func<ITenantTx, Task<T>> callback,
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool readOnly = false)
     {
         ArgumentNullException.ThrowIfNull(callback);
 
@@ -25,7 +27,7 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         {
             try
             {
-                return await RunAttemptAsync(tenantId, callback, isolationLevel, cancellationToken);
+                return await RunAttemptAsync(tenantId, callback, isolationLevel, cancellationToken, readOnly);
             }
             catch (PostgresException exception) when (IsTransient(exception) && attempt < MaximumAttempts)
             {
@@ -34,13 +36,18 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
         }
     }
 
-    private async Task<T> RunAttemptAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel, CancellationToken cancellationToken)
+    private async Task<T> RunAttemptAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel, CancellationToken cancellationToken, bool readOnly)
     {
         await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken);
         var tenantTransaction = new TenantTransaction(connection, transaction, tenantId, _inboxBumpSink);
+        var commitStarted = false;
         try
         {
+            if (readOnly)
+            {
+                await connection.ExecuteAsync(new CommandDefinition("set transaction read only", transaction: transaction, cancellationToken: cancellationToken));
+            }
             await connection.ExecuteAsync(new CommandDefinition(
                 "select set_config('app.tenant_id', @tenantId, true)",
                 new { tenantId = tenantId.ToString() },
@@ -48,10 +55,11 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
                 cancellationToken: cancellationToken));
             var result = await callback(tenantTransaction);
             await tenantTransaction.FlushInboxAsync(cancellationToken);
+            commitStarted = true;
             await transaction.CommitAsync(cancellationToken);
             return result;
         }
-        catch
+        catch (Exception exception)
         {
             try
             {
@@ -62,12 +70,17 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
                 // Npgsql disposes a transaction after some low-level write failures.
                 // Preserve the callback failure instead of hiding it behind rollback.
             }
+            if (commitStarted && IsCommitOutcomeUnknown(exception))
+                throw new TenantCommitOutcomeUnknownException(exception);
             throw;
         }
     }
 
     private static bool IsTransient(PostgresException exception) =>
         exception.SqlState is PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected;
+
+    private static bool IsCommitOutcomeUnknown(Exception exception) => exception is IOException or TimeoutException
+        || exception is NpgsqlException { InnerException: IOException or SocketException };
 }
 
 internal sealed class TenantTransaction(

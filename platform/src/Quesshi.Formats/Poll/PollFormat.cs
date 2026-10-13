@@ -144,7 +144,7 @@ public sealed class PollFormat : IFormat
         if (active.Any(seat => session.Answer(seat.Player, slot) is null)) return;
 
         var nextSlot = slot + 1;
-        if (nextSlot == session.Items.Count)
+        if (nextSlot == session.ItemCount)
         {
             End(session, EndReason.Completed, nextSlot);
             return;
@@ -203,10 +203,9 @@ public static class VotingRules
 }
 
 /// <summary>Signals the standard current-view response for conflicting equal revisions.</summary>
-public sealed class PollRevisionConflictException : InvalidOperationException
+public sealed class PollRevisionConflictException : SessionCommandException
 {
     public PollRevisionConflictException() : base("revision_conflict") { }
-    public string Code => "revision_conflict";
 }
 
 public sealed record PollRunningView(
