@@ -17,8 +17,8 @@ internal static class SessionCommandEndpoints
 
     public static IEndpointRouteBuilder MapSessionCommands(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/sessions/{id:guid}/commands", ExecuteAsync);
-        endpoints.MapGet("/api/sessions/{id:guid}/roster", RosterAsync);
+        endpoints.MapPost("/sessions/{id:guid}/commands", ExecuteAsync).AllowGuests();
+        endpoints.MapGet("/sessions/{id:guid}/roster", RosterAsync);
         return endpoints;
     }
 

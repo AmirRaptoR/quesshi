@@ -25,6 +25,7 @@ using Quesshi.Infrastructure.Clock;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.HttpOverrides;
 
 namespace Quesshi.Server;
 
@@ -207,6 +208,7 @@ public static class Program
         });
         app.MapTenantResources();
         app.MapRoutes();
+        app.UseForwardedHeaders();
         app.UseWhen(context => !context.Request.Path.StartsWithSegments("/health"), tenant => tenant.UseTenantResolution());
         app.UsePlayerSessionAuthentication();
         app.UseStaticFiles(new StaticFileOptions
