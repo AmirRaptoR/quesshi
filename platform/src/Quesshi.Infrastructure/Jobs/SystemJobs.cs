@@ -51,6 +51,6 @@ public sealed class SystemJobs : ISystemJobs
         CancellationToken cancellationToken)
     {
         JobArguments.Validate(owner, kind, payload);
-        await _database.ExecuteAsync(Enqueue, new { tenantId, owner, kind, payload = payload.GetRawText(), uniqueKey, runAt }, cancellationToken);
+        await _database.ExecuteAsync(Enqueue, new { tenantId, owner, kind, payload = payload.GetRawText(), uniqueKey, runAt = runAt?.ToUniversalTime() }, cancellationToken);
     }
 }

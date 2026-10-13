@@ -62,7 +62,8 @@ public sealed class JobsDatabaseTests(PostgresFixture fixture)
         ISystemJobs systemJobs = new SystemJobs(sources);
         using var document = JsonDocument.Parse("""{"message":"queued"}""");
         var payload = document.RootElement.Clone();
-        var runAt = new DateTimeOffset(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
+        var runAt = new DateTimeOffset(2026, 10, 13, 14, 0, 0, TimeSpan.FromHours(2));
+        var systemRunAt = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.FromHours(-3));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, async tx =>
         {
@@ -114,10 +115,12 @@ public sealed class JobsDatabaseTests(PostgresFixture fixture)
             Assert.Equal(2L, await JobCountAsync("tenant_id = @tenant and owner = 'plugin' and kind = 'finished' and unique_key = @key", ("tenant", TenantA), ("key", status)));
         }
 
-        await systemJobs.EnqueueForTenantAsync(TenantB, "core", "tenant-system", payload, "system-tenant");
-        await systemJobs.EnqueueGlobalAsync("core", "global-system", payload, "system-global");
+        await systemJobs.EnqueueForTenantAsync(TenantB, "core", "tenant-system", payload, "system-tenant", systemRunAt);
+        await systemJobs.EnqueueGlobalAsync("core", "global-system", payload, "system-global", systemRunAt);
         Assert.Equal(TenantB, await JobTenantAsync("owner = 'core' and kind = 'tenant-system'"));
         Assert.Null(await JobTenantAsync("owner = 'core' and kind = 'global-system'"));
+        Assert.Equal(systemRunAt.UtcDateTime, await JobRunAtAsync("owner = 'core' and kind = 'tenant-system'"));
+        Assert.Equal(systemRunAt.UtcDateTime, await JobRunAtAsync("owner = 'core' and kind = 'global-system'"));
     }
 
     [SkippableFact]

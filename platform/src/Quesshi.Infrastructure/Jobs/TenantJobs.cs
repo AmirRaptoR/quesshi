@@ -20,7 +20,7 @@ public sealed class TenantJobs : IJobs
 
         await transaction.ExecuteAsync(
             "select enqueue_job(@owner, @kind, cast(@payload as jsonb), @uniqueKey, coalesce(@runAt, now()))",
-            new { owner, kind, payload = payload.GetRawText(), uniqueKey, runAt },
+            new { owner, kind, payload = payload.GetRawText(), uniqueKey, runAt = runAt?.ToUniversalTime() },
             cancellationToken);
     }
 }
