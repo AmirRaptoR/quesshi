@@ -1,16 +1,21 @@
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using Quesshi.Application;
+using Quesshi.Application.Tenancy;
 
 namespace Quesshi.Application.Tests;
 
 public sealed class ApplicationVisibilityTests
 {
     [Fact]
-    public void Scaffold_exposes_no_public_core_types()
+    public void Tenancy_contract_exposes_only_the_intended_core_types()
     {
         _ = new ApplicationMarker();
-        Assert.Empty(typeof(ApplicationMarker).Assembly.GetExportedTypes());
+        var exportedTypes = typeof(ApplicationMarker).Assembly.GetExportedTypes()
+            .OrderBy(type => type.FullName)
+            .ToArray();
+
+        Assert.Equal([typeof(ITenants), typeof(Tenant)], exportedTypes);
     }
 
     [Fact]
