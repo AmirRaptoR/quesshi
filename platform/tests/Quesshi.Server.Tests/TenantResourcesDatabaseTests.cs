@@ -122,7 +122,7 @@ public sealed class TenantResourcesDatabaseTests(PostgresFixture fixture)
             await using (var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner")))
             {
                 await owner.OpenAsync();
-                await owner.ExecuteAsync("update tenants set branding = @branding where id = @firstTenant", new
+                await owner.ExecuteAsync("update tenants set branding = cast(@branding as jsonb) where id = @firstTenant", new
                 {
                     firstTenant,
                     branding = """{"palette":{"firouzeh":"#ABCDEF;body{display:none}","shab":"#223344"}}"""
