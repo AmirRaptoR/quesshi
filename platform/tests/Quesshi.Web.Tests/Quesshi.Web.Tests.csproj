@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup><ProjectReference Include="../../src/Quesshi.Web/Quesshi.Web.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Quesshi.Web/Quesshi.Web.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Kinds.MapPick.Client/Quesshi.Kinds.MapPick.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="bunit" Version="2.9.0" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="../../src/Quesshi.Web/wwwroot/i18n/*.json" Link="i18n/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../src/Quesshi.Web/wwwroot/service-worker.published.js" Link="service-worker.published.js" CopyToOutputDirectory="PreserveNewest" />

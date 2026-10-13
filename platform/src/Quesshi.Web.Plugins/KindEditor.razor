@@ -1,0 +1,87 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@inject IClientRegistry Registry
+
+<ErrorBoundary @ref="errorBoundary">
+    <ChildContent>
+        @if (resolving)
+        {
+            <p role="status">Loading kind…</p>
+        }
+        else if (component is null)
+        {
+            <p role="alert">This kind is not supported. Reload the page.</p>
+        }
+        else
+        {
+            <DynamicComponent Type="component" Parameters="parameters" />
+        }
+    </ChildContent>
+    <ErrorContent>
+        <p role="alert">This kind is not supported. Reload the page.</p>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Kind { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public object? Payload { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<object?> PayloadChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Lang { get; set; } = string.Empty;
+
+    private Type? component;
+    private IDictionary<string, object>? parameters;
+    private ErrorBoundary? errorBoundary;
+    private bool resolving;
+    private int resolutionVersion;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        errorBoundary?.Recover();
+        component = null;
+        parameters = null;
+        resolving = true;
+        var currentResolution = ++resolutionVersion;
+
+        try
+        {
+            var resolvedComponent = (await Registry.ResolveAsync(Kind))?.Editor;
+            if (currentResolution != resolutionVersion)
+            {
+                return;
+            }
+
+            component = resolvedComponent;
+            parameters = component is null
+                ? null
+                : new Dictionary<string, object>
+                {
+                    ["Kind"] = Kind,
+                    ["Payload"] = Payload!,
+                    ["PayloadChanged"] = PayloadChanged,
+                    ["Lang"] = Lang,
+                };
+        }
+        catch
+        {
+            if (currentResolution == resolutionVersion)
+            {
+                component = null;
+                parameters = null;
+            }
+        }
+        finally
+        {
+            if (currentResolution == resolutionVersion)
+            {
+                resolving = false;
+            }
+        }
+    }
+}
