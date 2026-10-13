@@ -177,7 +177,11 @@ public static class Program
         });
         // The Blazor client is published through static web assets. Its index remains tenant-neutral;
         // tenant branding and configuration are served by the host-scoped endpoints above.
-        app.MapStaticAssets();
+        var staticAssetsManifest = GetStaticAssetsManifestPath();
+        if (staticAssetsManifest is not null)
+        {
+            app.MapStaticAssets(staticAssetsManifest);
+        }
         app.MapFallbackToFile("index.html");
         app.Use(async (context, next) =>
         {
@@ -189,6 +193,15 @@ public static class Program
             })) await next();
         });
         return app;
+    }
+
+    internal static string? GetStaticAssetsManifestPath(string? baseDirectory = null)
+    {
+        var manifestPath = Path.Combine(
+            baseDirectory ?? AppContext.BaseDirectory,
+            $"{typeof(Program).Assembly.GetName().Name}.staticwebassets.endpoints.json");
+
+        return File.Exists(manifestPath) ? manifestPath : null;
     }
 
     private static async Task ServeAsync(string[] args)

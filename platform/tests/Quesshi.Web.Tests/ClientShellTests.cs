@@ -76,9 +76,9 @@ public sealed class ClientShellTests
         var platform = FindPlatformDirectory();
         var server = File.ReadAllText(Path.Combine(platform, "src", "Quesshi.Server", "Program.cs"));
 
-        Assert.Contains("app.MapStaticAssets();", server);
+        Assert.Contains("app.MapStaticAssets(staticAssetsManifest);", server);
         Assert.Contains("app.MapFallbackToFile(\"index.html\");", server);
-        Assert.True(server.IndexOf("app.MapStaticAssets();", StringComparison.Ordinal) < server.IndexOf("app.MapFallbackToFile(\"index.html\");", StringComparison.Ordinal));
+        Assert.True(server.IndexOf("app.MapStaticAssets(staticAssetsManifest);", StringComparison.Ordinal) < server.IndexOf("app.MapFallbackToFile(\"index.html\");", StringComparison.Ordinal));
     }
 
     private static string FindPlatformDirectory()
