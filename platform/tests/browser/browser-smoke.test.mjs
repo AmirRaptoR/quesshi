@@ -58,8 +58,9 @@ test('uncaught page errors fail the browser assertion', async () => {
   const page = await context.newPage();
   const assertNoPageErrors = capturePageErrors(page);
   try {
+    const pageError = page.waitForEvent('pageerror');
     await page.setContent('<script>setTimeout(() => { throw new Error("fixture failure") })</script>');
-    await new Promise(resolveWait => setTimeout(resolveWait, 20));
+    await pageError;
     assert.throws(assertNoPageErrors, /uncaught error/);
   } finally {
     await context.close();
