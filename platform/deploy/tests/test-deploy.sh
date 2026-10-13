@@ -97,9 +97,33 @@ fi
 [[ "$(docker inspect --format '{{.Config.Image}}' "$(compose ps -q app)")" == quesshi-platform:good ]]
 compose ps --status running app | grep -q app
 
-grep -F 'media_volume="$(setting MEDIA_VOLUME)"' "$deploy_dir/README.md"
-grep -F 'docker volume rm "$media_volume"' "$deploy_dir/README.md"
-grep -F 'deploy_state_dir="$(setting DEPLOY_STATE_DIR)"' "$deploy_dir/README.md"
-grep -F 'rm -rf -- "$deploy_state_dir"' "$deploy_dir/README.md"
-! grep -F 'quesshi-platform-staging-media' "$deploy_dir/README.md"
-[[ "$(sed -n 's/^MEDIA_VOLUME=//p' "$env_file")" == "$compose_project-media" ]]
+sed -i 's|^APP_HEALTH_PATH=/not-healthy|APP_HEALTH_PATH=/health|' "$env_file"
+compose exec -T app touch /app/wwwroot/media/pre-reset
+
+# Execute the documented reset rather than duplicating its commands, so this test
+# proves that the operator instructions clear data while retaining PostgreSQL roles.
+reset_script="$work_dir/reset-staging.sh"
+awk '
+    /^## Reset staging data$/ { reset_section = 1; next }
+    reset_section && /^```sh$/ { code_block = 1; next }
+    code_block && /^```$/ { exit }
+    code_block { print }
+' "$deploy_dir/README.md" > "$reset_script"
+(
+    cd "$(cd "$deploy_dir/../.." && pwd)"
+    PLATFORM_COMPOSE_PROJECT="$compose_project" DEPLOY_ENV_FILE="$env_file" DEPLOY_STATE_DIR="$state_dir" RELEASE_TAG=good \
+        bash "$reset_script"
+)
+
+! docker volume inspect "$compose_project-media" >/dev/null 2>&1
+compose up -d postgres
+role_count="$(compose exec -T postgres psql -U postgres -d quesshi_platform -tAc \
+    "select count(*) from pg_roles where rolname in ('quesshi_owner', 'quesshi_app', 'quesshi_system')")"
+[[ "$role_count" == 3 ]] || { printf 'reset did not retain all database roles: %s\n' "$role_count" >&2; exit 1; }
+tenant_count="$(compose exec -T postgres psql -U postgres -d quesshi_platform -tAc \
+    'select count(*) from tenants')"
+[[ "$tenant_count" == 0 ]] || { printf 'reset did not clear staged tenants: %s remain\n' "$tenant_count" >&2; exit 1; }
+compose down
+run_deploy good
+curl --fail --silent --show-error "http://127.0.0.1:$app_port/health" >/dev/null
+docker volume inspect "$compose_project-media" >/dev/null

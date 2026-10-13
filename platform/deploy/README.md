@@ -77,23 +77,30 @@ without reinitializing the PostgreSQL data directory, so `quesshi_owner`,
 
 ```sh
 cd platform/deploy
-setting() { sed -n "s/^$1=//p" .env | tail -n 1; }
+set -eu
+env_file="${DEPLOY_ENV_FILE:-.env}"
+setting() { sed -n "s/^$1=//p" "$env_file" | tail -n 1; }
+compose() { docker compose --env-file "$env_file" -f compose.yaml "$@"; }
 postgres_user="$(setting POSTGRES_USER)"
 postgres_database="$(setting POSTGRES_DB)"
 media_volume="$(setting MEDIA_VOLUME)"
 deploy_state_dir="$(setting DEPLOY_STATE_DIR)"
 test -n "$postgres_user" && test -n "$postgres_database" && test -n "$media_volume" && test -n "$deploy_state_dir"
-docker compose --env-file .env -f compose.yaml up -d postgres
-docker compose --env-file .env -f compose.yaml exec -T postgres \
+compose up -d --wait postgres
+compose exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U "$postgres_user" -d postgres -v database_name="$postgres_database" \
-  -c 'SELECT format($sql$DROP DATABASE %I WITH (FORCE)$sql$, :"database_name") \gexec'
-docker compose --env-file .env -f compose.yaml exec -T postgres \
+  <<'SQL'
+SELECT format($sql$DROP DATABASE %I WITH (FORCE)$sql$, :'database_name') \gexec
+SQL
+compose exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U "$postgres_user" -d postgres -v database_name="$postgres_database" \
-  -c 'SELECT format($sql$CREATE DATABASE %I OWNER quesshi_owner$sql$, :"database_name") \gexec'
-docker compose --env-file .env -f compose.yaml down
+  <<'SQL'
+SELECT format($sql$CREATE DATABASE %I OWNER quesshi_owner$sql$, :'database_name') \gexec
+SQL
+compose down
 docker volume rm "$media_volume"
 rm -rf -- "$deploy_state_dir"
-./deploy.sh milestone-1
+./deploy.sh "${RELEASE_TAG:-milestone-1}"
 ```
 
 The next deployment reruns the idempotent role bootstrap and creates the
