@@ -11,12 +11,10 @@ public sealed class TenantResolutionMiddleware
     private readonly RequestDelegate _next;
     private readonly HashSet<IPAddress> _trustedProxies;
 
-    public TenantResolutionMiddleware(RequestDelegate next) : this(next, TrustedProxiesFromEnvironment()) { }
-
     public TenantResolutionMiddleware(RequestDelegate next, IEnumerable<IPAddress> trustedProxies)
     {
         _next = next;
-        _trustedProxies = [.. trustedProxies];
+        _trustedProxies = [.. trustedProxies.Select(NormalizeAddress)];
     }
 
     public async Task InvokeAsync(HttpContext context, ITenants tenants)
@@ -37,21 +35,26 @@ public sealed class TenantResolutionMiddleware
 
     private string SelectedHost(HttpContext context)
     {
-        if (_trustedProxies.Contains(context.Connection.RemoteIpAddress!)
+        var remoteAddress = context.Connection.RemoteIpAddress;
+        if (remoteAddress is not null
+            && _trustedProxies.Contains(NormalizeAddress(remoteAddress))
             && context.Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
         {
-            return forwardedHost.ToString().Split(',', 2)[0].Trim();
+            return forwardedHost.ToString().Split(',')[^1].Trim();
         }
 
         return context.Request.Host.Value ?? "";
     }
 
-    private static IEnumerable<IPAddress> TrustedProxiesFromEnvironment() =>
+    internal static IEnumerable<IPAddress> TrustedProxiesFromEnvironment() =>
         (Environment.GetEnvironmentVariable("TRUSTED_PROXIES") ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(value => IPAddress.TryParse(value, out var address) ? address : null)
             .Where(address => address is not null)
             .Cast<IPAddress>();
+
+    private static IPAddress NormalizeAddress(IPAddress address) =>
+        address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
 }
 
 /// <summary>Registration boundary for the future serve-host composition.</summary>
@@ -64,5 +67,5 @@ public static class TenantResolutionApplicationBuilderExtensions
     }
 
     public static IApplicationBuilder UseTenantResolution(this IApplicationBuilder app) =>
-        app.UseMiddleware<TenantResolutionMiddleware>();
+        app.UseMiddleware<TenantResolutionMiddleware>(TenantResolutionMiddleware.TrustedProxiesFromEnvironment());
 }

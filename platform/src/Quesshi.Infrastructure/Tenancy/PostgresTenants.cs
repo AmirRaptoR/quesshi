@@ -8,19 +8,28 @@ namespace Quesshi.Infrastructure.Tenancy;
 public sealed class PostgresTenants : ITenants
 {
     public static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
+    private const int DefaultCacheCapacity = 1024;
 
     private readonly DatabaseSources _sources;
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _cacheLifetime;
+    private readonly int _cacheCapacity;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, Lazy<Task<CacheEntry>>> _refreshes = new(StringComparer.Ordinal);
+    private readonly object _cacheWriteLock = new();
 
-    public PostgresTenants(DatabaseSources sources, TimeProvider? timeProvider = null, TimeSpan? cacheLifetime = null)
+    public PostgresTenants(
+        DatabaseSources sources,
+        TimeProvider? timeProvider = null,
+        TimeSpan? cacheLifetime = null,
+        int cacheCapacity = DefaultCacheCapacity)
     {
         _sources = sources;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _cacheLifetime = cacheLifetime ?? CacheLifetime;
         if (_cacheLifetime <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(cacheLifetime));
+        if (cacheCapacity <= 0) throw new ArgumentOutOfRangeException(nameof(cacheCapacity));
+        _cacheCapacity = cacheCapacity;
     }
 
     public async Task<Tenant?> ResolveAsync(string host, CancellationToken cancellationToken = default)
@@ -31,19 +40,55 @@ public sealed class PostgresTenants : ITenants
         var now = _timeProvider.GetUtcNow();
         if (_cache.TryGetValue(canonicalHost, out var cached) && cached.ExpiresAt > now) return cached.Tenant;
 
-        await _refreshLock.WaitAsync(cancellationToken);
-        try
+        var refresh = new Lazy<Task<CacheEntry>>(
+            () => RefreshAsync(canonicalHost),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        var scheduledRefresh = _refreshes.GetOrAdd(canonicalHost, refresh);
+        var refreshTask = scheduledRefresh.Value;
+        if (ReferenceEquals(refresh, scheduledRefresh))
         {
-            now = _timeProvider.GetUtcNow();
-            if (_cache.TryGetValue(canonicalHost, out cached) && cached.ExpiresAt > now) return cached.Tenant;
-
-            var tenant = await QueryAsync(canonicalHost, cancellationToken);
-            _cache[canonicalHost] = new CacheEntry(tenant, now.Add(_cacheLifetime));
-            return tenant;
+            _ = refreshTask.ContinueWith(
+                _ => RemoveRefresh(canonicalHost, scheduledRefresh),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
-        finally
+
+        return (await refreshTask.WaitAsync(cancellationToken)).Tenant;
+    }
+
+    private async Task<CacheEntry> RefreshAsync(string host)
+    {
+        var tenant = await QueryAsync(host, CancellationToken.None);
+        var entry = new CacheEntry(tenant, _timeProvider.GetUtcNow().Add(_cacheLifetime));
+        Cache(host, entry);
+        return entry;
+    }
+
+    private void RemoveRefresh(string host, Lazy<Task<CacheEntry>> refresh)
+    {
+        if (_refreshes.TryGetValue(host, out var current) && ReferenceEquals(current, refresh))
         {
-            _refreshLock.Release();
+            _refreshes.TryRemove(host, out _);
+        }
+    }
+
+    private void Cache(string host, CacheEntry entry)
+    {
+        lock (_cacheWriteLock)
+        {
+            foreach (var (cachedHost, cachedEntry) in _cache)
+            {
+                if (cachedEntry.ExpiresAt <= entry.ExpiresAt - _cacheLifetime) _cache.TryRemove(cachedHost, out _);
+            }
+
+            if (!_cache.ContainsKey(host) && _cache.Count >= _cacheCapacity)
+            {
+                var oldest = _cache.MinBy(pair => pair.Value.ExpiresAt).Key;
+                _cache.TryRemove(oldest, out _);
+            }
+
+            _cache[host] = entry;
         }
     }
 

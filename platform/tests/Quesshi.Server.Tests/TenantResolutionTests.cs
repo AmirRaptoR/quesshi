@@ -1,5 +1,7 @@
 using System.Net;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Application.Tenancy;
 using Quesshi.Server.Tenants;
 
@@ -31,7 +33,7 @@ public sealed class TenantResolutionTests
             reached = true;
             Assert.Equal(TenantA, TenantResolutionMiddleware.GetTenant(_));
             return Task.CompletedTask;
-        });
+        }, []);
         var context = Request("A.EXAMPLE.TEST:443");
 
         await middleware.InvokeAsync(context, tenants);
@@ -43,7 +45,7 @@ public sealed class TenantResolutionTests
     [Fact]
     public async Task Missing_host_returns_an_empty_404_without_a_default_tenant()
     {
-        var middleware = new TenantResolutionMiddleware(_ => throw new Xunit.Sdk.XunitException("The next handler must not run."));
+        var middleware = new TenantResolutionMiddleware(_ => throw new Xunit.Sdk.XunitException("The next handler must not run."), []);
         var context = Request("unknown.example.test");
 
         await middleware.InvokeAsync(context, new StubTenants([]));
@@ -58,7 +60,7 @@ public sealed class TenantResolutionTests
     {
         var tenants = new StubTenants([("a.example.test", TenantA), ("b.example.test", TenantB)]);
         var middleware = new TenantResolutionMiddleware(_ => Task.CompletedTask, [IPAddress.Parse("10.0.0.2")]);
-        var trusted = Request("a.example.test", "b.example.test", "10.0.0.2");
+        var trusted = Request("a.example.test", "client.example.test, b.example.test", "::ffff:10.0.0.2");
         var untrusted = Request("a.example.test", "b.example.test", "10.0.0.3");
 
         await middleware.InvokeAsync(trusted, tenants);
@@ -66,6 +68,40 @@ public sealed class TenantResolutionTests
 
         Assert.Equal(TenantB, TenantResolutionMiddleware.GetTenant(trusted));
         Assert.Equal(TenantA, TenantResolutionMiddleware.GetTenant(untrusted));
+    }
+
+    [Fact]
+    public async Task Registration_loads_trusted_proxies_for_the_real_middleware_pipeline()
+    {
+        const string trustedProxy = "10.0.0.2";
+        var originalTrustedProxies = Environment.GetEnvironmentVariable("TRUSTED_PROXIES");
+        try
+        {
+            Environment.SetEnvironmentVariable("TRUSTED_PROXIES", trustedProxy);
+            using var services = new ServiceCollection()
+                .AddSingleton<ITenants>(new StubTenants([("a.example.test", TenantA), ("b.example.test", TenantB)]))
+                .BuildServiceProvider();
+            var builder = new ApplicationBuilder(services);
+            builder.UseTenantResolution();
+            builder.Run(_ => Task.CompletedTask);
+            var application = builder.Build();
+            var trusted = Request("a.example.test", "b.example.test", trustedProxy);
+            var untrusted = Request("a.example.test", "b.example.test", "10.0.0.3");
+
+            await application(trusted);
+            await application(untrusted);
+
+            var noPeer = Request("a.example.test", "b.example.test");
+            await application(noPeer);
+
+            Assert.Equal(TenantB, TenantResolutionMiddleware.GetTenant(trusted));
+            Assert.Equal(TenantA, TenantResolutionMiddleware.GetTenant(untrusted));
+            Assert.Equal(TenantA, TenantResolutionMiddleware.GetTenant(noPeer));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TRUSTED_PROXIES", originalTrustedProxies);
+        }
     }
 
     private static DefaultHttpContext Request(string host, string? forwardedHost = null, string? remoteIp = null)
