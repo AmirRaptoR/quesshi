@@ -26,11 +26,23 @@ public sealed class CapabilitiesDatabaseTests(PostgresFixture fixture)
 
         var registry = new CapabilityRegistry();
         registry.Register(CapabilityType.Feature, "demo", new DemoSettings("default"), Validate);
+        registry.Register(CapabilityType.Feature, "unprovisioned", new DemoSettings("default"), Validate);
         await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        var capabilities = new TenantCapabilities(registry, new TenantDb(sources));
+        var database = new TenantDb(sources);
+        var capabilities = new TenantCapabilities(registry, database);
 
         Assert.True(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "demo"));
         Assert.False(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "unknown"));
+        Assert.False(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "unprovisioned"));
+        await ExecuteAsync(owner, "update tenant_capabilities set entitled = false where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA));
+        Assert.False(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "demo"));
+        await ExecuteAsync(owner, "update tenant_capabilities set enabled = false where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA));
+        Assert.False(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "demo"));
+        await ExecuteAsync(owner, "update tenant_capabilities set entitled = true, enabled = true where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => capabilities.SetAsync(
+            TenantA, CapabilityType.Feature, "unprovisioned", false, new DemoSettings("unprovisioned")));
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantA)));
         await capabilities.SetAsync(TenantA, CapabilityType.Feature, "demo", false, new DemoSettings("changed"));
 
         Assert.False(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "demo"));
@@ -45,6 +57,35 @@ public sealed class CapabilitiesDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantA)));
         Assert.Equal("changed", await ScalarAsync<string>(owner, "select settings ->> 'Label' from tenant_capabilities where tenant_id = @tenant", ("tenant", TenantA)));
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantB)));
+        Assert.True(await ScalarAsync<bool>(owner, "select entitled and enabled from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantB)));
+
+        await ExecuteAsync(owner, """
+            create function reject_capability_version_change() returns trigger language plpgsql as $$
+            begin
+                raise exception 'reject version change';
+            end;
+            $$;
+            create trigger reject_capability_version_change before update of config_version on tenants
+            for each row execute function reject_capability_version_change();
+            """);
+        try
+        {
+            await Assert.ThrowsAsync<PostgresException>(() => capabilities.SetAsync(
+                TenantA, CapabilityType.Feature, "demo", true, new DemoSettings("rolled-back")));
+        }
+        finally
+        {
+            await ExecuteAsync(owner, "drop trigger reject_capability_version_change on tenants; drop function reject_capability_version_change()");
+        }
+
+        Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantA)));
+        Assert.True(await ScalarAsync<bool>(owner, "select not enabled and settings ->> 'Label' = 'changed' from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA)));
+
+        var entitlementFailure = await Assert.ThrowsAsync<PostgresException>(() => database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+            "update tenant_capabilities set entitled = false where type = 'feature' and key = 'demo'")));
+        Assert.Equal("42501", entitlementFailure.SqlState);
+        Assert.Equal(0, await database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
+            "update tenant_capabilities set enabled = true where tenant_id = @tenant", new { tenant = TenantB })));
         Assert.True(await ScalarAsync<bool>(owner, "select entitled and enabled from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantB)));
     }
 

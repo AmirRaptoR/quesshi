@@ -46,16 +46,35 @@ public sealed class TenantAddDatabaseTests(PostgresFixture fixture)
 
         await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
             "--slug", "invalid", "--name", "Invalid", "--host", "invalid.example.test", "--default-language", "en", "--language", "en:English:English:sideways"], sources));
+        await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
+            "--slug", "missing-default", "--name", "Missing default", "--host", "missing-default.example.test", "--default-language", "fa", "--language", "en:English:English:ltr"], sources));
+        await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
+            "--slug", "duplicate-language", "--name", "Duplicate language", "--host", "duplicate-language.example.test", "--default-language", "en",
+            "--language", "en:English:English:ltr", "--language", "en:English:English:ltr"], sources));
+        await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
+            "--slug", "missing-host", "--name", "Missing host", "--default-language", "en", "--language", "en:English:English:ltr"], sources));
+        await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
+            "--slug", "missing-language", "--name", "Missing language", "--host", "missing-language.example.test", "--default-language", "en"], sources));
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from tenants"));
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from tenant_hosts"));
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from tenant_languages"));
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities"));
 
         await Program.AddTenantAsync([
             "--slug", "existing", "--name", "Existing", "--host", "existing.example.test", "--default-language", "en", "--language", "en:English:English:ltr"], sources);
         await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
+            "--slug", "existing", "--name", "Replacement", "--host", "replacement.example.test", "--default-language", "en", "--language", "en:English:English:ltr"], sources));
+        await Assert.ThrowsAsync<CommandException>(() => Program.AddTenantAsync([
             "--slug", "rolled-back", "--name", "Rolled back", "--host", "existing.example.test", "--default-language", "en", "--language", "en:English:English:ltr"], sources));
 
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from tenants"));
+        Assert.Equal("Existing", await ScalarAsync<string>(owner, "select name from tenants where slug = 'existing'"));
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from tenants where slug = 'rolled-back'"));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from tenant_hosts"));
+        Assert.Equal("existing.example.test", await ScalarAsync<string>(owner, "select host from tenant_hosts"));
+        Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from tenant_languages"));
+        Assert.Equal(2L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities"));
+        Assert.Equal(2L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where not entitled and not enabled"));
     }
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
