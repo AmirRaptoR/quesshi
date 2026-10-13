@@ -73,6 +73,7 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal("write_failed", failure.Code);
         Assert.Same(original, StateOf(rolledBack));
         Assert.Equal("{}", original.FormatState.GetRawText());
+        Assert.Equal(0, rolledBack.DeactivateCount);
 
         var committed = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now, database: new SavingDatabase(), renderer: new ThrowingRenderer());
         var unavailable = await committed.ExecuteAsync(Command(now));
@@ -92,6 +93,7 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal("stale_activation", staleResult.Code);
         Assert.True(staleResult.Retryable);
         Assert.Null(StateOf(stale));
+        Assert.Equal(1, stale.DeactivateCount);
 
         var unknown = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now,
             database: new FailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost"))));
@@ -101,6 +103,7 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal("retryable", unknownResult.Code);
         Assert.True(unknownResult.Retryable);
         Assert.Null(StateOf(unknown));
+        Assert.Equal(1, unknown.DeactivateCount);
     }
 
     [Fact]
@@ -112,6 +115,7 @@ public sealed class SessionGrainBehaviorTests
 
         Assert.Equal("not_found", (await grain.ExecuteAsync(Command(now))).Code);
         Assert.Null(StateOf(grain));
+        Assert.Equal(1, grain.DeactivateCount);
 
         loader.State = State();
         var found = await grain.ExecuteAsync(Command(now));
@@ -200,10 +204,10 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(2, saving.CallCount);
     }
 
-    private static SessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null) =>
+    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null) =>
         CreateGrain(new FixedSnapshotLoader(state), format, deadlines, now, database, renderer, kinds, state);
 
-    private static SessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
+    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
     {
         var grain = new TestSessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
             new FormatRegistry([format]), kinds ?? new KindRegistry([]), new TestClock(now), renderer ?? new Renderer(), deadlines,
@@ -252,7 +256,8 @@ public sealed class SessionGrainBehaviorTests
         Microsoft.Extensions.Logging.ILogger<SessionGrain> logger)
         : SessionGrain(snapshots, store, formats, kinds, clock, views, deadlines, logger)
     {
-        protected override void Deactivate() { }
+        public int DeactivateCount { get; private set; }
+        protected override void Deactivate() => DeactivateCount++;
     }
 
     private sealed class ThrowingDatabase : ITenantDb

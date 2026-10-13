@@ -251,6 +251,45 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Reloaded_grain_replays_an_answer_correctly_whether_the_prior_commit_landed(bool priorCommitLanded)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var player = PlayerId(1);
+        await InsertTenantAsync(owner, tenant);
+        await InsertPlayersAsync(owner, tenant, 1);
+        await InsertRunningSessionAsync(owner, tenant, session, player, 1);
+        await InsertParticipantsAsync(owner, tenant, session, 1);
+        await InsertItemsAsync(owner, tenant, session, 1);
+
+        await using var sources = Sources();
+        var command = new SessionCommand(player.ToString(), "answer", "0", 0, 0, 1, null, "{\"value\":\"saved\"}", DateTimeOffset.UtcNow);
+        var firstGrain = CreateReplayGrain(sources, tenant, session,
+            priorCommitLanded
+                ? new CommitThenDisconnectDatabase(new TenantDb(sources))
+                : new DisconnectBeforeCommitDatabase());
+        var unknownOutcome = await firstGrain.ExecuteAsync(command);
+
+        Assert.Equal("retryable", unknownOutcome.Code);
+        Assert.True(unknownOutcome.Retryable);
+        Assert.Null(GrainState(firstGrain));
+        Assert.Equal(priorCommitLanded ? 1L : 0L,
+            await ScalarAsync<long>(owner, "select version from sessions where tenant_id = @tenant and id = @session", ("tenant", tenant), ("session", session)));
+
+        var reloadedGrain = CreateReplayGrain(sources, tenant, session);
+        var replay = await reloadedGrain.ExecuteAsync(command);
+
+        Assert.Equal("ok", replay.Code);
+        Assert.NotNull(replay.ViewJson);
+        Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));
+        Assert.Equal(1L, await ScalarAsync<long>(owner, "select version from sessions where tenant_id = @tenant and id = @session", ("tenant", tenant), ("session", session)));
+    }
+
     [SkippableFact]
     public async Task Renderer_failure_after_a_real_grain_commit_keeps_database_and_memory_advanced()
     {
@@ -369,10 +408,30 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
 
     private static void SetGrainState(SessionGrain grain, Guid tenant, Guid session, SessionState state)
     {
+        SetGrainIdentity(grain, tenant, session);
+        typeof(SessionGrain).GetField("_state", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(grain, state);
+    }
+
+    private static ReplaySessionGrain CreateReplayGrain(DatabaseSources sources, Guid tenant, Guid session, ITenantDb? storeDatabase = null)
+    {
+        var grain = new ReplaySessionGrain(
+            new SessionSnapshotLoader(new TenantDb(sources)),
+            new SessionStateStore(storeDatabase ?? new TenantDb(sources)),
+            new FormatRegistry([new ReplayFormat()]),
+            new KindRegistry([new EchoKind()]),
+            new TestClock(DateTimeOffset.UtcNow),
+            new CurrentViewRenderer(),
+            new NoopDeadlines(),
+            NullLogger<SessionGrain>.Instance);
+        SetGrainIdentity(grain, tenant, session);
+        return grain;
+    }
+
+    private static void SetGrainIdentity(SessionGrain grain, Guid tenant, Guid session)
+    {
         var fields = typeof(SessionGrain);
         fields.GetField("_tenantId", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(grain, tenant);
         fields.GetField("_sessionId", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(grain, session);
-        fields.GetField("_state", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(grain, state);
     }
 
     private static SessionState? GrainState(SessionGrain grain) =>
@@ -416,6 +475,21 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         }
     }
 
+    private sealed class DisconnectBeforeCommitDatabase : ITenantDb
+    {
+        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false) =>
+            Task.FromException<T>(new TenantCommitOutcomeUnknownException(new IOException("connection lost")));
+    }
+
+    private sealed class CommitThenDisconnectDatabase(ITenantDb inner) : ITenantDb
+    {
+        public async Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false)
+        {
+            _ = await inner.InTenantAsync(tenantId, callback, isolationLevel, cancellationToken, readOnly);
+            throw new TenantCommitOutcomeUnknownException(new IOException("connection lost"));
+        }
+    }
+
     private sealed class PersistingFormat : IFormat
     {
         public string Id => "trivia";
@@ -430,6 +504,40 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         public JsonElement UpgradeState(int from, JsonElement state) => state;
         public JsonElement UpgradeRules(int from, JsonElement rules) => rules;
         public JsonElement UpgradeResult(int from, JsonElement result) => result;
+    }
+
+    private sealed class ReplayFormat : IFormat
+    {
+        public string Id => "trivia";
+        public FormatSpec Spec { get; } = new(Pacing.Shared, 1, 1, false, false, _ => true, false, null, false, [], TimeSpan.Zero, new Dictionary<string, Type>());
+        public FormatVersions Versions { get; } = new(1, 1, 1);
+        public void Apply(ISession session, Command command)
+        {
+            if (session.Answer(command.Player, command.At.Slot) is not null) return;
+            session.Record(session.Grade(command), 0);
+        }
+        public object View(IViewing viewing) => new { };
+        public JsonElement ReadRules(JsonElement raw) => raw;
+        public DrawPlan Plan(ContentSpec content, JsonElement rules) => new(0, []);
+        public void Start(ISession session) { }
+        public void Timeout(ISession session) { }
+        public JsonElement UpgradeState(int from, JsonElement state) => state;
+        public JsonElement UpgradeRules(int from, JsonElement rules) => rules;
+        public JsonElement UpgradeResult(int from, JsonElement result) => result;
+    }
+
+    private sealed class ReplaySessionGrain(
+        ISessionSnapshotLoader snapshots,
+        SessionStateStore store,
+        IFormatRegistry formats,
+        IKindRegistry kinds,
+        IClock clock,
+        IViewRenderer views,
+        ISessionDeadlineReconciler deadlines,
+        Microsoft.Extensions.Logging.ILogger<SessionGrain> logger)
+        : SessionGrain(snapshots, store, formats, kinds, clock, views, deadlines, logger)
+    {
+        protected override void Deactivate() { }
     }
 
     private sealed class EchoKind : IKindRuntime
@@ -451,6 +559,11 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
     private sealed class ThrowingViewRenderer : IViewRenderer
     {
         public SessionView Render(SessionState state, IFormat format, string viewer) => throw new InvalidOperationException("renderer unavailable");
+    }
+
+    private sealed class CurrentViewRenderer : IViewRenderer
+    {
+        public SessionView Render(SessionState state, IFormat format, string viewer) => new(state.Session.Version, "{}");
     }
 
     private sealed class NoopDeadlines : ISessionDeadlineReconciler
