@@ -9,5 +9,6 @@ create table job_schedule_windows (
   primary key (tenant_id, owner, kind, interval_ticks, window_start)
 );
 
-revoke all on job_schedule_windows from public, quesshi_app, quesshi_system;
+select quesshi_tenant_table('job_schedule_windows', 'core');
+create policy system_all on job_schedule_windows for all to quesshi_system using (true) with check (true);
 grant select, insert, update, delete on job_schedule_windows to quesshi_system;
