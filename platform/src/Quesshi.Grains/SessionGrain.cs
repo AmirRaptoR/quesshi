@@ -87,7 +87,29 @@ public class SessionGrain(
                 logger.LogWarning(exception, "Session command rolled back for {SessionId}", _sessionId);
                 return SessionCommandResult.Error("write_failed", retryable: true);
             }
-            _state = current with { Session = current.Session with { Version = version } };
+            // Command responses use a new immutable durable snapshot.  This keeps the
+            // command path on the same rendering contract as a future stream and prevents
+            // a cached activation from combining the committed session row with old children.
+            try
+            {
+                // The write has committed, so retain its candidate only while the durable
+                // read is in flight. Any reload failure below immediately discards it.
+                _state = current with { Session = current.Session with { Version = version } };
+                _state = await snapshots.LoadAsync(_tenantId, _sessionId)
+                    ?? throw new StaleActivationException();
+            }
+            catch (StaleActivationException) { throw; }
+            catch (Exception exception) when (IsUnknownCommit(exception)) { throw; }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Session {SessionId} was committed at version {Version}, but its durable state could not be reloaded",
+                    _sessionId,
+                    version);
+                DropState();
+                return SessionCommandResult.Error("view_unavailable", retryable: true);
+            }
             try { return View("ok", format, request.PlayerId); }
             catch (Exception exception)
             {
@@ -110,7 +132,7 @@ public class SessionGrain(
 
     private SessionCommandResult View(string code, IFormat format, string viewer)
     {
-        var view = views.Render(_state!, format, viewer);
+        var view = views.Render(_state!, format, viewer, clock.Now);
         return new SessionCommandResult(code, false, view.Version, view.Json);
     }
 

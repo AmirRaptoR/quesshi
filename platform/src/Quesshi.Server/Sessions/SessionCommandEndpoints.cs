@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using Orleans;
+using Microsoft.AspNetCore.Mvc;
+using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Tenants;
@@ -15,7 +17,19 @@ internal static class SessionCommandEndpoints
     public static IEndpointRouteBuilder MapSessionCommands(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/sessions/{id:guid}/commands", ExecuteAsync);
+        endpoints.MapGet("/api/sessions/{id:guid}/roster", RosterAsync);
         return endpoints;
+    }
+
+    private static async Task<IResult> RosterAsync(HttpContext context, Guid id, [FromServices] ISessionSnapshotLoader snapshots, int? after, int? take, CancellationToken cancellationToken)
+    {
+        var player = TestPlayer(context);
+        if (player is null) return Error("identity_required", StatusCodes.Status401Unauthorized);
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Error("not_found", StatusCodes.Status404NotFound);
+        if (after is < 0 || take is <= 0) return Error("invalid_page", StatusCodes.Status400BadRequest);
+        var page = await snapshots.LoadRosterPageAsync(tenant.Id, id, player, after, take ?? 50, cancellationToken);
+        return page is null ? Error("not_found", StatusCodes.Status404NotFound) : Results.Json(page);
     }
 
     private static async Task<IResult> ExecuteAsync(HttpContext context, Guid id, IGrainFactory grains, IClock clock, CancellationToken cancellationToken)

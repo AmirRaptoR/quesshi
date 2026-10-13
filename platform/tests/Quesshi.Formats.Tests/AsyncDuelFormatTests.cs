@@ -67,6 +67,18 @@ public sealed class AsyncDuelFormatTests
     }
 
     [Fact]
+    public void View_deadline_uses_the_viewers_question_clock_not_the_forfeit_clock()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(State(["a"], slots: 1), clock);
+        var format = new AsyncDuelFormat();
+        format.Start(session);
+        format.Apply(session, Next("a"));
+
+        Assert.Equal(Created + MatchRules.QuestionTime, format.Deadline(session));
+    }
+
+    [Fact]
     public void Records_one_timely_answer_then_releases_and_advances_only_on_next()
     {
         var clock = new TestClock(Created);

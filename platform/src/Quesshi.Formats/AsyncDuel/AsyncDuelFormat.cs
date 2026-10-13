@@ -133,6 +133,15 @@ public sealed class AsyncDuelFormat : IFormat
         return new AsyncDuelView(you, others);
     }
 
+    public DateTimeOffset? Deadline(IViewing viewing)
+    {
+        ArgumentNullException.ThrowIfNull(viewing);
+        var viewer = viewing.Seats.SingleOrDefault(seat => seat.Player == viewing.Viewer);
+        return viewer?.Position is { Phase: QuestionPhase } && viewer.PositionStartedAt is { } startedAt
+            ? startedAt + MatchRules.QuestionTime
+            : viewing.Session.DueAt;
+    }
+
     public JsonElement UpgradeState(int from, JsonElement state) => Upgrade(from, state, nameof(state));
     public JsonElement UpgradeRules(int from, JsonElement rules) => Upgrade(from, rules, nameof(rules));
     public JsonElement UpgradeResult(int from, JsonElement result) => Upgrade(from, result, nameof(result));

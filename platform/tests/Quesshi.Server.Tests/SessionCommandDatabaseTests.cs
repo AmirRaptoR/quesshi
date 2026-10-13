@@ -7,6 +7,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
@@ -20,7 +21,7 @@ namespace Quesshi.Server.Tests;
 public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
 {
     [SkippableFact]
-    public async Task Snapshot_loader_finds_later_insertions_and_loads_a_bounded_open_snapshot()
+    public async Task Snapshot_loader_finds_later_insertions_and_keeps_historical_answers_in_a_bounded_open_snapshot()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
@@ -39,12 +40,14 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertParticipantsAsync(owner, tenant, session, 500);
         await InsertItemsAsync(owner, tenant, session, 100);
         await InsertAnswersAsync(owner, tenant, session, 500);
+        await ExecuteAsync(owner, "update sessions set slot = 1 where tenant_id = @tenant and id = @session", ("tenant", tenant), ("session", session));
+        await ExecuteAsync(owner, "update session_participants set slot = 1 where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
 
         database.Reset();
         var snapshot = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
         Assert.Equal(500, snapshot.Seats.Count);
         Assert.Equal(100, snapshot.ItemCount);
-        Assert.Equal([0], snapshot.Items.Keys);
+        Assert.Equal([1], snapshot.Items.Keys);
         Assert.Equal(500, snapshot.Answers.Count);
         Assert.All(snapshot.Answers.Values, answer => Assert.NotNull(answer.Hash));
         Assert.Equal(System.Data.IsolationLevel.RepeatableRead, database.IsolationLevel);
@@ -53,6 +56,41 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
 
         var next = Assert.Single(await loader.LoadItemsAsync(tenant, session, [1]));
         Assert.Equal(1, next.Metadata.Slot);
+    }
+
+    [SkippableFact]
+    public async Task Roster_pages_all_seats_in_order_and_hides_unseated_or_cross_tenant_sessions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var viewer = PlayerId(1);
+        await InsertTenantAsync(owner, tenant);
+        await InsertTenantAsync(owner, otherTenant);
+        await InsertPlayersAsync(owner, tenant, 500);
+        await InsertRunningSessionAsync(owner, tenant, session, viewer, 1);
+        await InsertParticipantsAsync(owner, tenant, session, 500);
+
+        await using var sources = Sources();
+        var database = new CountingTenantDatabase(new TenantDb(sources));
+        var loader = new SessionSnapshotLoader(database);
+        var ids = new List<string>();
+        int? after = null;
+        do
+        {
+            var page = Assert.IsType<RosterPage>(await loader.LoadRosterPageAsync(tenant, session, viewer.ToString(), after, 73));
+            ids.AddRange(page.Seats.Select(seat => seat.Id));
+            after = page.NextSeat;
+        } while (after is not null);
+
+        Assert.Equal(Enumerable.Range(1, 500).Select(number => PlayerId(number).ToString()), ids);
+        Assert.Equal(500, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.Null(await loader.LoadRosterPageAsync(tenant, session, Guid.NewGuid().ToString(), null, 50));
+        Assert.Null(await loader.LoadRosterPageAsync(otherTenant, session, viewer.ToString(), null, 50));
+        Assert.Equal(System.Data.IsolationLevel.RepeatableRead, database.IsolationLevel);
+        Assert.True(database.ReadOnly);
     }
 
     [SkippableFact]
@@ -181,6 +219,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await using var app = Program.CreateApplication(Sources(), 11131, 30131);
         app.Urls.Add("http://127.0.0.1:50131");
         await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
             var factory = app.Services.GetRequiredService<IGrainFactory>();
@@ -224,6 +263,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await using var app = Program.CreateApplication(Sources(), 11132, 30132);
         app.Urls.Add("http://127.0.0.1:50132");
         await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
             var grain = app.Services.GetRequiredService<IGrainFactory>().GetGrain<ISessionGrain>($"{tenant}/{session}");
@@ -240,6 +280,13 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
             Assert.Equal("revision_conflict", conflict.Code);
             Assert.Equal("ok", lower.Code);
             Assert.Equal("ok", replacement.Code);
+            using var view = JsonDocument.Parse(first.ViewJson!);
+            Assert.Equal(session.ToString(), view.RootElement.GetProperty("Id").GetString());
+            Assert.Equal(1, view.RootElement.GetProperty("Version").GetInt64());
+            Assert.Equal(0, view.RootElement.GetProperty("ConfigVersion").GetInt64());
+            Assert.Equal(player.ToString(), view.RootElement.GetProperty("Me").GetProperty("Id").GetString());
+            Assert.Equal(2, view.RootElement.GetProperty("Roster").GetProperty("Seats").GetArrayLength());
+            Assert.True(view.RootElement.TryGetProperty("Body", out _));
             Assert.Equal(2, await ScalarAsync<int>(owner, "select revision from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));
             Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));
             Assert.Equal("b", await ScalarAsync<string>(owner, "select answer ->> 'option' from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session)));
@@ -558,12 +605,12 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
 
     private sealed class ThrowingViewRenderer : IViewRenderer
     {
-        public SessionView Render(SessionState state, IFormat format, string viewer) => throw new InvalidOperationException("renderer unavailable");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => throw new InvalidOperationException("renderer unavailable");
     }
 
     private sealed class CurrentViewRenderer : IViewRenderer
     {
-        public SessionView Render(SessionState state, IFormat format, string viewer) => new(state.Session.Version, "{}");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
     }
 
     private sealed class NoopDeadlines : ISessionDeadlineReconciler

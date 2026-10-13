@@ -83,6 +83,21 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
+    public async Task Post_commit_snapshot_reload_failures_discard_the_stale_cached_state()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var grain = CreateGrain(new ThrowingSnapshotLoader(), new MutatingFormat(), new RecordingDeadlines(), now,
+            database: new SavingDatabase(), initialState: State());
+
+        var result = await grain.ExecuteAsync(Command(now));
+
+        Assert.Equal("view_unavailable", result.Code);
+        Assert.True(result.Retryable);
+        Assert.Null(StateOf(grain));
+        Assert.Equal(1, grain.DeactivateCount);
+    }
+
+    [Fact]
     public async Task Stale_and_unknown_commit_outcomes_discard_the_cached_snapshot()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
@@ -204,8 +219,13 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(2, saving.CallCount);
     }
 
-    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null) =>
-        CreateGrain(new FixedSnapshotLoader(state), format, deadlines, now, database, renderer, kinds, state);
+    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null)
+    {
+        var loader = new CurrentSnapshotLoader();
+        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state);
+        loader.Current = () => StateOf(grain);
+        return grain;
+    }
 
     private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
     {
@@ -231,9 +251,10 @@ public sealed class SessionGrainBehaviorTests
 
     private static SessionState? StateOf(SessionGrain grain) => (SessionState?)typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(grain);
 
-    private sealed class FixedSnapshotLoader(SessionState state) : ISessionSnapshotLoader
+    private sealed class CurrentSnapshotLoader : ISessionSnapshotLoader
     {
-        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult<SessionState?>(state);
+        public Func<SessionState?>? Current { get; set; }
+        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult(Current?.Invoke());
         public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
     }
 
@@ -243,6 +264,14 @@ public sealed class SessionGrainBehaviorTests
         public int LoadCount { get; private set; }
         public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) { LoadCount++; return Task.FromResult(State); }
         public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
+    }
+
+    private sealed class ThrowingSnapshotLoader : ISessionSnapshotLoader
+    {
+        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) =>
+            Task.FromException<SessionState?>(new KnownDatabaseException());
+        public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SessionItemState>>([]);
     }
 
     private sealed class TestSessionGrain(
@@ -297,12 +326,12 @@ public sealed class SessionGrainBehaviorTests
 
     private sealed class Renderer : IViewRenderer
     {
-        public SessionView Render(SessionState state, IFormat format, string viewer) => new(state.Session.Version, "{}");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
     }
 
     private sealed class ThrowingRenderer : IViewRenderer
     {
-        public SessionView Render(SessionState state, IFormat format, string viewer) => throw new InvalidOperationException("renderer unavailable");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => throw new InvalidOperationException("renderer unavailable");
     }
 
     private class RecordingFormat : IFormat

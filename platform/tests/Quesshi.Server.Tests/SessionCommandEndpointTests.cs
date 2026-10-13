@@ -9,10 +9,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Orleans;
 using Quesshi.Application.Tenancy;
+using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Server.Sessions;
 using Quesshi.Server.Tenants;
+using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
 
@@ -75,6 +77,34 @@ public sealed class SessionCommandEndpointTests
     }
 
 #if QUESSHI_TEST_IDENTITY
+    [Fact]
+    public async Task Roster_route_pages_for_a_seated_viewer_and_hides_unseated_requests()
+    {
+        var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
+        var session = Guid.NewGuid();
+        var viewer = Guid.NewGuid();
+        var snapshots = new RosterSnapshots(new RosterPage(
+            [new SessionRosterSeat(viewer.ToString(), "Viewer", 10, "player", "active", 0, null, null)], 10));
+        var context = Context("");
+        context.Items[typeof(Tenant)] = tenant;
+        context.Request.Headers["X-Quesshi-Test-Player"] = viewer.ToString();
+
+        var page = await RosterAsync(context, session, snapshots, 9, 25);
+        await page.ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Equal((tenant.Id, session, viewer.ToString(), 9, 25), snapshots.Request);
+        context.Response.Body.Position = 0;
+        using var document = JsonDocument.Parse(await new StreamReader(context.Response.Body).ReadToEndAsync());
+        Assert.Equal(10, document.RootElement.GetProperty("nextSeat").GetInt32());
+
+        snapshots.Page = null;
+        context.Response.Body.SetLength(0);
+        var hidden = await RosterAsync(context, session, snapshots, null, 50);
+        await hidden.ExecuteAsync(context);
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+    }
+
     [Fact]
     public async Task Mapped_route_accepts_test_identity_only_in_the_test_build()
     {
@@ -275,6 +305,11 @@ public sealed class SessionCommandEndpointTests
             .GetMethod("ExecuteAsync", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [context, sessionId, grains, clock, CancellationToken.None])!;
 
+    private static Task<IResult> RosterAsync(HttpContext context, Guid sessionId, ISessionSnapshotLoader snapshots, int? after, int? take) =>
+        (Task<IResult>)typeof(SessionCommandEndpoints)
+            .GetMethod("RosterAsync", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [context, sessionId, snapshots, after, take, CancellationToken.None])!;
+
     private static async Task AssertErrorAsync(HttpResponseMessage response, HttpStatusCode status, string code)
     {
         Assert.Equal(status, response.StatusCode);
@@ -328,6 +363,19 @@ public sealed class SessionCommandEndpointTests
             if (targetMethod!.Name != nameof(ISessionGrain.ExecuteAsync)) throw new NotSupportedException(targetMethod.Name);
             Command = (SessionCommand)args![0]!;
             return Task.FromResult(Result);
+        }
+    }
+
+    private sealed class RosterSnapshots(RosterPage? page) : ISessionSnapshotLoader
+    {
+        public RosterPage? Page { get; set; } = page;
+        public (Guid Tenant, Guid Session, string Viewer, int? After, int Take) Request { get; private set; }
+        public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult<SessionState?>(null);
+        public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
+        public Task<RosterPage?> LoadRosterPageAsync(Guid tenantId, Guid sessionId, string viewer, int? afterSeat, int take, CancellationToken cancellationToken = default)
+        {
+            Request = (tenantId, sessionId, viewer, afterSeat, take);
+            return Task.FromResult(Page);
         }
     }
 
