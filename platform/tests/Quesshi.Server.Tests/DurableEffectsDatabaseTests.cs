@@ -266,10 +266,20 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
 
     private Task<string> JobStatusAsync(long jobId) => ScalarSystemAsync<string>("select status from jobs where id = @jobId", ("jobId", jobId));
 
-    private Task<long> RevisionAsync(Guid tenant, Guid session) => ScalarSystemAsync<long>("select revision from session_effects where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
+    private Task<long> RevisionAsync(Guid tenant, Guid session) => ScalarTenantAsync<long>(tenant,
+        "select revision from session_effects where session_id = @session", new { session });
 
     private Task<int> CountMarkersAsync(Guid tenant, string plugin, string key) =>
-        ScalarSystemAsync<int>("select count(*)::int from plugin_effects where tenant_id = @tenant and plugin = @plugin and event_key = @key", ("tenant", tenant), ("plugin", plugin), ("key", key));
+        ScalarTenantAsync<int>(tenant,
+            "select count(*)::int from plugin_effects where plugin = @plugin and event_key = @key",
+            new { plugin, key });
+
+    private async Task<T> ScalarTenantAsync<T>(Guid tenant, string sql, object? parameters = null)
+    {
+        await using var sources = Sources();
+        return (await new TenantDb(sources).InTenantAsync(tenant,
+            transaction => transaction.QuerySingleOrDefaultAsync<T>(sql, parameters), readOnly: true))!;
+    }
 
     private async Task<T> ScalarSystemAsync<T>(string sql, params (string Name, object Value)[] parameters)
     {
