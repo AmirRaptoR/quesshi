@@ -28,6 +28,9 @@ sed \
     -e "s|^MAILPIT_SMTP_PORT=.*|MAILPIT_SMTP_PORT=$((mailpit_port + 1))|" \
     -e "s|^POSTGRES_VOLUME=.*|POSTGRES_VOLUME=$compose_project-postgres|" \
     -e "s|^MEDIA_VOLUME=.*|MEDIA_VOLUME=$compose_project-media|" \
+    -e 's|^DB_OWNER_PASSWORD=.*|DB_OWNER_PASSWORD=owner;with:semicolon|' \
+    -e 's|^DB_APP_PASSWORD=.*|DB_APP_PASSWORD=app;with:semicolon|' \
+    -e 's|^DB_SYSTEM_PASSWORD=.*|DB_SYSTEM_PASSWORD=system;with:semicolon|' \
     -e "s|^DEPLOY_STATE_DIR=.*|DEPLOY_STATE_DIR=$state_dir|" \
     -e 's|^DEPLOY_HEALTH_TIMEOUT_SECONDS=.*|DEPLOY_HEALTH_TIMEOUT_SECONDS=20|' \
     -e 's|^DEPLOY_HEALTH_POLL_SECONDS=.*|DEPLOY_HEALTH_POLL_SECONDS=1|' \
@@ -49,7 +52,22 @@ run_deploy good
 compose exec -T postgres psql -U postgres -d quesshi_platform -tAc \
     "select count(*) from pg_roles where rolname in ('quesshi_owner', 'quesshi_app', 'quesshi_system')" \
     | grep -qx '3'
+docker volume inspect "$compose_project-media" >/dev/null
 ! compose exec -T app printenv ConnectionStrings__Owner >/dev/null 2>&1
+! compose exec -T app sh -c 'tr "\\0" "\\n" </proc/1/environ | grep -q "^ConnectionStrings__Owner="'
+app_connection="$(compose exec -T app sh -c 'tr "\\0" "\\n" </proc/1/environ | sed -n "s/^ConnectionStrings__App=//p"')"
+[[ "$app_connection" == 'Host="postgres";Port="5432";Database="quesshi_platform";Username="quesshi_app";Password="app;with:semicolon"' ]] \
+    || { printf 'app connection string did not preserve its quoted password: %s\n' "$app_connection" >&2; exit 1; }
+
+container_before="$(compose ps -q app)"
+sed -i 's|^DB_APP_PASSWORD=.*|DB_APP_PASSWORD=rotated;with:semicolon|' "$env_file"
+if run_deploy rotated; then
+    printf 'a stateful credential change unexpectedly replaced the healthy release\n' >&2
+    exit 1
+fi
+[[ "$container_before" == "$(compose ps -q app)" ]]
+[[ "$(docker inspect --format '{{.State.Health.Status}}' "$container_before")" == healthy ]]
+sed -i 's|^DB_APP_PASSWORD=.*|DB_APP_PASSWORD=app;with:semicolon|' "$env_file"
 
 RELEASE_TAG=good compose run --rm --no-deps app tenant add \
     --slug alpha --name Alpha --host alpha.staging.test --default-language en \
@@ -67,7 +85,6 @@ curl --fail --silent --show-error -H 'Host: alpha.staging.test' \
     "http://127.0.0.1:$app_port/_framework/blazor.webassembly.js" >/dev/null
 [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Host: missing.staging.test' "http://127.0.0.1:$app_port/api/config")" == 404 ]]
 
-container_before="$(compose ps -q app)"
 run_deploy good
 [[ "$container_before" == "$(compose ps -q app)" ]]
 
@@ -79,3 +96,10 @@ fi
 [[ "$(sed -n '1p' "$state_dir/current")" == good ]]
 [[ "$(docker inspect --format '{{.Config.Image}}' "$(compose ps -q app)")" == quesshi-platform:good ]]
 compose ps --status running app | grep -q app
+
+grep -F 'media_volume="$(setting MEDIA_VOLUME)"' "$deploy_dir/README.md"
+grep -F 'docker volume rm "$media_volume"' "$deploy_dir/README.md"
+grep -F 'deploy_state_dir="$(setting DEPLOY_STATE_DIR)"' "$deploy_dir/README.md"
+grep -F 'rm -rf -- "$deploy_state_dir"' "$deploy_dir/README.md"
+! grep -F 'quesshi-platform-staging-media' "$deploy_dir/README.md"
+[[ "$(sed -n 's/^MEDIA_VOLUME=//p' "$env_file")" == "$compose_project-media" ]]

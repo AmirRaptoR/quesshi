@@ -34,8 +34,11 @@ services:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-5011}:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
-      ConnectionStrings__App: Host=postgres;Port=5432;Database=${POSTGRES_DB:-quesshi_platform};Username=quesshi_app;Password=${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
-      ConnectionStrings__System: Host=postgres;Port=5432;Database=${POSTGRES_DB:-quesshi_platform};Username=quesshi_system;Password=${DB_SYSTEM_PASSWORD:?DB_SYSTEM_PASSWORD is required}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-quesshi_platform}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
+      DB_SYSTEM_PASSWORD: ${DB_SYSTEM_PASSWORD:?DB_SYSTEM_PASSWORD is required}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       Smtp__Host: ${SMTP_HOST:-mailpit}
       Smtp__Port: ${SMTP_PORT:-1025}

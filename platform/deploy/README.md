@@ -71,22 +71,33 @@ finishes. Caddy's config validation is also part of Platform CI.
 
 ## Reset staging data
 
-This deliberately clears the staging database and media volume without
-reinitializing the PostgreSQL data directory, so `quesshi_owner`, `quesshi_app`,
-and `quesshi_system` remain in the PostgreSQL catalog. Substitute the database
-and volume values from `.env` below.
+This deliberately clears the configured staging database and media volume
+without reinitializing the PostgreSQL data directory, so `quesshi_owner`,
+`quesshi_app`, and `quesshi_system` remain in the PostgreSQL catalog.
 
 ```sh
 cd platform/deploy
+setting() { sed -n "s/^$1=//p" .env | tail -n 1; }
+postgres_user="$(setting POSTGRES_USER)"
+postgres_database="$(setting POSTGRES_DB)"
+media_volume="$(setting MEDIA_VOLUME)"
+deploy_state_dir="$(setting DEPLOY_STATE_DIR)"
+test -n "$postgres_user" && test -n "$postgres_database" && test -n "$media_volume" && test -n "$deploy_state_dir"
 docker compose --env-file .env -f compose.yaml up -d postgres
 docker compose --env-file .env -f compose.yaml exec -T postgres \
-  psql -U postgres -d postgres -c 'DROP DATABASE quesshi_platform WITH (FORCE);'
+  psql -v ON_ERROR_STOP=1 -U "$postgres_user" -d postgres -v database_name="$postgres_database" \
+  -c 'SELECT format($sql$DROP DATABASE %I WITH (FORCE)$sql$, :"database_name") \gexec'
 docker compose --env-file .env -f compose.yaml exec -T postgres \
-  psql -U postgres -d postgres -c 'CREATE DATABASE quesshi_platform OWNER quesshi_owner;'
+  psql -v ON_ERROR_STOP=1 -U "$postgres_user" -d postgres -v database_name="$postgres_database" \
+  -c 'SELECT format($sql$CREATE DATABASE %I OWNER quesshi_owner$sql$, :"database_name") \gexec'
 docker compose --env-file .env -f compose.yaml down
-docker volume rm quesshi-platform-staging-media
+docker volume rm "$media_volume"
+rm -rf -- "$deploy_state_dir"
 ./deploy.sh milestone-1
 ```
 
 The next deployment reruns the idempotent role bootstrap and creates the
-database schema and system records again.
+database schema and system records again. Removing the deployment state lets
+the next deployment establish a new successful release. Keep the
+`POSTGRES_*` bootstrap settings unchanged while retaining its data volume;
+changing those settings requires recreating that staging volume separately.

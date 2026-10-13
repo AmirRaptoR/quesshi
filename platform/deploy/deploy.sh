@@ -39,9 +39,13 @@ snapshot_compose() {
 }
 
 setting() {
-    local key="$1" value
-    value="$(sed -n "s/^${key}=//p" "$env_file" | tail -n 1)"
-    [[ -n "$value" ]] || fail "$key must be set in $env_file"
+    setting_from "$env_file" "$1"
+}
+
+setting_from() {
+    local file="$1" key="$2" value
+    value="$(sed -n "s/^${key}=//p" "$file" | tail -n 1)"
+    [[ -n "$value" ]] || fail "$key must be set in $file"
     printf '%s' "$value"
 }
 
@@ -106,6 +110,24 @@ wait_for_postgres() {
     return 1
 }
 
+wait_for_snapshot_postgres() {
+    local snapshot="$1" snapshot_user snapshot_database elapsed=0 first_ready=0
+    snapshot_user="$(setting_from "$snapshot/.env" POSTGRES_USER)"
+    snapshot_database="$(setting_from "$snapshot/.env" POSTGRES_DB)"
+    while (( elapsed <= postgres_timeout )); do
+        if snapshot_compose "$snapshot" exec -T postgres psql -v ON_ERROR_STOP=1 -U "$snapshot_user" -d "$snapshot_database" \
+            -tAc 'select 1' >/dev/null 2>&1; then
+            (( first_ready )) && return 0
+            first_ready=1
+        else
+            first_ready=0
+        fi
+        sleep "$postgres_poll"
+        elapsed=$((elapsed + postgres_poll))
+    done
+    return 1
+}
+
 sql_literal() {
     sed "s/'/''/g" <<<"$1"
 }
@@ -146,10 +168,42 @@ rollback() {
     [[ -f "$previous/compose.yaml" && -f "$previous/.env" ]] \
         || fail "previous release configuration is missing: $previous"
     printf 'Candidate failed; restoring release %s.\n' "$current_release" >&2
+    RELEASE_TAG="$current_release" snapshot_compose "$previous" up -d --no-build --force-recreate postgres mailpit
+    wait_for_snapshot_postgres "$previous" \
+        || fail "candidate failed and restored PostgreSQL did not become ready"
     RELEASE_TAG="$current_release" snapshot_compose "$previous" up -d --no-build --no-deps --force-recreate app
-    if ! wait_for_app; then
+    if ! wait_for_snapshot_app "$previous"; then
         fail "candidate failed and restored release $current_release did not become healthy"
     fi
+}
+
+snapshot_app_healthy() {
+    local snapshot="$1" container status
+    container="$(snapshot_compose "$snapshot" ps -q app 2>/dev/null || true)"
+    [[ -n "$container" ]] || return 1
+    status="$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null || true)"
+    [[ "$status" == healthy ]]
+}
+
+wait_for_snapshot_app() {
+    local snapshot="$1" elapsed=0
+    while (( elapsed <= health_timeout )); do
+        snapshot_app_healthy "$snapshot" && return 0
+        sleep "$health_poll"
+        elapsed=$((elapsed + health_poll))
+    done
+    return 1
+}
+
+require_stable_database_settings() {
+    [[ -n "$current_release" ]] || return 0
+
+    local previous="$state_dir/releases/$current_release" key
+    [[ -f "$previous/.env" ]] || fail "previous release configuration is missing: $previous"
+    for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_VOLUME DB_OWNER_PASSWORD DB_APP_PASSWORD DB_SYSTEM_PASSWORD; do
+        [[ "$(setting "$key")" == "$(setting_from "$previous/.env" "$key")" ]] || \
+            fail "$key cannot change while a staging release is healthy; perform a controlled staging reset before changing database settings or credentials"
+    done
 }
 
 # A healthy release under exactly the same configuration is a no-op. An unhealthy container must
@@ -159,6 +213,7 @@ if [[ "$release" == "$current_release" && "$config_fingerprint" == "$current_fin
     exit 0
 fi
 
+require_stable_database_settings
 compose up -d postgres mailpit
 wait_for_postgres || fail "PostgreSQL did not become ready within ${postgres_timeout}s"
 
@@ -171,7 +226,7 @@ set_role_password quesshi_system "$system_password"
 # Fail before touching the running application when a build, migration, or sync is invalid.
 RELEASE_TAG="$release" compose build app
 RELEASE_TAG="$release" compose run --rm --no-deps \
-    -e "ConnectionStrings__Owner=Host=postgres;Port=5432;Database=$postgres_database;Username=quesshi_owner;Password=$owner_password" \
+    -e "DB_OWNER_PASSWORD=$owner_password" \
     app migrate
 RELEASE_TAG="$release" compose run --rm --no-deps app sync
 

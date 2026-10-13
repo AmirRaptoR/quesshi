@@ -17,12 +17,14 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app .
+COPY platform/entrypoint.sh /app/entrypoint.sh
 
 RUN mkdir -p /app/wwwroot/media \
+ && chmod 755 /app/entrypoint.sh \
  && chown -R 1000:1000 /app
 
 USER 1000:1000
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 
-ENTRYPOINT ["./Quesshi.Server"]
+ENTRYPOINT ["/app/entrypoint.sh"]
