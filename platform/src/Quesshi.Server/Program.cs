@@ -145,11 +145,26 @@ public static class Program
         builder.Services.AddSingleton<ISessionDeadlineReconciler, NoopSessionDeadlineReconciler>();
         builder.Services.AddSingleton<IFormatRegistry>(_ => PlatformFormats.CreateRegistry());
         builder.Services.AddSingleton<IKindRegistry>(_ => new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
-        builder.Services.AddSingleton(_ => FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly)));
+        builder.Services.AddSingleton(provider =>
+        {
+            var registry = FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
+            registry.Jobs.Register("core", "event", (context, cancellationToken) =>
+                provider.GetRequiredService<DurableEvents>().HandleEventJobAsync(context, cancellationToken));
+            registry.Jobs.Register("core", "cleanup-player", (context, cancellationToken) =>
+                provider.GetRequiredService<DurableEvents>().HandleCleanupJobAsync(context, cancellationToken));
+            return registry;
+        });
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Capabilities);
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Jobs);
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Schedules);
         builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
+        builder.Services.TryAddSingleton<ILocks, TenantLocks>();
+        builder.Services.TryAddSingleton<IJobs, TenantJobs>();
+        builder.Services.TryAddSingleton<ISessionEffectsNotifier, NullSessionEffectsNotifier>();
+        builder.Services.AddSingleton<DurableEvents>();
+        builder.Services.AddSingleton<IEvents>(provider => provider.GetRequiredService<DurableEvents>());
+        builder.Services.AddSingleton<IPlayerCleanup>(provider => provider.GetRequiredService<DurableEvents>());
+        builder.Services.AddSingleton<ISessionEffects>(provider => provider.GetRequiredService<DurableEvents>());
         if (builder.Configuration.GetValue("Jobs:Enabled", true))
         {
             builder.Services.AddSingleton<IJobStore, PostgresJobStore>();

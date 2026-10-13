@@ -12,5 +12,6 @@ public interface IJobs
         JsonElement payload,
         string? uniqueKey = null,
         DateTimeOffset? runAt = null,
+        int? maxAttempts = 10,
         CancellationToken cancellationToken = default);
 }

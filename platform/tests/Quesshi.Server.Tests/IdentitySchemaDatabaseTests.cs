@@ -151,6 +151,20 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
         await ExecuteAsync(owner, """
+            drop function session_ended_effect_jobs(uuid);
+            drop function enqueue_job(text, text, jsonb, text, timestamptz, int);
+            drop table session_effects;
+            drop table plugin_effects;
+            create function enqueue_job(job_owner text, job_kind text, job_payload jsonb,
+                                        job_unique_key text default null, job_run_at timestamptz default now())
+              returns void
+              language sql security definer set search_path = public
+              as $enqueue$
+                insert into jobs (tenant_id, owner, kind, payload, unique_key, run_at)
+                values (app_tenant(), job_owner, job_kind, job_payload, job_unique_key, job_run_at)
+                on conflict do nothing;
+              $enqueue$;
+            grant execute on function enqueue_job(text, text, jsonb, text, timestamptz) to quesshi_app, quesshi_system;
             drop function account_players(uuid);
             drop function claim_account(uuid);
             drop table account_identities;
@@ -159,6 +173,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             drop table auth_rate_limits;
             drop table rate_limits;
             drop table data_protection_keys;
+            delete from schema_migrations where name = '20261013T0203_core_effects.sql';
             delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p

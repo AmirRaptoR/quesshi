@@ -12,6 +12,7 @@ internal sealed class FeatureRegistry(
 {
     private readonly Dictionary<string, RegisteredFeature> _features = new(StringComparer.Ordinal);
     private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _eventHandlers = [];
+    private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _declaredEventHandlers = [];
     private readonly Dictionary<string, Delegate> _cleanupHandlers = new(StringComparer.Ordinal);
 
     public IReadOnlyCollection<RegisteredFeature> Features => _features.Values;
@@ -24,6 +25,9 @@ internal sealed class FeatureRegistry(
 
     /// <summary>Contains only handlers that should receive events emitted after startup.</summary>
     public IReadOnlyDictionary<(string FeatureId, Type EventType), Delegate> EventHandlers => _eventHandlers;
+
+    /// <summary>Contains all declared handlers, including retired features, for persisted-state readers.</summary>
+    public IReadOnlyDictionary<(string FeatureId, Type EventType), Delegate> DeclaredEventHandlers => _declaredEventHandlers;
 
     /// <summary>Contains cleanup declarations, including those from retired features.</summary>
     public IReadOnlyDictionary<string, Delegate> CleanupHandlers => _cleanupHandlers;
@@ -65,7 +69,15 @@ internal sealed class FeatureRegistry(
 
             foreach (var eventHandler in builder.EventHandlers)
             {
+                _declaredEventHandlers.Add((id, eventHandler.EventType), eventHandler.Handler);
                 _eventHandlers.Add((id, eventHandler.EventType), eventHandler.Handler);
+            }
+        }
+        else
+        {
+            foreach (var eventHandler in builder.EventHandlers)
+            {
+                _declaredEventHandlers.Add((id, eventHandler.EventType), eventHandler.Handler);
             }
         }
 
@@ -100,6 +112,28 @@ internal sealed class FeatureRegistry(
     }
 
     internal sealed record RegisteredFeature(string Id, bool Retired, FeatureSettings Settings);
+
+    public Task InvokeEventHandlerAsync(string featureId, Type eventType, ITenantTx transaction, object @event, CancellationToken cancellationToken)
+    {
+        if (!_declaredEventHandlers.TryGetValue((featureId, eventType), out var handler))
+        {
+            throw new InvalidOperationException($"Feature '{featureId}' has no declared handler for event '{eventType.FullName}'.");
+        }
+
+        return handler.DynamicInvoke(transaction, @event, cancellationToken) as Task
+            ?? throw new InvalidOperationException($"Feature '{featureId}' event handler returned no task.");
+    }
+
+    public Task InvokeCleanupAsync(string featureId, ITenantTx transaction, Guid playerId, CancellationToken cancellationToken)
+    {
+        if (!_cleanupHandlers.TryGetValue(featureId, out var handler))
+        {
+            throw new InvalidOperationException($"Feature '{featureId}' has no player cleanup handler.");
+        }
+
+        return handler.DynamicInvoke(transaction, playerId, cancellationToken) as Task
+            ?? throw new InvalidOperationException($"Feature '{featureId}' cleanup handler returned no task.");
+    }
 
     private sealed class FeatureBuilder(string featureId) : IFeatureBuilder
     {
