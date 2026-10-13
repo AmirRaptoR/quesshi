@@ -107,11 +107,12 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var migrations = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly, typeof(FeaturesMarker).Assembly);
         var expected = migrations.Single(migration => migration.Name == "20261013T0200_core_orleans.sql");
+        var pending = migrations.Where(migration => string.CompareOrdinal(migration.Name, expected.Name) >= 0).ToArray();
 
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
         var membershipRowsBefore = await owner.ExecuteScalarAsync<long>("select count(*) from orleans.orleansmembershiptable where deploymentid = 'quesshi'");
-        await owner.ExecuteAsync("delete from public.schema_migrations where name = @name", new { name = expected.Name });
+        await owner.ExecuteAsync("delete from public.schema_migrations where name = any(@names)", new { names = pending.Select(migration => migration.Name).ToArray() });
         try
         {
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => Program.ServeAsync(CreateSources()));
@@ -121,9 +122,12 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         }
         finally
         {
-            await owner.ExecuteAsync(
-                "insert into public.schema_migrations(name, owner, checksum) values (@name, @owner, @checksum)",
-                new { name = expected.Name, owner = expected.Owner, checksum = expected.Checksum });
+            foreach (var migration in pending)
+            {
+                await owner.ExecuteAsync(
+                    "insert into public.schema_migrations(name, owner, checksum) values (@name, @owner, @checksum)",
+                    new { name = migration.Name, owner = migration.Owner, checksum = migration.Checksum });
+            }
         }
     }
 

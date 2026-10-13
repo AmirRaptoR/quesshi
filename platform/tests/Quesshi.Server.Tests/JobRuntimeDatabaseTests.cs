@@ -194,23 +194,28 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
         Assert.Contains("boom", await SingleAsync<string>("select last_error from jobs where id = @id", ("id", id)));
     }
 
-    [SkippableFact]
-    public async Task The_host_registers_the_job_worker_unless_jobs_are_disabled()
+    [Fact]
+    public async Task The_host_registers_job_loops_unless_jobs_are_disabled()
     {
-        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var original = Environment.GetEnvironmentVariable("Jobs__Enabled");
         try
         {
-            await using var sources = Sources();
+            await using var sources = fixture.ConnectionString is null
+                ? new DatabaseSources(
+                    "Host=127.0.0.1;Database=quesshi;Username=quesshi_app",
+                    "Host=127.0.0.1;Database=quesshi;Username=quesshi_system")
+                : Sources();
             Environment.SetEnvironmentVariable("Jobs__Enabled", null);
             await using (var enabled = Program.CreateApplication(sources, 11127, 30127))
             {
                 Assert.Contains(enabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobWorkerService");
+                Assert.Contains(enabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobScheduleService");
             }
 
             Environment.SetEnvironmentVariable("Jobs__Enabled", "false");
             await using var disabled = Program.CreateApplication(sources, 11128, 30128);
             Assert.DoesNotContain(disabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobWorkerService");
+            Assert.DoesNotContain(disabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobScheduleService");
         }
         finally
         {
