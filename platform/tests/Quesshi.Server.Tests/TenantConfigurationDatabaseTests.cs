@@ -14,6 +14,10 @@ public sealed class TenantConfigurationDatabaseTests(PostgresFixture fixture)
     {
         "tenants", "tenant_hosts", "tenant_languages", "tenant_capabilities"
     };
+    private static readonly IReadOnlySet<string> CatalogueGlobalTables = new HashSet<string>(GlobalTables, StringComparer.Ordinal)
+    {
+        "jobs"
+    };
 
     [SkippableFact]
     public async Task Configuration_migration_creates_the_documented_contract()
@@ -113,14 +117,14 @@ public sealed class TenantConfigurationDatabaseTests(PostgresFixture fixture)
         {
             await ExecuteAsync(owner, "create table catalogue_probe (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))");
             await ExecuteAsync(owner, "select quesshi_tenant_table('catalogue_probe', 'test')");
-            await TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables);
+            await TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, CatalogueGlobalTables);
 
             await ExecuteAsync(owner, "create table catalogue_missing_policy (tenant_id uuid not null, id uuid not null, primary key (tenant_id, id))");
-            var policyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables));
+            var policyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, CatalogueGlobalTables));
             Assert.Contains("catalogue_missing_policy", policyFailure.Message);
             await ExecuteAsync(owner, "drop table catalogue_missing_policy");
             await ExecuteAsync(owner, "create table catalogue_wrong_key (tenant_id uuid not null, id uuid primary key)");
-            var keyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, GlobalTables));
+            var keyFailure = await Assert.ThrowsAnyAsync<XunitException>(() => TenantIsolationTestHelper.AssertTenantCatalogueAsync(owner, CatalogueGlobalTables));
             Assert.Contains("catalogue_wrong_key", keyFailure.Message);
         }
         finally
