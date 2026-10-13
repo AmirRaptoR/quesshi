@@ -23,7 +23,6 @@ internal sealed class NullSessionEffectsNotifier : ISessionEffectsNotifier
 internal sealed class DurableEvents(
     FeatureRegistry features,
     IJobs jobs,
-    ITenantDb tenantDatabase,
     ILocks locks,
     ISessionEffectsNotifier notifications) : IEvents, IPlayerCleanup, ISessionEffects
 {
@@ -63,7 +62,7 @@ internal sealed class DurableEvents(
     {
         ArgumentNullException.ThrowIfNull(transaction);
         var deleted = await IsPlayerDeletedAsync(transaction, playerId, cancellationToken);
-        if (!deleted) return;
+        if (deleted != true) return;
 
         foreach (var featureId in features.CleanupHandlers.Keys.Order(StringComparer.Ordinal))
         {
@@ -128,13 +127,13 @@ internal sealed class DurableEvents(
             if (eventValue is PlayerUpgraded playerUpgraded)
             {
                 await locks.PlayersAsync(transaction, [playerUpgraded.PlayerId], cancellationToken);
-                if (await IsPlayerDeletedAsync(transaction, playerUpgraded.PlayerId, cancellationToken)) return 0;
+                if (await IsPlayerDeletedAsync(transaction, playerUpgraded.PlayerId, cancellationToken) == true) return 0;
             }
-            else if (eventValue is SessionEnded sessionEnded)
+            else if (eventValue is SessionEnded endedSession)
             {
                 var playerIds = await transaction.QueryAsync<Guid>(
                     "select player_id from session_participants where session_id = @sessionId order by player_id",
-                    new { sessionId = sessionEnded.SessionId },
+                    new { sessionId = endedSession.SessionId },
                     cancellationToken);
                 await locks.PlayersAsync(transaction, playerIds, cancellationToken);
             }
@@ -159,7 +158,7 @@ internal sealed class DurableEvents(
         await database.InTenantAsync(context.TenantId!.Value, async transaction =>
         {
             await locks.PlayersAsync(transaction, [payload.PlayerId], cancellationToken);
-            if (await IsPlayerDeletedAsync(transaction, payload.PlayerId, cancellationToken))
+            if (await IsPlayerDeletedAsync(transaction, payload.PlayerId, cancellationToken) == true)
             {
                 await features.InvokeCleanupAsync(payload.FeatureId, transaction, payload.PlayerId, cancellationToken);
             }

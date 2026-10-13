@@ -12,7 +12,7 @@ public sealed class DurableEffectsTests
     {
         var registry = CreateRegistry(new EventFeature("active"), new RetiredEventFeature("retired"));
         var jobs = new RecordingJobs();
-        var events = new DurableEvents(registry, jobs, new UnusedTenantDb(), new UnusedLocks(), new NullSessionEffectsNotifier());
+        var events = new DurableEvents(registry, jobs, new UnusedLocks(), new NullSessionEffectsNotifier());
         var sessionId = Guid.NewGuid();
 
         await events.EmitAsync(new CapabilityTransaction("active"), new SessionEnded(sessionId));
@@ -32,7 +32,7 @@ public sealed class DurableEffectsTests
     {
         var registry = CreateRegistry(new EventFeature("active"));
         var jobs = new RecordingJobs();
-        var events = new DurableEvents(registry, jobs, new UnusedTenantDb(), new UnusedLocks(), new NullSessionEffectsNotifier());
+        var events = new DurableEvents(registry, jobs, new UnusedLocks(), new NullSessionEffectsNotifier());
 
         await events.EmitAsync(new CapabilityTransaction(), new SessionEnded(Guid.NewGuid()));
 
@@ -45,7 +45,7 @@ public sealed class DurableEffectsTests
         var registry = CreateRegistry(new EventFeature("active"));
         var transaction = new EffectTransaction();
         var notifier = new RecordingNotifier();
-        var events = new DurableEvents(registry, new RecordingJobs(), new BoundTenantDb(transaction), new UnusedLocks(), notifier);
+        var events = new DurableEvents(registry, new RecordingJobs(), new UnusedLocks(), notifier);
         var sessionId = Guid.NewGuid();
         var payload = JsonSerializer.SerializeToElement(EventJobPayload.Create("active", "sessionEnded", sessionId));
 
@@ -60,7 +60,7 @@ public sealed class DurableEffectsTests
     public async Task Effects_reader_reports_off_for_declared_handler_without_a_persisted_job()
     {
         var registry = CreateRegistry(new EventFeature("active"));
-        var events = new DurableEvents(registry, new RecordingJobs(), new UnusedTenantDb(), new UnusedLocks(), new NullSessionEffectsNotifier());
+        var events = new DurableEvents(registry, new RecordingJobs(), new UnusedLocks(), new NullSessionEffectsNotifier());
 
         var state = await events.GetAsync(new EffectTransaction(), Guid.NewGuid());
 
@@ -74,7 +74,7 @@ public sealed class DurableEffectsTests
     {
         var registry = CreateRegistry(new CleanupFeature("cleanup"));
         var jobs = new RecordingJobs();
-        var events = new DurableEvents(registry, jobs, new UnusedTenantDb(), new UnusedLocks(), new NullSessionEffectsNotifier());
+        var events = new DurableEvents(registry, jobs, new UnusedLocks(), new NullSessionEffectsNotifier());
         var playerId = Guid.NewGuid();
 
         await events.EnqueueAsync(new PlayerDeletionTransaction(deleted: false), playerId);
@@ -185,12 +185,6 @@ public sealed class DurableEffectsTests
 
         public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult((T?)(object?)(bool?)deleted);
-    }
-
-    private sealed class UnusedTenantDb : ITenantDb
-    {
-        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     private sealed class BoundTenantDb(ITenantTx transaction) : ITenantDb

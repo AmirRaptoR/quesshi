@@ -14,12 +14,12 @@ public sealed class EffectsDatabaseTests(PostgresFixture fixture)
     private static readonly Guid TenantB = Guid.Parse("b9627d2b-5129-4c6d-b642-ae9cdbb4c5d4");
 
     [Fact]
-    public void Effects_migration_follows_the_session_storage_migration()
+    public void Effects_migration_follows_existing_core_migrations()
     {
         var names = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly).Select(migration => migration.Name).ToArray();
 
-        Assert.Contains("20261013T0103_core_effects.sql", names);
-        Assert.True(Array.IndexOf(names, "20261013T0102_core_sessions.sql") < Array.IndexOf(names, "20261013T0103_core_effects.sql"));
+        Assert.Contains("20261013T0203_core_effects.sql", names);
+        Assert.True(Array.IndexOf(names, "20261013T0202_core_identity_security.sql") < Array.IndexOf(names, "20261013T0203_core_effects.sql"));
     }
 
     [SkippableFact]
