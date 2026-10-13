@@ -19,7 +19,6 @@ public sealed class ApplicationVisibilityTests
         Assert.Equal(
             [
                 typeof(AnswerKey),
-                typeof(AnswerState),
                 typeof(ChangeSet),
                 typeof(RowChange),
                 typeof(SessionItemState),

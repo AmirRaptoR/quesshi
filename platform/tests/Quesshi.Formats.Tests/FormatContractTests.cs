@@ -60,7 +60,7 @@ public sealed class FormatContractTests
         Assert.Equal(
             ["a:0", "a", "session", "a"],
             session.Changes.Changes.Select(change => change.Key));
-        Assert.Equal(100, Assert.IsType<AnswerState>(session.Changes.Changes[0].Row).Points);
+        Assert.Equal(100, Assert.IsType<AnswerRecord>(session.Changes.Changes[0].Row).Points);
         Assert.Equal(100, Assert.IsType<Seat>(session.Changes.Changes[1].Row).Score);
         Assert.True(Assert.IsType<SessionRow>(session.Changes.Changes[2].Row).Ended);
         Assert.Equal(1, Assert.IsType<Seat>(session.Changes.Changes[3].Row).Place);
@@ -128,6 +128,24 @@ public sealed class FormatContractTests
     }
 
     [Fact]
+    public void Personal_seat_results_and_answer_rows_survive_a_terminal_transition()
+    {
+        var session = Harness(State(players: 2, slots: 1));
+        session.Serve("a", 0);
+        session.Record(session.Grade(Answer("a", 0)), 100);
+        session.SetSeatResult("a", SeatStatus.Done, Json("{\"answered\":1,\"runBegan\":true}"));
+        session.SetSeatResult("b", SeatStatus.Left, Json("{\"answered\":0,\"runBegan\":false,\"forfeited\":true}"));
+        session.End(EndReason.Forfeit, [new Standing("a", 1, "win"), new Standing("b", 2, "loss")], Json("{}"));
+
+        Assert.True(session.Session.Ended);
+        Assert.Empty(session.State.EnumerateObject());
+        Assert.Equal(SeatStatus.Done, session.Seats.Single(seat => seat.Player == "a").Status);
+        Assert.Equal(SeatStatus.Left, session.Seats.Single(seat => seat.Player == "b").Status);
+        Assert.True(session.Seats.Single(seat => seat.Player == "b").Result!.Value.GetProperty("forfeited").GetBoolean());
+        Assert.Single(session.Answers("a"));
+    }
+
+    [Fact]
     public void Echo_completes_a_three_player_two_slot_session()
     {
         var session = Harness(State(players: 3, slots: 2));
@@ -149,7 +167,7 @@ public sealed class FormatContractTests
         var seats = Enumerable.Range(0, players).Select(index => new Seat(((char)('a' + index)).ToString(), "player"));
         var items = Enumerable.Range(0, slots).Select(slot => SessionItemState.Create(
             new SessionItem(slot, kind, 1, null, null), Json("{}"), Json("{}"), Json($"{{\"slot\":{slot}}}"), Json("{}")));
-        return SessionState.Create(new SessionRow("session", hasStarted ? Started : null, null, null), Json("{}"), seats, items);
+        return SessionState.Create(new SessionRow("session", hasStarted ? Started : null, null, null, CreatedAt: Started), Json("{}"), seats, items);
     }
 
     private static Command Answer(string player, int slot, DateTimeOffset? received = null, int revision = 0) => new(CommandType.Answer, player, new Position(0, slot), revision, null, Json("{}"), received ?? Started);
