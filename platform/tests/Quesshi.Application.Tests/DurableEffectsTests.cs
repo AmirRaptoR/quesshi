@@ -189,7 +189,7 @@ public sealed class DurableEffectsTests
 
     private sealed class BoundTenantDb(ITenantTx transaction) : ITenantDb
     {
-        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default) =>
+        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false) =>
             callback(transaction);
     }
 

@@ -30,7 +30,8 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         var registry = FeatureRegistry.Create([feature, retired]);
         var notifications = new RecordingNotifier();
         var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), notifications);
-        await using var database = Sources();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
         await SetCapabilityAsync(tenant, feature.Id, enabled: false);
 
         await database.InTenantAsync(tenant, async transaction =>
@@ -54,13 +55,13 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             return 0;
         });
         Assert.Equal(1, await CountJobsAsync(tenant));
-        Assert.Equal("pending", Assert.Single((await ReadStateAsync(database, events, tenant, session)).Features.Where(state => state.FeatureId == feature.Id)).Status);
-        Assert.Equal("off", Assert.Single((await ReadStateAsync(database, events, tenant, session)).Features.Where(state => state.FeatureId == retired.Id)).Status);
+        Assert.Equal("pending", Assert.Single((await ReadStateAsync(sources, events, tenant, session)).Features, state => state.FeatureId == feature.Id).Status);
+        Assert.Equal("off", Assert.Single((await ReadStateAsync(sources, events, tenant, session)).Features, state => state.FeatureId == retired.Id).Status);
 
         await SetCapabilityAsync(tenant, feature.Id, enabled: false);
-        await RunWorkerAsync(database, registry, events, notifications);
+        await RunWorkerAsync(sources, registry, events, notifications);
         Assert.Equal(1, await CountMarkersAsync(tenant, feature.Id, $"sessionEnded:{session}"));
-        Assert.Equal("done", Assert.Single((await ReadStateAsync(database, events, tenant, session)).Features.Where(state => state.FeatureId == feature.Id)).Status);
+        Assert.Equal("done", Assert.Single((await ReadStateAsync(sources, events, tenant, session)).Features, state => state.FeatureId == feature.Id).Status);
 
         await database.InTenantAsync(tenant, async transaction =>
         {
@@ -69,7 +70,7 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         });
         await SetCapabilityAsync(tenant, feature.Id, enabled: true);
         Assert.Equal(1, await CountJobsAsync(tenant));
-        var hidden = await ReadStateAsync(database, events, otherTenant, session);
+        var hidden = await ReadStateAsync(sources, events, otherTenant, session);
         Assert.All(hidden.Features, state => Assert.Equal("off", state.Status));
     }
 
@@ -86,7 +87,8 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         var registry = FeatureRegistry.Create([feature]);
         var notifications = new RecordingNotifier();
         var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), notifications);
-        await using var database = Sources();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
         await SetCapabilityAsync(tenant, feature.Id, enabled: true);
         await database.InTenantAsync(tenant, async transaction =>
         {
@@ -96,19 +98,19 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         var jobId = await SingleJobIdAsync(tenant);
         await ExecuteSystemAsync("update jobs set max_attempts = 1 where id = @jobId", ("jobId", jobId));
 
-        await RunWorkerAsync(database, registry, events, notifications);
+        await RunWorkerAsync(sources, registry, events, notifications);
         Assert.Equal("dead", await JobStatusAsync(jobId));
         Assert.Equal(0, await CountMarkersAsync(tenant, feature.Id, $"sessionEnded:{session}"));
         Assert.Equal(0, await CountMarkersAsync(tenant, $"effect:{feature.Id}", $"session:{session}"));
         Assert.Equal(1L, await RevisionAsync(tenant, session));
         Assert.Equal([session], notifications.Sessions);
-        Assert.Equal("failed", Assert.Single((await ReadStateAsync(database, events, tenant, session)).Features).Status);
+        Assert.Equal("failed", Assert.Single((await ReadStateAsync(sources, events, tenant, session)).Features).Status);
 
-        var store = new PostgresJobStore(database, notifications);
+        var store = new PostgresJobStore(sources, notifications);
         Assert.True(await store.RerunDeadAsync(jobId));
         Assert.Equal(2L, await RevisionAsync(tenant, session));
         Assert.Equal([session, session], notifications.Sessions);
-        await RunWorkerAsync(database, registry, events, notifications);
+        await RunWorkerAsync(sources, registry, events, notifications);
         Assert.Equal("done", await JobStatusAsync(jobId));
         Assert.Equal(1, await CountMarkersAsync(tenant, $"effect:{feature.Id}", $"session:{session}"));
         Assert.Equal(3L, await RevisionAsync(tenant, session));
@@ -122,8 +124,8 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             return 0;
         });
         await Task.WhenAll(
-            RunWorkerAsync(database, registry, events, notifications),
-            RunWorkerAsync(database, registry, events, notifications));
+            RunWorkerAsync(sources, registry, events, notifications),
+            RunWorkerAsync(sources, registry, events, notifications));
         Assert.Equal(1, await CountMarkersAsync(tenant, $"effect:{feature.Id}", $"session:{concurrentSession}"));
 
         var expiredSession = Guid.NewGuid();
@@ -157,7 +159,8 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         var registry = FeatureRegistry.Create([eventFeature, cleanupFails, cleanupWorks, retiredCleanup]);
         var locks = new RecordingLocks();
         var events = new DurableEvents(registry, new TenantJobs(), locks, new RecordingNotifier());
-        await using var database = Sources();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
         await SetCapabilityAsync(tenant, eventFeature.Id, enabled: true);
         await database.InTenantAsync(tenant, async transaction =>
         {
@@ -176,14 +179,14 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         Assert.Equal(3, await CountCleanupJobsAsync(tenant));
         Assert.Equal(3, await ScalarSystemAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player' and max_attempts is null", ("tenant", tenant)));
 
-        await RunWorkerAsync(database, registry, events, new RecordingNotifier());
+        await RunWorkerAsync(sources, registry, events, new RecordingNotifier());
         Assert.Equal(1, await CountMarkersAsync(tenant, $"cleanup:{cleanupWorks.Id}", $"player:{player}"));
         Assert.Equal(1, await CountMarkersAsync(tenant, $"cleanup:{retiredCleanup.Id}", $"player:{player}"));
         Assert.Equal(0, await CountMarkersAsync(tenant, $"cleanup:{cleanupFails.Id}", $"player:{player}"));
         Assert.Equal(0, await CountMarkersAsync(tenant, $"effect:{eventFeature.Id}", $"player:{player}"));
 
         await ExecuteSystemAsync("update jobs set run_at = now() where tenant_id = @tenant and kind = 'cleanup-player' and status = 'ready'", ("tenant", tenant));
-        await RunWorkerAsync(database, registry, events, new RecordingNotifier());
+        await RunWorkerAsync(sources, registry, events, new RecordingNotifier());
         Assert.Equal(1, await CountMarkersAsync(tenant, $"cleanup:{cleanupFails.Id}", $"player:{player}"));
         Assert.True(locks.PlayerCalls >= 4);
     }
