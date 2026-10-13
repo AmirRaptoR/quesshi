@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Xml.Linq;
+using Quesshi.Engine.Contracts;
 
 namespace Quesshi.Architecture.Tests;
 
@@ -38,6 +39,7 @@ public sealed class PluginFolderReferenceTests
     [InlineData("Quesshi.Kinds", "Quesshi.Shared")]
     [InlineData("Quesshi.Formats", "Quesshi.Engine.Contracts", "Quesshi.Domain", "Quesshi.Shared")]
     [InlineData("Quesshi.Features", "Quesshi.Plugin.Api")]
+    [InlineData("Quesshi.Formats.Testing", "Quesshi.Application", "Quesshi.Domain", "Quesshi.Engine.Contracts", "Quesshi.Shared")]
     public void Plugin_project_references_match_the_platform_contract(string project, params string[] expected)
     {
         var document = XDocument.Load(Path.Combine(PlatformDirectory.Find(), "src", project, $"{project}.csproj"));
@@ -46,6 +48,15 @@ public sealed class PluginFolderReferenceTests
             .ToArray();
 
         Assert.Equal(expected.Order(), actual);
+    }
+
+    [Fact]
+    public void Format_session_handles_expose_item_metadata_not_question_payloads()
+    {
+        Assert.DoesNotContain(typeof(SessionItem).GetProperties(), property => property.Name.Contains("payload", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(typeof(ISession).GetProperties(), property => property.Name.Contains("payload", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(typeof(IViewing).GetProperties(), property => property.Name.Contains("payload", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(typeof(IFormat).GetMethods().SelectMany(method => method.GetParameters()), parameter => parameter.ParameterType.Name.Contains("SessionItemState", StringComparison.Ordinal));
     }
 
     [Fact]

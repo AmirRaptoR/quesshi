@@ -1,1 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk" />
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.Shared/Quesshi.Shared.csproj" />
+  </ItemGroup>
+</Project>

@@ -5,6 +5,7 @@
     <Project Path="src/Quesshi.Kinds/Quesshi.Kinds.csproj" />
     <Project Path="src/Quesshi.Engine.Contracts/Quesshi.Engine.Contracts.csproj" />
     <Project Path="src/Quesshi.Formats/Quesshi.Formats.csproj" />
+    <Project Path="src/Quesshi.Formats.Testing/Quesshi.Formats.Testing.csproj" />
     <Project Path="src/Quesshi.Plugin.Api/Quesshi.Plugin.Api.csproj" />
     <Project Path="src/Quesshi.Features/Quesshi.Features.csproj" />
     <Project Path="src/Quesshi.Application/Quesshi.Application.csproj" />
