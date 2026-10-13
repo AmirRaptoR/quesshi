@@ -145,6 +145,147 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Simultaneous_expired_handlers_for_one_session_are_parked_and_revised_once()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        await CreateSessionAsync(tenant, player, session);
+        var first = new SampleFeature("expired-first");
+        var second = new SampleFeature("expired-second");
+        var registry = FeatureRegistry.Create([first, second]);
+        var notifications = new RecordingNotifier();
+        var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), notifications);
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await SetCapabilityAsync(tenant, first.Id, enabled: true);
+        await SetCapabilityAsync(tenant, second.Id, enabled: true);
+        await database.InTenantAsync(tenant, async transaction =>
+        {
+            await events.EmitAsync(transaction, new SessionEnded(session));
+            return 0;
+        });
+
+        var store = new PostgresJobStore(sources, notifications);
+        Assert.Equal(2, (await store.ClaimAsync(10, TimeSpan.FromMinutes(1))).Count);
+        await ExecuteSystemAsync("""
+            update jobs set locked_until = now() - interval '1 second', max_attempts = 1
+            where tenant_id = @tenant and kind = 'event' and payload->>'subjectId' = @session
+            """, ("tenant", tenant), ("session", session.ToString()));
+
+        Assert.Empty(await store.ClaimAsync(10, TimeSpan.FromMinutes(1)));
+        Assert.Equal(2L, await ScalarSystemAsync<long>("""
+            select count(*) from jobs where tenant_id = @tenant and kind = 'event' and status = 'dead'
+            """, ("tenant", tenant)));
+        Assert.Equal(2L, await RevisionAsync(tenant, session));
+        Assert.Equal(1, notifications.Sessions.Count(id => id == session));
+    }
+
+    [SkippableFact]
+    public async Task Session_effects_converge_when_events_are_delivered_in_the_reverse_order()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var firstSession = Guid.NewGuid();
+        var secondSession = Guid.NewGuid();
+        await CreateSessionAsync(tenant, player, firstSession);
+        await CreateSessionAsync(tenant, player, secondSession);
+        var feature = new SampleFeature("convergent", convergent: true);
+        var registry = FeatureRegistry.Create([feature]);
+        var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new RecordingNotifier());
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await SetCapabilityAsync(tenant, feature.Id, enabled: true);
+        await database.InTenantAsync(tenant, async transaction =>
+        {
+            await events.EmitAsync(transaction, new SessionEnded(firstSession));
+            await events.EmitAsync(transaction, new SessionEnded(secondSession));
+            return 0;
+        });
+        await ExecuteSystemAsync("update jobs set run_at = now() + interval '1 minute' where id = @jobId", ("jobId", await JobIdForSessionAsync(tenant, firstSession)));
+
+        await RunWorkerAsync(sources, registry, events, new RecordingNotifier());
+        await ExecuteSystemAsync("update jobs set run_at = now() where id = @jobId", ("jobId", await JobIdForSessionAsync(tenant, firstSession)));
+        await RunWorkerAsync(sources, registry, events, new RecordingNotifier());
+
+        Assert.Equal(1, await CountMarkersAsync(tenant, $"effect:{feature.Id}", $"player:{player}"));
+    }
+
+    [SkippableFact]
+    public async Task Event_queued_while_enabled_runs_after_the_feature_is_retired()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        await CreateSessionAsync(tenant, player, session);
+        var enabledFeature = new SampleFeature("retired-after-emission");
+        var initialRegistry = FeatureRegistry.Create([enabledFeature]);
+        var initialEvents = new DurableEvents(initialRegistry, new TenantJobs(), new TenantLocks(), new RecordingNotifier());
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await SetCapabilityAsync(tenant, enabledFeature.Id, enabled: true);
+        await database.InTenantAsync(tenant, async transaction =>
+        {
+            await initialEvents.EmitAsync(transaction, new SessionEnded(session));
+            return 0;
+        });
+
+        var retiredFeature = new SampleFeature(enabledFeature.Id, retired: true);
+        var retiredRegistry = FeatureRegistry.Create([retiredFeature]);
+        var retiredEvents = new DurableEvents(retiredRegistry, new TenantJobs(), new TenantLocks(), new RecordingNotifier());
+        await RunWorkerAsync(sources, retiredRegistry, retiredEvents, new RecordingNotifier());
+
+        Assert.Equal(1, await CountMarkersAsync(tenant, retiredFeature.Id, $"sessionEnded:{session}"));
+        Assert.Equal(1, await CountMarkersAsync(tenant, $"effect:{retiredFeature.Id}", $"session:{session}"));
+    }
+
+    [SkippableFact]
+    public async Task Failed_feature_does_not_change_another_effect_or_the_committed_session_result()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        await CreateSessionAsync(tenant, player, session);
+        var succeeds = new SampleFeature("succeeds");
+        var fails = new SampleFeature("fails", eventFailures: 1);
+        var registry = FeatureRegistry.Create([succeeds, fails]);
+        var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new RecordingNotifier());
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await SetCapabilityAsync(tenant, succeeds.Id, enabled: true);
+        await SetCapabilityAsync(tenant, fails.Id, enabled: true);
+        var committedResult = await SessionResultAsync(tenant, session);
+        await database.InTenantAsync(tenant, async transaction =>
+        {
+            await events.EmitAsync(transaction, new SessionEnded(session));
+            return 0;
+        });
+        var failedJob = await JobIdForFeatureAsync(tenant, fails.Id);
+        await ExecuteSystemAsync("update jobs set max_attempts = 1 where id = @jobId", ("jobId", failedJob));
+
+        await RunWorkerAsync(sources, registry, events, new RecordingNotifier());
+        Assert.Equal("done", await JobStatusForFeatureAsync(tenant, succeeds.Id));
+        Assert.Equal("dead", await JobStatusAsync(failedJob));
+        Assert.Equal(1, await CountMarkersAsync(tenant, $"effect:{succeeds.Id}", $"session:{session}"));
+        Assert.Equal(0, await CountMarkersAsync(tenant, $"effect:{fails.Id}", $"session:{session}"));
+        Assert.Equal(committedResult, await SessionResultAsync(tenant, session));
+
+        var store = new PostgresJobStore(sources);
+        Assert.True(await store.RerunDeadAsync(failedJob));
+        await RunWorkerAsync(sources, registry, events, new RecordingNotifier());
+        Assert.Equal(1, await CountMarkersAsync(tenant, $"effect:{fails.Id}", $"session:{session}"));
+        Assert.Equal(committedResult, await SessionResultAsync(tenant, session));
+    }
+
+    [SkippableFact]
     public async Task Deleted_players_skip_event_data_and_cleanup_runs_independently_with_unlimited_retries()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -265,7 +406,20 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         where tenant_id = @tenant and kind = 'event' and payload->>'subjectId' = @session
         """, ("tenant", tenant), ("session", session.ToString()));
 
+    private Task<long> JobIdForFeatureAsync(Guid tenant, string feature) => ScalarSystemAsync<long>("""
+        select id from jobs
+        where tenant_id = @tenant and kind = 'event' and payload->>'feature' = @feature
+        """, ("tenant", tenant), ("feature", feature));
+
     private Task<string> JobStatusAsync(long jobId) => ScalarSystemAsync<string>("select status from jobs where id = @jobId", ("jobId", jobId));
+
+    private Task<string> JobStatusForFeatureAsync(Guid tenant, string feature) => ScalarSystemAsync<string>("""
+        select status from jobs
+        where tenant_id = @tenant and kind = 'event' and payload->>'feature' = @feature
+        """, ("tenant", tenant), ("feature", feature));
+
+    private Task<string> SessionResultAsync(Guid tenant, Guid session) => ScalarTenantAsync<string>(tenant,
+        "select status || ':' || ended_at::text from sessions where id = @session", new { session });
 
     private Task<long> RevisionAsync(Guid tenant, Guid session) => ScalarTenantAsync<long>(tenant,
         "select revision from session_effects where session_id = @session", new { session });
@@ -350,7 +504,7 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             _inner.OwnAsync(transaction, table, ids, cancellationToken);
     }
 
-    private sealed class SampleFeature(string id, bool retired = false, int eventFailures = 0, int cleanupFailures = 0, bool cleanup = true) : IFeature
+    private sealed class SampleFeature(string id, bool retired = false, int eventFailures = 0, int cleanupFailures = 0, bool cleanup = true, bool convergent = false) : IFeature
     {
         private int _eventFailures = eventFailures;
         private int _cleanupFailures = cleanupFailures;
@@ -368,7 +522,10 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
 
         private async Task SessionEndedAsync(ITenantTx transaction, SessionEnded @event, CancellationToken cancellationToken)
         {
-            await WriteEffectAsync(transaction, $"session:{@event.SessionId}");
+            var key = convergent
+                ? $"player:{await transaction.QuerySingleOrDefaultAsync<Guid>(\"select owner_id from sessions where id = @sessionId\", new { sessionId = @event.SessionId }, cancellationToken)}"
+                : $"session:{@event.SessionId}";
+            await WriteEffectAsync(transaction, key);
             if (Interlocked.Decrement(ref _eventFailures) >= 0) throw new InvalidOperationException("event failure");
         }
 

@@ -61,13 +61,14 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
         ),
         revised as (
             insert into session_effects (tenant_id, session_id, revision)
-            select tenant_id, (payload->>'subjectId')::uuid, 1
+            select tenant_id, (payload->>'subjectId')::uuid, count(*)::bigint
             from parked
             where owner = 'core'
               and kind = 'event'
               and payload->>'eventType' = 'sessionEnded'
+            group by tenant_id, (payload->>'subjectId')::uuid
             on conflict (tenant_id, session_id) do update
-            set revision = session_effects.revision + 1
+            set revision = session_effects.revision + excluded.revision
             returning session_id
         )
         select session_id from revised
