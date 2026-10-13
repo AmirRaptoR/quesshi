@@ -25,15 +25,18 @@ public sealed class LanguageSelection(AppConfig config, Translator translator, I
     {
         var saved = await js.InvokeAsync<string?>("quesshi.get", "quesshi.lang");
         var browserLanguages = await js.InvokeAsync<string[]>("quesshi.browserLanguages");
-        await UseAsync(Choose(config.Current, saved, browserLanguages));
+        await ApplyAsync(Choose(config.Current, saved, browserLanguages), persist: false);
     }
 
-    public async Task UseAsync(string code)
+    /// <summary>Applies and persists an explicit language choice from the picker.</summary>
+    public Task UseAsync(string code) => ApplyAsync(code, persist: true);
+
+    private async Task ApplyAsync(string code, bool persist)
     {
         var language = config.Current.Languages.FirstOrDefault(candidate => string.Equals(candidate.Code, code, StringComparison.OrdinalIgnoreCase));
         if (language is null) return;
         CurrentCode = language.Code;
         await translator.UseAsync(language.Code);
-        await js.InvokeVoidAsync("quesshi.setLanguage", language.Code, language.Direction);
+        if (persist) await js.InvokeVoidAsync("quesshi.setLanguage", language.Code, language.Direction);
     }
 }

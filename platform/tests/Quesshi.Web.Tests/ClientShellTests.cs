@@ -58,6 +58,30 @@ public sealed class ClientShellTests
     }
 
     [Fact]
+    public async Task Automatic_language_choice_applies_without_persisting_but_explicit_choice_persists()
+    {
+        var configHandler = new RecordingHandler(Config("Tenant", 1));
+        var config = new AppConfig(
+            new ClientHttp(new HttpClient(configHandler) { BaseAddress = new Uri("https://tenant.example/") }, new RecordingReloader()),
+            new RecordingJs());
+        await config.LoadAsync();
+        var js = new LanguageJs();
+        var translator = new Translator(new ClientHttp(
+            new HttpClient(new RecordingHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") })) { BaseAddress = new Uri("https://tenant.example/") },
+            new RecordingReloader()));
+        var selection = new LanguageSelection(config, translator, js);
+
+        await selection.InitializeAsync();
+
+        Assert.Equal("en", selection.CurrentCode);
+        Assert.DoesNotContain("quesshi.setLanguage", js.Calls);
+
+        await selection.UseAsync("en");
+
+        Assert.Contains("quesshi.setLanguage", js.Calls);
+    }
+
+    [Fact]
     public void Worker_keeps_tenant_resources_out_of_integrity_assets_and_handles_304_offline()
     {
         var worker = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "service-worker.published.js"));
@@ -120,5 +144,22 @@ public sealed class ClientShellTests
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => Record<TValue>(identifier);
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => Record<TValue>(identifier);
         private ValueTask<TValue> Record<TValue>(string identifier) { Calls.Add(identifier); return ValueTask.FromResult(default(TValue)!); }
+    }
+
+    private sealed class LanguageJs : IJSRuntime
+    {
+        public List<string> Calls { get; } = [];
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => InvokeAsync<TValue>(identifier, default, args);
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            Calls.Add(identifier);
+            object? value = identifier switch
+            {
+                "quesshi.get" => null,
+                "quesshi.browserLanguages" => new[] { "en-US" },
+                _ => null
+            };
+            return ValueTask.FromResult((TValue)value!);
+        }
     }
 }
