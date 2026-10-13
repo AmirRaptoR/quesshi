@@ -170,6 +170,13 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
             await Assert.ThrowsAsync<LockOrderViolation>(() => locks.PlayersAsync(tx, [playerA]));
             return 0;
         });
+        var orderedPlayers = new[] { playerA, playerB }.Order().ToArray();
+        await database.InTenantAsync(TenantA, async tx =>
+        {
+            await locks.PlayersAsync(tx, [orderedPlayers[1]]);
+            await Assert.ThrowsAsync<LockOrderViolation>(() => locks.PlayersAsync(tx, [orderedPlayers[0]]));
+            return 0;
+        });
         await database.InTenantAsync(TenantA, async tx =>
         {
             await locks.PlayersAsync(tx, [playerB, playerA]);
@@ -183,7 +190,6 @@ public sealed partial class TenantDatabaseTests(PostgresFixture fixture)
         });
 
         var order = await database.InTenantAsync(TenantA, tx => tx.QueryAsync<Guid>("select player_id from inbox_events order by sequence"));
-        var orderedPlayers = new[] { playerA, playerB }.Order().ToArray();
         Assert.Equal(orderedPlayers, order);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.InTenantAsync<int>(TenantA, tx =>

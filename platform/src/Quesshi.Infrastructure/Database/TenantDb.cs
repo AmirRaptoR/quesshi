@@ -84,6 +84,8 @@ internal sealed class TenantTransaction(
 
     internal HashSet<(string Table, Guid Key)> HeldLocks { get; } = [];
 
+    internal Dictionary<string, Guid> HighestLockKeyByTable { get; } = new(StringComparer.Ordinal);
+
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var rows = await connection.QueryAsync<T>(new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken));

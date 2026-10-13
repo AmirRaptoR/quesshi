@@ -65,8 +65,24 @@ public sealed partial class TenantLocks(bool enforceOrder = true) : ILocks
 
     private void EnsureStep(TenantTransaction transaction, int requestedStep, string name, IReadOnlyCollection<Guid> keys, IReadOnlyCollection<string> tables)
     {
-        if (!enforceOrder || requestedStep >= transaction.LastLockStep || AllHeld(transaction, tables, keys)) return;
-        throw new LockOrderViolation($"Cannot lock {name} at step {requestedStep} after step {transaction.LastLockStep}.");
+        if (!enforceOrder) return;
+
+        if (requestedStep < transaction.LastLockStep && !AllHeld(transaction, tables, keys))
+        {
+            throw new LockOrderViolation($"Cannot lock {name} at step {requestedStep} after step {transaction.LastLockStep}.");
+        }
+
+        if (requestedStep != transaction.LastLockStep) return;
+
+        foreach (var table in tables)
+        {
+            var newKeys = keys.Where(key => !transaction.HeldLocks.Contains((table, key)));
+            if (transaction.HighestLockKeyByTable.TryGetValue(table, out var highestKey)
+                && newKeys.Any(key => key.CompareTo(highestKey) < 0))
+            {
+                throw new LockOrderViolation($"Cannot lock {name} keys out of ascending order within step {requestedStep}.");
+            }
+        }
     }
 
     private static bool AllHeld(TenantTransaction transaction, IEnumerable<string> tables, IEnumerable<Guid> keys) =>
@@ -79,7 +95,14 @@ public sealed partial class TenantLocks(bool enforceOrder = true) : ILocks
 
     private static void Remember(TenantTransaction transaction, string table, IEnumerable<Guid> ids)
     {
-        foreach (var id in ids) transaction.HeldLocks.Add((table, id));
+        foreach (var id in ids)
+        {
+            transaction.HeldLocks.Add((table, id));
+            if (!transaction.HighestLockKeyByTable.TryGetValue(table, out var highestKey) || id.CompareTo(highestKey) > 0)
+            {
+                transaction.HighestLockKeyByTable[table] = id;
+            }
+        }
     }
 
     [GeneratedRegex("^[a-z_][a-z0-9_]*$", RegexOptions.CultureInvariant)]
