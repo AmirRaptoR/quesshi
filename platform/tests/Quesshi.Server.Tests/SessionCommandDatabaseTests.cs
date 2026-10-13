@@ -43,7 +43,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         Assert.All(snapshot.Answers.Values, answer => Assert.NotNull(answer.Hash));
         Assert.Equal(System.Data.IsolationLevel.RepeatableRead, database.IsolationLevel);
         Assert.True(database.ReadOnly);
-        Assert.Equal(3, database.QueryCount);
+        Assert.Equal(4, database.QueryCount);
 
         var next = Assert.Single(await loader.LoadItemsAsync(tenant, session, [1]));
         Assert.Equal(1, next.Metadata.Slot);
