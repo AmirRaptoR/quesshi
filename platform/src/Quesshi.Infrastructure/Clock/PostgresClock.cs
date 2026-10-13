@@ -32,7 +32,8 @@ public sealed class PostgresDatabaseClock(DatabaseSources sources) : IDatabaseCl
     public async Task<DateTimeOffset> ReadAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
-        return await connection.ExecuteScalarAsync<DateTimeOffset>(new CommandDefinition("select clock_timestamp()", cancellationToken: cancellationToken));
+        var utc = await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition("select clock_timestamp()", cancellationToken: cancellationToken));
+        return new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
     }
 }
 
@@ -54,7 +55,9 @@ public sealed class PostgresClock : IClock, IClockHealth, IAsyncDisposable
     private TimeSpan? _offset;
     private TimeSpan? _uncertainty;
     private long? _lastSuccessfulCalibration;
+    private DateTimeOffset _lastNow = DateTimeOffset.MinValue;
     private Task? _periodicCalibration;
+    private int _disposed;
 
     public PostgresClock(IDatabaseClock databaseClock, IMonotonicClock? monotonicClock = null, TimeSpan? calibrationInterval = null)
     {
@@ -70,13 +73,15 @@ public sealed class PostgresClock : IClock, IClockHealth, IAsyncDisposable
     {
         get
         {
-            TimeSpan offset;
             lock (_stateLock)
             {
-                offset = _offset ?? throw new InvalidOperationException("The PostgreSQL clock has not calibrated successfully.");
+                var offset = _offset ?? throw new InvalidOperationException("The PostgreSQL clock has not calibrated successfully.");
+                var candidate = DateTimeOffset.UnixEpoch.Add(ElapsedAt(_monotonicClock.Timestamp)).Add(offset);
+                // A recalibration may lower the offset; never let readings go backward.
+                if (candidate < _lastNow) candidate = _lastNow;
+                _lastNow = candidate;
+                return candidate;
             }
-
-            return DateTimeOffset.UnixEpoch.Add(ElapsedAt(_monotonicClock.Timestamp)).Add(offset);
         }
     }
 
@@ -106,9 +111,23 @@ public sealed class PostgresClock : IClock, IClockHealth, IAsyncDisposable
         }
     }
 
-    public bool IsHealthy => HasCalibration
-        && Uncertainty is { } uncertainty && uncertainty <= MaximumHealthyUncertainty
-        && LastSuccessfulCalibrationAge is { } age && age <= MaximumHealthyAge;
+    public bool IsHealthy
+    {
+        get
+        {
+            TimeSpan? uncertainty;
+            long? lastSuccess;
+            lock (_stateLock)
+            {
+                uncertainty = _uncertainty;
+                lastSuccess = _lastSuccessfulCalibration;
+            }
+
+            return uncertainty is { } u && u <= MaximumHealthyUncertainty
+                && lastSuccess is { } timestamp
+                && ElapsedBetween(timestamp, _monotonicClock.Timestamp) <= MaximumHealthyAge;
+        }
+    }
 
     /// <summary>Runs the required startup calibration and begins 30-second recalibration.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -163,6 +182,7 @@ public sealed class PostgresClock : IClock, IClockHealth, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _shutdown.Cancel();
         Task? periodicCalibration;
         lock (_stateLock) periodicCalibration = _periodicCalibration;

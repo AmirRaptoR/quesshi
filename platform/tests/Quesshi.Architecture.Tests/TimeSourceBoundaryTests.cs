@@ -9,7 +9,9 @@ public sealed class TimeSourceBoundaryTests
     {
         var root = PlatformDirectory.Find();
         var violations = TimeSourceBoundary.FindViolations(
-            ProductionProjects.SelectMany(project => Directory.EnumerateFiles(Path.Combine(root, "src", project), "*.cs", SearchOption.AllDirectories)));
+            Directory.EnumerateDirectories(Path.Combine(root, "src"))
+                .SelectMany(project => Directory.EnumerateFiles(project, "*.cs", SearchOption.AllDirectories))
+                .Where(path => !IsBuildOutput(path) && !IsClockBoundary(path)));
 
         Assert.Empty(violations);
     }
@@ -25,14 +27,11 @@ public sealed class TimeSourceBoundaryTests
         Assert.Single(violations);
     }
 
-    private static readonly string[] ProductionProjects =
-    [
-        "Quesshi.Application",
-        "Quesshi.Grains",
-        "Quesshi.Features",
-        "Quesshi.Formats",
-        "Quesshi.Kinds"
-    ];
+    private static bool IsBuildOutput(string path) => path.Split(Path.DirectorySeparatorChar).Any(part => part is "obj" or "bin");
+
+    // The production clock is the permitted monotonic/wall-time boundary.
+    private static bool IsClockBoundary(string path) => path.Split(Path.DirectorySeparatorChar).Contains("Clock")
+        && path.Split(Path.DirectorySeparatorChar).Contains("Quesshi.Infrastructure");
 }
 
 internal static class TimeSourceBoundary

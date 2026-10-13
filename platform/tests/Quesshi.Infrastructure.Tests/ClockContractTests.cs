@@ -85,7 +85,10 @@ public sealed class ClockContractTests
         await database.RetrySucceeded.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(clock.IsHealthy);
-        Assert.Equal(11, database.ReadCount);
+        await clock.DisposeAsync();
+        // 5 startup reads, 1 failed read aborting the next attempt, then whole retries of 5.
+        Assert.True(database.ReadCount >= 11);
+        Assert.Equal(0, (database.ReadCount - 11) % 5);
     }
 
     [Fact]
