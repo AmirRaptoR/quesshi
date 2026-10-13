@@ -171,7 +171,10 @@ public interface IViewing
     IReadOnlyList<Seat> Seats { get; }
     IReadOnlyList<SessionItem> Items { get; }
     string Viewer { get; }
+    /// <summary>The stored answer of the viewer, or of any player once the session has ended; otherwise null.</summary>
     StoredAnswer? Answer(string player, int slot);
+    /// <summary>Whether the player has an answer for the slot, without revealing it.</summary>
+    bool HasAnswered(string player, int slot);
     JsonElement Card(int slot);
     JsonElement? Reveal(int slot);
     IReadOnlyList<AnswerRecord> Answers(string player);

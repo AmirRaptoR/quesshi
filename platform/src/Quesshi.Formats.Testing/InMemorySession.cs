@@ -40,6 +40,11 @@ public sealed class InMemorySession : ISession, IViewing
         ? new StoredAnswer(answer.Stored?.Clone(), answer.Revision, answer.Miss)
         : null;
 
+    StoredAnswer? IViewing.Answer(string player, int slot) =>
+        player == Viewer || Session.Ended ? Answer(player, slot) : null;
+
+    bool IViewing.HasAnswered(string player, int slot) => CurrentState.Answers.ContainsKey(new AnswerKey(player, slot));
+
     public Graded Grade(Command command)
     {
         ArgumentNullException.ThrowIfNull(command);

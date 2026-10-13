@@ -235,6 +235,71 @@ public sealed class PollFormatTests
     }
 
     [Fact]
+    public void Viewing_contract_hides_other_seats_answers_until_the_session_ends()
+    {
+        var format = new PollFormat();
+        var session = Harness(State(3, ChoiceItem(0), ChoiceItem(1)), viewer: "a");
+        format.Start(session);
+        format.Apply(session, Answer("b", 0, "{\"option\":\"blue\"}"));
+
+        var open = Assert.IsType<PollRunningView>(format.View(session));
+        Assert.Null(open.Answer);
+        Assert.Null(open.Revision);
+        Assert.Equal(["b"], open.AnsweredSeats);
+        var viewing = (IViewing)session;
+        Assert.Null(viewing.Answer("b", 0));
+        Assert.True(viewing.HasAnswered("b", 0));
+        Assert.False(viewing.HasAnswered("c", 0));
+
+        format.Apply(session, Answer("a", 0, "{\"option\":\"red\"}"));
+        format.Apply(session, Answer("c", 0, "{\"option\":\"red\"}"));
+        var closed = Assert.IsType<PollRunningView>(format.View(session));
+        Assert.Null(closed.Answer);
+        Assert.Null(viewing.Answer("b", 0));
+        Assert.DoesNotContain("\"option\":\"blue\"", JsonSerializer.Serialize(closed), StringComparison.Ordinal);
+        Assert.Null(closed.Revision);
+
+        foreach (var player in new[] { "a", "b", "c" }) format.Apply(session, Answer(player, 1, "{\"option\":\"red\"}"));
+        Assert.Equal("blue", viewing.Answer("b", 0)!.Value!.Value.GetProperty("option").GetString());
+    }
+
+    [Fact]
+    public void Completed_view_keeps_departed_players_answers_seat_status_and_pair_stats()
+    {
+        var format = new PollFormat();
+        var session = Harness(State(3, ChoiceItem(0), ChoiceItem(1)));
+        format.Start(session);
+        foreach (var player in new[] { "a", "b", "c" }) format.Apply(session, Answer(player, 0, "{\"option\":\"red\"}"));
+        format.Apply(session, Leave("c", 1));
+        format.Apply(session, Answer("a", 1, "{\"option\":\"blue\"}"));
+        format.Apply(session, Answer("b", 1, "{\"option\":\"blue\"}"));
+
+        Assert.Equal(EndReason.Completed, session.Session.EndReason);
+        var view = Assert.IsType<PollFinishedView>(format.View(session));
+        Assert.Contains(view.Seats, seat => seat.Player == "c" && !seat.Active);
+        Assert.Contains(view.Slots[0].Answers, answer => answer.Player == "c" && answer.Value!.Value.GetProperty("option").GetString() == "red");
+        Assert.Equal(2, view.Slots[1].Answers.Count);
+        var pair = Result(session).PairStats!.Single(p => p.FirstPlayer == "a" && p.SecondPlayer == "c");
+        Assert.Equal(100, pair.AgreementPercent);
+    }
+
+    [Fact]
+    public void Completed_roster_view_releases_several_and_none_answers()
+    {
+        var format = new PollFormat();
+        var session = Harness(State(3, RosterItem(0)));
+        format.Start(session);
+        format.Apply(session, Answer("a", 0, "{\"several\":true}"));
+        format.Apply(session, Answer("b", 0, "{\"several\":true}"));
+        format.Apply(session, Answer("c", 0, "{\"none\":true}"));
+
+        var view = Assert.IsType<PollFinishedView>(format.View(session));
+        var answers = view.Slots[0].Answers;
+        Assert.True(answers.Single(answer => answer.Player == "a").Value!.Value.GetProperty("several").GetBoolean());
+        Assert.True(answers.Single(answer => answer.Player == "c").Value!.Value.GetProperty("none").GetBoolean());
+    }
+
+    [Fact]
     public void Results_leave_not_applicable_out_of_pair_comparisons_and_round_deterministically()
     {
         var format = new PollFormat();

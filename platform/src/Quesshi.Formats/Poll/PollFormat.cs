@@ -111,7 +111,7 @@ public sealed class PollFormat : IFormat
 
         var answer = viewing.Answer(viewing.Viewer, position.Slot);
         var answeredSeats = viewing.Seats
-            .Where(seat => seat.Role == "player" && !seat.Eliminated && viewing.Answer(seat.Player, position.Slot) is not null)
+            .Where(seat => seat.Role == "player" && !seat.Eliminated && viewing.HasAnswered(seat.Player, position.Slot))
             .Select(seat => seat.Player)
             .ToArray();
         return new PollRunningView(
