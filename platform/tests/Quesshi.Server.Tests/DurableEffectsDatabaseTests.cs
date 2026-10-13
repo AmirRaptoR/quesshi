@@ -170,7 +170,9 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
         });
         Assert.Equal(1, await CountJobsAsync(tenant));
 
-        await ExecuteSystemAsync("update players set deleted_at = now() where tenant_id = @tenant and id = @player", ("tenant", tenant), ("player", player));
+        await database.InTenantAsync(tenant, transaction => transaction.ExecuteAsync(
+            "update players set deleted_at = now() where id = @player",
+            new { player }));
         await database.InTenantAsync(tenant, async transaction =>
         {
             await events.EnqueueAsync(transaction, player);
@@ -222,22 +224,26 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
     private async Task CreatePlayerAsync(Guid tenant, Guid player)
     {
         await EnsureTenantAsync(tenant);
-        await ExecuteSystemAsync("""
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await database.InTenantAsync(tenant, transaction => transaction.ExecuteAsync("""
             insert into players (tenant_id, id, display_name, avatar_seed, lang)
             values (@tenant, @player, 'Effects', 'effects', 'en')
             on conflict (tenant_id, id) do nothing
-            """, ("tenant", tenant), ("player", player));
+            """, new { tenant, player }));
     }
 
     private async Task CreateSessionAsync(Guid tenant, Guid player, Guid session)
     {
         await CreatePlayerAsync(tenant, player);
-        await ExecuteSystemAsync("""
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await database.InTenantAsync(tenant, transaction => transaction.ExecuteAsync("""
             insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase, started_at, ended_at)
             values (@tenant, @session, @code, 'test', @player, 'en', 'finished', 1, '{}'::jsonb, 'finished', now(), now());
             insert into session_participants (tenant_id, session_id, player_id, seat)
             values (@tenant, @session, @player, 0);
-            """, ("tenant", tenant), ("session", session), ("player", player), ("code", session.ToString("N")[..8]));
+            """, new { tenant, session, player, code = session.ToString("N")[..8] }));
     }
 
     private Task SetCapabilityAsync(Guid tenant, string feature, bool enabled) =>
