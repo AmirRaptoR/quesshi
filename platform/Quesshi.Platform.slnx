@@ -27,5 +27,6 @@
     <Project Path="tests/Quesshi.Web.Tests/Quesshi.Web.Tests.csproj" />
     <Project Path="tests/Quesshi.Architecture.Tests/Quesshi.Architecture.Tests.csproj" />
     <Project Path="tests/Quesshi.Testing/Quesshi.Testing.csproj" />
+    <Project Path="tests/Quesshi.Infrastructure.Tests/Quesshi.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>
