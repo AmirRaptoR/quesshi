@@ -10,7 +10,7 @@ using Quesshi.Shared;
 namespace Quesshi.Grains;
 
 /// <summary>The sole in-memory writer for one tenant session. Orleans grains are non-reentrant by default.</summary>
-public sealed class SessionGrain(
+public class SessionGrain(
     ISessionSnapshotLoader snapshots,
     SessionStateStore store,
     IFormatRegistry formats,
@@ -39,7 +39,7 @@ public sealed class SessionGrain(
             _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
             if (_state is null)
             {
-                DeactivateOnIdle();
+                Deactivate();
                 return SessionCommandResult.Error("not_found");
             }
             if (!formats.TryGet(_state.Session.Format ?? "", out var format) || format is null)
@@ -137,5 +137,8 @@ public sealed class SessionGrain(
         if (missing.Length == 0) return;
         _state = _state!.WithItems(await snapshots.LoadItemsAsync(_tenantId, _sessionId, missing));
     }
-    private void DropState() { _state = null; DeactivateOnIdle(); }
+    private void DropState() { _state = null; Deactivate(); }
+
+    /// <summary>Requests that the activation be discarded after its cached state becomes invalid.</summary>
+    protected virtual void Deactivate() => DeactivateOnIdle();
 }

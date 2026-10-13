@@ -184,18 +184,18 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         try
         {
             var factory = app.Services.GetRequiredService<IGrainFactory>();
-            var command = new SessionCommand(player.ToString(), "answer", "0", 0, 0, 0, null, "{}", DateTimeOffset.UtcNow);
+            var command = new SessionCommand(player.ToString(), "answer", "0", 0, 0, 0, null, "{\"option\":\"a\"}", DateTimeOffset.UtcNow);
 
             var missing = factory.GetGrain<ISessionGrain>($"{tenant}/{session}");
             Assert.Equal("not_found", (await missing.ExecuteAsync(command)).Code);
 
-            await InsertRunningSessionAsync(owner, tenant, session, player, 1);
+            await InsertRunningSessionAsync(owner, tenant, session, player, 1, format: "poll");
             await InsertParticipantsAsync(owner, tenant, session, 2);
-            await InsertItemsAsync(owner, tenant, session, 1);
+            await InsertPollChoiceItemAsync(owner, tenant, session);
 
-            // The same key reactivates and loads the inserted row; trivia is deliberately
-            // unregistered, so this distinct response proves the prior absence was not cached.
-            Assert.Equal("format_unavailable", (await missing.ExecuteAsync(command)).Code);
+            // The same key reactivates and loads the inserted row, proving the prior absence
+            // was not cached.
+            Assert.Equal("ok", (await missing.ExecuteAsync(command)).Code);
             Assert.Equal("absent_seat", (await missing.ExecuteAsync(command with { PlayerId = Guid.NewGuid().ToString() })).Code);
 
             var isolated = factory.GetGrain<ISessionGrain>($"{otherTenant}/{session}");

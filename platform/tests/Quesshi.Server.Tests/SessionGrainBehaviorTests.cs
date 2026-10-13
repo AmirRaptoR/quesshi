@@ -205,7 +205,7 @@ public sealed class SessionGrainBehaviorTests
 
     private static SessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
     {
-        var grain = new SessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
+        var grain = new TestSessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
             new FormatRegistry([format]), kinds ?? new KindRegistry([]), new TestClock(now), renderer ?? new Renderer(), deadlines,
             NullLogger<SessionGrain>.Instance);
         if (initialState is not null) typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(grain, initialState);
@@ -239,6 +239,20 @@ public sealed class SessionGrainBehaviorTests
         public int LoadCount { get; private set; }
         public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) { LoadCount++; return Task.FromResult(State); }
         public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
+    }
+
+    private sealed class TestSessionGrain(
+        ISessionSnapshotLoader snapshots,
+        SessionStateStore store,
+        IFormatRegistry formats,
+        IKindRegistry kinds,
+        IClock clock,
+        IViewRenderer views,
+        ISessionDeadlineReconciler deadlines,
+        Microsoft.Extensions.Logging.ILogger<SessionGrain> logger)
+        : SessionGrain(snapshots, store, formats, kinds, clock, views, deadlines, logger)
+    {
+        protected override void Deactivate() { }
     }
 
     private sealed class ThrowingDatabase : ITenantDb
