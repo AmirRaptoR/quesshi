@@ -13,11 +13,18 @@ public sealed class DatabaseSources : IAsyncDisposable
     {
         App = Build(appConnectionString, "quesshi_app", 40);
         System = Build(systemConnectionString, "quesshi_system", 10);
+        SystemConnectionString = new NpgsqlConnectionStringBuilder(systemConnectionString)
+        {
+            Username = "quesshi_system",
+            MaxPoolSize = 10
+        }.ConnectionString;
     }
 
     internal NpgsqlDataSource App { get; }
 
     internal NpgsqlDataSource System { get; }
+
+    public string SystemConnectionString { get; }
 
     public async ValueTask DisposeAsync()
     {

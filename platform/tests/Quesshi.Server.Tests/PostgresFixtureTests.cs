@@ -36,7 +36,10 @@ public sealed class MigrateCommandTests
     [Fact]
     public async Task Serve_does_not_require_an_owner_connection_string()
     {
-        await Program.Main([]);
+        var served = false;
+        await Program.DispatchAsync([], () => { served = true; return Task.CompletedTask; });
+
+        Assert.True(served);
     }
 }
 

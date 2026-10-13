@@ -3,4 +3,7 @@
     <ProjectReference Include="../Quesshi.Application/Quesshi.Application.csproj" />
     <ProjectReference Include="../Quesshi.Grains.Abstractions/Quesshi.Grains.Abstractions.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Server" Version="10.2.2" />
+  </ItemGroup>
 </Project>
