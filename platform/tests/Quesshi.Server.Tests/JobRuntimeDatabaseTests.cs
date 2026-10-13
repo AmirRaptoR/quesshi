@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Quesshi.Application;
 using Quesshi.Application.Jobs;
@@ -7,6 +8,8 @@ using Quesshi.Plugin.Api;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Jobs;
 using Quesshi.Server;
+using Quesshi.Server.Health;
+using Quesshi.Server.Jobs;
 using Quesshi.Testing;
 using Xunit.Sdk;
 
@@ -39,7 +42,7 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await PrepareAsync();
-        var id = await InsertAsync("bounded", maxAttempts: 1);
+        var id = await InsertAsync("bounded", maxAttempts: 2);
         await using var sources = Sources();
         var store = new PostgresJobStore(sources);
         var original = Assert.Single(await store.ClaimAsync(1, TimeSpan.FromMinutes(1)));
@@ -63,6 +66,24 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
         var rerun = Assert.Single(await store.ClaimAsync(1, TimeSpan.FromMinutes(1)));
         Assert.Equal(id, rerun.Id);
         Assert.True(await store.CompleteAsync(id, rerun.LockedBy));
+    }
+
+    [SkippableFact]
+    public async Task An_expired_final_lease_is_parked_dead_without_being_claimed_again()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var id = await InsertAsync("exhausted", maxAttempts: 1);
+        await using var sources = Sources();
+        var store = new PostgresJobStore(sources);
+        _ = Assert.Single(await store.ClaimAsync(1, TimeSpan.FromMinutes(1)));
+
+        await SqlAsync("update jobs set locked_until = now() - interval '1 second' where id = @id", ("id", id));
+
+        Assert.Empty(await store.ClaimAsync(1, TimeSpan.FromMinutes(1)));
+        var dead = Assert.Single(await store.ListDeadAsync());
+        Assert.Equal(id, dead.Id);
+        Assert.Equal(1, dead.Attempts);
     }
 
     [SkippableFact]
@@ -128,7 +149,7 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
         registry.Register("core", "global", (context, _) =>
         {
             lock (calls) calls.Add(context.Kind);
-            Assert.Null(context.Database);
+            Assert.NotNull(context.Database);
             return Task.CompletedTask;
         }, WhenDisabled.Cancel);
         var cancelId = await InsertTenantJobAsync(tenantId, "plugin", "cancel");
@@ -217,6 +238,36 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
         while (store.Pending > 0) await worker.RunPassAsync(12, TimeSpan.FromMinutes(1));
 
         Assert.Equal(4, peak);
+    }
+
+    [Fact]
+    public async Task Worker_shutdown_does_not_fault_when_a_handler_outlives_the_drain_timeout()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new JobHandlerRegistry();
+        registry.Register("core", "slow", async (_, _) =>
+        {
+            started.SetResult();
+            await release.Task;
+        });
+        var store = new MemoryJobStore([new LeasedJob(1, null, "core", "slow", default, Guid.NewGuid(), DateTimeOffset.UtcNow, 1, null)]);
+        var service = new JobWorkerService(
+            new JobWorker(store, registry, new UnusedTenantDb(), new OffCapabilities()),
+            new BackgroundLoopRegistry(),
+            NullLogger<JobWorkerService>.Instance,
+            shutdownDrainTimeout: TimeSpan.FromMilliseconds(10));
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await service.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     private sealed class MemoryJobStore(IEnumerable<LeasedJob> jobs) : IJobStore

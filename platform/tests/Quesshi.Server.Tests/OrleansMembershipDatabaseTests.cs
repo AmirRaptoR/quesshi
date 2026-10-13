@@ -188,8 +188,8 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
             Assert.True(root.GetProperty("database").GetBoolean());
             Assert.True(root.GetProperty("clock").GetBoolean());
             Assert.True(root.GetProperty("silo").GetBoolean());
-            var loopReport = Assert.Single(root.GetProperty("loops").EnumerateArray());
-            Assert.Equal("test-loop", loopReport.GetProperty("name").GetString());
+            var loopReport = root.GetProperty("loops").EnumerateArray()
+                .Single(loop => loop.GetProperty("name").GetString() == "test-loop");
             Assert.True(TimeSpan.Parse(loopReport.GetProperty("lastSuccessfulPassAge").GetString()!) < TimeSpan.FromSeconds(30));
         }
         finally

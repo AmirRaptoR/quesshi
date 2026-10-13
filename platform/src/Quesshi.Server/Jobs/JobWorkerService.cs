@@ -8,7 +8,8 @@ internal sealed class JobWorkerService(
     JobWorker worker,
     IBackgroundLoopRegistry loops,
     ILogger<JobWorkerService> logger,
-    TimeProvider? timeProvider = null) : BackgroundService
+    TimeProvider? timeProvider = null,
+    TimeSpan? shutdownDrainTimeout = null) : BackgroundService
 {
     internal const string LoopName = "job-worker";
     internal const int BatchSize = JobWorker.MaximumConcurrentHandlers;
@@ -17,6 +18,7 @@ internal sealed class JobWorkerService(
 
     private readonly IBackgroundLoop _loop = loops.Register(LoopName);
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeSpan _shutdownDrainTimeout = shutdownDrainTimeout ?? TimeSpan.FromSeconds(10);
     private readonly List<Task> _running = [];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -44,7 +46,14 @@ internal sealed class JobWorkerService(
         }
         finally
         {
-            await Task.WhenAll(_running).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(_running).WaitAsync(_shutdownDrainTimeout).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                logger.LogWarning("Job handlers did not finish before the shutdown drain timeout.");
+            }
         }
     }
 }

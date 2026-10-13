@@ -8,11 +8,32 @@ namespace Quesshi.Infrastructure.Jobs;
 internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
 {
     private const string Claim = """
-        with due as (
+        with exhausted as (
+            select id
+            from jobs
+            where status = 'ready'
+              and max_attempts is not null
+              and attempts >= max_attempts
+              and locked_until is not null
+              and locked_until <= now()
+            for update skip locked
+        ),
+        parked as (
+            update jobs
+            set status = 'dead',
+                locked_by = null,
+                locked_until = null,
+                last_error = coalesce(last_error, 'Job lease expired after reaching its maximum attempts.'),
+                finished_at = now()
+            from exhausted
+            where jobs.id = exhausted.id
+        ),
+        due as (
             select id
             from jobs
             where status = 'ready'
               and run_at <= now()
+              and (max_attempts is null or attempts < max_attempts)
               and (locked_until is null or locked_until <= now())
             order by run_at, id
             limit @batchSize
@@ -91,7 +112,7 @@ internal sealed class PostgresJobStore(ISystemDb database) : IJobStore
     public Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default) =>
         UpdateAsync("""
             update jobs
-            set status = 'ready', run_at = now(), locked_by = null, locked_until = null, finished_at = null
+            set status = 'ready', run_at = now(), locked_by = null, locked_until = null, attempts = 0, last_error = null, finished_at = null
             where id = @id and status = 'dead'
             """, new { id }, cancellationToken);
 
