@@ -74,6 +74,7 @@ public sealed class ClientShellTests
         await selection.InitializeAsync();
 
         Assert.Equal("en", selection.CurrentCode);
+        Assert.Contains("quesshi.applyLanguage", js.Calls);
         Assert.DoesNotContain("quesshi.setLanguage", js.Calls);
 
         await selection.UseAsync("en");

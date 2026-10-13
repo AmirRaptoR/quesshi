@@ -20,11 +20,13 @@
       window.quesshi = {
         get: key => localStorage.getItem(key),
         browserLanguages: () => navigator.languages || [navigator.language],
-        setLanguage: (code, direction) => {
-          localStorage.setItem('quesshi.lang', code);
-          document.cookie = `lang=${encodeURIComponent(code)}; Path=/; SameSite=Lax`;
+        applyLanguage: (code, direction) => {
           document.documentElement.lang = code;
           document.documentElement.dir = direction;
+        },
+        setLanguage: code => {
+          localStorage.setItem('quesshi.lang', code);
+          document.cookie = `lang=${encodeURIComponent(code)}; Path=/; SameSite=Lax`;
         },
         replaceTheme: version => {
           const theme = document.getElementById('tenant-theme');

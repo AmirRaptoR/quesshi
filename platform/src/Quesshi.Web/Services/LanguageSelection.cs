@@ -37,6 +37,7 @@ public sealed class LanguageSelection(AppConfig config, Translator translator, I
         if (language is null) return;
         CurrentCode = language.Code;
         await translator.UseAsync(language.Code);
-        if (persist) await js.InvokeVoidAsync("quesshi.setLanguage", language.Code, language.Direction);
+        await js.InvokeVoidAsync("quesshi.applyLanguage", language.Code, language.Direction);
+        if (persist) await js.InvokeVoidAsync("quesshi.setLanguage", language.Code);
     }
 }
