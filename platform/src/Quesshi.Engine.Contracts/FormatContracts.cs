@@ -57,6 +57,7 @@ public interface IFormat
     void Apply(ISession session, Command command);
     void Timeout(ISession session);
     object View(IViewing viewing);
+    DateTimeOffset? Deadline(IViewing viewing) => viewing.Session.DueAt;
     JsonElement UpgradeState(int from, JsonElement state);
     JsonElement UpgradeRules(int from, JsonElement rules);
     JsonElement UpgradeResult(int from, JsonElement result);

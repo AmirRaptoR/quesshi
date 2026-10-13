@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Orleans;
+using Microsoft.AspNetCore.Mvc;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains.Abstractions;
@@ -20,7 +21,7 @@ internal static class SessionCommandEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> RosterAsync(HttpContext context, Guid id, ISessionSnapshotLoader snapshots, int? after, int? take, CancellationToken cancellationToken)
+    private static async Task<IResult> RosterAsync(HttpContext context, Guid id, [FromServices] ISessionSnapshotLoader snapshots, int? after, int? take, CancellationToken cancellationToken)
     {
         var player = TestPlayer(context);
         if (player is null) return Error("identity_required", StatusCodes.Status401Unauthorized);

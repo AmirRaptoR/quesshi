@@ -17,8 +17,8 @@ public sealed class SessionViewRendererTests
         { Answers = new Dictionary<AnswerKey, AnswerRecord> { [new("bob", 0)] = new(Json("{\"secret\":\"bob-answer\"}"), false, 0, 0, TimeSpan.Zero, DateTimeOffset.UnixEpoch) } };
 
         var renderer = new ViewRenderer();
-        var view = renderer.Render(state, new ProbeFormat(), "alice");
-        var bobView = renderer.Render(state, new ProbeFormat(), "bob");
+        var view = renderer.Render(state, new ProbeFormat(), "alice", DateTimeOffset.UnixEpoch);
+        var bobView = renderer.Render(state, new ProbeFormat(), "bob", DateTimeOffset.UnixEpoch);
 
         Assert.Equal(7, view.Version);
         Assert.Equal(view.Version, bobView.Version);
@@ -38,7 +38,7 @@ public sealed class SessionViewRendererTests
         var format = new CountingFormat();
 
         var views = Enumerable.Range(0, 500)
-            .Select(index => Assert.IsType<SessionView>(renderer.Render(snapshot, format, $"player-{index}")))
+            .Select(index => Assert.IsType<RenderedSessionView>(renderer.Render(snapshot, format, $"player-{index}")))
             .ToArray();
 
         Assert.Equal(500, format.Views);
@@ -61,6 +61,32 @@ public sealed class SessionViewRendererTests
         Assert.Null(renderer.Render(snapshot, format, "unseated"));
     }
 
+    [Fact]
+    public void Renderer_adds_a_viewer_specific_deadline_after_the_shared_snapshot()
+    {
+        var served = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var state = State(2) with
+        {
+            Session = State(2).Session with { DueAt = served.AddHours(48) },
+            Seats = SessionState.ReadOnly(new[]
+            {
+                new Seat("player-0", "player", new Position(0, 0), PositionStartedAt: served),
+                new Seat("player-1", "player", new Position(0, 0), PositionStartedAt: served.AddMinutes(1)),
+            }.ToDictionary(seat => seat.Player)),
+        };
+        var renderer = new ViewRenderer();
+        var snapshot = renderer.Snapshot(state, served);
+        var format = new DeadlineFormat();
+
+        var first = Assert.IsType<RenderedSessionView>(renderer.Render(snapshot, format, "player-0"));
+        var second = Assert.IsType<RenderedSessionView>(renderer.Render(snapshot, format, "player-1"));
+        using var firstJson = JsonDocument.Parse(first.Json);
+        using var secondJson = JsonDocument.Parse(second.Json);
+
+        Assert.Equal(served.AddSeconds(20), firstJson.RootElement.GetProperty("Deadline").GetDateTimeOffset());
+        Assert.Equal(served.AddMinutes(1).AddSeconds(20), secondJson.RootElement.GetProperty("Deadline").GetDateTimeOffset());
+    }
+
     [Theory]
     [InlineData(50, "Seats", 50)]
     [InlineData(51, "Top", 10)]
@@ -68,7 +94,7 @@ public sealed class SessionViewRendererTests
     {
         var renderer = new ViewRenderer();
         var view = renderer.Render(renderer.Snapshot(State(count), DateTimeOffset.UnixEpoch), new ProbeFormat(), $"player-{count - 1}");
-        using var json = JsonDocument.Parse(Assert.IsType<SessionView>(view).Json);
+        using var json = JsonDocument.Parse(Assert.IsType<RenderedSessionView>(view).Json);
 
         Assert.Equal(expected, json.RootElement.GetProperty("Roster").GetProperty(property).GetArrayLength());
         if (count > 50)
@@ -89,7 +115,7 @@ public sealed class SessionViewRendererTests
         };
         var renderer = new ViewRenderer();
         var view = renderer.Render(renderer.Snapshot(state, DateTimeOffset.UnixEpoch), new ProbeFormat(), "player-50");
-        using var json = JsonDocument.Parse(Assert.IsType<SessionView>(view).Json);
+        using var json = JsonDocument.Parse(Assert.IsType<RenderedSessionView>(view).Json);
 
         Assert.Equal("player-50", json.RootElement.GetProperty("Roster").GetProperty("Top")[0].GetProperty("Id").GetString());
         Assert.Contains("player-50", json.RootElement.GetProperty("Roster").GetProperty("Neighbours").GetRawText(), StringComparison.Ordinal);
@@ -114,6 +140,7 @@ public sealed class SessionViewRendererTests
         public void Apply(ISession session, Command command) { }
         public void Timeout(ISession session) { }
         public virtual object View(IViewing viewing) => new { card = viewing.Card(0), own = viewing.Answer(viewing.Viewer, 0)?.Value, other = viewing.Answer("bob", 0)?.Value, reveal = viewing.Reveal(0) };
+        public virtual DateTimeOffset? Deadline(IViewing viewing) => viewing.Session.DueAt;
         public JsonElement UpgradeState(int from, JsonElement state) => state;
         public JsonElement UpgradeRules(int from, JsonElement rules) => rules;
         public JsonElement UpgradeResult(int from, JsonElement result) => result;
@@ -127,5 +154,10 @@ public sealed class SessionViewRendererTests
             Views++;
             return new { viewer = viewing.Viewer, answer = viewing.Answer(viewing.Viewer, 0)?.Value };
         }
+    }
+
+    private sealed class DeadlineFormat : ProbeFormat
+    {
+        public override DateTimeOffset? Deadline(IViewing viewing) => viewing.Seats.Single(seat => seat.Player == viewing.Viewer).PositionStartedAt?.AddSeconds(20);
     }
 }

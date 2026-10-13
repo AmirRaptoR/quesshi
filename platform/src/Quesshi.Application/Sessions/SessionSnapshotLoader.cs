@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json;
 using Quesshi.Engine.Contracts;
 using Quesshi.Plugin.Api;
+using Quesshi.Shared;
 
 namespace Quesshi.Application.Sessions;
 
@@ -70,10 +71,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
                    credit as Credit, points as Points, taken_ms as TakenMs, received_at as ReceivedAt
             from session_answers
             where session_id = @sessionId
-              and slot in (select slot from session_items where session_id = @sessionId
-                           and (@loadAllItems or slot = @sessionSlot or slot in (
-                                select slot from session_participants where session_id = @sessionId and slot >= 0)))
-            """, new { sessionId, sessionSlot = row.Slot, loadAllItems = row.Status is "finished" or "cancelled" }, cancellationToken);
+            """, new { sessionId }, cancellationToken);
 
         var session = new SessionRow(row.Id.ToString(), row.StartedAt, row.DueAt, Position(row.Phase, row.Slot, row.Step),
             row.Status is "finished" or "cancelled", ParseEndReason(row.EndReason), Json(row.Result), row.PositionStartedAt,

@@ -20,7 +20,7 @@ namespace Quesshi.Server.Tests;
 public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
 {
     [SkippableFact]
-    public async Task Snapshot_loader_finds_later_insertions_and_loads_a_bounded_open_snapshot()
+    public async Task Snapshot_loader_finds_later_insertions_and_keeps_historical_answers_in_a_bounded_open_snapshot()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
@@ -39,12 +39,14 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertParticipantsAsync(owner, tenant, session, 500);
         await InsertItemsAsync(owner, tenant, session, 100);
         await InsertAnswersAsync(owner, tenant, session, 500);
+        await ExecuteAsync(owner, "update sessions set slot = 1 where tenant_id = @tenant and id = @session", ("tenant", tenant), ("session", session));
+        await ExecuteAsync(owner, "update session_participants set slot = 1 where tenant_id = @tenant and session_id = @session", ("tenant", tenant), ("session", session));
 
         database.Reset();
         var snapshot = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));
         Assert.Equal(500, snapshot.Seats.Count);
         Assert.Equal(100, snapshot.ItemCount);
-        Assert.Equal([0], snapshot.Items.Keys);
+        Assert.Equal([1], snapshot.Items.Keys);
         Assert.Equal(500, snapshot.Answers.Count);
         Assert.All(snapshot.Answers.Values, answer => Assert.NotNull(answer.Hash));
         Assert.Equal(System.Data.IsolationLevel.RepeatableRead, database.IsolationLevel);
@@ -600,12 +602,12 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
 
     private sealed class ThrowingViewRenderer : IViewRenderer
     {
-        public SessionView Render(SessionState state, IFormat format, string viewer) => throw new InvalidOperationException("renderer unavailable");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => throw new InvalidOperationException("renderer unavailable");
     }
 
     private sealed class CurrentViewRenderer : IViewRenderer
     {
-        public SessionView Render(SessionState state, IFormat format, string viewer) => new(state.Session.Version, "{}");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
     }
 
     private sealed class NoopDeadlines : ISessionDeadlineReconciler
