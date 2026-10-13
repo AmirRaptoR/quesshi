@@ -82,6 +82,26 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
         }
     }
 
+    /// <summary>Validates the embedded stream against the ledger without applying migrations.</summary>
+    public async Task EnsureCurrentAsync(NpgsqlConnection connection, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ValidateScripts();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync(cancellationToken);
+        try
+        {
+            var applied = await ReadAppliedAsync(connection, cancellationToken);
+            ValidateApplied(applied);
+            var pending = _scripts.FirstOrDefault(script => !applied.ContainsKey(script.Name));
+            if (pending is not null) throw new InvalidOperationException($"Database has pending migration '{pending.Name}'. Run 'migrate' with ConnectionStrings__Owner before serving traffic.");
+        }
+        finally
+        {
+            if (openedHere) await connection.CloseAsync();
+        }
+    }
+
     private void ValidateScripts()
     {
         var duplicates = _scripts.GroupBy(script => script.Name, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
