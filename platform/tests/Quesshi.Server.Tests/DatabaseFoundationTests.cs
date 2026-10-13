@@ -73,7 +73,7 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20261013T0105_ai_generation_before.sql' and owner = 'ai_generation'"));
-        Assert.Equal(4L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations"));
+        Assert.Equal(5L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations"));
 
         var changed = new MigrationScript("20261013T0105_ai_generation_before.sql", "ai_generation", "create table changed_bytes (id int);"u8.ToArray());
         var later = Script("20261013T0120_core_later", "create table runner_later (id integer primary key);");
