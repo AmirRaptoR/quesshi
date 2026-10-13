@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Web.Plugins;
 
@@ -156,11 +157,132 @@ public sealed class KindHostTests : BunitContext
         Assert.Contains("not supported", markup, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("play")]
+    [InlineData("reveal")]
+    [InlineData("editor")]
+    public void A_host_recovers_from_a_throwing_component_when_its_inputs_change(string host)
+    {
+        var registry = new MutableRegistry();
+        Services.AddSingleton<IClientRegistry>(registry);
+
+        var markup = host switch
+        {
+            "play" => RecoverPlayHost(registry),
+            "reveal" => RecoverRevealHost(registry),
+            _ => RecoverEditorHost(registry),
+        };
+
+        Assert.DoesNotContain("not supported", markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Play_clears_the_previous_component_while_a_new_kind_is_loading()
+    {
+        var registry = new DelayedRegistry(new HostClient(play: typeof(MarkedPlay)));
+        Services.AddSingleton<IClientRegistry>(registry);
+        var answer = EventCallback.Factory.Create<object?>(this, _ => { });
+        var cut = Render<KindPlay>(parameters => parameters
+            .Add(component => component.Card, new KindCard("test", 1, "first"))
+            .Add(component => component.OnAnswer, answer));
+
+        Assert.Contains("first", cut.Markup, StringComparison.Ordinal);
+        registry.DelayNextResolution();
+        cut.Render(parameters => parameters
+            .Add(component => component.Card, new KindCard("test", 1, "second"))
+            .Add(component => component.OnAnswer, answer));
+
+        Assert.DoesNotContain("first", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Loading kind", cut.Markup, StringComparison.Ordinal);
+
+        registry.CompleteResolution();
+        cut.WaitForAssertion(() => Assert.Contains("second", cut.Markup, StringComparison.Ordinal));
+    }
+
+    private string RecoverPlayHost(MutableRegistry registry)
+    {
+        registry.Client = new HostClient(play: typeof(ThrowingComponent));
+        var cut = Render<KindPlay>(parameters => parameters
+            .Add(component => component.Card, new KindCard("test", 1, "throwing"))
+            .Add(component => component.OnAnswer, EventCallback.Factory.Create<object?>(this, _ => { })));
+
+        registry.Client = new HostClient(play: typeof(PlayV1));
+        cut.Render(parameters => parameters
+            .Add(component => component.Card, new KindCard("test", 1, "healthy"))
+            .Add(component => component.OnAnswer, EventCallback.Factory.Create<object?>(this, _ => { })));
+        Assert.NotNull(cut.FindComponent<PlayV1>());
+        return cut.Markup;
+    }
+
+    private string RecoverRevealHost(MutableRegistry registry)
+    {
+        registry.Client = new HostClient(reveal: typeof(ThrowingComponent));
+        var cut = Render<KindReveal>(parameters => parameters
+            .Add(component => component.Card, new KindCard("test", 1, "throwing"))
+            .Add(component => component.Reveal, "reveal")
+            .Add(component => component.Answers, "answers"));
+
+        registry.Client = new HostClient(reveal: typeof(RevealV1));
+        cut.Render(parameters => parameters
+            .Add(component => component.Card, new KindCard("test", 1, "healthy"))
+            .Add(component => component.Reveal, "reveal")
+            .Add(component => component.Answers, "answers"));
+        Assert.NotNull(cut.FindComponent<RevealV1>());
+        return cut.Markup;
+    }
+
+    private string RecoverEditorHost(MutableRegistry registry)
+    {
+        registry.Client = new HostClient(editor: typeof(ThrowingComponent));
+        var cut = Render<KindEditor>(parameters => parameters
+            .Add(component => component.Kind, "test")
+            .Add(component => component.Payload, "throwing")
+            .Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { }))
+            .Add(component => component.Lang, "en"));
+
+        registry.Client = new HostClient(editor: typeof(Editor));
+        cut.Render(parameters => parameters
+            .Add(component => component.Kind, "test")
+            .Add(component => component.Payload, "healthy")
+            .Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { }))
+            .Add(component => component.Lang, "en"));
+        Assert.NotNull(cut.FindComponent<Editor>());
+        return cut.Markup;
+    }
+
     private sealed class FixedRegistry(IKindClient? client) : IClientRegistry
     {
         public void Register(IKindClient item) => throw new NotSupportedException();
         public void RegisterLazy(string id, string assemblyName) => throw new NotSupportedException();
         public ValueTask<IKindClient?> ResolveAsync(string id) => ValueTask.FromResult(client?.Id == id ? client : null);
+    }
+
+    private sealed class MutableRegistry : IClientRegistry
+    {
+        public IKindClient? Client { get; set; }
+        public void Register(IKindClient item) => throw new NotSupportedException();
+        public void RegisterLazy(string id, string assemblyName) => throw new NotSupportedException();
+        public ValueTask<IKindClient?> ResolveAsync(string id) => ValueTask.FromResult(Client?.Id == id ? Client : null);
+    }
+
+    private sealed class DelayedRegistry(IKindClient? client) : IClientRegistry
+    {
+        private TaskCompletionSource<IKindClient?>? pendingResolution;
+
+        public void Register(IKindClient item) => throw new NotSupportedException();
+        public void RegisterLazy(string id, string assemblyName) => throw new NotSupportedException();
+
+        public void DelayNextResolution() => pendingResolution = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void CompleteResolution()
+        {
+            pendingResolution!.SetResult(client);
+            pendingResolution = null;
+        }
+
+        public ValueTask<IKindClient?> ResolveAsync(string id) => pendingResolution is { } pending
+            ? new(pending.Task)
+            : ValueTask.FromResult(client?.Id == id ? client : null);
     }
 
     private sealed class NoopLoader : IClientAssemblyLoader
@@ -185,6 +307,15 @@ public sealed class KindHostTests : BunitContext
     }
 
     private sealed class PlayV2 : ComponentBase;
+
+    private sealed class MarkedPlay : ComponentBase
+    {
+        [Parameter] public object? Card { get; set; }
+        [Parameter] public EventCallback<object?> OnAnswer { get; set; }
+        [Parameter] public bool Disabled { get; set; }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder) => builder.AddContent(0, Card?.ToString());
+    }
 
     private sealed class RevealV1 : ComponentBase
     {

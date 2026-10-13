@@ -2,9 +2,13 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject IClientRegistry Registry
 
-<ErrorBoundary>
+<ErrorBoundary @ref="errorBoundary">
     <ChildContent>
-        @if (component is null)
+        @if (resolving)
+        {
+            <p role="status">Loading kind…</p>
+        }
+        else if (component is null)
         {
             <p role="alert">This kind is not supported. Reload the page.</p>
         }
@@ -30,12 +34,27 @@
 
     private Type? component;
     private IDictionary<string, object>? parameters;
+    private ErrorBoundary? errorBoundary;
+    private bool resolving;
+    private int resolutionVersion;
 
     protected override async Task OnParametersSetAsync()
     {
+        errorBoundary?.Recover();
+        component = null;
+        parameters = null;
+        resolving = true;
+        var currentResolution = ++resolutionVersion;
+
         try
         {
-            component = (await Registry.ResolveAsync(Card.Kind))?.Reveal(Card.KindVersion);
+            var resolvedComponent = (await Registry.ResolveAsync(Card.Kind))?.Reveal(Card.KindVersion);
+            if (currentResolution != resolutionVersion)
+            {
+                return;
+            }
+
+            component = resolvedComponent;
             parameters = component is null
                 ? null
                 : new Dictionary<string, object>
@@ -47,8 +66,18 @@
         }
         catch
         {
-            component = null;
-            parameters = null;
+            if (currentResolution == resolutionVersion)
+            {
+                component = null;
+                parameters = null;
+            }
+        }
+        finally
+        {
+            if (currentResolution == resolutionVersion)
+            {
+                resolving = false;
+            }
         }
     }
 }
