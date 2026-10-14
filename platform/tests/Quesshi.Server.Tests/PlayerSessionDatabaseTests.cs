@@ -144,7 +144,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         var header = Assert.Single(context.Response.Headers.SetCookie);
         Assert.NotNull(header);
         var value = header["__Host-qp=".Length..];
-        return value[..value.IndexOf(';')];
+        return Uri.UnescapeDataString(value[..value.IndexOf(';')]);
     }
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters) =>

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quesshi.Application;
+using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
@@ -31,6 +32,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         await using var app = Program.CreateApplication(sources, 11145, 30145, configuredFeatures: registry);
         app.Urls.Add("http://127.0.0.1:50145");
         await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
             using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50145") };
@@ -162,7 +164,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         var header = Assert.Single(context.Response.Headers.SetCookie);
         Assert.NotNull(header);
         var value = header["__Host-qp=".Length..];
-        return value[..value.IndexOf(';')];
+        return Uri.UnescapeDataString(value[..value.IndexOf(';')]);
     }
 
     private sealed record AntiforgeryResponse(string Token);
