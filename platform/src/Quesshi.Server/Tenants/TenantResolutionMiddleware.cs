@@ -66,7 +66,7 @@ public static class TenantResolutionApplicationBuilderExtensions
         services.AddSingleton<ITenants, PostgresTenants>();
         services.Configure<ForwardedHeadersOptions>(options =>
         {
-            options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
             options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
             foreach (var proxy in TenantResolutionMiddleware.TrustedProxiesFromEnvironment()) options.KnownProxies.Add(proxy);

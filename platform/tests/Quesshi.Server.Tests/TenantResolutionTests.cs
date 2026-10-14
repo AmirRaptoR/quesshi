@@ -106,7 +106,7 @@ public sealed class TenantResolutionTests
     }
 
     [Fact]
-    public async Task Registration_honors_forwarded_scheme_only_from_trusted_proxies()
+    public async Task Registration_honors_forwarded_values_only_from_trusted_proxies()
     {
         const string trustedProxy = "10.0.0.2";
         var originalTrustedProxies = Environment.GetEnvironmentVariable("TRUSTED_PROXIES");
@@ -120,14 +120,18 @@ public sealed class TenantResolutionTests
             var application = builder.Build();
             var trusted = Request("internal.example.test", remoteIp: trustedProxy);
             trusted.Request.Headers["X-Forwarded-Proto"] = "https";
+            trusted.Request.Headers["X-Forwarded-For"] = "192.0.2.10";
             var untrusted = Request("internal.example.test", remoteIp: "10.0.0.3");
             untrusted.Request.Headers["X-Forwarded-Proto"] = "https";
+            untrusted.Request.Headers["X-Forwarded-For"] = "192.0.2.11";
 
             await application(trusted);
             await application(untrusted);
 
             Assert.Equal("https", trusted.Request.Scheme);
             Assert.Equal("http", untrusted.Request.Scheme);
+            Assert.Equal(IPAddress.Parse("192.0.2.10"), trusted.Connection.RemoteIpAddress);
+            Assert.Equal(IPAddress.Parse("10.0.0.3"), untrusted.Connection.RemoteIpAddress);
         }
         finally
         {
