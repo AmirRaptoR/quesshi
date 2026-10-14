@@ -91,7 +91,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         var otherPlayer = Guid.NewGuid();
         var email = $"delete-{account:N}@example.test";
         await using var connection = await OpenAsync();
-        await ExecuteAsync(connection, "delete from auth_sessions; delete from jobs; delete from account_identities; delete from login_codes; delete from tenants; delete from accounts");
+        await ExecuteAsync(connection, "delete from auth_sessions; delete from jobs; delete from session_participants; delete from account_identities; delete from login_codes; delete from tenants; delete from accounts");
         await ExecuteAsync(connection, "insert into tenants (id, slug, name, default_language) values (@id, @slug, 'First', 'en'), (@other, @otherSlug, 'Second', 'en')",
             ("id", firstTenant), ("slug", $"first-{firstTenant:N}"), ("other", secondTenant), ("otherSlug", $"second-{secondTenant:N}"));
         await ExecuteAsync(connection, "insert into accounts (id, email) values (@account, @email); insert into account_identities (provider, subject, account_id) values ('test', @subject, @account); insert into login_codes (email, code_hash, expires_at) values (@email, decode('00', 'hex'), now() + interval '1 hour')",

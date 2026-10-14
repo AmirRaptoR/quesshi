@@ -63,6 +63,22 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public void Revocation_is_terminal_and_cannot_be_displaced_by_later_messages()
+    {
+        var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
+        subscription.QueueView(new RenderedSessionView(1, "{\"version\":1}"));
+
+        subscription.QueueGone("revoked");
+        subscription.QueueView(new RenderedSessionView(2, "{\"version\":2}"));
+        subscription.QueueConfig(2);
+
+        Assert.True(subscription.Messages.TryRead(out var message));
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.False(subscription.Messages.TryRead(out _));
+        Assert.True(subscription.Messages.Completion.IsCompleted);
+    }
+
+    [Fact]
     public async Task Config_notifications_are_fanned_out_only_within_their_tenant()
     {
         var tenant = Guid.NewGuid();
@@ -132,6 +148,25 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public async Task Player_notification_closes_only_the_matching_deleted_players_stream()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var notifications = new Notifications();
+        var hub = new StreamHub(null!, null!, null!, null!, notifications,
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var deleted = hub.Subscribe(tenant, player.ToString(), null);
+        var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
+
+        notifications.Publish(new StreamNotification.Player(tenant, player));
+
+        var message = await ReadAsync(deleted);
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.False(other.Messages.TryRead(out _));
+        hub.Dispose();
+    }
+
+    [Fact]
     public async Task Reconciliation_revokes_a_deleted_player()
     {
         var tenant = Guid.NewGuid();
@@ -163,18 +198,22 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public void Listener_parses_session_and_config_notifications()
+    public void Listener_parses_session_config_and_player_notifications()
     {
         var tenantId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
 
         var session = Assert.IsType<StreamNotification.Session>(
             PostgresStreamNotificationListener.Parse($"{tenantId}:{sessionId}:7:3"));
         var config = Assert.IsType<StreamNotification.Config>(
             PostgresStreamNotificationListener.Parse($"config:{tenantId}:8"));
+        var player = Assert.IsType<StreamNotification.Player>(
+            PostgresStreamNotificationListener.Parse($"player:{tenantId}:{playerId}"));
 
         Assert.Equal((tenantId, sessionId, 7, "3"), (session.TenantId, session.SessionId, session.Version, session.Phase));
         Assert.Equal((tenantId, 8), (config.TenantId, config.Version));
+        Assert.Equal((tenantId, playerId), (player.TenantId, player.PlayerId));
         Assert.Null(PostgresStreamNotificationListener.Parse("not-a-stream-event"));
     }
 

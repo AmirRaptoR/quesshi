@@ -61,6 +61,12 @@ internal sealed class AccountDeletionService(ISystemDb database, IAccountDeletio
                     payload,
                     uniqueKey = player.PlayerId.ToString("N")
                 }, cancellationToken);
+
+                var streamPayload = $"player:{player.TenantId}:{player.PlayerId}";
+                await transaction.ExecuteAsync(
+                    "select pg_notify('quesshi_player', @streamPayload)",
+                    new { streamPayload },
+                    cancellationToken);
             }
             return livePlayers;
         }, cancellationToken);

@@ -68,14 +68,15 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
 
         var tenant = Guid.NewGuid();
         var session = Guid.NewGuid();
-        var loader = new SnapshotLoader(State(session, 2, "player"));
+        var player = Guid.NewGuid();
+        var loader = new SnapshotLoader(State(session, 2, player.ToString()));
         var database = new ReconciliationDatabase(session, 2);
         var first = new PostgresStreamNotificationListener(firstSources, NullLogger<PostgresStreamNotificationListener>.Instance);
         var second = new PostgresStreamNotificationListener(secondSources, NullLogger<PostgresStreamNotificationListener>.Instance);
         var firstHub = Hub(loader, database, first);
         var secondHub = Hub(loader, database, second);
-        var firstSubscription = firstHub.Subscribe(tenant, "player", session);
-        var secondSubscription = secondHub.Subscribe(tenant, "player", session);
+        var firstSubscription = firstHub.Subscribe(tenant, player.ToString(), session);
+        var secondSubscription = secondHub.Subscribe(tenant, player.ToString(), session);
         var connected = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var connections = 0;
         void Observe(StreamNotification notification)
@@ -103,6 +104,10 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
             await NotifyConfigAsync(sender, tenant, 3);
             var configs = await Task.WhenAll(ReadAsync(firstSubscription), ReadAsync(secondSubscription));
             Assert.All(configs, config => Assert.Equal((StreamMessageKind.Config, 3), (config.Kind, config.Version)));
+
+            await NotifyPlayerAsync(sender, tenant, player);
+            var revocations = await Task.WhenAll(ReadAsync(firstSubscription), ReadAsync(secondSubscription));
+            Assert.All(revocations, revocation => Assert.Equal((StreamMessageKind.Gone, "revoked"), (revocation.Kind, revocation.Reason)));
         }
         finally
         {
@@ -254,6 +259,13 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
     {
         await using var command = new NpgsqlCommand("select pg_notify('quesshi_config', @payload)", sender);
         command.Parameters.AddWithValue("payload", $"config:{tenant}:{version}");
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task NotifyPlayerAsync(NpgsqlConnection sender, Guid tenant, Guid player)
+    {
+        await using var command = new NpgsqlCommand("select pg_notify('quesshi_player', @payload)", sender);
+        command.Parameters.AddWithValue("payload", $"player:{tenant}:{player}");
         await command.ExecuteNonQueryAsync();
     }
 

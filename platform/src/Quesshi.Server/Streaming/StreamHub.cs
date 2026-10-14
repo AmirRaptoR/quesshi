@@ -22,6 +22,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         SingleReader = true,
         SingleWriter = false
     });
+    private bool _terminal;
 
     public Guid TenantId { get; } = tenantId;
     public string PlayerId { get; } = playerId;
@@ -35,7 +36,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     {
         lock (_gate)
         {
-            if (view.Version <= Math.Max(LastSentVersion, LastQueuedVersion)) return;
+            if (_terminal || view.Version <= Math.Max(LastSentVersion, LastQueuedVersion)) return;
             LastQueuedVersion = view.Version;
             _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.View, view.Version, view.Json));
         }
@@ -47,14 +48,20 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         {
             // Preserve the convergence-critical view already in the one-slot buffer. The
             // periodic reconcile will retry this config after that view has been sent.
-            if (version <= LastConfigVersion || LastQueuedVersion > LastSentVersion) return;
+            if (_terminal || version <= LastConfigVersion || LastQueuedVersion > LastSentVersion) return;
             _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Config, version));
         }
     }
 
     public void QueueGone(string reason)
     {
-        lock (_gate) _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Gone, 0, Reason: reason));
+        lock (_gate)
+        {
+            if (_terminal) return;
+            _terminal = true;
+            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Gone, 0, Reason: reason));
+            _messages.Writer.TryComplete();
+        }
     }
 
     public bool MarkSent(StreamMessage message)
@@ -78,12 +85,16 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 
     public bool NeedsView(long version)
     {
-        lock (_gate) return version > Math.Max(LastSentVersion, LastQueuedVersion);
+        lock (_gate) return !_terminal && version > Math.Max(LastSentVersion, LastQueuedVersion);
     }
 
     public void Complete()
     {
-        lock (_gate) _messages.Writer.TryComplete();
+        lock (_gate)
+        {
+            _terminal = true;
+            _messages.Writer.TryComplete();
+        }
     }
 }
 
@@ -244,6 +255,9 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                 break;
             case StreamNotification.Config config:
                 BroadcastConfig(config.TenantId, config.Version);
+                break;
+            case StreamNotification.Player player:
+                Deleted([new AccountDeletionPlayer(player.TenantId, player.PlayerId)]);
                 break;
             case StreamNotification.Reconnected:
                 _ = ReconcileAsync();
