@@ -1,7 +1,16 @@
 @using Microsoft.AspNetCore.Components
 @using Quesshi.Kinds.MapPick
 
-<div data-kind="map_pick" data-version="1"></div>
+@if (MapCard is { } card)
+{
+    <section class="map_pick" data-kind="map_pick" data-version="1">
+        <MapField Shape="card.Shape" BaseLayer="card.BaseLayer" Selection="selection" SelectionChanged="SelectAsync" OnConfirm="SubmitAsync" Disabled="Disabled" />
+    </section>
+}
+else
+{
+    <p role="alert">This map card is unavailable.</p>
+}
 
 @code {
     // The map UI is delivered by the map_pick child; this component is the lazy client's typed root.
@@ -10,4 +19,20 @@
     [Parameter] public bool Disabled { get; set; }
 
     private MapPickCard? MapCard => Card as MapPickCard;
+    private MapSelection? selection;
+
+    private Task SelectAsync(MapSelection value)
+    {
+        if (!Disabled) selection = value;
+        return Task.CompletedTask;
+    }
+
+    private Task SubmitAsync()
+    {
+        if (Disabled || MapCard is not { } card || selection is null) return Task.CompletedTask;
+        MapPickAnswer answer = selection.IsCountry
+            ? new(card.Shape, selection.CountryCode)
+            : new(card.Shape, null, selection.Latitude, selection.Longitude);
+        return OnAnswer.InvokeAsync(answer);
+    }
 }

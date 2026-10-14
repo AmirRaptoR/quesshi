@@ -1,0 +1,37 @@
+@using Quesshi.Kinds.MapPick
+@using Quesshi.Shared
+@inject HttpClient Http
+
+<WorldMap Shape="@Reveal.Target.Shape" BaseLayer="MapBaseLayer.Borders" Target="target" TargetRadiusKm="Reveal.Target.RadiusKm" Marks="marks" Label="World map" />
+<div class="maplegend">
+    @if (target is not null) { <div class="maplegend__row"><strong>Answer</strong> @Describe(target)</div> }
+    @foreach (var mark in marks) { <div class="maplegend__row" @key="mark.Label">@mark.Label: @Describe(mark.Selection)</div> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Quesshi.Kinds.MapPick.MapPickReveal Reveal { get; set; } = default!;
+    [Parameter] public object? Answers { get; set; }
+    [Parameter] public IReadOnlyList<string> PlayerLabels { get; set; } = [];
+    private IReadOnlyList<MapCountry> countries = [];
+    private MapSelection? target;
+    private IReadOnlyList<MapMark> marks = [];
+
+    protected override async Task OnInitializedAsync() => countries = await new WorldMapAsset(Http).LoadAsync();
+    protected override void OnParametersSet()
+    {
+        target = FromTarget(Reveal.Target);
+        marks = [.. StoredAnswers.Select((answer, index) =>
+        {
+            var selection = FromStored(answer);
+            return new MapMark(selection, PlayerLabels.ElementAtOrDefault(index) ?? $"Player {index + 1}", IsCorrect(selection));
+        })];
+    }
+
+    private MapSelection FromTarget(MapTarget target) => target.Shape == MapTargetKind.Country ? MapSelection.Country(target.CountryCode!) : MapSelection.Point(target.Latitude!.Value, target.Longitude!.Value);
+    private static MapSelection FromStored(MapPickStored stored) => stored.Shape == MapTargetKind.Country ? MapSelection.Country(stored.CountryCode!) : MapSelection.Point(stored.Latitude!.Value, stored.Longitude!.Value);
+    private IEnumerable<MapPickStored> StoredAnswers => Answers as IEnumerable<MapPickStored> ?? [];
+    private string Describe(MapSelection selection) => selection.IsCountry ? $"{MapText.CountryName(countries, selection.CountryCode)} ({selection.CountryCode})" : MapText.Coordinates(selection);
+    private bool? IsCorrect(MapSelection selection) => target is null ? null : target.IsCountry
+        ? string.Equals(target.CountryCode, selection.CountryCode, StringComparison.Ordinal)
+        : Geo.DistanceKm(target.Latitude!.Value, target.Longitude!.Value, selection.Latitude!.Value, selection.Longitude!.Value) <= Reveal.Target.RadiusKm;
+}

@@ -1,7 +1,16 @@
 @using Microsoft.AspNetCore.Components
 @using Quesshi.Kinds.MapPick
 
-<div data-kind="map_pick" data-version="1"></div>
+@if (MapCard is not null && MapRevealValue is { } reveal)
+{
+    <section class="map_pick" data-kind="map_pick" data-version="1">
+        <MapReveal Reveal="reveal" Answers="Answers" />
+    </section>
+}
+else
+{
+    <p role="alert">This map reveal is unavailable.</p>
+}
 
 @code {
     // The map UI is delivered by the map_pick child; this component is the lazy client's typed root.

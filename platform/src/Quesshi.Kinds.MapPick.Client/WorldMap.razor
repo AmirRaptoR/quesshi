@@ -1,0 +1,115 @@
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using Quesshi.Kinds.MapPick
+@using Quesshi.Shared
+@implements IAsyncDisposable
+@inject HttpClient Http
+@inject IJSRuntime Js
+
+<svg class="worldmap @(BaseLayer == MapBaseLayer.Borders ? "worldmap--borders" : null) @(Interactive ? "worldmap--pick" : null)"
+     viewBox="@WorldMapProjection.ViewBox" preserveAspectRatio="xMidYMid meet" @ref="svg"
+     role="img" aria-label="@Label" @onclick="PickPointAsync">
+    @if (PointPicking)
+    {
+        <rect class="worldmap__sea" x="-180" y="-90" width="360" height="180" />
+    }
+    <g fill-rule="evenodd">
+        @foreach (var country in countries)
+        {
+            <path class="worldmap__country @ToneOf(country.Iso)" d="@country.Path" @key="country.Iso"
+                  @onclick="() => PickCountryAsync(country.Iso)" />
+        }
+    </g>
+    @if (RingTarget is { IsPoint: true } ring)
+    {
+        var (radiusX, radiusY) = TargetRadiusKm is { } radius
+            ? WorldMapProjection.RadiusInDegrees(radius, ring.Latitude!.Value)
+            : (0d, 0d);
+        if (TargetRadiusKm is not null)
+        {
+            <ellipse class="worldmap__tolerance" cx="@F(ring.Longitude!.Value)" cy="@F(-ring.Latitude!.Value)" rx="@F(radiusX)" ry="@F(radiusY)" />
+        }
+    }
+    @if (Target is { IsPoint: true } target)
+    {
+        @foreach (var mark in PointMarks.Where(mark => mark.Right == false))
+        {
+            var (x, y) = Place(mark.Selection);
+            <line class="worldmap__miss" x1="@F(x)" y1="@F(y)" x2="@F(target.Longitude!.Value)" y2="@F(-target.Latitude!.Value)" />
+        }
+        <circle class="worldmap__pin worldmap__pin--target" cx="@F(target.Longitude!.Value)" cy="@F(-target.Latitude!.Value)" r="8" />
+    }
+    @foreach (var mark in PointMarks)
+    {
+        var (x, y) = Place(mark.Selection);
+        <circle class="worldmap__pin" style="@(mark.Right == false ? "fill:var(--anaar)" : null)" cx="@F(x)" cy="@F(y)" r="5" />
+        <line class="worldmap__cross" x1="@F(x - 11)" y1="@F(y)" x2="@F(x + 11)" y2="@F(y)" />
+        <line class="worldmap__cross" x1="@F(x)" y1="@F(y - 11)" x2="@F(x)" y2="@F(y + 11)" />
+    }
+</svg>
+
+@code {
+    [Parameter] public MapTargetKind? Shape { get; set; }
+    [Parameter] public MapBaseLayer? BaseLayer { get; set; }
+    [Parameter] public MapSelection? Selection { get; set; }
+    [Parameter] public EventCallback<MapSelection> SelectionChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public MapSelection? Target { get; set; }
+    [Parameter] public double? TargetRadiusKm { get; set; }
+    [Parameter] public IReadOnlyList<MapMark> Marks { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "World map";
+
+    private ElementReference svg;
+    private IReadOnlyList<MapCountry> countries = [];
+    private IJSObjectReference? module;
+    private bool Interactive => SelectionChanged.HasDelegate && !Disabled;
+    private bool PointPicking => Interactive && Shape == MapTargetKind.Point;
+    private IReadOnlyList<MapMark> PointMarks
+    {
+        get
+        {
+            List<MapMark> output = [.. Marks.Where(mark => mark.Selection.IsPoint)];
+            if (Selection is { IsPoint: true } selection) output.Add(new MapMark(selection, string.Empty, null));
+            return output;
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => countries = await new WorldMapAsset(Http).LoadAsync();
+
+    private async Task PickCountryAsync(string iso)
+    {
+        if (Interactive && Shape == MapTargetKind.Country) await SelectionChanged.InvokeAsync(MapSelection.Country(iso));
+    }
+
+    private async Task PickPointAsync(MouseEventArgs args)
+    {
+        if (!PointPicking) return;
+        module ??= await Js.InvokeAsync<IJSObjectReference>("import", "./_content/Quesshi.Kinds.MapPick.Client/WorldMap.razor.js");
+        var point = await module.InvokeAsync<double[]?>("mapPoint", svg, args.ClientX, args.ClientY);
+        if (point is [var x, var y])
+        {
+            var (latitude, longitude) = WorldMapProjection.Unproject(x, y);
+            await SelectionChanged.InvokeAsync(MapSelection.Point(latitude, longitude));
+        }
+    }
+
+    private MapSelection? RingTarget => Target is { IsPoint: true } ? Target : Selection is { IsPoint: true } ? Selection : null;
+
+    private string? ToneOf(string iso)
+    {
+        if (string.Equals(Target?.CountryCode, iso, StringComparison.Ordinal)) return "is-target";
+        if (string.Equals(Selection?.CountryCode, iso, StringComparison.Ordinal)) return "is-picked";
+
+        return Marks.FirstOrDefault(mark => string.Equals(mark.Selection.CountryCode, iso, StringComparison.Ordinal)) is { } mark
+            ? mark.Right == false ? "is-miss" : "is-picked"
+            : null;
+    }
+
+    private static (double X, double Y) Place(MapSelection selection) => WorldMapProjection.Project(selection.Latitude!.Value, selection.Longitude!.Value);
+    private static string F(double value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null) await module.DisposeAsync();
+    }
+}
