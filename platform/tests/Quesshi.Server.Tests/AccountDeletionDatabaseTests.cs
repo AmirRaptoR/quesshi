@@ -190,7 +190,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         var worker = new JobWorker(new PostgresJobStore(sources), registry.Jobs, new TenantDb(sources), new OffCapabilities());
 
         await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
-        Assert.Equal(1L, await ScalarAsync<long>("select attempts from jobs where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant)));
+        Assert.Equal(1, await ScalarAsync<int>("select attempts from jobs where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant)));
         Assert.Equal("ready", await ScalarAsync<string>("select status from jobs where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant)));
         await using (var connection = await OpenAsync("quesshi_system"))
             await ExecuteAsync(connection, "update jobs set run_at = now() where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant));

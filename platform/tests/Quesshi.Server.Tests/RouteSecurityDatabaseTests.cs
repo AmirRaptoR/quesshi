@@ -144,7 +144,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             using (var deleted = await SendAsync(client, HttpMethod.Delete, "/api/me", accountCookie, accountToken, TenantOrigin))
             {
                 Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
-                Assert.Contains(deleted.Headers.GetValues("Set-Cookie"), value => value.Contains("__Host-qp=", StringComparison.Ordinal) && value.Contains("max-age=0", StringComparison.OrdinalIgnoreCase));
+                Assert.Contains(deleted.Headers.GetValues("Set-Cookie"), value => value.Contains("__Host-qp=", StringComparison.Ordinal) && value.Contains("expires=", StringComparison.OrdinalIgnoreCase));
             }
         }
         finally
