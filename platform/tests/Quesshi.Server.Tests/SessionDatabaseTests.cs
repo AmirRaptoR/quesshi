@@ -54,8 +54,8 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
         while (await reader.ReadAsync()) actual.Add(reader.GetGuid(0));
         Assert.Equal([second], actual);
 
-        Assert.False(await ScalarAsync<bool>(owner, "has_function_privilege('quesshi_app', 'due_sessions(timestamptz, int, uuid[])', 'EXECUTE')"));
-        Assert.True(await ScalarAsync<bool>(owner, "has_function_privilege('quesshi_system', 'due_sessions(timestamptz, int, uuid[])', 'EXECUTE')"));
+        Assert.False(await ScalarAsync<bool>(owner, "select has_function_privilege('quesshi_app', 'due_sessions(timestamptz, int, uuid[])', 'EXECUTE')"));
+        Assert.True(await ScalarAsync<bool>(owner, "select has_function_privilege('quesshi_system', 'due_sessions(timestamptz, int, uuid[])', 'EXECUTE')"));
     }
 
     [SkippableFact]
