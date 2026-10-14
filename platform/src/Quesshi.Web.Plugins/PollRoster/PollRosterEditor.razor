@@ -1,0 +1,25 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.PollRoster
+@using Quesshi.Shared
+
+<section data-kind="poll_roster" class="kind-editor">
+    <p>Roster options are taken from the frozen game roster.</p>
+    <button type="button" data-payload-save @onclick="EmitAsync">Save</button>
+    <ul class="validation-problems">
+        @foreach (var problem in Problems)
+        {
+            <li data-problem="@problem.Code">@problem.Message</li>
+        }
+    </ul>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+    [Parameter, EditorRequired] public object? Payload { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
+    [Parameter, EditorRequired] public string Lang { get; set; } = "en";
+    private PollRosterPayload? Value => Payload as PollRosterPayload;
+    private IReadOnlyList<Problem> Problems => Value is { } payload ? new PollRosterKind().Validate(payload, new ValidateEnv(Lang)) : [];
+    private Task EmitAsync() => PayloadChanged.InvokeAsync(Value);
+}

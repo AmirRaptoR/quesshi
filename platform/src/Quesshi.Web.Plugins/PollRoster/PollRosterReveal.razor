@@ -1,0 +1,33 @@
+@using Microsoft.AspNetCore.Components
+@using Quesshi.Kinds.PollRoster
+
+@if (Card is PollRosterCard card)
+{
+    <section data-kind="poll_roster" data-version="1" class="voting-reveal">
+        <ul class="voting-options">
+            @foreach (var option in card.Options)
+            {
+                <li data-seat="@option.Seat">@option.Name</li>
+            }
+        </ul>
+        <ul class="voting-answers">
+            @foreach (var answer in StoredAnswers)
+            {
+                <li data-answer="@AnswerName(answer)">@AnswerName(answer)</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public object? Reveal { get; set; }
+    [Parameter, EditorRequired] public object? Answers { get; set; }
+
+    private IEnumerable<PollRosterStored> StoredAnswers => Answers as IEnumerable<PollRosterStored> ?? [];
+    private string AnswerName(PollRosterStored answer) => answer.Seat is { } seat
+        ? (Card as PollRosterCard)?.Options.FirstOrDefault(option => option.Seat == seat)?.Name ?? seat.ToString()
+        : answer.Several == true ? "Several"
+        : answer.None == true ? "None"
+        : "Not applicable";
+}

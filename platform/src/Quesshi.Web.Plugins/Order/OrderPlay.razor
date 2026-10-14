@@ -1,0 +1,87 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.Order
+
+@if (Value is { } card)
+{
+    <div data-kind="order" data-version="1" dir="@Direction">
+        <ol class="sortlist" @onpointermove="OnPointerMove" @onpointerup="EndDrag" @onpointercancel="EndDrag">
+            @for (var index = 0; index < Ordering.ItemIds.Count; index++)
+            {
+                var place = index;
+                var item = ItemAt(place);
+                if (item is null) { continue; }
+                <li class="sortrow" @key="item.Id">
+                    <button type="button" class="sortrow__grip" data-grip data-place="@place" disabled="@Disabled"
+                            aria-label="Move @item.Text" @onpointerdown="e => StartDrag(place, e)"
+                            @onkeydown="e => OnKeyAsync(place, e)">
+                        <span aria-hidden="true">↕</span>
+                    </button>
+                    <span class="grow" dir="auto">@item.Text</span>
+                    <span class="sortrow__place numeral">@(place + 1)</span>
+                </li>
+            }
+        </ol>
+        <button type="button" data-order-submit disabled="@Disabled" @onclick="SubmitAsync">Submit order</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> OnAnswer { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string Lang { get; set; } = "en";
+
+    private OrderCard? currentCard;
+    private OrderOrdering Ordering { get; set; } = OrderOrdering.Served([]);
+    private int? dragging;
+    private double dragStartY;
+    private OrderCard? Value => Card as OrderCard;
+    private string Direction => Lang.StartsWith("fa", StringComparison.OrdinalIgnoreCase) || Lang.StartsWith("ar", StringComparison.OrdinalIgnoreCase) ? "rtl" : "ltr";
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(currentCard, Value)) return;
+        currentCard = Value;
+        Ordering = OrderOrdering.Served(Value?.Items.Select(item => item.Id ?? "") ?? []);
+    }
+
+    private OrderItem? ItemAt(int place)
+    {
+        var id = Ordering.ItemIds[place];
+        return Value?.Items.FirstOrDefault(item => item.Id == id);
+    }
+
+    private void StartDrag(int place, PointerEventArgs args)
+    {
+        if (Disabled) return;
+        dragging = place;
+        dragStartY = args.ClientY;
+    }
+
+    private void OnPointerMove(PointerEventArgs args)
+    {
+        if (Disabled || dragging is not { } from) return;
+        var offset = (int)Math.Truncate((args.ClientY - dragStartY) / 32d);
+        if (offset == 0) return;
+        var to = Math.Clamp(from + offset, 0, Ordering.ItemIds.Count - 1);
+        Ordering = Ordering.Move(from, to);
+        dragging = to;
+        dragStartY = args.ClientY;
+    }
+
+    private void EndDrag(PointerEventArgs _) => dragging = null;
+
+    private void OnKeyAsync(int place, KeyboardEventArgs args)
+    {
+        if (Disabled) return;
+        Ordering = args.Key switch
+        {
+            "ArrowUp" => Ordering.MoveUp(place),
+            "ArrowDown" => Ordering.MoveDown(place),
+            _ => Ordering
+        };
+    }
+
+    private Task SubmitAsync() => Disabled ? Task.CompletedTask : OnAnswer.InvokeAsync(new OrderAnswer(Ordering.ItemIds));
+}

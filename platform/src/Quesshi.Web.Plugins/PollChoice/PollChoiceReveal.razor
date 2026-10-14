@@ -1,0 +1,27 @@
+@using Microsoft.AspNetCore.Components
+@using Quesshi.Kinds.PollChoice
+
+@if (Card is PollChoiceCard card)
+{
+    <section data-kind="poll_choice" data-version="1" class="voting-reveal">
+        <ul class="voting-options">
+            @foreach (var option in card.Options)
+            {
+                <li data-option="@option.Id">@option.Text</li>
+            }
+        </ul>
+        <ul class="voting-answers">
+            @foreach (var answer in StoredAnswers)
+            {
+                <li data-answer="@(answer.Option ?? "not-applicable")">@(answer.Option is { } id ? card.Options.FirstOrDefault(option => option.Id == id)?.Text : "Not applicable")</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public object? Reveal { get; set; }
+    [Parameter, EditorRequired] public object? Answers { get; set; }
+    private IEnumerable<PollChoiceStored> StoredAnswers => Answers as IEnumerable<PollChoiceStored> ?? [];
+}

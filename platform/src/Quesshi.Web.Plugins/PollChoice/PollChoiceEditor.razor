@@ -1,0 +1,31 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.PollChoice
+@using Quesshi.Shared
+
+<section data-kind="poll_choice" class="kind-editor">
+    @if (Value is { } payload)
+    {
+        @foreach (var option in payload.Options ?? [])
+        {
+            <p data-option-id="@option?.Id">@option?.Text</p>
+        }
+        <button type="button" data-payload-save @onclick="EmitAsync">Save</button>
+    }
+    <ul class="validation-problems">
+        @foreach (var problem in Problems)
+        {
+            <li data-problem="@problem.Code">@problem.Message</li>
+        }
+    </ul>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+    [Parameter, EditorRequired] public object? Payload { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
+    [Parameter, EditorRequired] public string Lang { get; set; } = "en";
+    private PollChoicePayload? Value => Payload as PollChoicePayload;
+    private IReadOnlyList<Problem> Problems => Value is { } payload ? new PollChoiceKind().Validate(payload, new ValidateEnv(Lang)) : [];
+    private Task EmitAsync() => PayloadChanged.InvokeAsync(Value);
+}
