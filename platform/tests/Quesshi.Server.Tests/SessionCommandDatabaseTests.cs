@@ -129,7 +129,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1, Assert.Single(writes, version => version > 0));
         Assert.Equal(1, writes.Count(version => version == -1));
         await wait.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal($"{tenant}:{session}:1", await notification.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal($"{tenant}:{session}:1:0", await notification.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, notificationCount);
 
         var saved = Assert.IsType<SessionState>(await loader.LoadAsync(tenant, session));

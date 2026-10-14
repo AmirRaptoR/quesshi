@@ -59,7 +59,14 @@ internal sealed class TenantCapabilities(CapabilityRegistry registry, ITenantDb 
                 """, new { type = ToDatabaseType(type), key, enabled, settings = serializedSettings }, cancellationToken);
             if (affected != 1) throw new InvalidOperationException($"Capability {type}:{key} is not provisioned for this tenant.");
 
-            await transaction.ExecuteAsync("update tenants set config_version = config_version + 1", cancellationToken: cancellationToken);
+            var version = await transaction.QuerySingleOrDefaultAsync<long?>("""
+                update tenants set config_version = config_version + 1
+                where id = @tenantId
+                returning config_version
+                """, new { tenantId }, cancellationToken);
+            if (version is null) throw new InvalidOperationException($"Tenant {tenantId} does not exist.");
+            await transaction.ExecuteAsync("select pg_notify('quesshi_config', @message)",
+                new { message = $"config:{tenantId}:{version.Value}" }, cancellationToken);
             return 0;
         }, cancellationToken: cancellationToken);
     }

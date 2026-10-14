@@ -22,6 +22,8 @@ using Quesshi.Kinds.PollRoster;
 using Quesshi.Server.Sessions;
 using Quesshi.Shared;
 using Quesshi.Infrastructure.Clock;
+using Quesshi.Infrastructure.Streaming;
+using Quesshi.Server.Streaming;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
@@ -146,6 +148,11 @@ public static class Program
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
+        builder.Services.AddSingleton<PostgresStreamNotificationListener>();
+        builder.Services.AddSingleton<IStreamNotificationSource>(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
+        builder.Services.AddSingleton<StreamHub>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddSingleton<ISessionDeadlineReconciler, NoopSessionDeadlineReconciler>();
         builder.Services.AddSingleton<IFormatRegistry>(_ => PlatformFormats.CreateRegistry());
         builder.Services.AddSingleton<IKindRegistry>(_ => new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
@@ -208,6 +215,7 @@ public static class Program
         });
         app.MapTenantResources();
         app.MapRoutes();
+        app.MapStream();
         app.UseForwardedHeaders();
         app.UseWhen(context => !context.Request.Path.StartsWithSegments("/health"), tenant => tenant.UseTenantResolution());
         app.UsePlayerSessionAuthentication();

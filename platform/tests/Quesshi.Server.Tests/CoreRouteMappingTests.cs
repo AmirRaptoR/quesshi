@@ -8,6 +8,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Security;
+using Quesshi.Server.Streaming;
 
 namespace Quesshi.Server.Tests;
 
@@ -38,6 +39,22 @@ public sealed class CoreRouteMappingTests
         var profileRoutes = endpoints.Where(endpoint => endpoint.RoutePattern.RawText is "/api/me").ToArray();
         Assert.Equal(2, profileRoutes.Length);
         Assert.All(profileRoutes, endpoint => Assert.NotNull(endpoint.Metadata.GetMetadata<AllowGuestsMetadata>()));
+    }
+
+    [Fact]
+    public void Session_stream_is_mounted_under_the_api_prefix()
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        using var app = builder.Build();
+
+        app.MapStream();
+
+        var stream = Assert.Single(
+            ((IEndpointRouteBuilder)app).DataSources
+                .SelectMany(source => source.Endpoints)
+                .OfType<RouteEndpoint>(),
+            endpoint => endpoint.RoutePattern.RawText is "/api/stream");
+        Assert.Equal("/api/stream", stream.RoutePattern.RawText);
     }
 
     [Fact]
