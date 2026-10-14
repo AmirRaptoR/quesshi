@@ -14,6 +14,33 @@ namespace Quesshi.Server.Tests;
 public sealed class CoreRouteMappingTests
 {
     [Fact]
+    public void Guest_and_profile_routes_are_mounted_and_profile_routes_allow_guests()
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.Services.AddSingleton(FeatureRegistry.Create([]));
+        builder.Services.AddSingleton<IGrainFactory>(_ => null!);
+        builder.Services.AddSingleton<IClock>(new TestClock(DateTimeOffset.UnixEpoch));
+        builder.Services.AddSingleton<ISessionSnapshotLoader>(_ => null!);
+        builder.Services.AddSingleton<IPlayerSessionResolver>(_ => null!);
+        builder.Services.AddSingleton<IPlayerSessionIssuer>(_ => null!);
+        builder.Services.AddSingleton<ITenantDb>(_ => null!);
+        builder.Services.AddSingleton<ICapabilities>(_ => null!);
+        builder.Services.AddSingleton(new PlayerAntiforgery(new EphemeralDataProtectionProvider(), new TestClock(DateTimeOffset.UnixEpoch)));
+        using var app = builder.Build();
+
+        app.MapRoutes();
+
+        var endpoints = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .ToArray();
+        Assert.Contains(endpoints, endpoint => endpoint.RoutePattern.RawText is "/api/auth/guest");
+        var profileRoutes = endpoints.Where(endpoint => endpoint.RoutePattern.RawText is "/api/me").ToArray();
+        Assert.Equal(2, profileRoutes.Length);
+        Assert.All(profileRoutes, endpoint => Assert.NotNull(endpoint.Metadata.GetMetadata<AllowGuestsMetadata>()));
+    }
+
+    [Fact]
     public void Session_commands_are_mounted_once_under_api_and_allow_guests()
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -23,6 +50,8 @@ public sealed class CoreRouteMappingTests
         builder.Services.AddSingleton<ISessionSnapshotLoader>(_ => null!);
         builder.Services.AddSingleton<IPlayerSessionResolver>(_ => null!);
         builder.Services.AddSingleton<IPlayerSessionIssuer>(_ => null!);
+        builder.Services.AddSingleton<ITenantDb>(_ => null!);
+        builder.Services.AddSingleton<ICapabilities>(_ => null!);
         builder.Services.AddSingleton(new PlayerAntiforgery(new EphemeralDataProtectionProvider(), new TestClock(DateTimeOffset.UnixEpoch)));
         using var app = builder.Build();
 
