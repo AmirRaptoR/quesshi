@@ -55,7 +55,7 @@ internal static class PlayerProfiles
         CancellationToken cancellationToken = default)
     {
         if (!TryNormalizeDisplayName(displayName, out var normalizedDisplayName)
-            || !PlayerAvatarPalette.IsValid(avatarSeed)
+            || (avatarSeed is not null && !PlayerAvatarPalette.IsValid(avatarSeed))
             || string.IsNullOrWhiteSpace(language))
         {
             return ProfileUpdateResult.Invalid;
@@ -70,7 +70,7 @@ internal static class PlayerProfiles
 
             var profile = await transaction.QuerySingleOrDefaultAsync<PlayerProfile>("""
                 update players
-                set display_name = @normalizedDisplayName, avatar_seed = @avatarSeed, lang = @language
+                set display_name = @normalizedDisplayName, avatar_seed = coalesce(@avatarSeed, avatar_seed), lang = @language
                 where id = @playerId and deleted_at is null
                 returning id as Id, display_name as DisplayName, avatar_seed as AvatarSeed, lang as Lang
                 """, new { playerId, normalizedDisplayName, avatarSeed, language }, cancellationToken);

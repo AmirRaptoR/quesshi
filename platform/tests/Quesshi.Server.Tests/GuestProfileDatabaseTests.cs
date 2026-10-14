@@ -137,6 +137,16 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
             {
                 Assert.Equal(HttpStatusCode.BadRequest, unavailableLanguage.StatusCode);
             }
+            using (var avatarOmitted = await SendAsync(client, seeded.Host, HttpMethod.Put, "/api/me", accountCookie, accountToken, seeded.Origin,
+                       JsonContent.Create(new { displayName = "Avatar preserved", lang = "en" })))
+            {
+                Assert.Equal(HttpStatusCode.OK, avatarOmitted.StatusCode);
+                var profile = (await avatarOmitted.Content.ReadFromJsonAsync<ProfileResponse>())!;
+                Assert.Equal("Avatar preserved", profile.DisplayName);
+                Assert.Equal("avatar-0", profile.AvatarSeed);
+                Assert.Equal("en", profile.Lang);
+            }
+            Assert.Equal(("Avatar preserved", "avatar-0", "en"), await PlayerAsync(seeded.TenantId, seeded.AccountPlayerId));
             using (var updated = await SendAsync(client, seeded.Host, HttpMethod.Put, "/api/me", accountCookie, accountToken, seeded.Origin,
                        JsonContent.Create(new { displayName = "  Changed account  ", avatarSeed = "avatar-11", lang = "nl" })))
             {
