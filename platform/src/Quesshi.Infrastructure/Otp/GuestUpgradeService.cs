@@ -90,6 +90,16 @@ internal sealed class GuestUpgradeService(
         }
     }
 
+    /// <summary>Returns the account already attached to a live player, if any.</summary>
+    public Task<Guid?> AttachedAccountAsync(
+        Guid tenantId,
+        Guid playerId,
+        CancellationToken cancellationToken = default) =>
+        tenantDb.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<Guid?>("""
+            select account_id from players
+            where id = @playerId and account_id is not null and deleted_at is null
+            """, new { playerId }, cancellationToken), cancellationToken: cancellationToken);
+
     public async Task RevokeGuestSessionsAsync(
         Guid tenantId,
         Guid guestPlayerId,

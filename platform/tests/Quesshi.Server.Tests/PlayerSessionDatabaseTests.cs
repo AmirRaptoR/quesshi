@@ -114,7 +114,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         var account = Guid.NewGuid();
         var player = Guid.NewGuid();
         await using var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from auth_sessions; delete from data_protection_keys; delete from tenants; delete from accounts");
+        await ExecuteAsync(owner, "delete from auth_sessions; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'session-a', 'Session A', 'en'), (@b, 'session-b', 'Session B', 'en')", ("a", tenantA), ("b", tenantB));
         await ExecuteAsync(owner, "insert into accounts (id, email) values (@account, 'session@example.test')", ("account", account));
         await ExecuteAsync(owner, "insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang) values (@tenant, @player, @account, 'Player', 'seed', 'en')", ("tenant", tenantA), ("player", player), ("account", account));

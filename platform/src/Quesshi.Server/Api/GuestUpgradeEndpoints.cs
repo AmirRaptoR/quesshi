@@ -30,12 +30,15 @@ public sealed class GuestUpgradeEndpoints : ICoreRouteModule
         if (!player.IsGuest) return Results.Forbid();
 
         var service = Create(context.RequestServices);
-        var result = await service.VerifyAndAttachAsync(
-            tenant.Id,
-            player.PlayerId,
-            request.Email ?? string.Empty,
-            request.Code ?? string.Empty,
-            cancellationToken);
+        var accountId = await service.AttachedAccountAsync(tenant.Id, player.PlayerId, cancellationToken);
+        var result = accountId is null
+            ? await service.VerifyAndAttachAsync(
+                tenant.Id,
+                player.PlayerId,
+                request.Email ?? string.Empty,
+                request.Code ?? string.Empty,
+                cancellationToken)
+            : new GuestUpgradeResult(GuestUpgradeState.Upgraded, accountId);
 
         if (result.State == GuestUpgradeState.AddressTaken)
         {
@@ -48,8 +51,11 @@ public sealed class GuestUpgradeEndpoints : ICoreRouteModule
             return Results.Unauthorized();
         }
 
-        await service.RevokeGuestSessionsAsync(tenant.Id, player.PlayerId, cancellationToken);
+        // Issue first. If attachment has committed but issuance or revocation is interrupted,
+        // a surviving guest cookie reaches the attached-account branch above and can finish
+        // this rotation without requiring the already-consumed code a second time.
         await sessions.IssueAccountAsync(context, tenant.Id, result.AccountId.Value, cancellationToken);
+        await service.RevokeGuestSessionsAsync(tenant.Id, player.PlayerId, cancellationToken);
         return Results.Ok(new { status = "upgraded" });
     }
 

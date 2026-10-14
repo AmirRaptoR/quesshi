@@ -132,7 +132,7 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
-        await owner.ExecuteAsync("delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from tenants; delete from accounts");
+        await owner.ExecuteAsync("delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await owner.ExecuteAsync("insert into tenants (id, slug, name, default_language) values (@a, 'guest-upgrade-a', 'Guest upgrade A', 'en'), (@b, 'guest-upgrade-b', 'Guest upgrade B', 'en')", new { a = TenantA, b = TenantB });
         return owner;
     }

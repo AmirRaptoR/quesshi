@@ -105,6 +105,44 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         }
     }
 
+    [SkippableFact]
+    public async Task Attached_guest_with_a_surviving_cookie_recovers_session_rotation_without_reusing_a_code()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        var accountId = Guid.NewGuid();
+        await using var owner = await OwnerAsync();
+        await owner.ExecuteAsync("insert into accounts (id, email) values (@accountId, 'recovery@example.test'); update players set account_id = @accountId where tenant_id = @tenantId and id = @guestId", new { accountId, tenantId = seeded.TenantId, guestId = seeded.GuestId });
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
+        try
+        {
+            var firstContext = new DefaultHttpContext();
+            var secondContext = new DefaultHttpContext();
+            var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            await sessions.IssueGuestAsync(firstContext, seeded.TenantId, seeded.GuestId);
+            await sessions.IssueGuestAsync(secondContext, seeded.TenantId, seeded.GuestId);
+            var firstCookie = CookieValue(firstContext);
+            var secondCookie = CookieValue(secondContext);
+            var csrf = await AntiforgeryAsync(client, seeded.Host, firstCookie);
+
+            using var recovered = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/me/upgrade", firstCookie, csrf, seeded.Origin,
+                JsonContent.Create(new { email = "recovery@example.test", code = "already-consumed" }));
+            Assert.Equal(HttpStatusCode.OK, recovered.StatusCode);
+            var accountCookie = CookieValue(recovered);
+
+            using (var oldSecond = await SendAsync(client, seeded.Host, HttpMethod.Get, "/api/me", secondCookie, null, null))
+                Assert.Equal(HttpStatusCode.Unauthorized, oldSecond.StatusCode);
+            using (var account = await SendAsync(client, seeded.Host, HttpMethod.Get, "/api/me", accountCookie, null, null))
+                Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+            Assert.Equal(0L, await owner.QuerySingleAsync<long>("select count(*) from auth_sessions where tenant_id = @tenant and guest_id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
     private async Task<SeededTenant> SeedAsync()
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
@@ -112,7 +150,7 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         var guest = Guid.NewGuid();
         var host = $"guest-upgrade-{tenant:N}.example.test";
         await using var owner = await OwnerAsync();
-        await owner.ExecuteAsync("delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
+        await owner.ExecuteAsync("delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await owner.ExecuteAsync("""
             insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Guest upgrade', 'en');
             insert into tenant_hosts (tenant_id, host) values (@tenant, @host);
