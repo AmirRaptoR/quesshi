@@ -128,19 +128,19 @@ public sealed class EagerKindClientTests : BunitContext
     public void Editors_round_trip_valid_payloads_and_show_every_validation_problem()
     {
         var choice = new ChoicePayload(ChoiceCard.Options, 2);
-        AssertEditorRoundTrip<ChoiceComponents.ChoiceEditor>("choice", choice);
+        AssertEditorRoundTrip("choice", choice);
         AssertEditor("choice", choice, new ChoicePayload([], 9), new ChoiceKind().Validate(new ChoicePayload([], 9), new("en")));
 
         var order = new OrderPayload(OrderCard.Items);
-        AssertEditorRoundTrip<OrderComponents.OrderEditor>("order", order);
+        AssertEditorRoundTrip("order", order);
         AssertEditor("order", order, new OrderPayload([]), new OrderKind().Validate(new OrderPayload([]), new("en")));
 
         var pollChoice = new PollChoicePayload(PollChoiceCard.Options);
-        AssertEditorRoundTrip<PollChoiceComponents.PollChoiceEditor>("poll_choice", pollChoice);
+        AssertEditorRoundTrip("poll_choice", pollChoice);
         AssertEditor("poll_choice", pollChoice, new PollChoicePayload([]), new PollChoiceKind().Validate(new PollChoicePayload([]), new("en")));
 
         var roster = new PollRosterPayload();
-        AssertEditorRoundTrip<PollRosterComponents.PollRosterEditor>("poll_roster", roster);
+        AssertEditorRoundTrip("poll_roster", roster);
         var invalidRoster = new PollRosterPayload { Extra = new() { ["unexpected"] = default } };
         AssertEditor("poll_roster", roster, invalidRoster, new PollRosterKind().Validate(invalidRoster, new("en")));
     }
@@ -150,7 +150,7 @@ public sealed class EagerKindClientTests : BunitContext
     {
         object? emitted = null;
         var choice = RenderEditor("choice", new ChoicePayload(ChoiceCard.Options, 2), value => emitted = value);
-        choice.Find("[data-option='1']").Change("Updated choice");
+        choice.Find("[data-option='1']").Input("Updated choice");
         choice.Find("[data-correct-option='1']").Change(new ChangeEventArgs { Value = true });
         choice.Find("[data-payload-save]").Click();
         var choicePayload = Assert.IsType<ChoicePayload>(emitted);
@@ -158,16 +158,16 @@ public sealed class EagerKindClientTests : BunitContext
         Assert.Equal(1, choicePayload.CorrectIndex);
 
         var order = RenderEditor("order", new OrderPayload(OrderCard.Items), value => emitted = value);
-        order.Find("[data-item-id='0']").Change("opaque-id");
-        order.Find("[data-item-text='0']").Change("Updated item");
+        order.Find("[data-item-id='0']").Input("opaque-id");
+        order.Find("[data-item-text='0']").Input("Updated item");
         order.Find("[data-payload-save]").Click();
         var orderPayload = Assert.IsType<OrderPayload>(emitted);
         Assert.Equal("opaque-id", orderPayload.Items![0]!.Id);
         Assert.Equal("Updated item", orderPayload.Items[0]!.Text);
 
         var poll = RenderEditor("poll_choice", new PollChoicePayload(PollChoiceCard.Options), value => emitted = value);
-        poll.Find("[data-option-id='0']").Change("amber");
-        poll.Find("[data-option-text='0']").Change("Amber");
+        poll.Find("[data-option-id='0']").Input("amber");
+        poll.Find("[data-option-text='0']").Input("Amber");
         poll.Find("[data-add-option]").Click();
         poll.Find("[data-payload-save]").Click();
         var pollPayload = Assert.IsType<PollChoicePayload>(emitted);
@@ -205,19 +205,10 @@ public sealed class EagerKindClientTests : BunitContext
         Assert.Equal(expectedProblems.Select(problem => problem.Code), RenderEditor(kind, invalid).FindAll("[data-problem]").Select(item => item.GetAttribute("data-problem")));
     }
 
-    private void AssertEditorRoundTrip<TComponent>(string kind, object payload) where TComponent : IComponent
+    private void AssertEditorRoundTrip(string kind, object payload)
     {
         object? emitted = null;
-        var cut = Render(builder =>
-        {
-            builder.OpenComponent(0, typeof(TComponent));
-            builder.AddAttribute(1, "Kind", kind);
-            builder.AddAttribute(2, "Payload", payload);
-            builder.AddAttribute(3, "PayloadChanged", EventCallback.Factory.Create<object?>(this, value => emitted = value));
-            builder.AddAttribute(4, "Lang", "en");
-            builder.CloseComponent();
-        });
-
+        var cut = RenderEditor(kind, payload, value => emitted = value);
         cut.Find("[data-payload-save]").Click();
         Assert.Same(payload, emitted);
     }
