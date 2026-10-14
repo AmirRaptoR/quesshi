@@ -1,0 +1,63 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.Choice
+@using Quesshi.Shared
+
+<section data-kind="choice" class="kind-editor">
+    @if (Value is { } payload)
+    {
+        @for (var index = 0; index < payload.Options?.Count; index++)
+        {
+            var option = index;
+            <label>
+                Option @(option + 1)
+                <input data-option="@option" value="@payload.Options![option]" @oninput="e => ChangeOption(option, e.Value?.ToString() ?? string.Empty)" />
+            </label>
+            <label>
+                <input type="radio" name="choice-correct" data-correct-option="@option" checked="@(payload.CorrectIndex == option)" @onchange="() => ChangeCorrectIndex(option)" />
+                Correct answer
+            </label>
+        }
+        <button type="button" data-payload-save @onclick="EmitAsync">Save</button>
+    }
+    <ul class="validation-problems">
+        @foreach (var problem in Problems)
+        {
+            <li data-problem="@problem.Code">@problem.Message</li>
+        }
+    </ul>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+    [Parameter, EditorRequired] public object? Payload { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
+    [Parameter, EditorRequired] public string Lang { get; set; } = "en";
+
+    private object? sourcePayload;
+    private ChoicePayload? Value { get; set; }
+    private IReadOnlyList<Problem> Problems => Value is { } payload ? new ChoiceKind().Validate(payload, new ValidateEnv(Lang)) : [];
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(sourcePayload, Payload)) return;
+        sourcePayload = Payload;
+        Value = Payload as ChoicePayload;
+    }
+
+    private void ChangeOption(int index, string text)
+    {
+        if (Value?.Options is not { } options || index >= options.Count) return;
+        var updated = options.ToArray();
+        updated[index] = text;
+        Value = Value with { Options = updated };
+    }
+
+    private void ChangeCorrectIndex(int index)
+    {
+        if (Value is not { } payload) return;
+        Value = payload with { CorrectIndex = index };
+    }
+
+    private Task EmitAsync() => PayloadChanged.InvokeAsync(Value);
+}

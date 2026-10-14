@@ -1,0 +1,31 @@
+@using Microsoft.AspNetCore.Components
+@using Quesshi.Kinds.Order
+
+@if (Card is OrderCard card)
+{
+    <section data-kind="order" data-version="1" class="answer-reveal">
+        <ol>
+            @foreach (var id in RevealValue?.ItemIds ?? [])
+            {
+                <li data-order-id="@id">@card.Items.FirstOrDefault(item => item.Id == id)?.Text</li>
+            }
+        </ol>
+        <ul>
+            @foreach (var answer in StoredAnswers)
+            {
+                <li data-stored-order="@string.Join(',', answer.ItemIds)">@string.Join(", ", answer.ItemIds.Select(id => ItemText(card, id)))</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public object? Reveal { get; set; }
+    [Parameter, EditorRequired] public object? Answers { get; set; }
+    private Quesshi.Kinds.Order.OrderReveal? RevealValue => Reveal as Quesshi.Kinds.Order.OrderReveal;
+    private IEnumerable<OrderStored> StoredAnswers => Answers as IEnumerable<OrderStored> ?? [];
+
+    private static string ItemText(OrderCard card, string id) =>
+        card.Items.FirstOrDefault(item => item.Id == id)?.Text ?? id;
+}

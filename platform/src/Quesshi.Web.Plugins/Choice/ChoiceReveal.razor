@@ -1,0 +1,24 @@
+@using Microsoft.AspNetCore.Components
+@using Quesshi.Kinds.Choice
+
+@if (Card is ChoiceCard card)
+{
+    <section data-kind="choice" data-version="1" class="answer-reveal">
+        <p data-correct-option="@RevealValue?.CorrectIndex">@RevealValue?.CorrectOption</p>
+        <ul>
+            @foreach (var answer in StoredAnswers)
+            {
+                <li data-answer-index="@answer.Index">@card.Options[answer.Index]</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public object? Reveal { get; set; }
+    [Parameter, EditorRequired] public object? Answers { get; set; }
+
+    private Quesshi.Kinds.Choice.ChoiceReveal? RevealValue => Reveal as Quesshi.Kinds.Choice.ChoiceReveal;
+    private IEnumerable<ChoiceStored> StoredAnswers => Answers as IEnumerable<ChoiceStored> ?? [];
+}

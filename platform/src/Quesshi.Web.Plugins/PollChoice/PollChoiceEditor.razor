@@ -1,0 +1,73 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.PollChoice
+@using Quesshi.Shared
+
+<section data-kind="poll_choice" class="kind-editor">
+    @if (Value is { } payload)
+    {
+        @for (var index = 0; index < payload.Options?.Count; index++)
+        {
+            var option = index;
+            <label>
+                Option identifier
+                <input data-option-id="@option" value="@payload.Options![option]?.Id" @oninput="e => ChangeId(option, e.Value?.ToString())" />
+            </label>
+            <label>
+                Option text
+                <input data-option-text="@option" value="@payload.Options![option]?.Text" @oninput="e => ChangeText(option, e.Value?.ToString())" />
+            </label>
+        }
+        <button type="button" data-add-option disabled="@(payload.Options?.Count >= 8)" @onclick="AddOption">Add option</button>
+        <button type="button" data-remove-option disabled="@(payload.Options?.Count <= 2)" @onclick="RemoveOption">Remove option</button>
+        <button type="button" data-payload-save @onclick="EmitAsync">Save</button>
+    }
+    <ul class="validation-problems">
+        @foreach (var problem in Problems)
+        {
+            <li data-problem="@problem.Code">@problem.Message</li>
+        }
+    </ul>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+    [Parameter, EditorRequired] public object? Payload { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
+    [Parameter, EditorRequired] public string Lang { get; set; } = "en";
+    private object? sourcePayload;
+    private PollChoicePayload? Value { get; set; }
+    private IReadOnlyList<Problem> Problems => Value is { } payload ? new PollChoiceKind().Validate(payload, new ValidateEnv(Lang)) : [];
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(sourcePayload, Payload)) return;
+        sourcePayload = Payload;
+        Value = Payload as PollChoicePayload;
+    }
+
+    private void ChangeId(int index, string? id) => ChangeOption(index, option => option with { Id = id });
+    private void ChangeText(int index, string? text) => ChangeOption(index, option => option with { Text = text });
+
+    private void ChangeOption(int index, Func<PollChoiceOption, PollChoiceOption> change)
+    {
+        if (Value?.Options is not { } options || index >= options.Count || options[index] is not { } option) return;
+        var updated = options.ToArray();
+        updated[index] = change(option);
+        Value = Value with { Options = updated };
+    }
+
+    private void AddOption()
+    {
+        if (Value is not { } payload || (payload.Options?.Count ?? 0) >= 8) return;
+        Value = payload with { Options = [.. (payload.Options ?? []), new PollChoiceOption(null, null)] };
+    }
+
+    private void RemoveOption()
+    {
+        if (Value?.Options is not { } options || options.Count <= 2) return;
+        Value = Value with { Options = options.Take(options.Count - 1).ToArray() };
+    }
+
+    private Task EmitAsync() => PayloadChanged.InvokeAsync(Value);
+}
