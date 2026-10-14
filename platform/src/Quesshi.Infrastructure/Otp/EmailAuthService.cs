@@ -10,15 +10,16 @@ using Quesshi.Plugin.Api;
 
 namespace Quesshi.Infrastructure.Otp;
 
-public sealed class EmailAuthService
+internal sealed class EmailAuthService
 {
     private readonly DatabaseSources _sources;
     private readonly ITenantDb _tenantDb;
     private readonly byte[] _secret;
     private readonly EmailAuthOptions _options;
     private readonly IEmailCodeSender _sender;
+    private readonly TimeProvider _timeProvider;
 
-    public EmailAuthService(DatabaseSources sources, ITenantDb tenantDb, byte[] secret, EmailAuthOptions options, IEmailCodeSender sender)
+    public EmailAuthService(DatabaseSources sources, ITenantDb tenantDb, byte[] secret, EmailAuthOptions options, IEmailCodeSender sender, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(secret);
         options.Validate();
@@ -27,6 +28,7 @@ public sealed class EmailAuthService
         _secret = secret;
         _options = options;
         _sender = sender;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public static byte[] SecretFromEnvironment()
@@ -53,6 +55,7 @@ public sealed class EmailAuthService
         await using var connection = new NpgsqlConnection(_sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await RemoveExpiredLimitsAsync(connection, transaction, cancellationToken);
         var emailCount = await IncrementLimitAsync(connection, transaction, $"code:{normalized}", cancellationToken);
         var addressCount = await IncrementLimitAsync(connection, transaction, $"code-ip:{clientAddress}", cancellationToken);
         if (emailCount <= _options.EmailLimit && addressCount <= _options.AddressLimit)
@@ -188,9 +191,21 @@ public sealed class EmailAuthService
         }
     }
 
+    public async Task<bool> IsProfileValidAsync(Guid tenantId, string displayName, string avatarSeed, string language, CancellationToken cancellationToken = default)
+    {
+        if (!IsValidProfile(displayName, avatarSeed, language))
+        {
+            return false;
+        }
+
+        return await _tenantDb.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<string>("""
+            select code from tenant_languages where code = @language
+            """, new { language }, cancellationToken), cancellationToken: cancellationToken, readOnly: true) is not null;
+    }
+
     public string CreateProfileToken(Guid tenantId, Guid accountId)
     {
-        var payload = new ProfileToken(tenantId, accountId, DateTimeOffset.UtcNow.Add(_options.ProfileTokenLifetime).ToUnixTimeSeconds(), Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
+        var payload = new ProfileToken(tenantId, accountId, _timeProvider.GetUtcNow().Add(_options.ProfileTokenLifetime).ToUnixTimeSeconds(), Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
         var data = Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         return $"{data}.{Convert.ToHexString(Sign(data))}";
     }
@@ -198,7 +213,7 @@ public sealed class EmailAuthService
     public async Task<Guid?> ConsumeProfileTokenAsync(string token, Guid tenantId, CancellationToken cancellationToken = default)
     {
         var parts = token.Split('.', 2);
-        if (parts.Length != 2 || !TryDecode(parts[0], out var payload) || payload.TenantId != tenantId || payload.ExpiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+        if (parts.Length != 2 || !TryDecode(parts[0], out var payload) || payload.TenantId != tenantId || payload.ExpiresAt <= _timeProvider.GetUtcNow().ToUnixTimeSeconds())
         {
             return null;
         }
@@ -213,14 +228,24 @@ public sealed class EmailAuthService
 
         await using var connection = new NpgsqlConnection(_sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await RemoveExpiredLimitsAsync(connection, transaction, cancellationToken);
         var consumed = await connection.ExecuteScalarAsync<int?>(new CommandDefinition("""
             insert into auth_rate_limits (key, window_start, count)
             values (@key, to_timestamp(@expiresAt), 1)
             on conflict do nothing
             returning count
-            """, new { key = $"profile:{payload.Nonce}", expiresAt = payload.ExpiresAt }, cancellationToken: cancellationToken));
+            """, new { key = $"profile:{payload.Nonce}", expiresAt = payload.ExpiresAt }, transaction, cancellationToken: cancellationToken));
+        await transaction.CommitAsync(cancellationToken);
         return consumed is 1 ? payload.AccountId : null;
     }
+
+    private Task RemoveExpiredLimitsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken) =>
+        connection.ExecuteAsync(new CommandDefinition("""
+            delete from auth_rate_limits
+            where (key like 'profile:%' and window_start < now())
+               or (key not like 'profile:%' and window_start < now() - @rateLimitWindow)
+            """, new { rateLimitWindow = _options.RateLimitWindow }, transaction, cancellationToken: cancellationToken));
 
     private async Task<int> IncrementLimitAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, string key, CancellationToken cancellationToken) =>
         await connection.QuerySingleAsync<int>(new CommandDefinition("""

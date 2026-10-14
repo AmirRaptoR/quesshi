@@ -63,6 +63,7 @@ public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
         var account = await VerifyNewAccountAsync(service, sender, "profile@example.test", "192.0.2.10");
         var tokenA = service.CreateProfileToken(TenantA, account);
         Assert.Null(await service.ConsumeProfileTokenAsync(tokenA, TenantB));
+        Assert.False(await service.IsProfileValidAsync(TenantA, "x", "seed-a", "en"));
         Assert.Equal(account, await service.ConsumeProfileTokenAsync(tokenA, TenantA));
         var firstProfile = await service.ConfirmProfileAsync(TenantA, account, "First profile", "seed-a", "en");
         Assert.Equal(ProfileConfirmationState.Created, firstProfile.State);
@@ -83,6 +84,23 @@ public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
         Assert.Equal(ProfileConfirmationState.Unavailable,
             (await service.ConfirmProfileAsync(TenantA, deletedAccount, "Deleted profile", "seed", "en")).State);
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from players where account_id = @account", ("account", deletedAccount)));
+    }
+
+    [SkippableFact]
+    public async Task Expired_rate_limits_and_profile_token_records_are_removed_during_authentication()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var service = CreateService(sender);
+        await ExecuteAsync(owner, """
+            insert into auth_rate_limits (key, window_start, count)
+            values ('code:expired@example.test', now() - interval '11 minutes', 1),
+                   ('profile:expired', now() - interval '1 minute', 1)
+            """);
+
+        Assert.True(await service.RequestCodeAsync("cleanup@example.test", "192.0.2.20", "en"));
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from auth_rate_limits where key in ('code:expired@example.test', 'profile:expired')"));
     }
 
     private EmailAuthService CreateService(CapturingSender sender, int emailLimit = 5, int addressLimit = 20) => new(

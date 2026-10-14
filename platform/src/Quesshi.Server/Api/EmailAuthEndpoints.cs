@@ -96,6 +96,11 @@ public sealed class EmailAuthEndpoints : ICoreRouteModule
         }
 
         var service = Create(context.RequestServices);
+        if (!await service.IsProfileValidAsync(tenant.Id, request.DisplayName ?? string.Empty, request.AvatarSeed ?? string.Empty, request.Lang ?? string.Empty, cancellationToken))
+        {
+            return Results.BadRequest(new { error = "invalid_profile" });
+        }
+
         var accountId = await service.ConsumeProfileTokenAsync(request.Token ?? string.Empty, tenant.Id, cancellationToken);
         if (accountId is null)
         {

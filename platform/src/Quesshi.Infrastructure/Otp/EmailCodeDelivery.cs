@@ -9,7 +9,7 @@ using Quesshi.Application.Identity;
 namespace Quesshi.Infrastructure.Otp;
 
 /// <summary>Delivery selection deliberately keeps SMTP ahead of development logging.</summary>
-public sealed class EmailCodeDelivery(IConfiguration configuration, ILogger<EmailCodeDelivery> logger) : IEmailCodeSender
+internal sealed class EmailCodeDelivery(IConfiguration configuration, ILogger<EmailCodeDelivery> logger) : IEmailCodeSender
 {
     public static void Validate(IConfiguration configuration, IHostEnvironment environment)
     {

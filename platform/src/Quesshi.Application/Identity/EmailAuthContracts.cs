@@ -1,6 +1,6 @@
 namespace Quesshi.Application.Identity;
 
-public sealed record EmailAuthOptions(int EmailLimit, int AddressLimit, TimeSpan RateLimitWindow, TimeSpan ProfileTokenLifetime)
+internal sealed record EmailAuthOptions(int EmailLimit, int AddressLimit, TimeSpan RateLimitWindow, TimeSpan ProfileTokenLifetime)
 {
     public static EmailAuthOptions Default { get; } = new(5, 20, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
 
@@ -13,17 +13,17 @@ public sealed record EmailAuthOptions(int EmailLimit, int AddressLimit, TimeSpan
     }
 }
 
-public sealed record ProfileSeed(string DisplayName, string AvatarSeed, string Language);
+internal sealed record ProfileSeed(string DisplayName, string AvatarSeed, string Language);
 
-public enum TenantPlayerState { Missing, Live, Unavailable }
+internal enum TenantPlayerState { Missing, Live, Unavailable }
 
-public sealed record TenantPlayer(TenantPlayerState State, Guid? PlayerId = null);
+internal sealed record TenantPlayer(TenantPlayerState State, Guid? PlayerId = null);
 
-public enum ProfileConfirmationState { Created, Existing, Unavailable, Invalid }
+internal enum ProfileConfirmationState { Created, Existing, Unavailable, Invalid }
 
-public sealed record ProfileConfirmation(ProfileConfirmationState State, Guid? PlayerId = null);
+internal sealed record ProfileConfirmation(ProfileConfirmationState State, Guid? PlayerId = null);
 
-public interface IEmailCodeSender
+internal interface IEmailCodeSender
 {
     Task SendAsync(string email, string code, string language, CancellationToken cancellationToken = default);
 }
