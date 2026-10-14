@@ -69,6 +69,8 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
+        await CreateTenantAccountAsync(seeded.TenantId, "failed-route@example.test");
+        await CreateTenantAccountAsync(seeded.TenantId, "expired-route@example.test");
         await InsertCodeAsync("failed-route@example.test", "123456");
         await using var app = await StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
@@ -97,6 +99,45 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 
             await using var owner = await OwnerAsync();
             Assert.Null(await owner.QuerySingleAsync<Guid?>("select account_id from players where tenant_id = @tenant and id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
+            Assert.Equal(1L, await owner.QuerySingleAsync<long>("select count(*) from auth_sessions where tenant_id = @tenant and guest_id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Occupied_account_returns_address_taken_without_changing_the_guest()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        var account = await CreateTenantAccountAsync(seeded.TenantId, "taken-route@example.test");
+        await InsertCodeAsync("taken-route@example.test", "123456");
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
+        try
+        {
+            var context = new DefaultHttpContext();
+            await app.Services.GetRequiredService<IPlayerSessionIssuer>().IssueGuestAsync(context, seeded.TenantId, seeded.GuestId);
+            var cookie = CookieValue(context);
+            var csrf = await AntiforgeryAsync(client, seeded.Host, cookie);
+
+            using (var refused = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/me/upgrade", cookie, csrf, seeded.Origin,
+                       JsonContent.Create(new { email = "taken-route@example.test", code = "123456" })))
+            {
+                Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+                Assert.Equal("address_taken", (await refused.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
+            }
+            using (var stillGuest = await SendAsync(client, seeded.Host, HttpMethod.Get, "/api/me", cookie, null, null))
+            {
+                Assert.Equal(HttpStatusCode.OK, stillGuest.StatusCode);
+                Assert.Equal(seeded.GuestId, (await stillGuest.Content.ReadFromJsonAsync<ProfileResponse>())!.Id);
+            }
+
+            await using var owner = await OwnerAsync();
+            Assert.Null(await owner.QuerySingleAsync<Guid?>("select account_id from players where tenant_id = @tenant and id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
+            Assert.Equal(account, await owner.QuerySingleAsync<Guid>("select account_id from players where tenant_id = @tenant and id <> @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
             Assert.Equal(1L, await owner.QuerySingleAsync<long>("select count(*) from auth_sessions where tenant_id = @tenant and guest_id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
         }
         finally
@@ -167,6 +208,18 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         await owner.ExecuteAsync("insert into login_codes (email, code_hash, expires_at) values (@email, @hash, @expiresAt)", new { email, hash, expiresAt = expiresAt ?? DateTimeOffset.UtcNow.AddMinutes(10) });
     }
 
+    private async Task<Guid> CreateTenantAccountAsync(Guid tenant, string email)
+    {
+        var account = Guid.NewGuid();
+        await using var owner = await OwnerAsync();
+        await owner.ExecuteAsync("""
+            insert into accounts (id, email) values (@account, @email);
+            insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang)
+            values (@tenant, @player, @account, 'Account', 'seed', 'en');
+            """, new { tenant, account, player = Guid.NewGuid(), email });
+        return account;
+    }
+
     private async Task<WebApplication> StartAsync()
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
@@ -217,5 +270,6 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 
     private sealed record AntiforgeryResponse(string Token);
     private sealed record StatusResponse(string Status);
+    private sealed record ErrorResponse(string Error);
     private sealed record ProfileResponse(Guid Id, string DisplayName, string AvatarSeed, string Lang);
 }

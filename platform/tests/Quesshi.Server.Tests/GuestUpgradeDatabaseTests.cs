@@ -43,6 +43,25 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Run_started_after_upgrade_uses_account_eligibility()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var service = CreateService(sender, new RecordingEvents());
+        var guest = await CreateGuestAsync(owner, TenantA);
+
+        Assert.True(await service.RequestCodeAsync("eligible-after-upgrade@example.test", "192.0.2.5", "en"));
+        Assert.Equal(GuestUpgradeState.Upgraded,
+            (await service.VerifyAndAttachAsync(TenantA, guest, "eligible-after-upgrade@example.test", sender.LastCode)).State);
+
+        var laterSession = Guid.NewGuid();
+        await StartRunAsync(owner, TenantA, laterSession, guest);
+
+        Assert.True(await owner.QuerySingleAsync<bool>("select eligible from session_participants where tenant_id = @tenant and session_id = @session and player_id = @player", new { tenant = TenantA, session = laterSession, player = guest }));
+    }
+
+    [SkippableFact]
     public async Task Existing_cross_tenant_account_attaches_but_a_tenant_player_is_refused()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -142,6 +161,15 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
         var guest = Guid.NewGuid();
         return owner.ExecuteScalarAsync<Guid>("insert into players(tenant_id, id, display_name, avatar_seed, lang) values (@tenant, @guest, 'Guest', 'seed', 'en') returning id", new { tenant, guest });
     }
+
+    private static Task StartRunAsync(NpgsqlConnection owner, Guid tenant, Guid session, Guid player) =>
+        owner.ExecuteAsync("""
+            insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase, started_at)
+            values (@tenant, @session, @code, 'test', @player, 'en', 'running', 1, '{}'::jsonb, 'started', now());
+            insert into session_participants (tenant_id, session_id, player_id, seat, eligible)
+            select @tenant, @session, id, 0, account_id is not null
+            from players where tenant_id = @tenant and id = @player;
+            """, new { tenant, session, player, code = $"upgrade-{session:N}" });
 
     private sealed class CapturingSender : IEmailCodeSender
     {
