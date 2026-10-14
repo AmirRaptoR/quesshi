@@ -22,6 +22,7 @@ public sealed class CoreRouteMappingTests
         builder.Services.AddSingleton<IClock>(new TestClock(DateTimeOffset.UnixEpoch));
         builder.Services.AddSingleton<ISessionSnapshotLoader>(_ => null!);
         builder.Services.AddSingleton<IPlayerSessionResolver>(_ => null!);
+        builder.Services.AddSingleton<IPlayerSessionIssuer>(_ => null!);
         builder.Services.AddSingleton(new PlayerAntiforgery(new EphemeralDataProtectionProvider(), new TestClock(DateTimeOffset.UnixEpoch)));
         using var app = builder.Build();
 
@@ -34,5 +35,9 @@ public sealed class CoreRouteMappingTests
             endpoint => endpoint.RoutePattern.RawText is "/api/sessions/{id:guid}/commands");
         Assert.Equal("/api/sessions/{id:guid}/commands", command.RoutePattern.RawText);
         Assert.NotNull(command.Metadata.GetMetadata<AllowGuestsMetadata>());
+        var routes = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().Select(endpoint => endpoint.RoutePattern.RawText).ToHashSet();
+        Assert.Contains("/api/auth/code", routes);
+        Assert.Contains("/api/auth/verify", routes);
+        Assert.Contains("/api/auth/profile", routes);
     }
 }
