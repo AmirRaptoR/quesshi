@@ -57,7 +57,7 @@ internal sealed class DeadlineSweep(
     public async Task RunPassAsync(CancellationToken cancellationToken = default)
     {
         var now = clock.Now;
-        await ReapCompletedAsync(now);
+        await ReapCompletedAsync(now, cancellationToken);
         foreach (var sessionId in _held.Where(pair => pair.Value.RetryAt <= now).Select(pair => pair.Key).ToArray())
             _held.Remove(sessionId);
 
@@ -72,7 +72,7 @@ internal sealed class DeadlineSweep(
         }
     }
 
-    private async Task ReapCompletedAsync(DateTimeOffset now)
+    private async Task ReapCompletedAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         foreach (var (sessionId, call) in _inFlight.Where(pair => pair.Value.Task.IsCompleted).ToArray())
         {
@@ -82,7 +82,11 @@ internal sealed class DeadlineSweep(
                 await call.Task;
                 _held.Remove(sessionId);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
             {
                 var attempts = _held.TryGetValue(sessionId, out var prior) ? prior.Attempts + 1 : 1;
                 var delay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, attempts - 1)));
@@ -120,7 +124,11 @@ internal sealed class DeadlineSweepService(
                     await sweep.RunPassAsync(stoppingToken);
                     _loop.Passed();
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
                 {
                     logger.LogError(exception, "Deadline sweep pass failed.");
                 }

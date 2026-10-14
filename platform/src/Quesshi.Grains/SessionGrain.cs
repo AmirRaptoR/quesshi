@@ -178,6 +178,10 @@ public class SessionGrain(
                 await RecordFaultAsync(exception);
                 return;
             }
+            // A timeout delivery is identified solely by its due_at value.  Consume that
+            // identity even when the format leaves it unchanged so duplicate timer and
+            // sweep deliveries cannot run the same timeout transition again.
+            if (transition.Changed && transition.Current.Session.DueAt == dueAt) transition.ClearDeadline();
             if (!transition.Changed) { ArmDeadlineTimer(); return; }
             var version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, transition.Current);
             _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();

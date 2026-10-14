@@ -42,6 +42,33 @@ public sealed class DeadlineSweepTests
     }
 
     [Fact]
+    public async Task A_cancelled_delivery_is_held_then_retried_after_backoff()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var due = new DueSession(Guid.NewGuid(), Guid.NewGuid(), now.AddSeconds(-1));
+        var clock = new TestClock(now);
+        var source = new RecordingSource([due]);
+        var attempts = 0;
+        var dispatcher = new RecordingDispatcher(_ => ++attempts == 1
+            ? Task.FromCanceled(new CancellationToken(canceled: true))
+            : Task.CompletedTask);
+        var sweep = new DeadlineSweep(source, dispatcher, clock, NullLogger<DeadlineSweep>.Instance);
+
+        await sweep.RunPassAsync();
+        await sweep.RunPassAsync();
+
+        Assert.Single(dispatcher.Deliveries);
+        Assert.Contains(due.SessionId, source.Requests[1].Skip);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await sweep.RunPassAsync();
+        source.Sessions = [];
+        await sweep.RunPassAsync();
+
+        Assert.Equal(2, dispatcher.Deliveries.Count);
+    }
+
+    [Fact]
     public async Task A_pass_never_starts_more_than_256_deliveries()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
@@ -58,11 +85,12 @@ public sealed class DeadlineSweepTests
     private sealed class RecordingSource(IReadOnlyList<DueSession> sessions) : IDueSessionSource
     {
         public List<Request> Requests { get; } = [];
+        public IReadOnlyList<DueSession> Sessions { get; set; } = sessions;
 
         public Task<IReadOnlyList<DueSession>> FindAsync(DateTimeOffset asOf, int maxRows, IReadOnlyCollection<Guid> skip, CancellationToken cancellationToken)
         {
             Requests.Add(new(maxRows, skip.ToArray()));
-            return Task.FromResult<IReadOnlyList<DueSession>>(sessions.Where(session => !skip.Contains(session.SessionId)).Take(maxRows).ToArray());
+            return Task.FromResult<IReadOnlyList<DueSession>>(Sessions.Where(session => !skip.Contains(session.SessionId)).Take(maxRows).ToArray());
         }
     }
 
