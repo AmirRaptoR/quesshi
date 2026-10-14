@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Server;
 using Quesshi.Server.Security;
@@ -18,7 +19,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = CreateSources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
         var context = new DefaultHttpContext();
 
         await sessions.IssueAccountAsync(context, seeded.TenantA, seeded.Account);
@@ -62,7 +63,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = CreateSources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
         await using var owner = await OpenAsync("quesshi_owner");
         await using var deletion = await owner.BeginTransactionAsync();
         await ExecuteAsync(owner, "select id from accounts where id = @account for update", deletion, ("account", seeded.Account));
@@ -126,6 +127,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
     {
         var services = new ServiceCollection();
         services.AddSingleton(sources);
+        services.AddSingleton<IClock>(new TestClock(DateTimeOffset.UnixEpoch));
         services.AddPlayerSecurity();
         return services.BuildServiceProvider();
     }

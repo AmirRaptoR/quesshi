@@ -113,7 +113,7 @@ public sealed class TenantResolutionTests
         try
         {
             Environment.SetEnvironmentVariable("TRUSTED_PROXIES", trustedProxy);
-            using var services = new ServiceCollection().AddTenantResolution().BuildServiceProvider();
+            using var services = new ServiceCollection().AddLogging().AddTenantResolution().BuildServiceProvider();
             var builder = new ApplicationBuilder(services);
             builder.UseForwardedHeaders();
             builder.Run(_ => Task.CompletedTask);
@@ -138,6 +138,7 @@ public sealed class TenantResolutionTests
     private static DefaultHttpContext Request(string host, string? forwardedHost = null, string? remoteIp = null)
     {
         var context = new DefaultHttpContext();
+        context.Request.Scheme = "http";
         context.Request.Host = HostString.FromUriComponent(host);
         if (forwardedHost is not null) context.Request.Headers["X-Forwarded-Host"] = forwardedHost;
         if (remoteIp is not null) context.Connection.RemoteIpAddress = IPAddress.Parse(remoteIp);

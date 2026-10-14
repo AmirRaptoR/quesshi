@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.Extensions.Options;
+using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Tenants;
@@ -32,7 +33,7 @@ internal interface IPlayerSessionResolver
     Task RevokeAsync(string token, CancellationToken cancellationToken = default);
 }
 
-internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb) : IPlayerSessionIssuer, IPlayerSessionResolver
+internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb, IClock clock) : IPlayerSessionIssuer, IPlayerSessionResolver
 {
     internal const string CookieName = "__Host-qp";
     private static readonly TimeSpan Lifetime = TimeSpan.FromDays(30);
@@ -126,14 +127,14 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
         catch (FormatException) { return false; }
     }
 
-    private static void WriteCookie(HttpContext context, byte[] token) => context.Response.Cookies.Append(CookieName, Convert.ToBase64String(token), new CookieOptions
+    private void WriteCookie(HttpContext context, byte[] token) => context.Response.Cookies.Append(CookieName, Convert.ToBase64String(token), new CookieOptions
     {
         HttpOnly = true,
         Secure = true,
         SameSite = SameSiteMode.Lax,
         Path = "/",
         MaxAge = Lifetime,
-        Expires = DateTimeOffset.UtcNow.Add(Lifetime)
+        Expires = clock.Now.Add(Lifetime)
     });
 
     private sealed record SessionRow(Guid TenantId, Guid? AccountId, Guid? GuestId);
@@ -176,14 +177,14 @@ internal sealed class DatabaseXmlRepository(DatabaseSources sources) : IXmlRepos
     }
 }
 
-internal sealed class PlayerAntiforgery(IDataProtectionProvider protection)
+internal sealed class PlayerAntiforgery(IDataProtectionProvider protection, IClock clock)
 {
     private const string Purpose = "quesshi.player-antiforgery.v1";
     private readonly IDataProtector _protector = protection.CreateProtector(Purpose);
 
     public string Issue(Guid tenantId, PlayerIdentity? player)
     {
-        var payload = new AntiforgeryPayload(tenantId, player?.Subject ?? "anonymous", DateTimeOffset.UtcNow, Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)));
+        var payload = new AntiforgeryPayload(tenantId, player?.Subject ?? "anonymous", clock.Now, Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)));
         return _protector.Protect(JsonSerializer.Serialize(payload));
     }
 
@@ -202,7 +203,7 @@ internal sealed class PlayerAntiforgery(IDataProtectionProvider protection)
             return payload is not null
                 && payload.TenantId == tenantId
                 && payload.Subject == (player?.Subject ?? "anonymous")
-                && payload.IssuedAt >= DateTimeOffset.UtcNow.AddDays(-1);
+                && payload.IssuedAt >= clock.Now.AddDays(-1);
         }
         catch (CryptographicException) { return false; }
         catch (JsonException) { return false; }
