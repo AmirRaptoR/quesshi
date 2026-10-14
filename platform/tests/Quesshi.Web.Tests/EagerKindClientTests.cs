@@ -170,11 +170,15 @@ public sealed class EagerKindClientTests : BunitContext
     private void AssertEditorRoundTrip<TComponent>(string kind, object payload) where TComponent : IComponent
     {
         object? emitted = null;
-        var cut = Render<TComponent>(parameters => parameters
-            .Add("Kind", kind)
-            .Add("Payload", payload)
-            .Add("PayloadChanged", EventCallback.Factory.Create<object?>(this, value => emitted = value))
-            .Add("Lang", "en"));
+        var cut = Render<TComponent>(builder =>
+        {
+            builder.OpenComponent<TComponent>(0);
+            builder.AddAttribute(1, "Kind", kind);
+            builder.AddAttribute(2, "Payload", payload);
+            builder.AddAttribute(3, "PayloadChanged", EventCallback.Factory.Create<object?>(this, value => emitted = value));
+            builder.AddAttribute(4, "Lang", "en");
+            builder.CloseComponent();
+        });
 
         cut.Find("[data-payload-save]").Click();
         Assert.Same(payload, emitted);
