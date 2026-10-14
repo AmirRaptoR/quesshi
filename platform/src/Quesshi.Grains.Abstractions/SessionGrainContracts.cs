@@ -6,6 +6,7 @@ namespace Quesshi.Grains.Abstractions;
 public interface ISessionGrain : IGrainWithStringKey
 {
     Task<SessionCommandResult> ExecuteAsync(SessionCommand command);
+    Task TimeoutAsync(DateTimeOffset dueAt);
 }
 
 /// <summary>JSON crosses the grain boundary as text so contract versioning is explicit.</summary>

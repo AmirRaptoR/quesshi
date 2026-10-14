@@ -40,7 +40,7 @@ public sealed class SessionGrainBehaviorTests
     public async Task Format_rejection_and_late_handling_return_current_view_without_apply()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
-        var rejectedFormat = new RecordingFormat { Rejection = new InvalidOperationException("unsupported") };
+        var rejectedFormat = new RecordingFormat { Rejection = new SessionCommandException("invalid_command") };
         var rejected = CreateGrain(State(), rejectedFormat, new RecordingDeadlines(), now);
 
         var invalid = await rejected.ExecuteAsync(Command(now, type: "next"));
@@ -219,6 +219,68 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(2, saving.CallCount);
     }
 
+    [Fact]
+    public async Task Timeout_uses_the_original_due_identity_and_only_applies_an_eligible_deadline_once()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
+        var format = new TimeoutFormat();
+        var store = new SavingDatabase();
+        var grain = CreateGrain(State(dueAt: now.AddSeconds(-1)), format, new RecordingDeadlines(), now, database: store);
+
+        await grain.TimeoutAsync(now.AddSeconds(-2));
+        await grain.TimeoutAsync(now.AddSeconds(1));
+        await grain.TimeoutAsync(now.AddSeconds(-1));
+
+        Assert.Equal(1, format.TimeoutCount);
+        Assert.Equal(1, store.CallCount);
+
+        var backoffFormat = new TimeoutFormat();
+        var backingOff = CreateGrain(State(dueAt: now.AddSeconds(-1), retryAt: now.AddSeconds(1)), backoffFormat, new RecordingDeadlines(), now);
+        await backingOff.TimeoutAsync(now.AddSeconds(-1));
+
+        Assert.Equal(0, backoffFormat.TimeoutCount);
+    }
+
+    [Fact]
+    public async Task Expired_and_excessively_late_deadlines_end_without_invoking_the_format()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:01:00Z");
+        var expiredStore = new SavingDatabase();
+        var expired = CreateGrain(State(dueAt: now.AddSeconds(-1), startedAt: now.AddDays(-91)), new ThrowingTimeoutFormat(), new RecordingDeadlines(), now, database: expiredStore);
+
+        await expired.TimeoutAsync(now.AddSeconds(-1));
+
+        Assert.Equal(1, expiredStore.CallCount);
+
+        var outageStore = new SavingDatabase();
+        var outage = CreateGrain(State(dueAt: now.AddSeconds(-41)), new LatenessFormat(TimeSpan.FromSeconds(40)), new RecordingDeadlines(), now, database: outageStore);
+
+        await outage.TimeoutAsync(now.AddSeconds(-41));
+
+        Assert.Equal(1, outageStore.CallCount);
+
+        var timelyFormat = new LatenessFormat(TimeSpan.FromSeconds(40));
+        var timely = CreateGrain(State(dueAt: now.AddSeconds(-39)), timelyFormat, new RecordingDeadlines(), now, database: new SavingDatabase());
+
+        await timely.TimeoutAsync(now.AddSeconds(-39));
+
+        Assert.Equal(1, timelyFormat.TimeoutCount);
+    }
+
+    [Fact]
+    public async Task Unexpected_format_failures_are_recorded_as_retryable_faults()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var database = new SavingDatabase();
+        var grain = CreateGrain(State(), new ThrowingFormat(), new RecordingDeadlines(), now, database: database);
+
+        var result = await grain.ExecuteAsync(Command(now));
+
+        Assert.Equal("session_busy", result.Code);
+        Assert.True(result.Retryable);
+        Assert.Equal(1, database.CallCount);
+    }
+
     private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null)
     {
         var loader = new CurrentSnapshotLoader();
@@ -239,7 +301,7 @@ public sealed class SessionGrainBehaviorTests
     private static SessionState State(bool ended = false, DateTimeOffset? retryAt = null, DateTimeOffset? dueAt = null, DateTimeOffset? startedAt = null)
     {
         var position = new Position(0, 0);
-        var session = new SessionRow("session", null, dueAt, position, ended, Format: "recording", Version: 3, RetryAt: retryAt, PositionStartedAt: startedAt);
+        var session = new SessionRow("session", startedAt, dueAt, position, ended, Format: "recording", Version: 3, RetryAt: retryAt, PositionStartedAt: startedAt);
         var item = SessionItemState.Create(new SessionItem(0, "kind", 1, null, null), Json("{}"), Json("{}"), Json("{}"), Json("{}"));
         return SessionState.Create(session, Json("{}"), [new Seat(Player, "player", position)], [item]);
     }
@@ -313,7 +375,19 @@ public sealed class SessionGrainBehaviorTests
         public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             typeof(T) == typeof(long?)
                 ? Task.FromResult((T?)(object)1L)
-                : throw new InvalidOperationException($"Unexpected query type {typeof(T)}.");
+                : typeof(T).Name == "FaultChange"
+                    ? Task.FromResult((T?)CreateFaultChange(typeof(T)))
+                    : throw new InvalidOperationException($"Unexpected query type {typeof(T)}.");
+
+        private static object CreateFaultChange(Type type)
+        {
+            var value = Activator.CreateInstance(type, nonPublic: true)!;
+            type.GetProperty("Version")!.SetValue(value, 1L);
+            type.GetProperty("Status")!.SetValue(value, "running");
+            type.GetProperty("FaultCount")!.SetValue(value, (short)1);
+            type.GetProperty("RetryAt")!.SetValue(value, DateTimeOffset.Parse("2026-01-01T00:00:01Z"));
+            return value;
+        }
     }
 
     private sealed class KnownDatabaseException : DbException { }
@@ -341,12 +415,13 @@ public sealed class SessionGrainBehaviorTests
         public string Id => "recording";
         public virtual FormatSpec Spec { get; } = new(Pacing.Shared, 1, 2, false, false, _ => true, false, null, false, [], TimeSpan.Zero, new Dictionary<string, Type>());
         public FormatVersions Versions { get; } = new(1, 1, 1);
+        public virtual TimeSpan? MaximumDeadlineLateness => null;
         public virtual void Apply(ISession session, Command command) { ApplyCount++; if (Rejection is not null) throw Rejection; }
         public object View(IViewing viewing) => new { };
         public JsonElement ReadRules(JsonElement raw) => raw;
         public DrawPlan Plan(ContentSpec content, JsonElement rules) => new(0, []);
         public void Start(ISession session) { }
-        public void Timeout(ISession session) { }
+        public virtual void Timeout(ISession session) { }
         public JsonElement UpgradeState(int from, JsonElement state) => state;
         public JsonElement UpgradeRules(int from, JsonElement rules) => rules;
         public JsonElement UpgradeResult(int from, JsonElement result) => result;
@@ -359,6 +434,31 @@ public sealed class SessionGrainBehaviorTests
             base.Apply(session, command);
             session.State = Json("{\"changed\":true}");
         }
+    }
+
+    private class TimeoutFormat : RecordingFormat
+    {
+        public int TimeoutCount { get; private set; }
+        public override void Timeout(ISession session)
+        {
+            TimeoutCount++;
+            session.State = Json("{\"timedOut\":true}");
+        }
+    }
+
+    private sealed class ThrowingFormat : RecordingFormat
+    {
+        public override void Apply(ISession session, Command command) => throw new InvalidOperationException("format bug");
+    }
+
+    private sealed class ThrowingTimeoutFormat : RecordingFormat
+    {
+        public override void Timeout(ISession session) => throw new InvalidOperationException("format should not be invoked");
+    }
+
+    private sealed class LatenessFormat(TimeSpan limit) : TimeoutFormat
+    {
+        public override TimeSpan? MaximumDeadlineLateness => limit;
     }
 
     private sealed class AdvancingFormat : RecordingFormat

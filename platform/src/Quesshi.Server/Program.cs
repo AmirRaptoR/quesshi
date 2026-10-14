@@ -154,6 +154,10 @@ public static class Program
         builder.Services.AddSingleton<StreamHub>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddSingleton<ISessionDeadlineReconciler, NoopSessionDeadlineReconciler>();
+        builder.Services.AddSingleton<IDueSessionSource, PostgresDueSessionSource>();
+        builder.Services.AddSingleton<ISessionTimeoutDispatcher, OrleansSessionTimeoutDispatcher>();
+        builder.Services.AddSingleton<DeadlineSweep>();
+        builder.Services.AddHostedService<DeadlineSweepService>();
         builder.Services.AddSingleton<IFormatRegistry>(_ => PlatformFormats.CreateRegistry());
         builder.Services.AddSingleton<IKindRegistry>(_ => new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(provider =>

@@ -175,6 +175,30 @@ public sealed class FormatContractTests
     }
 
     [Fact]
+    public void Ending_rejects_incomplete_or_duplicate_standings_before_changing_the_session()
+    {
+        var session = Harness(State(players: 2, slots: 1));
+
+        Assert.Throws<ArgumentException>(() => session.End(EndReason.Completed, [new Standing("a", 1, "win")], Json("{}")));
+        Assert.Throws<ArgumentException>(() => session.End(EndReason.Completed, [new Standing("a", 1, "win"), new Standing("a", 2, "loss")], Json("{}")));
+        Assert.False(session.Session.Ended);
+    }
+
+    [Fact]
+    public void No_contest_normalizes_missing_outcomes_and_never_ranks_a_seat()
+    {
+        var session = Harness(State(players: 2, slots: 1));
+
+        session.End(EndReason.NoContest, [new Standing("a", 1), new Standing("b", 1)], Json("{}"));
+
+        Assert.All(session.Seats, seat =>
+        {
+            Assert.Equal("none", seat.Outcome);
+            Assert.False(seat.Ranked);
+        });
+    }
+
+    [Fact]
     public void Echo_completes_a_three_player_two_slot_session()
     {
         var session = Harness(State(players: 3, slots: 2));

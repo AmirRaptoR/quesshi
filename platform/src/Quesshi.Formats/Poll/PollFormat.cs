@@ -65,9 +65,9 @@ public sealed class PollFormat : IFormat
             Leave(session, command.Player, command.At.Slot);
             return;
         }
-        if (command.Type != CommandType.Answer) throw new InvalidOperationException("Poll accepts only answer and leave commands.");
+        if (command.Type != CommandType.Answer) throw new SessionCommandException("invalid_command");
         if (command.Revision < 0) throw new ArgumentOutOfRangeException(nameof(command), "Poll answer revisions cannot be negative.");
-        if (!IsActivePlayer(session, command.Player)) throw new InvalidOperationException("Only active poll players can answer.");
+        if (!IsActivePlayer(session, command.Player)) throw new SessionCommandException("invalid_command");
 
         var prior = session.Answer(command.Player, command.At.Slot);
         if (prior is not null && command.Revision < prior.Revision) return;
@@ -163,7 +163,7 @@ public sealed class PollFormat : IFormat
         var result = VotingResults.Compute(session, closedSlots, reason == EndReason.Completed);
         var standings = session.Seats
             .Where(seat => seat.Role == "player")
-            .Select(seat => new Standing(seat.Player, 1, reason == EndReason.Completed ? "completed" : "no_contest"))
+            .Select(seat => new Standing(seat.Player, 1, "none"))
             .ToArray();
         session.End(reason, standings, JsonSerializer.SerializeToElement(result));
     }
