@@ -109,6 +109,50 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         }
     }
 
+    [SkippableFact]
+    public async Task Account_deletion_requires_an_account_session_and_clears_its_cookie()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        await using var app = Program.CreateApplication(sources, 11146, 30146);
+        app.Urls.Add("http://127.0.0.1:50146");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50146") };
+            var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var accountContext = new DefaultHttpContext();
+            await sessions.IssueAccountAsync(accountContext, seeded.TenantId, seeded.AccountId);
+            var accountCookie = CookieValue(accountContext);
+            var accountToken = await AntiforgeryAsync(client, accountCookie);
+
+            var guestContext = new DefaultHttpContext();
+            await sessions.IssueGuestAsync(guestContext, seeded.TenantId, seeded.GuestId);
+            var guestCookie = CookieValue(guestContext);
+            var guestToken = await AntiforgeryAsync(client, guestCookie);
+
+            using (var anonymous = await SendAsync(client, HttpMethod.Delete, "/api/me", null, await AntiforgeryAsync(client, null), TenantOrigin))
+                Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using (var guest = await SendAsync(client, HttpMethod.Delete, "/api/me", guestCookie, guestToken, TenantOrigin))
+                Assert.Equal(HttpStatusCode.Forbidden, guest.StatusCode);
+            using (var missingToken = await SendAsync(client, HttpMethod.Delete, "/api/me", accountCookie, null, TenantOrigin))
+                Assert.Equal(HttpStatusCode.BadRequest, missingToken.StatusCode);
+            using (var deleted = await SendAsync(client, HttpMethod.Delete, "/api/me", accountCookie, accountToken, TenantOrigin))
+            {
+                Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+                Assert.Contains(deleted.Headers.GetValues("Set-Cookie"), value => value.Contains("__Host-qp=", StringComparison.Ordinal) && value.Contains("max-age=0", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
     private static string TenantOrigin => $"http://{TenantHost}";
 
     private async Task<(Guid TenantId, Guid AccountId, Guid GuestId)> SeedAsync()
