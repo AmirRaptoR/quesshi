@@ -32,14 +32,22 @@ internal sealed class CapabilitySyncCommand(ISystemDb database, CapabilityRegist
 
             if (affectedTenantIds.Count > 0)
             {
-                await transaction.ExecuteAsync("""
+                var versions = await transaction.QueryAsync<TenantConfigVersion>("""
                     update tenants
                     set config_version = config_version + 1
                     where id = any(@tenantIds)
+                    returning id as TenantId, config_version as Version
                     """, new { tenantIds = affectedTenantIds.ToArray() }, cancellationToken);
+                foreach (var version in versions)
+                {
+                    await transaction.ExecuteAsync("select pg_notify('quesshi_config', @message)",
+                        new { message = $"config:{version.TenantId}:{version.Version}" }, cancellationToken);
+                }
             }
 
             return inserted;
         }, cancellationToken);
     }
+
+    private sealed record TenantConfigVersion(Guid TenantId, long Version);
 }
