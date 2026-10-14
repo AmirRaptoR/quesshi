@@ -24,7 +24,7 @@ public sealed class StreamingEndpointTests
 {
 #if QUESSHI_TEST_IDENTITY
     [Fact]
-    public async Task Authenticated_app_wide_http_stream_opens_without_a_watched_session_and_releases_its_subscription()
+    public async Task Authenticated_app_wide_http_stream_opens_without_a_watched_session_and_reads_config()
     {
         var port = AvailablePort();
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
@@ -55,7 +55,8 @@ public sealed class StreamingEndpointTests
             Assert.Equal("no", response.Headers.GetValues("X-Accel-Buffering").Single());
             Assert.Equal("identity", response.Content.Headers.ContentEncoding.Single());
             Assert.Equal(1, hub.SubscriptionCount);
-            response.Dispose();
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(), Encoding.UTF8, leaveOpen: true);
+            Assert.Contains("event: config", await ReadFrameAsync(reader));
         }
         finally
         {
@@ -63,7 +64,91 @@ public sealed class StreamingEndpointTests
             hub.Dispose();
         }
 
-        Assert.Equal(0, hub.SubscriptionCount);
+    }
+
+    [Fact]
+    public async Task Ordinary_http_disconnect_releases_its_subscription_before_host_shutdown()
+    {
+        var port = AvailablePort();
+        var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
+        var notifications = new Notifications();
+        var hub = new StreamHub(null!, null!, null!, null!, notifications,
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
+        builder.Services.AddSingleton(hub);
+        await using var app = builder.Build();
+        app.UseTenantResolution();
+        app.MapStream();
+        await app.StartAsync();
+        try
+        {
+            using var client = new TcpClient();
+            client.Client.LingerState = new LingerOption(true, 0);
+            await client.ConnectAsync(IPAddress.Loopback, port);
+            await using var stream = client.GetStream();
+            await stream.WriteAsync(Encoding.ASCII.GetBytes($"GET /api/stream HTTP/1.1\r\nHost: tenant.example.test\r\nX-Quesshi-Test-Player: {Guid.NewGuid()}\r\n\r\n"));
+            await WaitForAsync(() => hub.SubscriptionCount == 1);
+            notifications.Publish(new StreamNotification.Config(tenant.Id, 1));
+            var response = new byte[1024];
+            Assert.True(await stream.ReadAsync(response) > 0);
+
+            client.Close();
+            notifications.Publish(new StreamNotification.Config(tenant.Id, 2));
+            await WaitForAsync(() => hub.SubscriptionCount == 0);
+        }
+        finally
+        {
+            await app.StopAsync();
+            hub.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Hosted_stream_writes_config_initial_changed_gone_and_keep_alive_frames_with_tenant_bound_access()
+    {
+        var port = AvailablePort();
+        var first = new Tenant(Guid.NewGuid(), "first", "First", "en");
+        var second = new Tenant(Guid.NewGuid(), "second", "Second", "en");
+        var viewer = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var loader = new TenantBoundSnapshotLoader(first.Id, State(session, 1, viewer));
+        var notifications = new Notifications();
+        var hub = new StreamHub(loader, new NormalRenderer(), new FormatRegistry([new TestFormat()]), null!, notifications,
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.Services.AddSingleton<ITenants>(new MultipleTenants(first, second));
+        builder.Services.AddSingleton(hub);
+        await using var app = builder.Build();
+        app.UseTenantResolution();
+        app.MapStream();
+        await app.StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var watched = await OpenAsync(client, $"/api/stream?session={session}", viewer, "first.example.test");
+            Assert.Contains("event: view", await ReadFrameAsync(watched));
+
+            loader.State = State(session, 2, viewer);
+            notifications.Publish(new StreamNotification.Session(first.Id, session, 2, "1"));
+            Assert.Contains("\"Version\":2", await ReadFrameAsync(watched));
+
+            using var absent = await OpenAsync(client, $"/api/stream?session={session}", Guid.NewGuid(), "first.example.test");
+            Assert.Contains("event: gone", await ReadFrameAsync(absent));
+            using var otherTenant = await OpenAsync(client, $"/api/stream?session={session}", viewer, "second.example.test");
+            Assert.Contains("event: gone", await ReadFrameAsync(otherTenant));
+
+            using var appWide = await OpenAsync(client, "/api/stream", viewer, "first.example.test");
+            var keepAlive = await ReadFrameAsync(appWide, TimeSpan.FromSeconds(25));
+            Assert.Equal(": keep-alive\n\n", keepAlive);
+        }
+        finally
+        {
+            await app.StopAsync();
+            hub.Dispose();
+        }
     }
 #endif
 
@@ -137,6 +222,22 @@ public sealed class StreamingEndpointTests
     }
 
     [Fact]
+    public void Real_renderer_keeps_a_five_hundred_seat_sse_view_frame_below_the_transport_cap()
+    {
+        var session = Guid.NewGuid();
+        var viewer = Guid.NewGuid();
+        var seats = Enumerable.Range(0, 500).Select(index => new Seat(index == 0 ? viewer.ToString() : Guid.NewGuid().ToString(), $"Player {index}"))
+            .ToArray();
+        var state = SessionState.Create(new SessionRow(session.ToString(), null, null, new Position(1, 0), Format: "test", Version: 1), Json("{}"), seats, []);
+        var implementation = typeof(SessionViewSnapshot).Assembly.GetType("Quesshi.Application.Sessions.ViewRenderer", throwOnError: true)!;
+        var renderer = (IViewRenderer)Activator.CreateInstance(implementation, nonPublic: true)!;
+
+        var view = renderer.Render(state, new TestFormat(), viewer.ToString(), DateTimeOffset.UnixEpoch);
+
+        Assert.True(Encoding.UTF8.GetByteCount($"event: view\ndata: {view.Json}\n\n") < 64 * 1024);
+    }
+
+    [Fact]
     public async Task Stalled_stream_write_times_out_and_releases_its_subscription()
     {
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
@@ -207,6 +308,15 @@ public sealed class StreamingEndpointTests
             IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
     }
 
+    private sealed class TenantBoundSnapshotLoader(Guid tenantId, SessionState state) : ISessionSnapshotLoader
+    {
+        public SessionState State { get; set; } = state;
+        public Task<SessionState?> LoadAsync(Guid requestedTenant, Guid sessionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<SessionState?>(requestedTenant == tenantId && sessionId == Guid.Parse(State.Session.Id) ? State : null);
+        public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId,
+            IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
+    }
+
     private sealed class OversizedRenderer : IViewRenderer
     {
         private static readonly ConstructorInfo SnapshotConstructor = typeof(SessionViewSnapshot).GetConstructor(
@@ -227,11 +337,17 @@ public sealed class StreamingEndpointTests
             BindingFlags.Instance | BindingFlags.NonPublic, null, [typeof(SessionState), typeof(DateTimeOffset)], null)!;
         private static readonly PropertyInfo SnapshotState = typeof(SessionViewSnapshot).GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) =>
+            state.Seats.ContainsKey(viewer) ? new(state.Session.Version, Json(state)) : null!;
         public SessionViewSnapshot Snapshot(SessionState state, DateTimeOffset now) =>
             (SessionViewSnapshot)SnapshotConstructor.Invoke([state, now]);
-        public RenderedSessionView? Render(SessionViewSnapshot snapshot, IFormat format, string viewer) =>
-            new(((SessionState)SnapshotState.GetValue(snapshot)!).Session.Version, "{}");
+        public RenderedSessionView? Render(SessionViewSnapshot snapshot, IFormat format, string viewer)
+        {
+            var state = (SessionState)SnapshotState.GetValue(snapshot)!;
+            return state.Seats.ContainsKey(viewer) ? new RenderedSessionView(state.Session.Version, Json(state)) : null;
+        }
+
+        private static string Json(SessionState state) => $$"""{"Version":{{state.Session.Version}}}""";
     }
 
     private sealed class TestFormat : IFormat
@@ -251,6 +367,46 @@ public sealed class StreamingEndpointTests
     }
 
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
+
+    private static SessionState State(Guid session, long version, Guid viewer) => SessionState.Create(
+        new SessionRow(session.ToString(), null, null, new Position(1, 0), Format: "test", Version: version), Json("{}"),
+        [new Seat(viewer.ToString(), "viewer")], []);
+
+#if QUESSHI_TEST_IDENTITY
+    private static async Task<StreamConnection> OpenAsync(HttpClient client, string path, Guid player, string host)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Host = host;
+        request.Headers.Add("X-Quesshi-Test-Player", player.ToString());
+        var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        return new StreamConnection(response, new StreamReader(await response.Content.ReadAsStreamAsync(), Encoding.UTF8, leaveOpen: true));
+    }
+
+    private static async Task<string> ReadFrameAsync(StreamConnection connection, TimeSpan? timeout = null)
+        => await ReadFrameAsync(connection.Reader, timeout);
+
+    private static async Task<string> ReadFrameAsync(StreamReader reader, TimeSpan? timeout = null)
+    {
+        using var cancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(5));
+        var frame = new StringBuilder();
+        while (true)
+        {
+            var line = await reader.ReadLineAsync(cancellation.Token);
+            if (line is null || line.Length == 0) return frame.Append('\n').ToString();
+            frame.Append(line).Append('\n');
+        }
+    }
+
+    private sealed class StreamConnection(HttpResponseMessage response, StreamReader reader) : IDisposable
+    {
+        public StreamReader Reader { get; } = reader;
+        public void Dispose()
+        {
+            Reader.Dispose();
+            response.Dispose();
+        }
+    }
+#endif
 
     private static int AvailablePort()
     {
@@ -273,6 +429,12 @@ public sealed class StreamingEndpointTests
     {
         public Task<Tenant?> ResolveAsync(string host, CancellationToken cancellationToken = default) =>
             Task.FromResult<Tenant?>(host == "tenant.example.test" ? tenant : null);
+    }
+
+    private sealed class MultipleTenants(params Tenant[] tenants) : ITenants
+    {
+        public Task<Tenant?> ResolveAsync(string host, CancellationToken cancellationToken = default) =>
+            Task.FromResult(tenants.SingleOrDefault(tenant => host == $"{tenant.Slug}.example.test"));
     }
 
     private sealed class TrackingResponseBodyFeature : IHttpResponseBodyFeature
