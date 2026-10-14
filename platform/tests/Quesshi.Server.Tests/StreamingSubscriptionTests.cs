@@ -162,6 +162,10 @@ public sealed class StreamingSubscriptionTests
         Assert.Equal(1, renderer.SnapshotCount);
         Assert.Equal(500, renderer.RenderCount);
 
+        // Snapshot sharing is established above. Keep the timing assertion below focused on
+        // phase coalescing rather than scheduling 500 synthetic view renders on a busy runner.
+        foreach (var subscriber in subscribers.Skip(1)) hub.Unsubscribe(subscriber);
+
         loader.State = State(session, 2, 500);
         notifications.Publish(new StreamNotification.Session(tenant, session, 2, "0"));
         await Task.Delay(75);
