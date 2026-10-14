@@ -7,6 +7,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Sessions;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
@@ -37,10 +38,25 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
+    public async Task Cancelled_sessions_render_without_invoking_the_format()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var state = State(ended: true);
+        state = state with { Session = state.Session with { Status = "cancelled" } };
+        var renderer = new CancelledRenderer();
+        var grain = CreateGrain(state, new RecordingFormat(), new RecordingDeadlines(), now, renderer: renderer, formatRegistry: new FormatRegistry([]));
+
+        var result = await grain.ExecuteAsync(Command(now));
+
+        Assert.Equal("terminal", result.Code);
+        Assert.Equal(1, renderer.CancelledCount);
+    }
+
+    [Fact]
     public async Task Format_rejection_and_late_handling_return_current_view_without_apply()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
-        var rejectedFormat = new RecordingFormat { Rejection = new InvalidOperationException("unsupported") };
+        var rejectedFormat = new RecordingFormat { Rejection = new SessionCommandException("invalid_command") };
         var rejected = CreateGrain(State(), rejectedFormat, new RecordingDeadlines(), now);
 
         var invalid = await rejected.ExecuteAsync(Command(now, type: "next"));
@@ -219,18 +235,153 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(2, saving.CallCount);
     }
 
-    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null)
+    [Fact]
+    public async Task Timer_and_sweep_deliveries_of_one_due_identity_persist_one_timeout()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
+        var started = now.AddHours(-1);
+        var due = now.AddSeconds(-1);
+        var format = new TimeoutFormat();
+        var store = new SavingDatabase();
+        var loader = new CurrentSnapshotLoader();
+        var grain = CreateGrain(loader, format, new RecordingDeadlines(), now, database: store,
+            initialState: State(dueAt: due, startedAt: started));
+        loader.Current = () => StateOf(grain)! with
+        {
+            Session = StateOf(grain)!.Session with { DueAt = store.SavedDueAt }
+        };
+
+        // The timer and sweep share this delivery method, so repeat the same eligible due identity.
+        await grain.TimeoutAsync(due);
+        await grain.TimeoutAsync(due);
+        await grain.TimeoutAsync(due);
+
+        Assert.Equal(1, format.TimeoutCount);
+        Assert.Equal(1, store.CallCount);
+        Assert.Equal(started.AddDays(90), StateOf(grain)!.Session.DueAt);
+
+        var backoffFormat = new TimeoutFormat();
+        var backingOff = CreateGrain(State(dueAt: now.AddSeconds(-1), retryAt: now.AddSeconds(1)), backoffFormat, new RecordingDeadlines(), now);
+        await backingOff.TimeoutAsync(now.AddSeconds(-1));
+
+        Assert.Equal(0, backoffFormat.TimeoutCount);
+    }
+
+    [Fact]
+    public async Task Timeout_persistence_uncertainty_discards_the_cached_snapshot()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
+        var due = now.AddSeconds(-1);
+        var stale = CreateGrain(State(dueAt: due), new TimeoutFormat(), new RecordingDeadlines(), now,
+            database: new FailingDatabase(new StaleActivationException()));
+
+        await Assert.ThrowsAsync<StaleActivationException>(() => stale.TimeoutAsync(due));
+        Assert.Null(StateOf(stale));
+        Assert.Equal(1, stale.DeactivateCount);
+
+        var unknown = CreateGrain(State(dueAt: due), new TimeoutFormat(), new RecordingDeadlines(), now,
+            database: new FailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost"))));
+
+        await Assert.ThrowsAsync<TenantCommitOutcomeUnknownException>(() => unknown.TimeoutAsync(due));
+        Assert.Null(StateOf(unknown));
+        Assert.Equal(1, unknown.DeactivateCount);
+
+        var reload = CreateGrain(new ThrowingSnapshotLoader(), new TimeoutFormat(), new RecordingDeadlines(), now,
+            database: new SavingDatabase(), initialState: State(dueAt: due));
+
+        await Assert.ThrowsAsync<KnownDatabaseException>(() => reload.TimeoutAsync(due));
+        Assert.Null(StateOf(reload));
+        Assert.Equal(1, reload.DeactivateCount);
+    }
+
+    [Fact]
+    public async Task Expired_and_excessively_late_deadlines_end_without_invoking_the_format()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:01:00Z");
+        var expiredStore = new SavingDatabase();
+        var expired = CreateGrain(State(dueAt: now.AddSeconds(-1), startedAt: now.AddDays(-91)), new ThrowingTimeoutFormat(), new RecordingDeadlines(), now, database: expiredStore);
+
+        await expired.TimeoutAsync(now.AddSeconds(-1));
+
+        Assert.Equal(1, expiredStore.CallCount);
+
+        var outageStore = new SavingDatabase();
+        var outage = CreateGrain(State(dueAt: now.AddSeconds(-41)), new LatenessFormat(TimeSpan.FromSeconds(40)), new RecordingDeadlines(), now, database: outageStore);
+
+        await outage.TimeoutAsync(now.AddSeconds(-41));
+
+        Assert.Equal(1, outageStore.CallCount);
+
+        var timelyFormat = new LatenessFormat(TimeSpan.FromSeconds(40));
+        var timely = CreateGrain(State(dueAt: now.AddSeconds(-39)), timelyFormat, new RecordingDeadlines(), now, database: new SavingDatabase());
+
+        await timely.TimeoutAsync(now.AddSeconds(-39));
+
+        Assert.Equal(1, timelyFormat.TimeoutCount);
+    }
+
+    [Fact]
+    public async Task Unexpected_format_failures_are_recorded_as_retryable_faults()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var database = new SavingDatabase();
+        var grain = CreateGrain(State(), new ThrowingFormat(), new RecordingDeadlines(), now, database: database);
+
+        var result = await grain.ExecuteAsync(Command(now));
+
+        Assert.Equal("session_busy", result.Code);
+        Assert.True(result.Retryable);
+        Assert.Equal(1, database.CallCount);
+    }
+
+    [Fact]
+    public async Task An_idle_48_hour_deadline_is_woken_and_applied_by_the_sweep()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var due = now.AddHours(48);
+        var clock = new TestClock(now);
+        var format = new TimeoutFormat();
+        var store = new SavingDatabase();
+        var loader = new CurrentSnapshotLoader();
+        var grain = CreateGrain(loader, format, new RecordingDeadlines(), now, database: store,
+            initialState: State(dueAt: due, startedAt: now), clock: clock);
+        loader.Current = () => StateOf(grain)! with
+        {
+            Session = StateOf(grain)!.Session with { DueAt = store.SavedDueAt }
+        };
+
+        await grain.ExecuteAsync(Command(now));
+
+        Assert.Null(DeadlineTimerOf(grain));
+
+        clock.Advance(TimeSpan.FromHours(48).Add(TimeSpan.FromSeconds(1)));
+        var dispatched = new List<Guid>();
+        var session = new DueSession(Guid.NewGuid(), Guid.NewGuid(), due);
+        var sweep = new DeadlineSweep(new SweepSource([session]), new SweepDispatcher(item =>
+        {
+            dispatched.Add(item.SessionId);
+            return grain.TimeoutAsync(item.DueAt);
+        }), clock, NullLogger<DeadlineSweep>.Instance);
+
+        await sweep.RunPassAsync();
+
+        Assert.Equal([session.SessionId], dispatched);
+        Assert.Equal(1, format.TimeoutCount);
+        Assert.Equal(1, store.CallCount);
+    }
+
+    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, IFormatRegistry? formatRegistry = null, IClock? clock = null)
     {
         var loader = new CurrentSnapshotLoader();
-        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state);
+        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state, formatRegistry, clock);
         loader.Current = () => StateOf(grain);
         return grain;
     }
 
-    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
+    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null, IFormatRegistry? formatRegistry = null, IClock? clock = null)
     {
         var grain = new TestSessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
-            new FormatRegistry([format]), kinds ?? new KindRegistry([]), new TestClock(now), renderer ?? new Renderer(), deadlines,
+            formatRegistry ?? new FormatRegistry([format]), kinds ?? new KindRegistry([]), clock ?? new TestClock(now), renderer ?? new Renderer(), deadlines,
             NullLogger<SessionGrain>.Instance);
         if (initialState is not null) typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(grain, initialState);
         return grain;
@@ -239,7 +390,7 @@ public sealed class SessionGrainBehaviorTests
     private static SessionState State(bool ended = false, DateTimeOffset? retryAt = null, DateTimeOffset? dueAt = null, DateTimeOffset? startedAt = null)
     {
         var position = new Position(0, 0);
-        var session = new SessionRow("session", null, dueAt, position, ended, Format: "recording", Version: 3, RetryAt: retryAt, PositionStartedAt: startedAt);
+        var session = new SessionRow("session", startedAt, dueAt, position, ended, Format: "recording", Version: 3, RetryAt: retryAt, PositionStartedAt: startedAt);
         var item = SessionItemState.Create(new SessionItem(0, "kind", 1, null, null), Json("{}"), Json("{}"), Json("{}"), Json("{}"));
         return SessionState.Create(session, Json("{}"), [new Seat(Player, "player", position)], [item]);
     }
@@ -251,11 +402,24 @@ public sealed class SessionGrainBehaviorTests
 
     private static SessionState? StateOf(SessionGrain grain) => (SessionState?)typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(grain);
 
+    private static object? DeadlineTimerOf(SessionGrain grain) => typeof(SessionGrain).GetField("_deadlineTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(grain);
+
     private sealed class CurrentSnapshotLoader : ISessionSnapshotLoader
     {
         public Func<SessionState?>? Current { get; set; }
         public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult(Current?.Invoke());
         public Task<IReadOnlyList<SessionItemState>> LoadItemsAsync(Guid tenantId, Guid sessionId, IReadOnlyCollection<int> slots, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SessionItemState>>([]);
+    }
+
+    private sealed class SweepSource(IReadOnlyList<DueSession> sessions) : IDueSessionSource
+    {
+        public Task<IReadOnlyList<DueSession>> FindAsync(DateTimeOffset asOf, int maxRows, IReadOnlyCollection<Guid> skip, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<DueSession>>(sessions.Where(session => !skip.Contains(session.SessionId)).Take(maxRows).ToArray());
+    }
+
+    private sealed class SweepDispatcher(Func<DueSession, Task> dispatch) : ISessionTimeoutDispatcher
+    {
+        public Task DispatchAsync(DueSession session) => dispatch(session);
     }
 
     private sealed class ToggleSnapshotLoader : ISessionSnapshotLoader
@@ -302,18 +466,42 @@ public sealed class SessionGrainBehaviorTests
     private sealed class SavingDatabase : ITenantDb
     {
         public int CallCount { get; private set; }
+        public DateTimeOffset? SavedDueAt { get; private set; }
         public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false) => Run(callback);
-        private async Task<T> Run<T>(Func<ITenantTx, Task<T>> callback) { CallCount++; return await callback(new SavingTransaction()); }
+        private async Task<T> Run<T>(Func<ITenantTx, Task<T>> callback) { CallCount++; return await callback(new SavingTransaction(this)); }
+
+        public void SaveDueAt(object? parameters)
+        {
+            var value = parameters?.GetType().GetProperty("DueAt")?.GetValue(parameters);
+            SavedDueAt = value as DateTimeOffset? ?? (value is DateTimeOffset dueAt ? dueAt : null);
+        }
     }
 
-    private sealed class SavingTransaction : ITenantTx
+    private sealed class SavingTransaction(SavingDatabase database) : ITenantTx
     {
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<T>>([]);
         public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) => Task.FromResult(1);
-        public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
-            typeof(T) == typeof(long?)
-                ? Task.FromResult((T?)(object)1L)
+        public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default)
+        {
+            if (typeof(T) == typeof(long?))
+            {
+                database.SaveDueAt(parameters);
+                return Task.FromResult((T?)(object)1L);
+            }
+            return typeof(T).Name == "FaultChange"
+                ? Task.FromResult((T?)CreateFaultChange(typeof(T)))
                 : throw new InvalidOperationException($"Unexpected query type {typeof(T)}.");
+        }
+
+        private static object CreateFaultChange(Type type)
+        {
+            var value = Activator.CreateInstance(type, nonPublic: true)!;
+            type.GetProperty("Version")!.SetValue(value, 1L);
+            type.GetProperty("Status")!.SetValue(value, "running");
+            type.GetProperty("FaultCount")!.SetValue(value, (short)1);
+            type.GetProperty("RetryAt")!.SetValue(value, DateTimeOffset.Parse("2026-01-01T00:00:01Z"));
+            return value;
+        }
     }
 
     private sealed class KnownDatabaseException : DbException { }
@@ -329,6 +517,13 @@ public sealed class SessionGrainBehaviorTests
         public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
     }
 
+    private sealed class CancelledRenderer : IViewRenderer
+    {
+        public int CancelledCount { get; private set; }
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => throw new InvalidOperationException("Format rendering must not run for cancelled sessions.");
+        public RenderedSessionView RenderCancelled(SessionState state, string viewer, DateTimeOffset now) { CancelledCount++; return new(state.Session.Version, "{}"); }
+    }
+
     private sealed class ThrowingRenderer : IViewRenderer
     {
         public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => throw new InvalidOperationException("renderer unavailable");
@@ -341,12 +536,13 @@ public sealed class SessionGrainBehaviorTests
         public string Id => "recording";
         public virtual FormatSpec Spec { get; } = new(Pacing.Shared, 1, 2, false, false, _ => true, false, null, false, [], TimeSpan.Zero, new Dictionary<string, Type>());
         public FormatVersions Versions { get; } = new(1, 1, 1);
+        public virtual TimeSpan? MaximumDeadlineLateness => null;
         public virtual void Apply(ISession session, Command command) { ApplyCount++; if (Rejection is not null) throw Rejection; }
         public object View(IViewing viewing) => new { };
         public JsonElement ReadRules(JsonElement raw) => raw;
         public DrawPlan Plan(ContentSpec content, JsonElement rules) => new(0, []);
         public void Start(ISession session) { }
-        public void Timeout(ISession session) { }
+        public virtual void Timeout(ISession session) { }
         public JsonElement UpgradeState(int from, JsonElement state) => state;
         public JsonElement UpgradeRules(int from, JsonElement rules) => rules;
         public JsonElement UpgradeResult(int from, JsonElement result) => result;
@@ -359,6 +555,31 @@ public sealed class SessionGrainBehaviorTests
             base.Apply(session, command);
             session.State = Json("{\"changed\":true}");
         }
+    }
+
+    private class TimeoutFormat : RecordingFormat
+    {
+        public int TimeoutCount { get; private set; }
+        public override void Timeout(ISession session)
+        {
+            TimeoutCount++;
+            session.State = Json("{\"timedOut\":true}");
+        }
+    }
+
+    private sealed class ThrowingFormat : RecordingFormat
+    {
+        public override void Apply(ISession session, Command command) => throw new InvalidOperationException("format bug");
+    }
+
+    private sealed class ThrowingTimeoutFormat : RecordingFormat
+    {
+        public override void Timeout(ISession session) => throw new InvalidOperationException("format should not be invoked");
+    }
+
+    private sealed class LatenessFormat(TimeSpan limit) : TimeoutFormat
+    {
+        public override TimeSpan? MaximumDeadlineLateness => limit;
     }
 
     private sealed class AdvancingFormat : RecordingFormat

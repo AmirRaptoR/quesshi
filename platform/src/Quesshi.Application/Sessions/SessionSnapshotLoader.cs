@@ -40,7 +40,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
     {
         var row = await transaction.QuerySingleOrDefaultAsync<SessionData>("""
             select id as Id, code as Code, format as Format, status as Status, phase as Phase, slot as Slot, step as Step,
-                   started_at as StartedAt, due_at as DueAt, retry_at as RetryAt, version as Version,
+                   started_at as StartedAt, due_at as DueAt, retry_at as RetryAt, fault_count as FaultCount, version as Version,
                    state::text as State, result::text as Result, content::text as Content, rules::text as Rules, end_reason as EndReason,
                    phase_started_at as PositionStartedAt, created_at as CreatedAt,
                    (select config_version from tenants where id = sessions.tenant_id) as ConfigVersion,
@@ -52,7 +52,8 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         var seats = await transaction.QueryAsync<SeatData>("""
             select p.player_id::text as Player, p.seat as Number, players.display_name as DisplayName, p.role as Role, p.status as Status, p.phase as Phase, p.slot as Slot, p.step as Step,
                    score as Score, revealed_slot as ReleasedSlot, slot_started_at as PositionStartedAt,
-                   place as Place, outcome as Outcome, result::text as Result
+                   place as Place, outcome as Outcome, result::text as Result, eligible as Eligible, ranked as Ranked,
+                   players.account_id is null as IsGuest
             from session_participants p join players on players.tenant_id = p.tenant_id and players.id = p.player_id
             where p.session_id = @sessionId order by p.seat, p.player_id
             """, new { sessionId }, cancellationToken);
@@ -75,7 +76,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
 
         var session = new SessionRow(row.Id.ToString(), row.StartedAt, row.DueAt, Position(row.Phase, row.Slot, row.Step),
             row.Status is "finished" or "cancelled", ParseEndReason(row.EndReason), Json(row.Result), row.PositionStartedAt,
-            row.CreatedAt, row.Format, row.Version, row.RetryAt, row.Status, row.Code, Json(row.Content), Json(row.Rules), row.ConfigVersion);
+            row.CreatedAt, row.Format, row.Version, row.RetryAt, row.Status, row.Code, Json(row.Content), Json(row.Rules), row.ConfigVersion, row.FaultCount);
         var state = SessionState.Create(session, Json(row.State), seats.Select(ToSeat), items.Select(ToItem), row.ItemCount);
         var mappedAnswers = answers.ToDictionary(
             answer => new AnswerKey(answer.Player, answer.Slot),
@@ -126,11 +127,16 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         "completed" or "complete" => EndReason.Completed,
         "forfeit" => EndReason.Forfeit,
         "no_contest" => EndReason.NoContest,
+        "owner" => EndReason.Owner,
+        "admin" => EndReason.Admin,
+        "expired" => EndReason.Expired,
+        "fault" => EndReason.Fault,
+        "outage" => EndReason.Outage,
         _ => null,
     };
     private static Seat ToSeat(SeatData value) => new(value.Player, value.Role, Position(value.Phase, value.Slot, value.Step), value.Score,
         value.Status == "eliminated", value.ReleasedSlot, value.PositionStartedAt, value.Place, value.Outcome,
-        ParseSeatStatus(value.Status), JsonOrNull(value.Result), value.Number, value.DisplayName);
+        ParseSeatStatus(value.Status), JsonOrNull(value.Result), value.Number, value.DisplayName, value.Eligible, value.Ranked, value.IsGuest);
     private static SeatStatus ParseSeatStatus(string status) => status.ToLowerInvariant() switch
     {
         "done" => SeatStatus.Done,
@@ -158,6 +164,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         public DateTimeOffset? StartedAt { get; init; }
         public DateTimeOffset? DueAt { get; init; }
         public DateTimeOffset? RetryAt { get; init; }
+        public short FaultCount { get; init; }
         public long Version { get; init; }
         public string State { get; init; } = "{}";
         public string Result { get; init; } = "{}";
@@ -179,6 +186,9 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         public int? Place { get; init; }
         public string? Outcome { get; init; }
         public string? Result { get; init; }
+        public bool Eligible { get; init; }
+        public bool? Ranked { get; init; }
+        public bool IsGuest { get; init; }
     }
     private sealed class RosterSeatData
     {

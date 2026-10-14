@@ -87,6 +87,20 @@ public sealed class SessionViewRendererTests
         Assert.Equal(served.AddMinutes(1).AddSeconds(20), secondJson.RootElement.GetProperty("Deadline").GetDateTimeOffset());
     }
 
+    [Fact]
+    public void Cancelled_renderer_returns_a_generic_view_without_a_format()
+    {
+        var state = State(1, "cancelled");
+        var renderer = new ViewRenderer();
+
+        var view = renderer.RenderCancelled(state, "player-0", DateTimeOffset.UnixEpoch);
+        using var json = JsonDocument.Parse(view.Json);
+
+        Assert.Equal("cancelled", json.RootElement.GetProperty("Status").GetString());
+        Assert.Equal(JsonValueKind.Object, json.RootElement.GetProperty("Body").ValueKind);
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("Deadline").ValueKind);
+    }
+
     [Theory]
     [InlineData(50, "Seats", 50)]
     [InlineData(51, "Top", 10)]

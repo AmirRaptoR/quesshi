@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Orleans;
+using Orleans.Runtime;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains.Abstractions;
@@ -23,6 +24,9 @@ public class SessionGrain(
     private SessionState? _state;
     private Guid _tenantId;
     private Guid _sessionId;
+    private IGrainTimer? _deadlineTimer;
+    private DateTimeOffset? _timerWakeAt;
+    private DateTimeOffset? _timerDueAt;
 
     public override Task OnActivateAsync(CancellationToken cancellationToken)
     {
@@ -42,15 +46,22 @@ public class SessionGrain(
                 Deactivate();
                 return SessionCommandResult.Error("not_found");
             }
+            ArmDeadlineTimer();
+            if (_state.Session.Ended)
+            {
+                if (_state.Session.Status == "cancelled") return CancelledView("terminal", request.PlayerId);
+                if (!formats.TryGet(_state.Session.Format ?? "", out var terminalFormat) || terminalFormat is null) return SessionCommandResult.Error("terminal");
+                return View("terminal", terminalFormat, request.PlayerId);
+            }
+            await deadlines.ReconcileAsync(_state);
+            if (await ReconcileAsync()) return SessionCommandResult.Error("terminal");
+            if (_state.Session.RetryAt is { } retryAt && clock.Now < retryAt) return SessionCommandResult.Error("session_busy", retryable: true);
             if (!formats.TryGet(_state.Session.Format ?? "", out var format) || format is null)
                 return SessionCommandResult.Error("format_unavailable");
             if (!_state.Seats.ContainsKey(request.PlayerId)) return SessionCommandResult.Error("absent_seat");
 
-            if (_state.Session.Ended) return View("terminal", format, request.PlayerId);
-            await deadlines.ReconcileAsync(_state);
-            if (_state.Session.RetryAt is { } retryAt && clock.Now < retryAt) return SessionCommandResult.Error("session_busy", retryable: true);
-
             if (!TryCommand(request, out var command)) return SessionCommandResult.Error("invalid_command");
+            if (command.Revision < 0) return SessionCommandResult.Error("invalid_command");
             var position = format.Spec.Pacing == Pacing.Shared ? _state.Session.Position : _state.Seats[request.PlayerId].Position;
             if (position != command.At) return View("stale_position", format, request.PlayerId);
             await EnsureItemsAsync(command.At.Slot);
@@ -64,13 +75,13 @@ public class SessionGrain(
                 && (request.ReceivedAt > dueAt + format.Spec.Grace || clock.Now > dueAt + format.Spec.Grace))
                 return View("late_answer", format, request.PlayerId);
 
-            var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace);
+            var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
             try { format.Apply(transition, command); }
             catch (SessionCommandException exception) { return View(exception.Code, format, request.PlayerId); }
-            catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or KeyNotFoundException)
+            catch (Exception exception) when (!IsInfrastructureFailure(exception))
             {
-                logger.LogDebug(exception, "Format rejected command for {SessionId}", _sessionId);
-                return View("invalid_command", format, request.PlayerId);
+                await RecordFaultAsync(exception);
+                return SessionCommandResult.Error("session_busy", retryable: true);
             }
             if (!transition.Changed) return View("ok", format, request.PlayerId);
 
@@ -97,6 +108,7 @@ public class SessionGrain(
                 _state = current with { Session = current.Session with { Version = version } };
                 _state = await snapshots.LoadAsync(_tenantId, _sessionId)
                     ?? throw new StaleActivationException();
+                ArmDeadlineTimer();
             }
             catch (StaleActivationException) { throw; }
             catch (Exception exception) when (IsUnknownCommit(exception)) { throw; }
@@ -128,11 +140,130 @@ public class SessionGrain(
             DropState();
             return SessionCommandResult.Error("retryable", retryable: true);
         }
+        catch (Exception exception) when (IsInfrastructureFailure(exception))
+        {
+            logger.LogWarning(exception, "Session command infrastructure failed for {SessionId}", _sessionId);
+            DropState();
+            return SessionCommandResult.Error("retryable", retryable: true);
+        }
+    }
+
+    public async Task TimeoutAsync(DateTimeOffset dueAt)
+    {
+        try
+        {
+            _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
+            if (_state is null) { Deactivate(); return; }
+            if (_state.Session.Ended || _state.Session.DueAt != dueAt || dueAt > clock.Now
+                || _state.Session.RetryAt is { } retryAt && retryAt > clock.Now) { ArmDeadlineTimer(); return; }
+            if (ShouldExpire(_state))
+            {
+                await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Expired);
+                _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+                ArmDeadlineTimer();
+                return;
+            }
+            if (!formats.TryGet(_state.Session.Format ?? "", out var format) || format is null) return;
+            if (format.MaximumDeadlineLateness is { } limit && clock.Now - dueAt > limit)
+            {
+                await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Outage);
+                _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+                ArmDeadlineTimer();
+                return;
+            }
+            var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
+            try { format.Timeout(transition); }
+            catch (Exception exception) when (!IsInfrastructureFailure(exception))
+            {
+                await RecordFaultAsync(exception);
+                return;
+            }
+            // A timeout delivery is identified solely by its due_at value.  Consume that
+            // identity even when the format leaves it unchanged so duplicate timer and
+            // sweep deliveries cannot run the same timeout transition again.
+            if (transition.Changed && transition.Current.Session.DueAt == dueAt) transition.ClearDeadline();
+            if (!transition.Changed) { ArmDeadlineTimer(); return; }
+            var version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, transition.Current);
+            _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
+            _state = _state with { Session = _state.Session with { Version = version } };
+            ArmDeadlineTimer();
+        }
+        catch (Exception exception) when (IsInfrastructureFailure(exception))
+        {
+            logger.LogWarning(exception, "Session timeout has an uncertain persistence outcome for {SessionId}", _sessionId);
+            DropState();
+            throw;
+        }
+    }
+
+    private async Task<bool> ReconcileAsync()
+    {
+        if (ShouldExpire(_state!))
+        {
+            await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Expired);
+            _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+            ArmDeadlineTimer();
+            return true;
+        }
+        if (_state!.Session.DueAt is { } dueAt && dueAt <= clock.Now && !(_state.Session.RetryAt is { } retryAt && retryAt > clock.Now))
+        {
+            await TimeoutAsync(dueAt);
+            return _state is null || _state.Session.Ended;
+        }
+        return false;
+    }
+
+    private bool ShouldExpire(SessionState state) => state.Session.StartedAt is { } started && clock.Now >= started.AddDays(90)
+        || state.Session.Status == "lobby" && state.Session.DueAt is { } lobbyDue && lobbyDue <= clock.Now;
+
+    private async Task RecordFaultAsync(Exception exception)
+    {
+        var count = _state!.Session.FaultCount + 1;
+        var delay = TimeSpan.FromSeconds(Math.Min(60, Math.Pow(2, Math.Max(0, count - 1))));
+        logger.LogWarning(exception, "Format or kind failed for {SessionId}; retrying after {Delay}", _sessionId, delay);
+        await store.RecordFaultAsync(_tenantId, _sessionId, _state.Session.Version, clock.Now.Add(delay));
+        _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+        ArmDeadlineTimer();
+    }
+
+    private void ArmDeadlineTimer()
+    {
+        var session = _state?.Session;
+        if (_tenantId == Guid.Empty || session is null || session.Ended || session.DueAt is null)
+        {
+            DisposeDeadlineTimer();
+            return;
+        }
+        var dueAt = session.DueAt.Value;
+        var wakeAt = session.RetryAt is { } retryAt && retryAt > dueAt ? retryAt : dueAt;
+        if (_timerWakeAt == wakeAt && _timerDueAt == dueAt) return;
+        DisposeDeadlineTimer();
+        if (wakeAt - clock.Now > TimeSpan.FromMinutes(2)) return;
+        _timerWakeAt = wakeAt;
+        _timerDueAt = dueAt;
+        _deadlineTimer = this.RegisterGrainTimer(
+            cancellationToken => TimeoutAsync(dueAt),
+            new GrainTimerCreationOptions(wakeAt > clock.Now ? wakeAt - clock.Now : TimeSpan.Zero, Timeout.InfiniteTimeSpan)
+            { Interleave = false, KeepAlive = false });
+    }
+
+    private void DisposeDeadlineTimer()
+    {
+        _deadlineTimer?.Dispose();
+        _deadlineTimer = null;
+        _timerWakeAt = null;
+        _timerDueAt = null;
     }
 
     private SessionCommandResult View(string code, IFormat format, string viewer)
     {
         var view = views.Render(_state!, format, viewer, clock.Now);
+        return new SessionCommandResult(code, false, view.Version, view.Json);
+    }
+
+    private SessionCommandResult CancelledView(string code, string viewer)
+    {
+        var view = views.RenderCancelled(_state!, viewer, clock.Now);
         return new SessionCommandResult(code, false, view.Version, view.Json);
     }
 
@@ -153,13 +284,15 @@ public class SessionGrain(
     }
     private static bool TryPhase(string value, out int phase) => int.TryParse(value, out phase) || (phase = value.ToLowerInvariant() switch { "lobby" or "idle" => -1, _ => int.MinValue }) != int.MinValue;
     private static bool IsUnknownCommit(Exception exception) => exception is TenantCommitOutcomeUnknownException;
+    private static bool IsInfrastructureFailure(Exception exception) => exception is TenantCommitOutcomeUnknownException
+        or StaleActivationException or TimeoutException or OperationCanceledException or System.Data.Common.DbException;
     private async Task EnsureItemsAsync(params int[] slots)
     {
         var missing = slots.Where(slot => slot >= 0 && !_state!.Items.ContainsKey(slot)).Distinct().ToArray();
         if (missing.Length == 0) return;
         _state = _state!.WithItems(await snapshots.LoadItemsAsync(_tenantId, _sessionId, missing));
     }
-    private void DropState() { _state = null; Deactivate(); }
+    private void DropState() { DisposeDeadlineTimer(); _state = null; Deactivate(); }
 
     /// <summary>Requests that the activation be discarded after its cached state becomes invalid.</summary>
     protected virtual void Deactivate() => DeactivateOnIdle();

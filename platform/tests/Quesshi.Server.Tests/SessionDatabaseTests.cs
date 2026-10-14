@@ -20,7 +20,42 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
         var names = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly).Select(migration => migration.Name).ToArray();
 
         Assert.Contains("20261013T0102_core_sessions.sql", names);
+        Assert.Contains("20261014T0204_core_deadlines.sql", names);
         Assert.True(Array.IndexOf(names, "20261013T0101_core_jobs.sql") < Array.IndexOf(names, "20261013T0102_core_sessions.sql"));
+    }
+
+    [SkippableFact]
+    public async Task Due_sessions_returns_only_due_unheld_rows_to_the_system_sweep()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var retrying = Guid.NewGuid();
+        var future = Guid.NewGuid();
+        var asOf = DateTimeOffset.UtcNow;
+
+        await InsertSessionAsync(owner, TenantA, first, OwnerA, "due-first");
+        await InsertSessionAsync(owner, TenantB, second, OwnerB, "due-second");
+        await InsertSessionAsync(owner, TenantA, retrying, OwnerA, "retrying");
+        await InsertSessionAsync(owner, TenantA, future, OwnerA, "future");
+        await ExecuteAsync(owner, "update sessions set due_at = @due where id = @session", ("due", asOf.AddSeconds(-3)), ("session", first));
+        await ExecuteAsync(owner, "update sessions set due_at = @due where id = @session", ("due", asOf.AddSeconds(-2)), ("session", second));
+        await ExecuteAsync(owner, "update sessions set due_at = @due, retry_at = @retry where id = @session", ("due", asOf.AddSeconds(-4)), ("retry", asOf.AddMinutes(1)), ("session", retrying));
+        await ExecuteAsync(owner, "update sessions set due_at = @due where id = @session", ("due", asOf.AddMinutes(1)), ("session", future));
+
+        await using var system = await OpenAsync("quesshi_system");
+        await using var command = new NpgsqlCommand("select id from due_sessions(@asOf, @maxRows, @skip)", system);
+        command.Parameters.AddWithValue("asOf", asOf);
+        command.Parameters.AddWithValue("maxRows", 256);
+        command.Parameters.AddWithValue("skip", new[] { first });
+        await using var reader = await command.ExecuteReaderAsync();
+        var actual = new List<Guid>();
+        while (await reader.ReadAsync()) actual.Add(reader.GetGuid(0));
+        Assert.Equal([second], actual);
+
+        Assert.False(await ScalarAsync<bool>(owner, "select has_function_privilege('quesshi_app', 'due_sessions(timestamptz, int, uuid[])', 'EXECUTE')"));
+        Assert.True(await ScalarAsync<bool>(owner, "select has_function_privilege('quesshi_system', 'due_sessions(timestamptz, int, uuid[])', 'EXECUTE')"));
     }
 
     [SkippableFact]

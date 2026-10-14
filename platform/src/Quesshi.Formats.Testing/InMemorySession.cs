@@ -110,8 +110,13 @@ public sealed class InMemorySession : ISession, IViewing
 
     public void SetPosition(int phase, int slot, int step = 0)
     {
+        var beginsSharedPlay = Session.Position is null;
         var row = Session with { Position = new Position(phase, slot, step), PositionStartedAt = _clock.Now };
-        Transition(CurrentState with { Session = row }, "sessions", row.Id, row);
+        var seats = Copy(CurrentState.Seats);
+        foreach (var (player, seat) in seats.Where(pair => beginsSharedPlay && pair.Value.Role == "player" && !pair.Value.IsGuest).ToArray())
+            seats[player] = seat with { Eligible = true };
+        Transition(CurrentState with { Session = row, Seats = ReadOnly(seats) }, "sessions", row.Id, row);
+        foreach (var seat in seats.Values) Changes = Changes.Add("session_participants", seat.Player, seat);
     }
 
     public void SetSeatPosition(string player, int phase, int slot, int step = 0)
@@ -124,7 +129,8 @@ public sealed class InMemorySession : ISession, IViewing
 
     public void Serve(string player, int slot)
     {
-        var seat = SeatFor(player) with { Position = new Position(0, slot), PositionStartedAt = _clock.Now };
+        var existing = SeatFor(player);
+        var seat = existing with { Position = new Position(0, slot), PositionStartedAt = _clock.Now, Eligible = existing.Eligible || existing.Role == "player" && !existing.IsGuest };
         var seats = Copy(CurrentState.Seats);
         seats[player] = seat;
         Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);
@@ -189,22 +195,34 @@ public sealed class InMemorySession : ISession, IViewing
 
     public void End(EndReason reason, IReadOnlyList<Standing> standings, JsonElement result)
     {
+        if (reason is not (EndReason.Completed or EndReason.Forfeit or EndReason.NoContest))
+            throw new ArgumentException("Formats may only end sessions as completed, forfeit, or no contest.", nameof(reason));
         ArgumentNullException.ThrowIfNull(standings);
-        var players = Seats.Where(seat => seat.Role == "player").Select(seat => seat.Player).Order().ToArray();
-        if (!players.SequenceEqual(standings.Select(standing => standing.Player).Order(), StringComparer.Ordinal))
-            throw new InvalidOperationException("Standings must cover every player seat.");
+        var players = Seats.Where(seat => seat.Role == "player").Select(seat => seat.Player).ToHashSet(StringComparer.Ordinal);
+        var submitted = standings.Select(standing => standing.Player).ToArray();
+        if (submitted.Distinct(StringComparer.Ordinal).Count() != submitted.Length
+            || submitted.Length != players.Count
+            || submitted.Any(player => !players.Contains(player)))
+            throw new ArgumentException("Standings must cover every player seat exactly once.", nameof(standings));
         var seats = Copy(CurrentState.Seats);
         foreach (var standing in standings)
         {
             var seat = seats[standing.Player];
+            var outcome = standing.Outcome ?? "none";
+            if (outcome is not ("win" or "loss" or "draw" or "none"))
+                throw new ArgumentException("Standings must use win, loss, draw, or none outcomes.", nameof(standings));
             seats[standing.Player] = seat with
             {
                 Place = standing.Place,
-                Outcome = standing.Outcome,
+                Outcome = outcome,
+                Ranked = false,
                 Status = seat.Status == SeatStatus.Active ? SeatStatus.Done : seat.Status,
             };
         }
-        var row = Session with { Ended = true, EndReason = reason, Result = result.Clone(), DueAt = null };
+        foreach (var (player, seat) in seats.ToArray())
+            if (seat.Role != "player")
+                seats[player] = seat with { Ranked = false, Status = seat.Status == SeatStatus.Active ? SeatStatus.Done : seat.Status };
+        var row = Session with { Ended = true, EndReason = reason, Result = result.Clone(), DueAt = null, RetryAt = null, FaultCount = 0, Status = "finished" };
         Transition(
             CurrentState with
             {

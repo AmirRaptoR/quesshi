@@ -101,6 +101,35 @@ public sealed class FormatContractTests
     }
 
     [Fact]
+    public void Starting_shared_or_personal_play_fixes_eligibility_for_account_players_only()
+    {
+        var shared = Harness(State(players: 2, slots: 1));
+        shared.SetPosition(0, 0);
+        Assert.All(shared.Seats, seat => Assert.True(seat.Eligible));
+
+        var guestState = State(players: 1, slots: 1);
+        guestState = guestState with { Seats = SessionState.ReadOnly(new Dictionary<string, Seat>(guestState.Seats)
+        {
+            ["a"] = guestState.Seats["a"] with { IsGuest = true }
+        }) };
+        var guest = Harness(guestState);
+        guest.SetPosition(0, 0);
+        Assert.False(Assert.Single(guest.Seats).Eligible);
+
+        var upgradedGuest = guest.CurrentState with { Seats = SessionState.ReadOnly(new Dictionary<string, Seat>(guest.CurrentState.Seats)
+        {
+            ["a"] = guest.CurrentState.Seats["a"] with { IsGuest = false }
+        }) };
+        var nextSharedPosition = Harness(upgradedGuest);
+        nextSharedPosition.SetPosition(0, 1);
+        Assert.False(Assert.Single(nextSharedPosition.Seats).Eligible);
+
+        var personal = Harness(State(players: 1, slots: 1));
+        personal.Serve("a", 0);
+        Assert.True(Assert.Single(personal.Seats).Eligible);
+    }
+
+    [Fact]
     public void Record_preserves_first_answer_revision()
     {
         var session = Harness(State(players: 1, slots: 1));
@@ -172,6 +201,30 @@ public sealed class FormatContractTests
         Assert.Equal(SeatStatus.Done, session.Seats.Single(seat => seat.Player == "a").Status);
         Assert.Equal(SeatStatus.Eliminated, session.Seats.Single(seat => seat.Player == "b").Status);
         Assert.Equal(SeatStatus.Left, session.Seats.Single(seat => seat.Player == "c").Status);
+    }
+
+    [Fact]
+    public void Ending_rejects_incomplete_or_duplicate_standings_before_changing_the_session()
+    {
+        var session = Harness(State(players: 2, slots: 1));
+
+        Assert.Throws<ArgumentException>(() => session.End(EndReason.Completed, [new Standing("a", 1, "win")], Json("{}")));
+        Assert.Throws<ArgumentException>(() => session.End(EndReason.Completed, [new Standing("a", 1, "win"), new Standing("a", 2, "loss")], Json("{}")));
+        Assert.False(session.Session.Ended);
+    }
+
+    [Fact]
+    public void No_contest_normalizes_missing_outcomes_and_never_ranks_a_seat()
+    {
+        var session = Harness(State(players: 2, slots: 1));
+
+        session.End(EndReason.NoContest, [new Standing("a", 1), new Standing("b", 1)], Json("{}"));
+
+        Assert.All(session.Seats, seat =>
+        {
+            Assert.Equal("none", seat.Outcome);
+            Assert.False(seat.Ranked);
+        });
     }
 
     [Fact]

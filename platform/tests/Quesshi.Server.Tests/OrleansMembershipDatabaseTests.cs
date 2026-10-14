@@ -180,7 +180,9 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
             Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/health")).StatusCode);
 
             await app.Services.GetRequiredService<PostgresClock>().StartAsync();
-            Assert.Equal(System.Net.HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode);
+            await WaitUntilAsync(
+                async () => (await client.GetAsync("/health")).StatusCode == System.Net.HttpStatusCode.OK,
+                "health did not become ready after the background loops completed their first pass");
 
             var loop = app.Services.GetRequiredService<IBackgroundLoopRegistry>().Register("test-loop");
             Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/health")).StatusCode);
@@ -270,6 +272,18 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         }
 
         throw new TimeoutException($"Expected {expected} active silos in PostgreSQL membership.");
+    }
+
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        while (TimeProvider.System.GetElapsedTime(started) < TimeSpan.FromSeconds(5))
+        {
+            if (await condition()) return;
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+
+        Assert.Fail(failureMessage);
     }
 
     private sealed class CapturingLoggerProvider : ILoggerProvider, ISupportExternalScope

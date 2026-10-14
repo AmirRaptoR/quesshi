@@ -886,9 +886,10 @@ create function due_sessions(as_of timestamptz, max_rows int, skip uuid[])
   language sql stable security definer set search_path = public
   begin atomic
     select s.tenant_id, s.id, s.due_at from sessions s
-    where s.due_at <= as_of and (s.retry_at is null or s.retry_at <= as_of)
-      and not (s.id = any (skip))
-    order by s.due_at limit max_rows;
+    where s.due_at is not null and s.due_at <= as_of
+      and (s.retry_at is null or s.retry_at <= as_of)
+      and s.id <> all(coalesce(skip, '{}'::uuid[]))
+    order by s.due_at, s.id limit greatest(0, least(coalesce(max_rows, 0), 256));
   end;
 
 -- One account's live profiles across tenants: used to pre-fill a first visit and to find what to
@@ -915,6 +916,7 @@ begin
   end if;
 end $$;
 
+revoke all on function due_sessions(timestamptz, int, uuid[]) from public, quesshi_app;
 grant execute on function due_sessions(timestamptz, int, uuid[]) to quesshi_system;
 grant execute on function account_players(uuid) to quesshi_system;
 grant execute on function claim_account(uuid) to quesshi_app;

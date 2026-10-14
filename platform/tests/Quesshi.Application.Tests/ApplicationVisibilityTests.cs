@@ -26,6 +26,7 @@ public sealed class ApplicationVisibilityTests
                 typeof(NoopSessionDeadlineReconciler),
                 typeof(RenderedSessionView),
                 typeof(RowChange),
+                typeof(SessionFaultResult),
                 typeof(SessionItemState),
                 typeof(SessionSnapshotLoader),
                 typeof(SessionState),

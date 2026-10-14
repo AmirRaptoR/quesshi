@@ -11,7 +11,8 @@ public class SessionCommandException(string code) : InvalidOperationException(co
 {
     public string Code { get; } = code;
 }
-public enum EndReason { Completed, Forfeit, NoContest }
+public enum EndReason { Completed, Forfeit, NoContest, Owner, Admin, Expired, Fault, Outage }
+public enum CoreEndReason { Owner, Admin, Expired, Fault, Outage }
 public enum SeatStatus { Active, Done, Left, Eliminated }
 
 public sealed record Role(string Id, bool Plays = true);
@@ -58,6 +59,8 @@ public interface IFormat
     void Timeout(ISession session);
     object View(IViewing viewing);
     DateTimeOffset? Deadline(IViewing viewing) => viewing.Session.DueAt;
+    /// <summary>How late a timeout may be applied before the engine cancels it as an outage.</summary>
+    TimeSpan? MaximumDeadlineLateness => null;
     JsonElement UpgradeState(int from, JsonElement state);
     JsonElement UpgradeRules(int from, JsonElement rules);
     JsonElement UpgradeResult(int from, JsonElement result);
@@ -111,7 +114,8 @@ public sealed record SessionRow(
     string? Code = null,
     JsonElement? Content = null,
     JsonElement? Rules = null,
-    long ConfigVersion = 0);
+    long ConfigVersion = 0,
+    short FaultCount = 0);
 
 public sealed record Seat(
     string Player,
@@ -126,7 +130,10 @@ public sealed record Seat(
     SeatStatus Status = SeatStatus.Active,
     JsonElement? Result = null,
     int Number = 0,
-    string? DisplayName = null);
+    string? DisplayName = null,
+    bool Eligible = false,
+    bool? Ranked = null,
+    bool IsGuest = false);
 
 /// <summary>Item metadata deliberately excludes question payload and resolved answer data.</summary>
 public sealed record SessionItem(int Slot, string Kind, int KindVersion, int? Level, string? Category);
