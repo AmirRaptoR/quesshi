@@ -304,7 +304,9 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
     private sealed class ReconciliationTransaction(Guid sessionId, long version, long? configVersion) : ITenantTx
     {
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<T>>([(T)(object)new StreamHub.SessionVersion(sessionId, version)]);
+            Task.FromResult<IReadOnlyList<T>>(typeof(T) == typeof(StreamHub.SessionVersion)
+                ? [(T)(object)new StreamHub.SessionVersion(sessionId, version)]
+                : []);
 
         public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(0);

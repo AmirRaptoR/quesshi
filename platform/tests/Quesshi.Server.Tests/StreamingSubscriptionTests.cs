@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Accounts;
 using Quesshi.Server.Streaming;
 
 namespace Quesshi.Server.Tests;
@@ -109,6 +110,40 @@ public sealed class StreamingSubscriptionTests
 
         await hub.ReconcileAsync();
 
+        hub.Dispose();
+    }
+
+    [Fact]
+    public async Task Account_deletion_revocation_closes_only_the_deleted_players_stream()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var deleted = hub.Subscribe(tenant, player.ToString(), null);
+        var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
+
+        hub.Deleted([new AccountDeletionPlayer(tenant, player)]);
+
+        var message = await ReadAsync(deleted);
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.False(other.Messages.TryRead(out _));
+        hub.Dispose();
+    }
+
+    [Fact]
+    public async Task Reconciliation_revokes_a_deleted_player()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var hub = new StreamHub(null!, null!, null!, new ReconciliationDatabase(Guid.NewGuid(), 0), new Notifications(),
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var subscription = hub.Subscribe(tenant, player.ToString(), null);
+
+        await hub.ReconcileAsync();
+
+        var message = await ReadAsync(subscription);
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
         hub.Dispose();
     }
 
@@ -271,7 +306,9 @@ public sealed class StreamingSubscriptionTests
     private sealed class ReconciliationTransaction(Guid sessionId, long version) : ITenantTx
     {
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<T>>([(T)(object)new StreamHub.SessionVersion(sessionId, version)]);
+            Task.FromResult<IReadOnlyList<T>>(typeof(T) == typeof(StreamHub.SessionVersion)
+                ? [(T)(object)new StreamHub.SessionVersion(sessionId, version)]
+                : []);
 
         public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(0);
