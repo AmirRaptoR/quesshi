@@ -97,7 +97,8 @@ public sealed class SessionStateStore(ITenantDb database)
                 result = JsonSerializer.Serialize(seat.Result ?? JsonSerializer.SerializeToElement(new { }))
             }, cancellationToken);
         }
-        await tx.ExecuteAsync("select pg_notify('quesshi_session', @message)", new { message = $"{tenantId}:{sessionId}:{version.Value}" }, cancellationToken);
+        var phase = session.Position?.Phase.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "lobby";
+        await tx.ExecuteAsync("select pg_notify('quesshi_session', @message)", new { message = $"{tenantId}:{sessionId}:{version.Value}:{phase}" }, cancellationToken);
         return version.Value;
     }
 

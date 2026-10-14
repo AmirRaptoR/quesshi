@@ -103,8 +103,7 @@ internal sealed class StreamHub : BackgroundService
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
     private readonly object _sessionGateLock = new();
     private readonly SemaphoreSlim _renderJobs = new(8, 8);
-    private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), long> _pendingVersions = new();
-    private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), byte> _scheduledRenders = new();
+    private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionRenderSchedule> _renderSchedules = new();
     private int _disposed;
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
@@ -128,6 +127,7 @@ internal sealed class StreamHub : BackgroundService
     }
 
     internal int SessionGateCount => _sessionGates.Count;
+    internal int SubscriptionCount => _subscriptions.Count;
 
     public void Unsubscribe(StreamSubscription subscription)
     {
@@ -199,7 +199,7 @@ internal sealed class StreamHub : BackgroundService
         }
     }
 
-    private sealed record SessionVersion(Guid SessionId, long Version);
+    internal sealed record SessionVersion(Guid SessionId, long Version);
     private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, long? ConfigVersion);
 
     private void OnNotification(StreamNotification notification)
@@ -209,8 +209,8 @@ internal sealed class StreamHub : BackgroundService
         {
             case StreamNotification.Session session:
                 var key = (session.TenantId, session.SessionId);
-                _pendingVersions.AddOrUpdate(key, session.Version, (_, existing) => Math.Max(existing, session.Version));
-                if (_scheduledRenders.TryAdd(key, 0)) _ = CoalescedRenderAsync(session.TenantId, session.SessionId);
+                var schedule = _renderSchedules.GetOrAdd(key, _ => new SessionRenderSchedule());
+                if (schedule.Queue(session)) _ = CoalescedRenderAsync(session.TenantId, session.SessionId, schedule);
                 break;
             case StreamNotification.Config config:
                 BroadcastConfig(config.TenantId, config.Version);
@@ -221,20 +221,18 @@ internal sealed class StreamHub : BackgroundService
         }
     }
 
-    private async Task CoalescedRenderAsync(Guid tenantId, Guid sessionId)
+    private async Task CoalescedRenderAsync(Guid tenantId, Guid sessionId, SessionRenderSchedule schedule)
     {
         var key = (tenantId, sessionId);
         try
         {
-            // A single scheduled render absorbs bursts, then leaves at least 250ms before a
-            // newly-arrived version can produce another delivery.
-            do
+            while (schedule.TakePending(out _, out var immediate, out var signal))
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(250));
-                _pendingVersions.TryRemove(key, out _);
-                await RenderSessionAsync(tenantId, sessionId, CancellationToken.None);
+                // A phase marker wakes the coalescer immediately. Other changes wait for the
+                // next 250ms window, capping same-phase deliveries at four per second.
+                if (!immediate) await Task.WhenAny(Task.Delay(TimeSpan.FromMilliseconds(250)), signal.Task);
+                await RenderSessionAsync(tenantId, sessionId, CancellationToken.None, schedule);
             }
-            while (_pendingVersions.ContainsKey(key));
         }
         catch (Exception exception)
         {
@@ -242,12 +240,79 @@ internal sealed class StreamHub : BackgroundService
         }
         finally
         {
-            _scheduledRenders.TryRemove(key, out _);
-            if (_pendingVersions.ContainsKey(key) && _scheduledRenders.TryAdd(key, 0)) _ = CoalescedRenderAsync(tenantId, sessionId);
+            if (schedule.Stop())
+            {
+                _ = CoalescedRenderAsync(tenantId, sessionId, schedule);
+            }
+            else if (!_subscriptions.Values.Any(subscription => subscription.TenantId == tenantId && subscription.SessionId == sessionId))
+            {
+                _renderSchedules.TryRemove(new KeyValuePair<(Guid Tenant, Guid Session), SessionRenderSchedule>(key, schedule));
+            }
         }
     }
 
-    private async Task RenderSessionAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken)
+    private sealed class SessionRenderSchedule
+    {
+        private readonly object _gate = new();
+        private long _pendingVersion = -1;
+        private string? _phase;
+        private bool _immediate;
+        private bool _running;
+        private TaskCompletionSource _phaseChanged = NewSignal();
+
+        public bool Queue(StreamNotification.Session notification)
+        {
+            lock (_gate)
+            {
+                _pendingVersion = Math.Max(_pendingVersion, notification.Version);
+                var phaseChanged = notification.Phase is null || !StringComparer.Ordinal.Equals(_phase, notification.Phase);
+                if (notification.Phase is not null) _phase = notification.Phase;
+                if (phaseChanged)
+                {
+                    _immediate = true;
+                    _phaseChanged.TrySetResult();
+                }
+                if (_running) return false;
+                _running = true;
+                return true;
+            }
+        }
+
+        public bool TakePending(out long version, out bool immediate, out TaskCompletionSource signal)
+        {
+            lock (_gate)
+            {
+                version = _pendingVersion;
+                immediate = _immediate;
+                signal = _phaseChanged;
+                if (version < 0) return false;
+                _pendingVersion = -1;
+                _immediate = false;
+                _phaseChanged = NewSignal();
+                return true;
+            }
+        }
+
+        public bool Stop()
+        {
+            lock (_gate)
+            {
+                if (_pendingVersion >= 0) return true;
+                _running = false;
+                return false;
+            }
+        }
+
+        public bool HasNewerVersion(long version)
+        {
+            lock (_gate) return _pendingVersion > version;
+        }
+
+        private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private async Task RenderSessionAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken,
+        SessionRenderSchedule? schedule = null)
     {
         var targets = _subscriptions.Values.Where(subscription => subscription.TenantId == tenantId && subscription.SessionId == sessionId).ToArray();
         if (targets.Length == 0) return;
@@ -269,6 +334,9 @@ internal sealed class StreamHub : BackgroundService
                     foreach (var target in targets) target.QueueGone("not_found");
                     return;
                 }
+                // A later notification arrived while this snapshot was loading. Let its render
+                // replace this stale result before a subscriber can observe it.
+                if (schedule?.HasNewerVersion(state.Session.Version) == true) return;
                 if (!targets.Any(target => target.NeedsView(state.Session.Version))) return;
                 if (!formats.TryGet(state.Session.Format ?? "", out var format) || format is null)
                 {

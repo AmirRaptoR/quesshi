@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Quesshi.Server.Security;
 using Quesshi.Server.Tenants;
@@ -18,7 +19,7 @@ internal static class StreamEndpoints
         return endpoints;
     }
 
-    private static async Task StreamAsync(HttpContext context, [FromServices] StreamHub hub, [FromServices] ILogger<StreamHub> logger, Guid? session,
+    internal static async Task StreamAsync(HttpContext context, [FromServices] StreamHub hub, [FromServices] ILogger<StreamHub> logger, Guid? session,
         CancellationToken cancellationToken)
     {
         var player = Player(context);
@@ -35,6 +36,7 @@ internal static class StreamEndpoints
         context.Response.Headers.CacheControl = "no-cache, no-transform";
         context.Response.Headers["X-Accel-Buffering"] = "no";
         context.Response.Headers["Content-Encoding"] = "identity";
+        context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
         var subscription = hub.Subscribe(tenant.Id, player.PlayerId.ToString(), session);
         try
