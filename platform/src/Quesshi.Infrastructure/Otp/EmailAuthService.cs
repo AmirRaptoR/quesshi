@@ -177,12 +177,25 @@ internal sealed class EmailAuthService
                         : new ProfileConfirmation(ProfileConfirmationState.Unavailable);
                 }
 
-                var id = Guid.NewGuid();
-                await transaction.ExecuteAsync("""
+                var id = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
                     insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang)
                     values (@tenantId, @id, @accountId, @displayName, @avatarSeed, @language)
-                    """, new { tenantId, id, accountId, displayName = displayName.Trim(), avatarSeed = avatarSeed.Trim(), language }, cancellationToken);
-                return new ProfileConfirmation(ProfileConfirmationState.Created, id);
+                    on conflict (tenant_id, account_id) do nothing
+                    returning id
+                    """, new { tenantId, id = Guid.NewGuid(), accountId, displayName = displayName.Trim(), avatarSeed = avatarSeed.Trim(), language }, cancellationToken);
+                if (id is not null)
+                {
+                    return new ProfileConfirmation(ProfileConfirmationState.Created, id);
+                }
+
+                var concurrent = await transaction.QuerySingleOrDefaultAsync<PlayerRow>("""
+                    select id as Id, banned_at as BannedAt, deleted_at as DeletedAt
+                    from players where account_id = @accountId
+                    """, new { accountId }, cancellationToken)
+                    ?? throw new InvalidOperationException("A concurrent player creation did not persist a player.");
+                return concurrent.BannedAt is null && concurrent.DeletedAt is null
+                    ? new ProfileConfirmation(ProfileConfirmationState.Existing, concurrent.Id)
+                    : new ProfileConfirmation(ProfileConfirmationState.Unavailable);
             }, cancellationToken: cancellationToken);
         }
         catch (PostgresException exception) when (exception.SqlState == "P0002")

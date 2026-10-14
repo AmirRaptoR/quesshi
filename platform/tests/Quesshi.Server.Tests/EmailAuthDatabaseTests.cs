@@ -87,6 +87,46 @@ public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Concurrent_profile_confirmations_create_one_player_and_both_succeed()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var service = CreateService(sender);
+        var account = await VerifyNewAccountAsync(service, sender, "concurrent-profile@example.test", "192.0.2.12");
+        var firstToken = service.CreateProfileToken(TenantA, account);
+        var secondToken = service.CreateProfileToken(TenantA, account);
+        Assert.Equal(account, await service.ConsumeProfileTokenAsync(firstToken, TenantA));
+        Assert.Equal(account, await service.ConsumeProfileTokenAsync(secondToken, TenantA));
+
+        await ExecuteAsync(owner, """
+            create function pause_profile_creation() returns trigger language plpgsql as $$
+            begin
+              perform pg_sleep(0.2);
+              return new;
+            end
+            $$;
+            create trigger pause_profile_creation before insert on players
+            for each row execute function pause_profile_creation();
+            """);
+        try
+        {
+            var results = await Task.WhenAll(
+                service.ConfirmProfileAsync(TenantA, account, "Concurrent profile", "seed-a", "en"),
+                service.ConfirmProfileAsync(TenantA, account, "Concurrent profile", "seed-b", "en"));
+
+            Assert.Contains(results, result => result.State == ProfileConfirmationState.Created);
+            Assert.Contains(results, result => result.State == ProfileConfirmationState.Existing);
+            Assert.All(results, result => Assert.NotNull(result.PlayerId));
+            Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from players where tenant_id = @tenant and account_id = @account", ("tenant", TenantA), ("account", account)));
+        }
+        finally
+        {
+            await ExecuteAsync(owner, "drop trigger if exists pause_profile_creation on players; drop function if exists pause_profile_creation()");
+        }
+    }
+
+    [SkippableFact]
     public async Task Expired_rate_limits_and_profile_token_records_are_removed_during_authentication()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
