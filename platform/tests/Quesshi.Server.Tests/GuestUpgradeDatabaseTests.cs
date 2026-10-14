@@ -3,10 +3,13 @@ using System.Text;
 using Dapper;
 using Npgsql;
 using Quesshi.Application.Identity;
+using Quesshi.Application.Sessions;
+using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
+using Quesshi.Shared;
 using Quesshi.Testing;
 
 namespace Quesshi.Server.Tests;
@@ -43,7 +46,7 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Run_started_after_upgrade_uses_account_eligibility()
+    public async Task Run_started_after_upgrade_uses_snapshot_account_eligibility()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
@@ -55,10 +58,26 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
         Assert.Equal(GuestUpgradeState.Upgraded,
             (await service.VerifyAndAttachAsync(TenantA, guest, "eligible-after-upgrade@example.test", sender.LastCode)).State);
 
+        var unupgradedGuest = await CreateGuestAsync(owner, TenantA);
         var laterSession = Guid.NewGuid();
-        await StartRunAsync(owner, TenantA, laterSession, guest);
+        await owner.ExecuteAsync("""
+            insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, started_at)
+            values (@tenant, @session, @code, 'test', @owner, 'en', 'running', 2, '{}'::jsonb, now());
+            insert into session_participants (tenant_id, session_id, player_id, seat)
+            values (@tenant, @session, @upgraded, 0), (@tenant, @session, @guest, 1);
+            """, new { tenant = TenantA, session = laterSession, code = $"upgrade-{laterSession:N}", owner = guest, upgraded = guest, guest = unupgradedGuest });
 
-        Assert.True(await owner.QuerySingleAsync<bool>("select eligible from session_participants where tenant_id = @tenant and session_id = @session and player_id = @player", new { tenant = TenantA, session = laterSession, player = guest }));
+        var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var snapshot = Assert.IsType<SessionState>(await new SessionSnapshotLoader(new TenantDb(sources)).LoadAsync(TenantA, laterSession));
+        Assert.False(snapshot.Seats[guest.ToString()].IsGuest);
+        Assert.True(snapshot.Seats[unupgradedGuest.ToString()].IsGuest);
+
+        var transition = new SessionTransition(snapshot, new KindRegistry([]), new TestClock(DateTimeOffset.UnixEpoch), TimeSpan.Zero);
+        transition.Serve(guest.ToString(), 0);
+        transition.Serve(unupgradedGuest.ToString(), 0);
+
+        Assert.True(transition.Current.Seats[guest.ToString()].Eligible);
+        Assert.False(transition.Current.Seats[unupgradedGuest.ToString()].Eligible);
     }
 
     [SkippableFact]
@@ -161,15 +180,6 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
         var guest = Guid.NewGuid();
         return owner.ExecuteScalarAsync<Guid>("insert into players(tenant_id, id, display_name, avatar_seed, lang) values (@tenant, @guest, 'Guest', 'seed', 'en') returning id", new { tenant, guest });
     }
-
-    private static Task StartRunAsync(NpgsqlConnection owner, Guid tenant, Guid session, Guid player) =>
-        owner.ExecuteAsync("""
-            insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase, started_at)
-            values (@tenant, @session, @code, 'test', @player, 'en', 'running', 1, '{}'::jsonb, 'started', now());
-            insert into session_participants (tenant_id, session_id, player_id, seat, eligible)
-            select @tenant, @session, id, 0, account_id is not null
-            from players where tenant_id = @tenant and id = @player;
-            """, new { tenant, session, player, code = $"upgrade-{session:N}" });
 
     private sealed class CapturingSender : IEmailCodeSender
     {
