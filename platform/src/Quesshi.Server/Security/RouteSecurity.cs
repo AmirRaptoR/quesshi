@@ -98,7 +98,7 @@ internal static class RouteSecurity
         if (player is null) return Results.Unauthorized();
         if (player.IsGuest && context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<AllowGuestsMetadata>() is null)
         {
-            return Results.Forbid();
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
         return await next(context);
