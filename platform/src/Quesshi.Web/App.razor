@@ -6,7 +6,11 @@
 @inject Translator Translator
 @inject NavigationManager Navigation
 
-@if (Navigation.Uri.Contains("eager-kind-smoke=1", StringComparison.Ordinal))
+@if (Navigation.Uri.Contains("map-pick-smoke=1", StringComparison.Ordinal))
+{
+    <MapPickBrowserSmoke />
+}
+else if (Navigation.Uri.Contains("eager-kind-smoke=1", StringComparison.Ordinal))
 {
     <EagerKindBrowserSmoke />
 }
