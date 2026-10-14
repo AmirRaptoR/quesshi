@@ -17,7 +17,9 @@ namespace Quesshi.Server.Security;
 /// <summary>The tenant-bound player identity carried by the player session cookie.</summary>
 public sealed record PlayerIdentity(Guid TenantId, Guid PlayerId, Guid? AccountId, bool IsGuest)
 {
-    public string Subject => PlayerId.ToString("N");
+    public string Subject => IsGuest
+        ? $"guest:{PlayerId:N}"
+        : $"account:{PlayerId:N}:{AccountId?.ToString("N") ?? "none"}";
 }
 
 /// <summary>Stable issuance surface for sign-in and guest-entry endpoint modules.</summary>

@@ -25,4 +25,20 @@ public sealed class PlayerAntiforgeryTests
         clock.Advance(TimeSpan.FromDays(2));
         Assert.False(antiforgery.IsValid(tenant, player, playerToken));
     }
+
+    [Fact]
+    public void Guest_token_is_rejected_after_the_player_upgrades_to_an_account()
+    {
+        var clock = new TestClock(DateTimeOffset.UnixEpoch);
+        var antiforgery = new PlayerAntiforgery(new EphemeralDataProtectionProvider(), clock);
+        var tenant = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
+        var guest = new PlayerIdentity(tenant, playerId, null, true);
+        var account = new PlayerIdentity(tenant, playerId, Guid.NewGuid(), false);
+
+        var guestToken = antiforgery.Issue(tenant, guest);
+
+        Assert.True(antiforgery.IsValid(tenant, guest, guestToken));
+        Assert.False(antiforgery.IsValid(tenant, account, guestToken));
+    }
 }
