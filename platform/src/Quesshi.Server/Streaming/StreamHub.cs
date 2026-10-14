@@ -26,8 +26,8 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public string PlayerId { get; } = playerId;
     public Guid? SessionId { get; } = sessionId;
     public ChannelReader<StreamMessage> Messages => _messages.Reader;
-    public long LastSentVersion { get; private set; }
-    public long LastQueuedVersion { get; private set; }
+    public long LastSentVersion { get; private set; } = -1;
+    public long LastQueuedVersion { get; private set; } = -1;
     public long LastConfigVersion { get; private set; }
 
     public void QueueView(RenderedSessionView view)
@@ -97,22 +97,25 @@ internal sealed class StreamHub : BackgroundService
     private readonly IFormatRegistry formats;
     private readonly ITenantDb database;
     private readonly IStreamNotificationSource notifications;
+    private readonly IClock clock;
     private readonly ILogger<StreamHub> logger;
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _subscriptions = new();
-    private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SemaphoreSlim> _sessionGates = new();
+    private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
+    private readonly object _sessionGateLock = new();
     private readonly SemaphoreSlim _renderJobs = new(8, 8);
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), long> _pendingVersions = new();
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), byte> _scheduledRenders = new();
     private int _disposed;
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
-        IStreamNotificationSource notifications, ILogger<StreamHub> logger)
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
         this.formats = formats;
         this.database = database;
         this.notifications = notifications;
+        this.clock = clock;
         this.logger = logger;
         notifications.Received += OnNotification;
     }
@@ -124,11 +127,14 @@ internal sealed class StreamHub : BackgroundService
         return subscription;
     }
 
+    internal int SessionGateCount => _sessionGates.Count;
+
     public void Unsubscribe(StreamSubscription subscription)
     {
         var entry = _subscriptions.FirstOrDefault(pair => ReferenceEquals(pair.Value, subscription));
         if (entry.Key != Guid.Empty) _subscriptions.TryRemove(entry.Key, out _);
         subscription.Complete();
+        if (subscription.SessionId is { } sessionId) RemoveGateIfUnwatched((subscription.TenantId, sessionId));
     }
 
     public Task RenderInitialAsync(StreamSubscription subscription, CancellationToken cancellationToken) =>
@@ -144,6 +150,22 @@ internal sealed class StreamHub : BackgroundService
     }
 
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await ReconcileCoreAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Unable to reconcile stream subscriptions; retrying on the next interval.");
+        }
+    }
+
+    private async Task ReconcileCoreAsync(CancellationToken cancellationToken)
     {
         var subscriptions = _subscriptions.Values.ToArray();
         foreach (var tenant in subscriptions.GroupBy(subscription => subscription.TenantId))
@@ -230,10 +252,13 @@ internal sealed class StreamHub : BackgroundService
         var targets = _subscriptions.Values.Where(subscription => subscription.TenantId == tenantId && subscription.SessionId == sessionId).ToArray();
         if (targets.Length == 0) return;
 
-        var gate = _sessionGates.GetOrAdd((tenantId, sessionId), _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
+        var key = (tenantId, sessionId);
+        var gate = AcquireSessionGate(key);
+        var entered = false;
         try
         {
+            await gate.Semaphore.WaitAsync(cancellationToken);
+            entered = true;
             await _renderJobs.WaitAsync(cancellationToken);
             try
             {
@@ -252,7 +277,7 @@ internal sealed class StreamHub : BackgroundService
                     return;
                 }
 
-                var shared = renderer.Snapshot(state, DateTimeOffset.UtcNow);
+                var shared = renderer.Snapshot(state, clock.Now);
                 foreach (var target in targets)
                 {
                     var view = renderer.Render(shared, format, target.PlayerId);
@@ -262,8 +287,48 @@ internal sealed class StreamHub : BackgroundService
             }
             finally { _renderJobs.Release(); }
         }
-        finally { gate.Release(); }
+        finally
+        {
+            if (entered) gate.Semaphore.Release();
+            ReleaseSessionGate(key, gate);
+        }
     }
+
+    private sealed class SessionGate
+    {
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+        public int Users { get; set; }
+    }
+
+    private SessionGate AcquireSessionGate((Guid Tenant, Guid Session) key)
+    {
+        lock (_sessionGateLock)
+        {
+            var gate = _sessionGates.GetOrAdd(key, _ => new SessionGate());
+            gate.Users++;
+            return gate;
+        }
+    }
+
+    private void ReleaseSessionGate((Guid Tenant, Guid Session) key, SessionGate gate)
+    {
+        lock (_sessionGateLock)
+        {
+            gate.Users--;
+            if (gate.Users == 0 && !IsWatched(key)) _sessionGates.TryRemove(key, out _);
+        }
+    }
+
+    private void RemoveGateIfUnwatched((Guid Tenant, Guid Session) key)
+    {
+        lock (_sessionGateLock)
+        {
+            if (_sessionGates.TryGetValue(key, out var gate) && gate.Users == 0 && !IsWatched(key)) _sessionGates.TryRemove(key, out _);
+        }
+    }
+
+    private bool IsWatched((Guid Tenant, Guid Session) key) => _subscriptions.Values.Any(subscription =>
+        subscription.TenantId == key.Tenant && subscription.SessionId == key.Session);
 
     private void BroadcastConfig(Guid tenantId, long version)
     {
