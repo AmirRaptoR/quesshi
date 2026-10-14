@@ -1,4 +1,6 @@
 using Quesshi.Application.Sessions;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -186,6 +188,7 @@ public sealed class StreamingSubscriptionTests
 
         notifications.Publish(new StreamNotification.Session(tenant, session, 0, "0"));
         await ReadAsync(subscription);
+        renderer.ResetSnapshots();
         for (var version = 1; version <= 10; version++)
         {
             loader.State = State(session, version, 1);
@@ -194,7 +197,10 @@ public sealed class StreamingSubscriptionTests
         }
         await Task.Delay(350);
 
-        Assert.InRange(renderer.SnapshotCount - 1, 1, 4);
+        var snapshotTimes = renderer.SnapshotTimes;
+        Assert.NotEmpty(snapshotTimes);
+        Assert.All(snapshotTimes.Zip(snapshotTimes.Skip(1)), pair =>
+            Assert.True(Stopwatch.GetElapsedTime(pair.First, pair.Second) >= TimeSpan.FromMilliseconds(240)));
         hub.Unsubscribe(subscription);
         hub.Dispose();
     }
@@ -360,13 +366,22 @@ public sealed class StreamingSubscriptionTests
         private static readonly PropertyInfo SnapshotState = typeof(SessionViewSnapshot).GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic)!;
         private int _snapshots;
         private int _renders;
+        private readonly ConcurrentQueue<long> _snapshotTimes = new();
         public int SnapshotCount => Volatile.Read(ref _snapshots);
         public int RenderCount => Volatile.Read(ref _renders);
+        public long[] SnapshotTimes => _snapshotTimes.ToArray();
+
+        public void ResetSnapshots()
+        {
+            Interlocked.Exchange(ref _snapshots, 0);
+            while (_snapshotTimes.TryDequeue(out _)) { }
+        }
 
         public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
         public SessionViewSnapshot Snapshot(SessionState state, DateTimeOffset now)
         {
             Interlocked.Increment(ref _snapshots);
+            _snapshotTimes.Enqueue(Stopwatch.GetTimestamp());
             return (SessionViewSnapshot)SnapshotConstructor.Invoke([state, now]);
         }
         public RenderedSessionView? Render(SessionViewSnapshot snapshot, IFormat format, string viewer)
