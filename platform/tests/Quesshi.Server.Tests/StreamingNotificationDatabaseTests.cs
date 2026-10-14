@@ -70,7 +70,7 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
         var session = Guid.NewGuid();
         var player = Guid.NewGuid();
         var loader = new SnapshotLoader(State(session, 2, player.ToString()));
-        var database = new ReconciliationDatabase(session, 2);
+        var database = new ReconciliationDatabase(session, 2, player);
         var first = new PostgresStreamNotificationListener(firstSources, NullLogger<PostgresStreamNotificationListener>.Instance);
         var second = new PostgresStreamNotificationListener(secondSources, NullLogger<PostgresStreamNotificationListener>.Instance);
         var firstHub = Hub(loader, database, first);
@@ -302,23 +302,26 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
         }
     }
 
-    private sealed class ReconciliationDatabase(Guid sessionId, long version) : ITenantDb
+    private sealed class ReconciliationDatabase(Guid sessionId, long version, Guid? livePlayerId = null) : ITenantDb
     {
         public long Version { get; set; } = version;
+        public Guid? LivePlayerId { get; set; } = livePlayerId;
         public long? ConfigVersion { get; set; }
 
         public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback,
             System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted,
             CancellationToken cancellationToken = default, bool readOnly = false) =>
-            callback(new ReconciliationTransaction(sessionId, Version, ConfigVersion));
+            callback(new ReconciliationTransaction(sessionId, Version, LivePlayerId, ConfigVersion));
     }
 
-    private sealed class ReconciliationTransaction(Guid sessionId, long version, long? configVersion) : ITenantTx
+    private sealed class ReconciliationTransaction(Guid sessionId, long version, Guid? livePlayerId, long? configVersion) : ITenantTx
     {
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<T>>(typeof(T) == typeof(StreamHub.SessionVersion)
                 ? [(T)(object)new StreamHub.SessionVersion(sessionId, version)]
-                : []);
+                : typeof(T) == typeof(Guid) && livePlayerId is { } playerId
+                    ? [(T)(object)playerId]
+                    : []);
 
         public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(0);

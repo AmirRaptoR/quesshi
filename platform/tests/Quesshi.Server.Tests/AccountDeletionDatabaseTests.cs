@@ -65,7 +65,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         registry.Jobs.Register("core", "cleanup-player", effects.HandleCleanupJobAsync);
         var worker = new JobWorker(new PostgresJobStore(sources), registry.Jobs, new TenantDb(sources), new OffCapabilities());
 
-        await worker.RunPassAsync(1, TimeSpan.FromMinutes(1));
+        await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
 
         Assert.Equal(AccountPlayerCleanup.DeletedDisplayName, await TenantScalarAsync<string>(seeded.FirstTenant, "select display_name from players where id = @player", new { player = seeded.FirstPlayer }));
         Assert.Equal(AccountPlayerCleanup.DeletedAvatarSeed, await TenantScalarAsync<string>(seeded.FirstTenant, "select avatar_seed from players where id = @player", new { player = seeded.FirstPlayer }));
