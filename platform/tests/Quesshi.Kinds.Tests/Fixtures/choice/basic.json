@@ -15,5 +15,12 @@
     { "submitted": { "index": 1.5 }, "malformed": true },
     { "submitted": {}, "malformed": true },
     { "submitted": { "index": null }, "malformed": true }
+  ],
+  "validation": [
+    { "payload": { "options": ["One", "Two", "Three"], "correctIndex": 0 }, "codes": ["options.tooFew"] },
+    { "payload": { "options": ["One", "Two", "Three", "Four", "Five"], "correctIndex": 0 }, "codes": ["options.tooMany"] },
+    { "payload": { "options": ["One", " ", "Three", "Four"], "correctIndex": 0 }, "codes": ["options.blank"] },
+    { "payload": { "options": ["One", "ONE", "Three", "Four"], "correctIndex": 0 }, "codes": ["options.duplicate"] },
+    { "payload": { "options": ["One", "Two", "Three", "Four"], "correctIndex": 4 }, "codes": ["correctIndex.outOfRange"] }
   ]
 }

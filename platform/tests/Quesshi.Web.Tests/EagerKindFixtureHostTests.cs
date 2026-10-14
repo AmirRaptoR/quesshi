@@ -34,7 +34,7 @@ public sealed class EagerKindFixtureHostTests : BunitContext
         Assert.Equal(["Three", "One"], reveal.FindAll("[data-answer-index]").Select(element => element.TextContent));
 
         AssertEditorRoundTrip(kind.Id, payload);
-        AssertEditorProblems(kind.Id, new ChoicePayload([], 9), new ChoiceKind().Validate(new ChoicePayload([], 9), new("en")).Select(problem => problem.Code));
+        AssertFixtureValidation(fixture.RootElement, kind.Id, value => kind.Upgrade(1, value));
     }
 
     [Fact]
