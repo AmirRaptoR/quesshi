@@ -49,6 +49,7 @@ public class SessionGrain(
             ArmDeadlineTimer();
             if (_state.Session.Ended)
             {
+                if (_state.Session.Status == "cancelled") return CancelledView("terminal", request.PlayerId);
                 if (!formats.TryGet(_state.Session.Format ?? "", out var terminalFormat) || terminalFormat is null) return SessionCommandResult.Error("terminal");
                 return View("terminal", terminalFormat, request.PlayerId);
             }
@@ -149,37 +150,46 @@ public class SessionGrain(
 
     public async Task TimeoutAsync(DateTimeOffset dueAt)
     {
-        _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
-        if (_state is null) { Deactivate(); return; }
-        if (_state.Session.Ended || _state.Session.DueAt != dueAt || dueAt > clock.Now
-            || _state.Session.RetryAt is { } retryAt && retryAt > clock.Now) { ArmDeadlineTimer(); return; }
-        if (ShouldExpire(_state))
+        try
         {
-            await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Expired);
-            _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+            _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
+            if (_state is null) { Deactivate(); return; }
+            if (_state.Session.Ended || _state.Session.DueAt != dueAt || dueAt > clock.Now
+                || _state.Session.RetryAt is { } retryAt && retryAt > clock.Now) { ArmDeadlineTimer(); return; }
+            if (ShouldExpire(_state))
+            {
+                await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Expired);
+                _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+                ArmDeadlineTimer();
+                return;
+            }
+            if (!formats.TryGet(_state.Session.Format ?? "", out var format) || format is null) return;
+            if (format.MaximumDeadlineLateness is { } limit && clock.Now - dueAt > limit)
+            {
+                await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Outage);
+                _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+                ArmDeadlineTimer();
+                return;
+            }
+            var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
+            try { format.Timeout(transition); }
+            catch (Exception exception) when (!IsInfrastructureFailure(exception))
+            {
+                await RecordFaultAsync(exception);
+                return;
+            }
+            if (!transition.Changed) { ArmDeadlineTimer(); return; }
+            var version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, transition.Current);
+            _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
+            _state = _state with { Session = _state.Session with { Version = version } };
             ArmDeadlineTimer();
-            return;
         }
-        if (!formats.TryGet(_state.Session.Format ?? "", out var format) || format is null) return;
-        if (format.MaximumDeadlineLateness is { } limit && clock.Now - dueAt > limit)
+        catch (Exception exception) when (IsInfrastructureFailure(exception))
         {
-            await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Outage);
-            _state = await snapshots.LoadAsync(_tenantId, _sessionId);
-            ArmDeadlineTimer();
-            return;
+            logger.LogWarning(exception, "Session timeout has an uncertain persistence outcome for {SessionId}", _sessionId);
+            DropState();
+            throw;
         }
-        var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
-        try { format.Timeout(transition); }
-        catch (Exception exception) when (!IsInfrastructureFailure(exception))
-        {
-            await RecordFaultAsync(exception);
-            return;
-        }
-        if (!transition.Changed) { ArmDeadlineTimer(); return; }
-        var version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, transition.Current);
-        _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
-        _state = _state with { Session = _state.Session with { Version = version } };
-        ArmDeadlineTimer();
     }
 
     private async Task<bool> ReconcileAsync()
@@ -244,6 +254,12 @@ public class SessionGrain(
     private SessionCommandResult View(string code, IFormat format, string viewer)
     {
         var view = views.Render(_state!, format, viewer, clock.Now);
+        return new SessionCommandResult(code, false, view.Version, view.Json);
+    }
+
+    private SessionCommandResult CancelledView(string code, string viewer)
+    {
+        var view = views.RenderCancelled(_state!, viewer, clock.Now);
         return new SessionCommandResult(code, false, view.Version, view.Json);
     }
 

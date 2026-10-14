@@ -110,8 +110,13 @@ public sealed class InMemorySession : ISession, IViewing
 
     public void SetPosition(int phase, int slot, int step = 0)
     {
+        var beginsSharedPlay = Session.Position is null;
         var row = Session with { Position = new Position(phase, slot, step), PositionStartedAt = _clock.Now };
-        Transition(CurrentState with { Session = row }, "sessions", row.Id, row);
+        var seats = Copy(CurrentState.Seats);
+        foreach (var (player, seat) in seats.Where(pair => beginsSharedPlay && pair.Value.Role == "player" && !pair.Value.IsGuest).ToArray())
+            seats[player] = seat with { Eligible = true };
+        Transition(CurrentState with { Session = row, Seats = ReadOnly(seats) }, "sessions", row.Id, row);
+        foreach (var seat in seats.Values) Changes = Changes.Add("session_participants", seat.Player, seat);
     }
 
     public void SetSeatPosition(string player, int phase, int slot, int step = 0)
@@ -124,7 +129,8 @@ public sealed class InMemorySession : ISession, IViewing
 
     public void Serve(string player, int slot)
     {
-        var seat = SeatFor(player) with { Position = new Position(0, slot), PositionStartedAt = _clock.Now };
+        var existing = SeatFor(player);
+        var seat = existing with { Position = new Position(0, slot), PositionStartedAt = _clock.Now, Eligible = existing.Eligible || existing.Role == "player" && !existing.IsGuest };
         var seats = Copy(CurrentState.Seats);
         seats[player] = seat;
         Transition(CurrentState with { Seats = ReadOnly(seats) }, "session_participants", player, seat);

@@ -37,6 +37,21 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
+    public async Task Cancelled_sessions_render_without_invoking_the_format()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var state = State(ended: true);
+        state = state with { Session = state.Session with { Status = "cancelled" } };
+        var renderer = new CancelledRenderer();
+        var grain = CreateGrain(state, new RecordingFormat(), new RecordingDeadlines(), now, renderer: renderer, formatRegistry: new FormatRegistry([]));
+
+        var result = await grain.ExecuteAsync(Command(now));
+
+        Assert.Equal("terminal", result.Code);
+        Assert.Equal(1, renderer.CancelledCount);
+    }
+
+    [Fact]
     public async Task Format_rejection_and_late_handling_return_current_view_without_apply()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
@@ -242,6 +257,33 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
+    public async Task Timeout_persistence_uncertainty_discards_the_cached_snapshot()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
+        var due = now.AddSeconds(-1);
+        var stale = CreateGrain(State(dueAt: due), new TimeoutFormat(), new RecordingDeadlines(), now,
+            database: new FailingDatabase(new StaleActivationException()));
+
+        await Assert.ThrowsAsync<StaleActivationException>(() => stale.TimeoutAsync(due));
+        Assert.Null(StateOf(stale));
+        Assert.Equal(1, stale.DeactivateCount);
+
+        var unknown = CreateGrain(State(dueAt: due), new TimeoutFormat(), new RecordingDeadlines(), now,
+            database: new FailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost"))));
+
+        await Assert.ThrowsAsync<TenantCommitOutcomeUnknownException>(() => unknown.TimeoutAsync(due));
+        Assert.Null(StateOf(unknown));
+        Assert.Equal(1, unknown.DeactivateCount);
+
+        var reload = CreateGrain(new ThrowingSnapshotLoader(), new TimeoutFormat(), new RecordingDeadlines(), now,
+            database: new SavingDatabase(), initialState: State(dueAt: due));
+
+        await Assert.ThrowsAsync<KnownDatabaseException>(() => reload.TimeoutAsync(due));
+        Assert.Null(StateOf(reload));
+        Assert.Equal(1, reload.DeactivateCount);
+    }
+
+    [Fact]
     public async Task Expired_and_excessively_late_deadlines_end_without_invoking_the_format()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:01:00Z");
@@ -281,18 +323,18 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(1, database.CallCount);
     }
 
-    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null)
+    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, IFormatRegistry? formatRegistry = null)
     {
         var loader = new CurrentSnapshotLoader();
-        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state);
+        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state, formatRegistry);
         loader.Current = () => StateOf(grain);
         return grain;
     }
 
-    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null)
+    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null, IFormatRegistry? formatRegistry = null)
     {
         var grain = new TestSessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
-            new FormatRegistry([format]), kinds ?? new KindRegistry([]), new TestClock(now), renderer ?? new Renderer(), deadlines,
+            formatRegistry ?? new FormatRegistry([format]), kinds ?? new KindRegistry([]), new TestClock(now), renderer ?? new Renderer(), deadlines,
             NullLogger<SessionGrain>.Instance);
         if (initialState is not null) typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(grain, initialState);
         return grain;
@@ -401,6 +443,13 @@ public sealed class SessionGrainBehaviorTests
     private sealed class Renderer : IViewRenderer
     {
         public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => new(state.Session.Version, "{}");
+    }
+
+    private sealed class CancelledRenderer : IViewRenderer
+    {
+        public int CancelledCount { get; private set; }
+        public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) => throw new InvalidOperationException("Format rendering must not run for cancelled sessions.");
+        public RenderedSessionView RenderCancelled(SessionState state, string viewer, DateTimeOffset now) { CancelledCount++; return new(state.Session.Version, "{}"); }
     }
 
     private sealed class ThrowingRenderer : IViewRenderer

@@ -79,7 +79,7 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
             await tx.ExecuteAsync("""
                 update session_participants set status = @status, phase = @phase, slot = @slot, step = @step,
                   slot_started_at = @positionStartedAt, revealed_slot = @releasedSlot, score = @score,
-                  place = @place, outcome = @outcome, ranked = @ranked, result = cast(@result as jsonb)
+                  place = @place, outcome = @outcome, eligible = @eligible, ranked = @ranked, result = cast(@result as jsonb)
                 where tenant_id = @tenantId and session_id = @sessionId and player_id = @playerId
                 """, new
             {
@@ -95,6 +95,7 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
                 seat.Score,
                 seat.Place,
                 seat.Outcome,
+                seat.Eligible,
                 seat.Ranked,
                 result = JsonSerializer.Serialize(seat.Result ?? JsonSerializer.SerializeToElement(new { }))
             }, cancellationToken);
@@ -203,6 +204,7 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
         && left.Place == right.Place
         && left.Outcome == right.Outcome
         && left.Status == right.Status
+        && left.Eligible == right.Eligible
         && left.Ranked == right.Ranked
         && JsonEquals(left.Result, right.Result);
 

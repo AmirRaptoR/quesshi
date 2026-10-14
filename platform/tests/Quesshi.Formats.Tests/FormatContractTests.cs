@@ -101,6 +101,35 @@ public sealed class FormatContractTests
     }
 
     [Fact]
+    public void Starting_shared_or_personal_play_fixes_eligibility_for_account_players_only()
+    {
+        var shared = Harness(State(players: 2, slots: 1));
+        shared.SetPosition(0, 0);
+        Assert.All(shared.Seats, seat => Assert.True(seat.Eligible));
+
+        var guestState = State(players: 1, slots: 1);
+        guestState = guestState with { Seats = SessionState.ReadOnly(new Dictionary<string, Seat>(guestState.Seats)
+        {
+            ["a"] = guestState.Seats["a"] with { IsGuest = true }
+        }) };
+        var guest = Harness(guestState);
+        guest.SetPosition(0, 0);
+        Assert.False(Assert.Single(guest.Seats).Eligible);
+
+        var upgradedGuest = guest.CurrentState with { Seats = SessionState.ReadOnly(new Dictionary<string, Seat>(guest.CurrentState.Seats)
+        {
+            ["a"] = guest.CurrentState.Seats["a"] with { IsGuest = false }
+        }) };
+        var nextSharedPosition = Harness(upgradedGuest);
+        nextSharedPosition.SetPosition(0, 1);
+        Assert.False(Assert.Single(nextSharedPosition.Seats).Eligible);
+
+        var personal = Harness(State(players: 1, slots: 1));
+        personal.Serve("a", 0);
+        Assert.True(Assert.Single(personal.Seats).Eligible);
+    }
+
+    [Fact]
     public void Record_preserves_first_answer_revision()
     {
         var session = Harness(State(players: 1, slots: 1));

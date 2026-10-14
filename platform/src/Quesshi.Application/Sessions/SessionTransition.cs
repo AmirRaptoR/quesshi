@@ -70,9 +70,24 @@ internal sealed class SessionTransition : ISession
     }
     public void RecordMiss(string player, int slot) => RecordMiss(new(player, slot));
     public void RecordMisses(int slot) { foreach (var player in Seats.Where(x => x.Role == "player" && !x.Eliminated).Select(x => x.Player).ToArray()) RecordMiss(player, slot); }
-    public void SetPosition(int phase, int slot, int step = 0) => Set(Current with { Session = Session with { Position = new(phase, slot, step), PositionStartedAt = Now } });
+    public void SetPosition(int phase, int slot, int step = 0)
+    {
+        var beginsSharedPlay = Session.Position is null;
+        var seats = Copy(Current.Seats);
+        foreach (var (player, seat) in seats.Where(pair => beginsSharedPlay && pair.Value.Role == "player" && !pair.Value.IsGuest).ToArray())
+            seats[player] = seat with { Eligible = true };
+        Set(Current with
+        {
+            Session = Session with { Position = new(phase, slot, step), PositionStartedAt = Now },
+            Seats = ReadOnly(seats)
+        });
+    }
     public void SetSeatPosition(string player, int phase, int slot, int step = 0) => SetSeat(player, Seat(player) with { Position = new(phase, slot, step), PositionStartedAt = Now });
-    public void Serve(string player, int slot) => SetSeat(player, Seat(player) with { Position = new(0, slot), PositionStartedAt = Now });
+    public void Serve(string player, int slot)
+    {
+        var seat = Seat(player);
+        SetSeat(player, seat with { Position = new(0, slot), PositionStartedAt = Now, Eligible = seat.Eligible || seat.Role == "player" && !seat.IsGuest });
+    }
     public void Release(int slot) { var seats = Copy(Current.Seats); foreach (var (id, seat) in seats.ToArray()) seats[id] = seat with { ReleasedSlot = Math.Max(seat.ReleasedSlot ?? -1, slot) }; Set(Current with { Seats = ReadOnly(seats) }); }
     public void ReleaseTo(string player, int slot) => SetSeat(player, Seat(player) with { ReleasedSlot = Math.Max(Seat(player).ReleasedSlot ?? -1, slot) });
     public void SetDeadline(DateTimeOffset at) => Set(Current with { Session = Session with { DueAt = MaximumDueAt(at) } });

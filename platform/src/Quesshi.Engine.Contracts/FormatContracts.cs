@@ -132,7 +132,8 @@ public sealed record Seat(
     int Number = 0,
     string? DisplayName = null,
     bool Eligible = false,
-    bool? Ranked = null);
+    bool? Ranked = null,
+    bool IsGuest = false);
 
 /// <summary>Item metadata deliberately excludes question payload and resolved answer data.</summary>
 public sealed record SessionItem(int Slot, string Kind, int KindVersion, int? Level, string? Category);

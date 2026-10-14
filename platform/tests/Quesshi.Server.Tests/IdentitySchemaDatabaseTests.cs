@@ -153,6 +153,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
         await ExecuteAsync(owner, """
             drop function session_ended_effect_jobs(uuid);
+            drop function due_sessions(timestamptz, int, uuid[]);
             drop function enqueue_job(text, text, jsonb, text, timestamptz, int);
             drop table session_effects;
             drop table plugin_effects;
@@ -176,6 +177,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             drop table data_protection_keys;
             delete from schema_migrations where name = '20261013T0203_core_effects.sql';
             delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
+            delete from schema_migrations where name = '20261014T0204_core_deadlines.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p
                             where p.account_id = accounts.id

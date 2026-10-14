@@ -41,6 +41,7 @@ public sealed class SessionViewSnapshot
 public interface IViewRenderer
 {
     RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now);
+    RenderedSessionView RenderCancelled(SessionState state, string viewer, DateTimeOffset now) => throw new NotSupportedException();
     SessionViewSnapshot Snapshot(SessionState state, DateTimeOffset now) => throw new NotSupportedException();
     RenderedSessionView? Render(SessionViewSnapshot snapshot, IFormat format, string viewer) => throw new NotSupportedException();
 }
@@ -50,6 +51,17 @@ internal sealed class ViewRenderer : IViewRenderer
     public RenderedSessionView Render(SessionState state, IFormat format, string viewer, DateTimeOffset now) =>
         Render(Snapshot(state, now), format, viewer)
         ?? throw new InvalidOperationException("Only seated participants can receive a session view.");
+
+    public RenderedSessionView RenderCancelled(SessionState state, string viewer, DateTimeOffset now)
+    {
+        var snapshot = Snapshot(state, now);
+        if (!state.Seats.TryGetValue(viewer, out var viewerSeat))
+            throw new InvalidOperationException("Only seated participants can receive a session view.");
+        var seats = state.Seats.Values.OrderBy(seat => seat.Number).ThenBy(seat => seat.Player, StringComparer.Ordinal).ToArray();
+        return new RenderedSessionView(
+            state.Session.Version,
+            Serialize(snapshot.Shared, null, ToMySeat(viewerSeat), RenderRoster(state.Session.Status, seats, viewer), Empty));
+    }
 
     public SessionViewSnapshot Snapshot(SessionState state, DateTimeOffset now)
     {
@@ -101,6 +113,8 @@ internal sealed class ViewRenderer : IViewRenderer
         }
         return System.Text.Encoding.UTF8.GetString(stream.GetBuffer(), 0, checked((int)stream.Length));
     }
+
+    private static readonly JsonElement Empty = JsonDocument.Parse("{}").RootElement.Clone();
 
     private sealed class ViewingData(SessionState state, string viewer) : IViewing
     {

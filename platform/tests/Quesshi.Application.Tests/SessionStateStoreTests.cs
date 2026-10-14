@@ -3,6 +3,7 @@ using System.Text.Json;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Plugin.Api;
+using Quesshi.Shared;
 
 namespace Quesshi.Application.Tests;
 
@@ -99,6 +100,40 @@ public sealed class SessionStateStoreTests
         var parameters = database.Transaction.QueryParameters[0]!;
         var values = parameters.GetType();
         Assert.Equal("no_contest", values.GetProperty("endReason")!.GetValue(parameters));
+    }
+
+    [Fact]
+    public async Task Save_persists_eligibility_when_a_player_begins_a_run()
+    {
+        var database = new RecordingTenantDb();
+        var tenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var player = Guid.NewGuid().ToString();
+        var initial = SessionState.Create(
+            new SessionRow(session.ToString(), null, null, new Position(0, 0), Format: "poll", Version: 4), Json("{}"),
+            [new Seat(player, "player", new Position(0, 0))], []);
+        var current = initial with { Seats = new Dictionary<string, Seat>(initial.Seats) { [player] = initial.Seats[player] with { Eligible = true } } };
+
+        await new SessionStateStore(database).SaveAsync(tenant, session, 4, initial, current);
+
+        var command = Assert.Single(database.Transaction.Commands, sql => sql.StartsWith("update session_participants", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("eligible = @eligible", command, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Eligible_account_players_receive_ranked_terminal_results()
+    {
+        var player = Guid.NewGuid().ToString();
+        var initial = SessionState.Create(
+            new SessionRow("session", DateTimeOffset.UnixEpoch, null, null, Format: "poll"), Json("{}"),
+            [new Seat(player, "player")], []);
+        var transition = new SessionTransition(initial, new KindRegistry([]), new TestClock(DateTimeOffset.UnixEpoch), TimeSpan.Zero, scored: true);
+
+        transition.SetPosition(0, 0);
+        transition.End(EndReason.Completed, [new Standing(player, 1, "win")], Json("{}"));
+
+        Assert.True(transition.Current.Seats[player].Eligible);
+        Assert.True(transition.Current.Seats[player].Ranked);
     }
 
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
