@@ -1,11 +1,13 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @using Quesshi.Kinds.Order
+@implements IAsyncDisposable
 
 @if (Value is { } card)
 {
-    <div data-kind="order" data-version="1" dir="@Direction">
-        <ol class="sortlist" @onpointermove="OnPointerMove" @onpointerup="EndDrag" @onpointercancel="EndDrag">
+    <div data-kind="order" data-version="1">
+        <ol @ref="list" class="sortlist" @onpointermove="OnPointerMove" @onpointerup="EndDragAsync" @onpointercancel="EndDragAsync">
             @for (var index = 0; index < Ordering.ItemIds.Count; index++)
             {
                 var place = index;
@@ -13,7 +15,7 @@
                 if (item is null) { continue; }
                 <li class="sortrow" @key="item.Id">
                     <button type="button" class="sortrow__grip" data-grip data-place="@place" disabled="@Disabled"
-                            aria-label="Move @item.Text" @onpointerdown="e => StartDrag(place, e)"
+                            aria-label="Move @item.Text" @onpointerdown="e => StartDragAsync(place, e)"
                             @onkeydown="e => OnKeyAsync(place, e)">
                         <span aria-hidden="true">↕</span>
                     </button>
@@ -30,14 +32,16 @@
     [Parameter, EditorRequired] public object? Card { get; set; }
     [Parameter, EditorRequired] public EventCallback<object?> OnAnswer { get; set; }
     [Parameter] public bool Disabled { get; set; }
-    [Parameter] public string Lang { get; set; } = "en";
+    [Inject] public IJSRuntime JS { get; set; } = null!;
 
     private OrderCard? currentCard;
     private OrderOrdering Ordering { get; set; } = OrderOrdering.Served([]);
     private int? dragging;
+    private long? draggingPointerId;
     private double dragStartY;
+    private ElementReference list;
+    private IJSObjectReference? module;
     private OrderCard? Value => Card as OrderCard;
-    private string Direction => Lang.StartsWith("fa", StringComparison.OrdinalIgnoreCase) || Lang.StartsWith("ar", StringComparison.OrdinalIgnoreCase) ? "rtl" : "ltr";
 
     protected override void OnParametersSet()
     {
@@ -52,16 +56,19 @@
         return Value?.Items.FirstOrDefault(item => item.Id == id);
     }
 
-    private void StartDrag(int place, PointerEventArgs args)
+    private async Task StartDragAsync(int place, PointerEventArgs args)
     {
         if (Disabled) return;
         dragging = place;
+        draggingPointerId = args.PointerId;
         dragStartY = args.ClientY;
+        var script = await ModuleAsync();
+        await script.InvokeVoidAsync("capture", list, args.PointerId);
     }
 
     private void OnPointerMove(PointerEventArgs args)
     {
-        if (Disabled || dragging is not { } from) return;
+        if (Disabled || dragging is not { } from || draggingPointerId != args.PointerId) return;
         var offset = (int)Math.Truncate((args.ClientY - dragStartY) / 32d);
         if (offset == 0) return;
         var to = Math.Clamp(from + offset, 0, Ordering.ItemIds.Count - 1);
@@ -70,7 +77,15 @@
         dragStartY = args.ClientY;
     }
 
-    private void EndDrag(PointerEventArgs _) => dragging = null;
+    private async Task EndDragAsync(PointerEventArgs args)
+    {
+        if (dragging is null || draggingPointerId != args.PointerId) return;
+        dragging = null;
+        var pointerId = draggingPointerId;
+        draggingPointerId = null;
+        if (pointerId is { } activePointerId && module is not null)
+            await module.InvokeVoidAsync("release", list, activePointerId);
+    }
 
     private void OnKeyAsync(int place, KeyboardEventArgs args)
     {
@@ -81,6 +96,13 @@
             "ArrowDown" => Ordering.MoveDown(place),
             _ => Ordering
         };
+    }
+
+    private async ValueTask<IJSObjectReference> ModuleAsync() => module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Quesshi.Web.Plugins/Order/OrderPlay.razor.js");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null) await module.DisposeAsync();
     }
 
     private Task SubmitAsync() => Disabled ? Task.CompletedTask : OnAnswer.InvokeAsync(new OrderAnswer(Ordering.ItemIds));

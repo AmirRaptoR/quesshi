@@ -103,17 +103,24 @@ public sealed class EagerKindClientTests : BunitContext
     public void Order_handle_reorders_with_keyboard_and_moves_to_the_rtl_start_edge()
     {
         object? answer = null;
-        var cut = Render< OrderComponents.OrderPlay>(parameters => parameters
-            .Add(component => component.Card, OrderCard)
-            .Add(component => component.Lang, "fa")
-            .Add(component => component.OnAnswer, EventCallback.Factory.Create<object?>(this, value => answer = value)));
+        var cut = Render(builder =>
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "dir", "rtl");
+            builder.OpenComponent<OrderComponents.OrderPlay>(2);
+            builder.AddAttribute(3, "Card", OrderCard);
+            builder.AddAttribute(4, "OnAnswer", EventCallback.Factory.Create<object?>(this, value => answer = value));
+            builder.CloseComponent();
+            builder.CloseElement();
+        });
         var grip = cut.Find("[data-grip][data-place='0']");
         grip.KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
         cut.Find("[data-order-submit]").Click();
         var orderAnswer = Assert.IsType<OrderAnswer>(answer);
         Assert.Equal(["b", "d", "a", "c"], orderAnswer.ItemIds);
         Assert.Equal(["b", "d", "a", "c"], new OrderKind().Normalize(new(new OrderPayload(OrderCard.Items), new OrderResolved(["d", "b", "a", "c"])), orderAnswer).ItemIds);
-        Assert.Equal("rtl", cut.Find("[data-kind='order']").GetAttribute("dir"));
+        Assert.Equal("rtl", cut.Find("[dir='rtl']").GetAttribute("dir"));
+        Assert.Null(cut.Find("[data-kind='order']").GetAttribute("dir"));
         Assert.Equal("BUTTON", cut.Find(".sortrow").FirstElementChild!.TagName);
     }
 
@@ -136,6 +143,37 @@ public sealed class EagerKindClientTests : BunitContext
         AssertEditorRoundTrip<PollRosterComponents.PollRosterEditor>("poll_roster", roster);
         var invalidRoster = new PollRosterPayload { Extra = new() { ["unexpected"] = default } };
         AssertEditor("poll_roster", roster, invalidRoster, new PollRosterKind().Validate(invalidRoster, new("en")));
+    }
+
+    [Fact]
+    public void Editors_emit_the_values_authors_change()
+    {
+        object? emitted = null;
+        var choice = RenderEditor("choice", new ChoicePayload(ChoiceCard.Options, 2), value => emitted = value);
+        choice.Find("[data-option='1']").Change("Updated choice");
+        choice.Find("[data-correct-option='1']").Change(new ChangeEventArgs { Value = true });
+        choice.Find("[data-payload-save]").Click();
+        var choicePayload = Assert.IsType<ChoicePayload>(emitted);
+        Assert.Equal("Updated choice", choicePayload.Options![1]);
+        Assert.Equal(1, choicePayload.CorrectIndex);
+
+        var order = RenderEditor("order", new OrderPayload(OrderCard.Items), value => emitted = value);
+        order.Find("[data-item-id='0']").Change("opaque-id");
+        order.Find("[data-item-text='0']").Change("Updated item");
+        order.Find("[data-payload-save]").Click();
+        var orderPayload = Assert.IsType<OrderPayload>(emitted);
+        Assert.Equal("opaque-id", orderPayload.Items![0]!.Id);
+        Assert.Equal("Updated item", orderPayload.Items[0]!.Text);
+
+        var poll = RenderEditor("poll_choice", new PollChoicePayload(PollChoiceCard.Options), value => emitted = value);
+        poll.Find("[data-option-id='0']").Change("amber");
+        poll.Find("[data-option-text='0']").Change("Amber");
+        poll.Find("[data-add-option]").Click();
+        poll.Find("[data-payload-save]").Click();
+        var pollPayload = Assert.IsType<PollChoicePayload>(emitted);
+        Assert.Equal("amber", pollPayload.Options![0]!.Id);
+        Assert.Equal("Amber", pollPayload.Options[0]!.Text);
+        Assert.Equal(3, pollPayload.Options.Count);
     }
 
     private IRenderedComponent<IComponent> RenderPlay(string kind, object card, Action<object?> callback, bool disabled = false)
@@ -170,9 +208,9 @@ public sealed class EagerKindClientTests : BunitContext
     private void AssertEditorRoundTrip<TComponent>(string kind, object payload) where TComponent : IComponent
     {
         object? emitted = null;
-        var cut = Render<TComponent>(builder =>
+        var cut = Render(builder =>
         {
-            builder.OpenComponent<TComponent>(0);
+            builder.OpenComponent(0, typeof(TComponent));
             builder.AddAttribute(1, "Kind", kind);
             builder.AddAttribute(2, "Payload", payload);
             builder.AddAttribute(3, "PayloadChanged", EventCallback.Factory.Create<object?>(this, value => emitted = value));
@@ -184,13 +222,17 @@ public sealed class EagerKindClientTests : BunitContext
         Assert.Same(payload, emitted);
     }
 
-    private IRenderedComponent<IComponent> RenderEditor(string kind, object payload) => kind switch
+    private IRenderedComponent<IComponent> RenderEditor(string kind, object payload, Action<object?>? callback = null)
     {
-        "choice" => Render<ChoiceComponents.ChoiceEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { }))),
-        "order" => Render<OrderComponents.OrderEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { }))),
-        "poll_choice" => Render<PollChoiceComponents.PollChoiceEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { }))),
-        _ => Render<PollRosterComponents.PollRosterEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { }))),
-    };
+        var changed = EventCallback.Factory.Create<object?>(this, callback ?? (_ => { }));
+        return kind switch
+        {
+            "choice" => Render<ChoiceComponents.ChoiceEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, changed)),
+            "order" => Render<OrderComponents.OrderEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, changed)),
+            "poll_choice" => Render<PollChoiceComponents.PollChoiceEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, changed)),
+            _ => Render<PollRosterComponents.PollRosterEditor>(parameters => parameters.Add(component => component.Kind, kind).Add(component => component.Payload, payload).Add(component => component.Lang, "en").Add(component => component.PayloadChanged, changed)),
+        };
+    }
 
     private void UseRegistry() => Services.AddSingleton<IClientRegistry>(Registry());
     private static ClientRegistry Registry()

@@ -5,9 +5,17 @@
 <section data-kind="order" class="kind-editor">
     @if (Value is { } payload)
     {
-        @foreach (var item in payload.Items ?? [])
+        @for (var index = 0; index < payload.Items?.Count; index++)
         {
-            <p data-item-id="@item?.Id">@item?.Text</p>
+            var item = index;
+            <label>
+                Item identifier
+                <input data-item-id="@item" value="@payload.Items![item]?.Id" @oninput="e => ChangeId(item, e.Value?.ToString())" />
+            </label>
+            <label>
+                Item text
+                <input data-item-text="@item" value="@payload.Items![item]?.Text" @oninput="e => ChangeText(item, e.Value?.ToString())" />
+            </label>
         }
         <button type="button" data-payload-save @onclick="EmitAsync">Save</button>
     }
@@ -24,7 +32,27 @@
     [Parameter, EditorRequired] public object? Payload { get; set; }
     [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
     [Parameter, EditorRequired] public string Lang { get; set; } = "en";
-    private OrderPayload? Value => Payload as OrderPayload;
+    private object? sourcePayload;
+    private OrderPayload? Value { get; set; }
     private IReadOnlyList<Problem> Problems => Value is { } payload ? new OrderKind().Validate(payload, new ValidateEnv(Lang)) : [];
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(sourcePayload, Payload)) return;
+        sourcePayload = Payload;
+        Value = Payload as OrderPayload;
+    }
+
+    private void ChangeId(int index, string? id) => ChangeItem(index, item => item with { Id = id });
+    private void ChangeText(int index, string? text) => ChangeItem(index, item => item with { Text = text });
+
+    private void ChangeItem(int index, Func<OrderItem, OrderItem> change)
+    {
+        if (Value?.Items is not { } items || index >= items.Count || items[index] is not { } item) return;
+        var updated = items.ToArray();
+        updated[index] = change(item);
+        Value = Value with { Items = updated };
+    }
+
     private Task EmitAsync() => PayloadChanged.InvokeAsync(Value);
 }
