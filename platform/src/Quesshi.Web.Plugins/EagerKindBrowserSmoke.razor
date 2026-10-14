@@ -1,0 +1,70 @@
+@using Quesshi.Kinds.Choice
+@using Quesshi.Kinds.Order
+@using Quesshi.Kinds.PollChoice
+@using Quesshi.Kinds.PollRoster
+
+<section data-eager-kind-browser-smoke>
+    <section data-eager-component="choice-play">
+        <KindPlay Card="@ChoiceCardValue" OnAnswer="IgnoreAsync" />
+    </section>
+    <section data-eager-component="choice-reveal">
+        <KindReveal Card="@ChoiceCardValue" Reveal="@ChoiceRevealValue" Answers="@ChoiceAnswersValue" />
+    </section>
+    <section data-eager-component="choice-editor">
+        <KindEditor Kind="choice" Payload="@ChoicePayloadValue" PayloadChanged="IgnoreAsync" Lang="en" />
+    </section>
+
+    <section data-eager-component="order-play">
+        <KindPlay Card="@OrderCardValue" OnAnswer="IgnoreAsync" />
+    </section>
+    <section data-eager-component="order-reveal">
+        <KindReveal Card="@OrderCardValue" Reveal="@OrderRevealValue" Answers="@OrderAnswersValue" />
+    </section>
+    <section data-eager-component="order-editor">
+        <KindEditor Kind="order" Payload="@OrderPayloadValue" PayloadChanged="IgnoreAsync" Lang="en" />
+    </section>
+
+    <section data-eager-component="poll_choice-play">
+        <KindPlay Card="@PollChoiceCardValue" OnAnswer="IgnoreAsync" />
+    </section>
+    <section data-eager-component="poll_choice-reveal">
+        <KindReveal Card="@PollChoiceCardValue" Reveal="@PollChoiceRevealValue" Answers="@PollChoiceAnswersValue" />
+    </section>
+    <section data-eager-component="poll_choice-editor">
+        <KindEditor Kind="poll_choice" Payload="@PollChoicePayloadValue" PayloadChanged="IgnoreAsync" Lang="en" />
+    </section>
+
+    <section data-eager-component="poll_roster-play">
+        <KindPlay Card="@PollRosterCardValue" OnAnswer="IgnoreAsync" />
+    </section>
+    <section data-eager-component="poll_roster-reveal">
+        <KindReveal Card="@PollRosterCardValue" Reveal="@PollRosterRevealValue" Answers="@PollRosterAnswersValue" />
+    </section>
+    <section data-eager-component="poll_roster-editor">
+        <KindEditor Kind="poll_roster" Payload="@PollRosterPayloadValue" PayloadChanged="IgnoreAsync" Lang="en" />
+    </section>
+</section>
+
+@code {
+    private static readonly KindCard ChoiceCardValue = new("choice", 1, new ChoiceCard(["One", "Two", "Three", "Four"]));
+    private static readonly ChoicePayload ChoicePayloadValue = new(["One", "Two", "Three", "Four"], 2);
+    private static readonly ChoiceReveal ChoiceRevealValue = new(2, "Three");
+    private static readonly ChoiceStored[] ChoiceAnswersValue = [new(2), new(0)];
+
+    private static readonly KindCard OrderCardValue = new("order", 1, new OrderCard([new("a", "Alpha"), new("b", "Bravo"), new("c", "Charlie"), new("d", "Delta")]));
+    private static readonly OrderPayload OrderPayloadValue = new([new("a", "Alpha"), new("b", "Bravo"), new("c", "Charlie"), new("d", "Delta")]);
+    private static readonly OrderReveal OrderRevealValue = new(["a", "b", "c", "d"]);
+    private static readonly OrderStored[] OrderAnswersValue = [new(["d", "c", "b", "a"]), new(["a", "b", "c", "d"])];
+
+    private static readonly KindCard PollChoiceCardValue = new("poll_choice", 1, new PollChoiceCard([new("green", "Green"), new("blue", "Blue")]));
+    private static readonly PollChoicePayload PollChoicePayloadValue = new([new("green", "Green"), new("blue", "Blue")]);
+    private static readonly PollChoiceReveal PollChoiceRevealValue = new();
+    private static readonly PollChoiceStored[] PollChoiceAnswersValue = [new("green", null), new(null, true)];
+
+    private static readonly KindCard PollRosterCardValue = new("poll_roster", 1, new PollRosterCard([new(1, "Ada"), new(4, "Dee")]));
+    private static readonly PollRosterPayload PollRosterPayloadValue = new();
+    private static readonly PollRosterReveal PollRosterRevealValue = new();
+    private static readonly PollRosterStored[] PollRosterAnswersValue = [new(4, null, null, null), new(null, true, null, null)];
+
+    private static Task IgnoreAsync(object? _) => Task.CompletedTask;
+}

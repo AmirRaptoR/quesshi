@@ -13,7 +13,7 @@
         <ul>
             @foreach (var answer in StoredAnswers)
             {
-                <li data-stored-order="@string.Join(',', answer.ItemIds)">@string.Join(", ", answer.ItemIds)</li>
+                <li data-stored-order="@string.Join(',', answer.ItemIds)">@string.Join(", ", answer.ItemIds.Select(id => ItemText(card, id)))</li>
             }
         </ul>
     </section>
@@ -25,4 +25,7 @@
     [Parameter, EditorRequired] public object? Answers { get; set; }
     private Quesshi.Kinds.Order.OrderReveal? RevealValue => Reveal as Quesshi.Kinds.Order.OrderReveal;
     private IEnumerable<OrderStored> StoredAnswers => Answers as IEnumerable<OrderStored> ?? [];
+
+    private static string ItemText(OrderCard card, string id) =>
+        card.Items.FirstOrDefault(item => item.Id == id)?.Text ?? id;
 }

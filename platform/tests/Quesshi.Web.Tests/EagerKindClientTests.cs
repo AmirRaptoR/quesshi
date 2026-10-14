@@ -94,7 +94,10 @@ public sealed class EagerKindClientTests : BunitContext
     public void Reveal_hosts_render_fixture_labels_and_two_stored_answers()
     {
         RenderReveal("choice", ChoiceCard, new ChoiceReveal(2, "Three"), new ChoiceStored[] { new(2), new(0) }).MarkupMatches("<section data-kind=\"choice\" data-version=\"1\" class=\"answer-reveal\"><p data-correct-option=\"2\">Three</p><ul><li data-answer-index=\"2\">Three</li><li data-answer-index=\"0\">One</li></ul></section>");
-        Assert.Contains("Four", RenderReveal("order", OrderCard, new OrderReveal(["d", "b", "a", "c"]), new OrderStored[] { new(["d", "b", "a", "c"]), new(["a", "b", "c", "d"]) }).Markup);
+        var orderReveal = RenderReveal("order", OrderCard, new OrderReveal(["d", "b", "a", "c"]), new OrderStored[] { new(["d", "b", "a", "c"]), new(["a", "b", "c", "d"]) });
+        var storedOrders = orderReveal.FindAll("[data-stored-order]");
+        Assert.Equal("Four, Two, One, Three", storedOrders[0].TextContent);
+        Assert.Equal("One, Two, Three, Four", storedOrders[1].TextContent);
         Assert.Contains("Green", RenderReveal("poll_choice", PollChoiceCard, new PollChoiceReveal(), new PollChoiceStored[] { new("green", null), new(null, true) }).Markup);
         Assert.Contains("Several", RenderReveal("poll_roster", PollRosterCard, new PollRosterReveal(), new PollRosterStored[] { new(4, null, null, null), new(null, true, null, null) }).Markup);
     }
@@ -123,6 +126,16 @@ public sealed class EagerKindClientTests : BunitContext
         Assert.Null(cut.Find("[data-kind='order']").GetAttribute("dir"));
         Assert.Equal("BUTTON", cut.Find(".sortrow").FirstElementChild!.TagName);
     }
+
+    [Theory]
+    [InlineData(55, 0)]
+    [InlineData(56, 1)]
+    [InlineData(180, 1)]
+    [InlineData(181, 2)]
+    [InlineData(300, 2)]
+    [InlineData(301, 3)]
+    public void Order_pointer_target_uses_rendered_row_midpoints(double pointerY, int expected) =>
+        Assert.Equal(expected, OrderDrag.TargetPlace([20, 90, 270, 330], pointerY));
 
     [Fact]
     public void Editors_round_trip_valid_payloads_and_show_every_validation_problem()

@@ -38,7 +38,7 @@
     private OrderOrdering Ordering { get; set; } = OrderOrdering.Served([]);
     private int? dragging;
     private long? draggingPointerId;
-    private double dragStartY;
+    private double[] dragMidpoints = [];
     private ElementReference list;
     private IJSObjectReference? module;
     private OrderCard? Value => Card as OrderCard;
@@ -61,26 +61,25 @@
         if (Disabled) return;
         dragging = place;
         draggingPointerId = args.PointerId;
-        dragStartY = args.ClientY;
         var script = await ModuleAsync();
+        dragMidpoints = await script.InvokeAsync<double[]>("midpoints", list);
         await script.InvokeVoidAsync("capture", list, args.PointerId);
     }
 
     private void OnPointerMove(PointerEventArgs args)
     {
         if (Disabled || dragging is not { } from || draggingPointerId != args.PointerId) return;
-        var offset = (int)Math.Truncate((args.ClientY - dragStartY) / 32d);
-        if (offset == 0) return;
-        var to = Math.Clamp(from + offset, 0, Ordering.ItemIds.Count - 1);
+        var to = OrderDrag.TargetPlace(dragMidpoints, args.ClientY);
+        if (to < 0 || to == from) return;
         Ordering = Ordering.Move(from, to);
         dragging = to;
-        dragStartY = args.ClientY;
     }
 
     private async Task EndDragAsync(PointerEventArgs args)
     {
         if (dragging is null || draggingPointerId != args.PointerId) return;
         dragging = null;
+        dragMidpoints = [];
         var pointerId = draggingPointerId;
         draggingPointerId = null;
         if (pointerId is { } activePointerId && module is not null)

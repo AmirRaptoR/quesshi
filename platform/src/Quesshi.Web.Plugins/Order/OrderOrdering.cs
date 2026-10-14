@@ -27,3 +27,24 @@ public sealed class OrderOrdering
     public OrderOrdering MoveUp(int place) => Move(place, place - 1);
     public OrderOrdering MoveDown(int place) => Move(place, place + 1);
 }
+
+/// <summary>Converts the browser-measured row centres into an order destination.</summary>
+public static class OrderDrag
+{
+    public static int TargetPlace(IReadOnlyList<double> midpoints, double pointerY)
+    {
+        if (midpoints.Count == 0) return -1;
+
+        var best = 0;
+        var bestDistance = Math.Abs(midpoints[0] - pointerY);
+        for (var index = 1; index < midpoints.Count; index++)
+        {
+            var distance = Math.Abs(midpoints[index] - pointerY);
+            if (distance >= bestDistance) continue;
+            best = index;
+            bestDistance = distance;
+        }
+
+        return best;
+    }
+}

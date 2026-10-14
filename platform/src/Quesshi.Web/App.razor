@@ -1,24 +1,33 @@
 @using Quesshi.Web.Services
+@using Quesshi.Web.Plugins
 @implements IDisposable
 @inject AppConfig Config
 @inject LanguageSelection Languages
 @inject Translator Translator
+@inject NavigationManager Navigation
 
-<main class="shell" aria-live="polite">
-    <section class="empty">
-        <h1>@Config.NameFor(Languages.CurrentCode)</h1>
-        <p class="muted">@Translator["app.tagline"]</p>
-        <label>
-            <span class="sr-only">Language</span>
-            <select value="@Languages.CurrentCode" @onchange="ChangeLanguageAsync">
-                @foreach (var language in Config.Current.Languages)
-                {
-                    <option value="@language.Code">@language.DisplayName</option>
-                }
-            </select>
-        </label>
-    </section>
-</main>
+@if (Navigation.Uri.Contains("eager-kind-smoke=1", StringComparison.Ordinal))
+{
+    <EagerKindBrowserSmoke />
+}
+else
+{
+    <main class="shell" aria-live="polite">
+        <section class="empty">
+            <h1>@Config.NameFor(Languages.CurrentCode)</h1>
+            <p class="muted">@Translator["app.tagline"]</p>
+            <label>
+                <span class="sr-only">Language</span>
+                <select value="@Languages.CurrentCode" @onchange="ChangeLanguageAsync">
+                    @foreach (var language in Config.Current.Languages)
+                    {
+                        <option value="@language.Code">@language.DisplayName</option>
+                    }
+                </select>
+            </label>
+        </section>
+    </main>
+}
 
 @code {
     protected override void OnInitialized() => Config.Changed += StateHasChanged;

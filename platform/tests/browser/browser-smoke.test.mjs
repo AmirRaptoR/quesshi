@@ -108,6 +108,30 @@ test('published client uses each tenant configuration online and after an offlin
   }
 });
 
+test('published client renders every eager kind component through its hosts', { skip: !runsPublishedClient }, async () => {
+  const host = await startPublishedPlatformHost({ directory: publishedDirectory, tenants });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const assertNoPageErrors = capturePageErrors(page);
+  const components = [
+    'choice-play', 'choice-reveal', 'choice-editor',
+    'order-play', 'order-reveal', 'order-editor',
+    'poll_choice-play', 'poll_choice-reveal', 'poll_choice-editor',
+    'poll_roster-play', 'poll_roster-reveal', 'poll_roster-editor'
+  ];
+  try {
+    await page.goto(host.tenantUrl('northwind.localhost', '/?eager-kind-smoke=1'));
+    for (const component of components) {
+      await page.locator(`[data-eager-component="${component}"] [data-kind]`).waitFor();
+    }
+    assert.equal(await page.locator('[data-eager-component] [role="alert"]').count(), 0);
+    assertNoPageErrors();
+  } finally {
+    await context.close();
+    await host.close();
+  }
+});
+
 test('service worker supports online visit and offline revisit without page errors', async () => {
   const fixture = await startBrowserFixture();
   const context = await browser.newContext();
