@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -104,9 +105,40 @@ public sealed class TenantResolutionTests
         }
     }
 
+    [Fact]
+    public async Task Registration_honors_forwarded_scheme_only_from_trusted_proxies()
+    {
+        const string trustedProxy = "10.0.0.2";
+        var originalTrustedProxies = Environment.GetEnvironmentVariable("TRUSTED_PROXIES");
+        try
+        {
+            Environment.SetEnvironmentVariable("TRUSTED_PROXIES", trustedProxy);
+            using var services = new ServiceCollection().AddLogging().AddTenantResolution().BuildServiceProvider();
+            var builder = new ApplicationBuilder(services);
+            builder.UseForwardedHeaders();
+            builder.Run(_ => Task.CompletedTask);
+            var application = builder.Build();
+            var trusted = Request("internal.example.test", remoteIp: trustedProxy);
+            trusted.Request.Headers["X-Forwarded-Proto"] = "https";
+            var untrusted = Request("internal.example.test", remoteIp: "10.0.0.3");
+            untrusted.Request.Headers["X-Forwarded-Proto"] = "https";
+
+            await application(trusted);
+            await application(untrusted);
+
+            Assert.Equal("https", trusted.Request.Scheme);
+            Assert.Equal("http", untrusted.Request.Scheme);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TRUSTED_PROXIES", originalTrustedProxies);
+        }
+    }
+
     private static DefaultHttpContext Request(string host, string? forwardedHost = null, string? remoteIp = null)
     {
         var context = new DefaultHttpContext();
+        context.Request.Scheme = "http";
         context.Request.Host = HostString.FromUriComponent(host);
         if (forwardedHost is not null) context.Request.Headers["X-Forwarded-Host"] = forwardedHost;
         if (remoteIp is not null) context.Connection.RemoteIpAddress = IPAddress.Parse(remoteIp);

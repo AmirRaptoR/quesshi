@@ -46,6 +46,22 @@ public sealed class FeatureRegistryTests
     }
 
     [Fact]
+    public void Active_features_expose_player_and_open_route_contributions_but_retired_features_do_not()
+    {
+        var active = CreateRegistry();
+        active.Register(new RouteFeature());
+
+        var routes = Assert.Single(active.Routes);
+        Assert.Equal("routes", routes.Id);
+        Assert.Single(routes.Player);
+        Assert.Single(routes.Open);
+
+        var retired = CreateRegistry();
+        retired.Register(new RouteFeature(retired: true));
+        Assert.Empty(retired.Routes);
+    }
+
+    [Fact]
     public void Duplicate_feature_declarations_fail_deterministically()
     {
         var registry = CreateRegistry();
@@ -179,6 +195,19 @@ public sealed class FeatureRegistryTests
         {
             feature.Job("complete", (_, _) => { complete(); return Task.CompletedTask; });
             feature.Job("cancel", (_, _) => Task.CompletedTask, WhenDisabled.Cancel);
+        }
+    }
+
+    private sealed class RouteFeature(bool retired = false) : IFeature
+    {
+        public string Id => "routes";
+        public FeatureSettings Settings => FeatureSettings.Create(new SampleSettings("default"), _ => []);
+        public bool Retired => retired;
+
+        public void Configure(IFeatureBuilder feature)
+        {
+            feature.PlayerRoutes(_ => { });
+            feature.OpenRoutes(_ => { });
         }
     }
 

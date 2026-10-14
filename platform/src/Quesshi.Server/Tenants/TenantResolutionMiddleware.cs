@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Application.Tenancy;
 using Quesshi.Infrastructure.Tenancy;
@@ -63,6 +64,13 @@ public static class TenantResolutionApplicationBuilderExtensions
     public static IServiceCollection AddTenantResolution(this IServiceCollection services)
     {
         services.AddSingleton<ITenants, PostgresTenants>();
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+            foreach (var proxy in TenantResolutionMiddleware.TrustedProxiesFromEnvironment()) options.KnownProxies.Add(proxy);
+        });
         return services;
     }
 

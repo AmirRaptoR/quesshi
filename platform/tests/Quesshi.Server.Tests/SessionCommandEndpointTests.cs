@@ -33,7 +33,7 @@ public sealed class SessionCommandEndpointTests
         builder.Services.AddSingleton<IClock>(new TestClock(DateTimeOffset.UnixEpoch));
         await using var app = builder.Build();
         app.UseTenantResolution();
-        app.MapSessionCommands();
+        app.MapGroup("/api").MapSessionCommands();
         await app.StartAsync();
         try
         {
@@ -122,7 +122,7 @@ public sealed class SessionCommandEndpointTests
         builder.Services.AddSingleton<IClock>(clock);
         await using var app = builder.Build();
         app.UseTenantResolution();
-        app.MapSessionCommands();
+        app.MapGroup("/api").MapSessionCommands();
         await app.StartAsync();
         try
         {
@@ -156,7 +156,7 @@ public sealed class SessionCommandEndpointTests
         builder.Services.AddSingleton<IClock>(clock);
         await using var app = builder.Build();
         app.UseTenantResolution();
-        app.MapSessionCommands();
+        app.MapGroup("/api").MapSessionCommands();
         await app.StartAsync();
         try
         {
@@ -217,7 +217,7 @@ public sealed class SessionCommandEndpointTests
         builder.Services.AddSingleton<IClock>(clock);
         await using var app = builder.Build();
         app.UseTenantResolution();
-        app.MapSessionCommands();
+        app.MapGroup("/api").MapSessionCommands();
         await app.StartAsync();
         try
         {

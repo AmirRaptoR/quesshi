@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Plugin.Api;
+using Quesshi.Server.Security;
 using Quesshi.Server.Tenants;
 using Quesshi.Shared;
 
@@ -16,8 +18,8 @@ internal static class SessionCommandEndpoints
 
     public static IEndpointRouteBuilder MapSessionCommands(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/sessions/{id:guid}/commands", ExecuteAsync);
-        endpoints.MapGet("/api/sessions/{id:guid}/roster", RosterAsync);
+        endpoints.MapPost("/sessions/{id:guid}/commands", ExecuteAsync).AllowGuests();
+        endpoints.MapGet("/sessions/{id:guid}/roster", RosterAsync);
         return endpoints;
     }
 
@@ -75,7 +77,7 @@ internal static class SessionCommandEndpoints
 #if QUESSHI_TEST_IDENTITY
         return context.Request.Headers.TryGetValue("X-Quesshi-Test-Player", out var value) && Guid.TryParse(value, out var id) ? id.ToString() : null;
 #else
-        return null;
+        return context.Player()?.PlayerId.ToString();
 #endif
     }
     private static IResult Error(string code, int status) => Results.Json(new { error = code }, statusCode: status);

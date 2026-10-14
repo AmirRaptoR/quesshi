@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Routing;
 using Quesshi.Application.Jobs;
 using Quesshi.Plugin.Api;
 
@@ -14,6 +15,7 @@ internal sealed class FeatureRegistry(
     private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _eventHandlers = [];
     private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _declaredEventHandlers = [];
     private readonly Dictionary<string, Delegate> _cleanupHandlers = new(StringComparer.Ordinal);
+    private readonly List<FeatureRoutes> _routes = [];
 
     public IReadOnlyCollection<RegisteredFeature> Features => _features.Values;
 
@@ -22,6 +24,8 @@ internal sealed class FeatureRegistry(
     public JobHandlerRegistry Jobs => jobs;
 
     public JobScheduleRegistry Schedules => schedules;
+
+    public IReadOnlyCollection<FeatureRoutes> Routes => _routes;
 
     /// <summary>Contains only handlers that should receive events emitted after startup.</summary>
     public IReadOnlyDictionary<(string FeatureId, Type EventType), Delegate> EventHandlers => _eventHandlers;
@@ -86,6 +90,11 @@ internal sealed class FeatureRegistry(
             _cleanupHandlers.Add(id, builder.CleanupHandler);
         }
 
+        if (!feature.Retired && (builder.PlayerRouteContributions.Count != 0 || builder.OpenRouteContributions.Count != 0))
+        {
+            _routes.Add(new FeatureRoutes(id, builder.PlayerRouteContributions, builder.OpenRouteContributions));
+        }
+
         _features.Add(id, new RegisteredFeature(id, feature.Retired, feature.Settings));
     }
 
@@ -135,11 +144,18 @@ internal sealed class FeatureRegistry(
             ?? throw new InvalidOperationException($"Feature '{featureId}' cleanup handler returned no task.");
     }
 
+    internal sealed record FeatureRoutes(
+        string Id,
+        IReadOnlyList<Action<RouteGroupBuilder>> Player,
+        IReadOnlyList<Action<RouteGroupBuilder>> Open);
+
     private sealed class FeatureBuilder(string featureId) : IFeatureBuilder
     {
         private readonly Dictionary<Type, Delegate> _eventHandlers = [];
         private readonly Dictionary<string, FeatureJob> _jobs = new(StringComparer.Ordinal);
         private readonly Dictionary<(string Kind, TimeSpan Interval), FeatureSchedule> _schedules = [];
+        private readonly List<Action<RouteGroupBuilder>> _playerRoutes = [];
+        private readonly List<Action<RouteGroupBuilder>> _openRoutes = [];
 
         public IReadOnlyCollection<FeatureEventHandler> EventHandlers =>
             _eventHandlers.Select(pair => new FeatureEventHandler(pair.Key, pair.Value)).ToArray();
@@ -148,7 +164,23 @@ internal sealed class FeatureRegistry(
 
         public IReadOnlyCollection<FeatureSchedule> Schedules => _schedules.Values;
 
+        public IReadOnlyList<Action<RouteGroupBuilder>> PlayerRouteContributions => _playerRoutes;
+
+        public IReadOnlyList<Action<RouteGroupBuilder>> OpenRouteContributions => _openRoutes;
+
         public Delegate? CleanupHandler { get; private set; }
+
+        public void PlayerRoutes(Action<RouteGroupBuilder> routes)
+        {
+            ArgumentNullException.ThrowIfNull(routes);
+            _playerRoutes.Add(routes);
+        }
+
+        public void OpenRoutes(Action<RouteGroupBuilder> routes)
+        {
+            ArgumentNullException.ThrowIfNull(routes);
+            _openRoutes.Add(routes);
+        }
 
         public void On<TEvent>(Func<ITenantTx, TEvent, CancellationToken, Task> handler)
         {

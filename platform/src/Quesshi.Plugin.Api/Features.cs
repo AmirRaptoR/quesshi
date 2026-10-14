@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Routing;
 
 namespace Quesshi.Plugin.Api;
 
@@ -51,6 +53,12 @@ public interface IFeature
 /// <summary>Declares a feature's future event, cleanup, job, and schedule contributions.</summary>
 public interface IFeatureBuilder
 {
+    /// <summary>Adds player-authenticated routes below this feature's <c>/api/x/{id}</c> path.</summary>
+    void PlayerRoutes(Action<RouteGroupBuilder> routes);
+
+    /// <summary>Adds unauthenticated routes below this feature's <c>/api/x/{id}</c> path.</summary>
+    void OpenRoutes(Action<RouteGroupBuilder> routes);
+
     void On<TEvent>(Func<ITenantTx, TEvent, CancellationToken, Task> handler);
 
     void CleanupPlayer(Func<ITenantTx, Guid, CancellationToken, Task> handler);
@@ -58,6 +66,24 @@ public interface IFeatureBuilder
     void Job(string kind, Func<JobContext, CancellationToken, Task> handler, WhenDisabled whenDisabled = WhenDisabled.Complete);
 
     void Every(TimeSpan interval, string kind);
+}
+
+/// <summary>Marks a player route as available to guest players.</summary>
+public sealed class AllowGuestsMetadata
+{
+    internal AllowGuestsMetadata() { }
+}
+
+public static class PlayerRouteConventionBuilderExtensions
+{
+    /// <summary>Allows a guest player to call this otherwise player-only endpoint.</summary>
+    public static TBuilder AllowGuests<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.WithMetadata(new AllowGuestsMetadata());
+        return builder;
+    }
 }
 
 /// <summary>What to do with a queued feature job whose feature is disabled for its tenant.</summary>
