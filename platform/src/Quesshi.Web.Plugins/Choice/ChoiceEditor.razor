@@ -11,7 +11,7 @@
             var option = index;
             <label>
                 Option @(option + 1)
-                <input data-option="@option" value="@payload.Options![option]" @oninput="e => ChangeOption(option, e.Value?.ToString() ?? \"\")" />
+                <input data-option="@option" value="@payload.Options![option]" @oninput="e => ChangeOption(option, e.Value?.ToString() ?? string.Empty)" />
             </label>
             <label>
                 <input type="radio" name="choice-correct" data-correct-option="@option" checked="@(payload.CorrectIndex == option)" @onchange="() => ChangeCorrectIndex(option)" />
