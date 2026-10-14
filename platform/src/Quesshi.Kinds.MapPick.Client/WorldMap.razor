@@ -27,24 +27,36 @@
             : (0d, 0d);
         if (TargetRadiusKm is not null)
         {
-            <ellipse class="worldmap__tolerance" cx="@F(ring.Longitude!.Value)" cy="@F(-ring.Latitude!.Value)" rx="@F(radiusX)" ry="@F(radiusY)" />
+            @foreach (var longitude in WrappedLongitudes(ring.Longitude!.Value, radiusX))
+            {
+                <ellipse class="worldmap__tolerance" cx="@F(longitude)" cy="@F(-ring.Latitude!.Value)" rx="@F(radiusX)" ry="@F(radiusY)" />
+            }
         }
     }
     @if (Target is { IsPoint: true } target)
     {
         @foreach (var mark in PointMarks.Where(mark => mark.Right == false))
         {
-            var (x, y) = Place(mark.Selection);
-            <line class="worldmap__miss" x1="@F(x)" y1="@F(y)" x2="@F(target.Longitude!.Value)" y2="@F(-target.Latitude!.Value)" />
+            var (_, y) = Place(mark.Selection);
+            @foreach (var (start, end) in WrappedGapLines(mark.Selection.Longitude!.Value, target.Longitude!.Value))
+            {
+                <line class="worldmap__miss" x1="@F(start)" y1="@F(y)" x2="@F(end)" y2="@F(-target.Latitude!.Value)" />
+            }
         }
-        <circle class="worldmap__pin worldmap__pin--target" cx="@F(target.Longitude!.Value)" cy="@F(-target.Latitude!.Value)" r="8" />
+        @foreach (var longitude in WrappedLongitudes(target.Longitude!.Value, 8))
+        {
+            <circle class="worldmap__pin worldmap__pin--target" cx="@F(longitude)" cy="@F(-target.Latitude!.Value)" r="8" />
+        }
     }
     @foreach (var mark in PointMarks)
     {
         var (x, y) = Place(mark.Selection);
-        <circle class="worldmap__pin" style="@(mark.Right == false ? "fill:var(--anaar)" : null)" cx="@F(x)" cy="@F(y)" r="5" />
-        <line class="worldmap__cross" x1="@F(x - 11)" y1="@F(y)" x2="@F(x + 11)" y2="@F(y)" />
-        <line class="worldmap__cross" x1="@F(x)" y1="@F(y - 11)" x2="@F(x)" y2="@F(y + 11)" />
+        @foreach (var longitude in WrappedLongitudes(x, 11))
+        {
+            <circle class="worldmap__pin" style="@(mark.Right == false ? "fill:var(--anaar)" : null)" cx="@F(longitude)" cy="@F(y)" r="5" />
+            <line class="worldmap__cross" x1="@F(longitude - 11)" y1="@F(y)" x2="@F(longitude + 11)" y2="@F(y)" />
+            <line class="worldmap__cross" x1="@F(longitude)" y1="@F(y - 11)" x2="@F(longitude)" y2="@F(y + 11)" />
+        }
     }
 </svg>
 
@@ -106,6 +118,29 @@
     }
 
     private static (double X, double Y) Place(MapSelection selection) => WorldMapProjection.Project(selection.Latitude!.Value, selection.Longitude!.Value);
+
+    private static IEnumerable<double> WrappedLongitudes(double longitude, double halfWidth)
+    {
+        yield return longitude;
+        if (longitude + halfWidth > WorldMapProjection.MaxLongitude) yield return longitude - 360;
+        if (longitude - halfWidth < WorldMapProjection.MinLongitude) yield return longitude + 360;
+    }
+
+    private static IEnumerable<(double Start, double End)> WrappedGapLines(double markLongitude, double targetLongitude)
+    {
+        var nearestTarget = targetLongitude;
+        if (nearestTarget - markLongitude > 180) nearestTarget -= 360;
+        else if (nearestTarget - markLongitude < -180) nearestTarget += 360;
+
+        foreach (var offset in new[] { -360d, 0d, 360d })
+        {
+            var start = markLongitude + offset;
+            var end = nearestTarget + offset;
+            if (Math.Max(start, end) >= WorldMapProjection.MinLongitude && Math.Min(start, end) <= WorldMapProjection.MaxLongitude)
+                yield return (start, end);
+        }
+    }
+
     private static string F(double value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     public async ValueTask DisposeAsync()

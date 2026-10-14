@@ -20,6 +20,16 @@ else
 
     private MapPickCard? MapCard => Card as MapPickCard;
     private MapSelection? selection;
+    private object? selectionCard;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(Card, selectionCard))
+        {
+            selection = null;
+            selectionCard = Card;
+        }
+    }
 
     private Task SelectAsync(MapSelection value)
     {

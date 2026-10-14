@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Kinds.MapPick;
 using Quesshi.Kinds.MapPick.Client;
@@ -77,6 +78,25 @@ public sealed class MapPickClientTests : BunitContext
         Assert.Equal(0, emissions);
     }
 
+    [Fact]
+    public async Task Play_discards_a_selection_when_the_host_moves_to_a_new_card()
+    {
+        var countryCard = Read<MapPickCard>(Fixture("basic"), "card");
+        var pointCard = Read<MapPickCard>(Fixture("point"), "card");
+        var emissions = new List<object?>();
+        var onAnswer = EventCallback.Factory.Create<object?>(this, emissions.Add);
+        var cut = Render<PlayHost>(parameters => parameters
+            .Add(component => component.InitialCard, countryCard)
+            .Add(component => component.NextCard, pointCard)
+            .Add(component => component.OnAnswer, onAnswer));
+
+        await cut.InvokeAsync(() => cut.FindComponent<MapField>().Instance.SelectionChanged.InvokeAsync(MapSelection.Country("DE")));
+        await cut.InvokeAsync(cut.Instance.MoveToNextCard);
+        await cut.InvokeAsync(() => cut.FindComponent<MapField>().Instance.OnConfirm.InvokeAsync());
+
+        Assert.Empty(emissions);
+    }
+
     [Theory]
     [InlineData("basic", "Germany", "Netherlands")]
     [InlineData("point", "0°, 179.9°", "0°, -179.9°")]
@@ -110,6 +130,25 @@ public sealed class MapPickClientTests : BunitContext
             .Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, _ => { })));
 
         Assert.Contains("worldmap__tolerance", editor.Markup);
+    }
+
+    [Fact]
+    public void World_map_wraps_point_overlays_and_miss_lines_at_the_antimeridian()
+    {
+        var world = Render<WorldMap>(parameters => parameters
+            .Add(component => component.Target, MapSelection.Point(0, 179.9))
+            .Add(component => component.TargetRadiusKm, 50d)
+            .Add(component => component.Marks, new[]
+            {
+                new MapMark(MapSelection.Point(0, -179), "Wrong", false),
+                new MapMark(MapSelection.Point(0, -179.9), "Right", true),
+            }));
+
+        Assert.Equal(2, world.FindAll(".worldmap__tolerance").Count);
+        Assert.Equal(2, world.FindAll(".worldmap__pin--target").Count);
+        var misses = world.FindAll(".worldmap__miss");
+        Assert.Contains(misses, line => line.GetAttribute("x1") == "-179" && line.GetAttribute("x2") == "-180.1");
+        Assert.Contains(misses, line => line.GetAttribute("x1") == "181" && line.GetAttribute("x2") == "179.9");
     }
 
     [Fact]
@@ -236,5 +275,30 @@ public sealed class MapPickClientTests : BunitContext
     private sealed class NoopLoader : IClientAssemblyLoader
     {
         public Task<IReadOnlyList<System.Reflection.Assembly>> LoadAsync(string assemblyName) => Task.FromResult<IReadOnlyList<System.Reflection.Assembly>>([]);
+    }
+
+    private sealed class PlayHost : ComponentBase
+    {
+        [Parameter, EditorRequired] public MapPickCard InitialCard { get; set; } = default!;
+        [Parameter, EditorRequired] public MapPickCard NextCard { get; set; } = default!;
+        [Parameter, EditorRequired] public EventCallback<object?> OnAnswer { get; set; }
+
+        private MapPickCard? currentCard;
+
+        protected override void OnParametersSet() => currentCard ??= InitialCard;
+
+        public void MoveToNextCard()
+        {
+            currentCard = NextCard;
+            StateHasChanged();
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<MapPickPlay>(0);
+            builder.AddAttribute(1, nameof(MapPickPlay.Card), currentCard);
+            builder.AddAttribute(2, nameof(MapPickPlay.OnAnswer), OnAnswer);
+            builder.CloseComponent();
+        }
     }
 }
