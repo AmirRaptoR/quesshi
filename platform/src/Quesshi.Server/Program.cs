@@ -24,6 +24,8 @@ using Quesshi.Server.Sessions;
 using Quesshi.Shared;
 using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Streaming;
+using Quesshi.Infrastructure.Identity;
+using Quesshi.Infrastructure.Security;
 using Quesshi.Server.Streaming;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -41,7 +43,8 @@ public static class Program
         Func<Task>? serve = null,
         Func<Task>? migrate = null,
         Func<Task<int>>? sync = null,
-        Func<IReadOnlyList<string>, Task>? tenantAdd = null)
+        Func<IReadOnlyList<string>, Task>? tenantAdd = null,
+        Func<AdminAddOptions, Task>? adminAdd = null)
     {
         try
         {
@@ -56,12 +59,16 @@ public static class Program
                 case ["tenant", "add", .. var tenantArgs]:
                     await (tenantAdd ?? (async values => _ = await AddTenantAsync(values)))(tenantArgs);
                     return 0;
+                case ["admin", "add", .. var adminArgs]:
+                    var adminOptions = AdminAddOptions.Parse(adminArgs);
+                    await (adminAdd ?? (async options => _ = await AddAdminAsync(options)))(adminOptions);
+                    return 0;
                 case []:
                 case ["serve"]:
                     await (serve ?? (() => ServeAsync(args)))();
                     return 0;
                 default:
-                    throw new CommandException("Expected 'serve', 'migrate', 'sync', or 'tenant add'.");
+                    throw new CommandException("Expected 'serve', 'migrate', 'sync', 'tenant add', or 'admin add'.");
             }
         }
         catch (CommandException exception)
@@ -112,6 +119,33 @@ public static class Program
         return await new TenantAddCommand(new SystemDb(sources), registry ?? CreateCapabilityRegistry())
             .ExecuteAsync(options, cancellationToken);
     }
+
+    internal static async Task<Guid> AddAdminAsync(IReadOnlyList<string> args, DatabaseSources? sources = null, CancellationToken cancellationToken = default)
+    {
+        var options = AdminAddOptions.Parse(args);
+        return await AddAdminAsync(options, sources, cancellationToken);
+    }
+
+    private static async Task<Guid> AddAdminAsync(AdminAddOptions options, DatabaseSources? sources = null, CancellationToken cancellationToken = default)
+    {
+        if (sources is null)
+        {
+            await using var environmentSources = DatabaseSources.FromEnvironment();
+            return await AddAdminAsync(options, environmentSources, cancellationToken);
+        }
+
+        return await new AdminAddCommand(new AdminAccountCreator(new SystemDb(sources), new IdentityPasswordHasher()))
+            .ExecuteAsync(options, cancellationToken);
+    }
+
+    internal static Task BootstrapTenantAdminsAsync(
+        DatabaseSources sources,
+        TextWriter output,
+        CancellationToken cancellationToken = default) =>
+        new TenantAdminBootstrapper(
+            new SystemDb(sources),
+            new AdminAccountCreator(new SystemDb(sources), new IdentityPasswordHasher()))
+        .EnsureAllAsync(output, cancellationToken);
 
     internal static WebApplication CreateApplication(
         DatabaseSources? configuredSources = null,
@@ -300,13 +334,16 @@ public static class Program
     internal static async Task ServeAsync(
         DatabaseSources sources,
         Func<WebApplication, Task>? run = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TextWriter? bootstrapOutput = null)
     {
         var migrations = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly, typeof(FeaturesMarker).Assembly);
         await using (var connection = await sources.System.OpenConnectionAsync(cancellationToken))
         {
             await new MigrationRunner(migrations).EnsureCurrentAsync(connection, cancellationToken);
         }
+
+        await BootstrapTenantAdminsAsync(sources, bootstrapOutput ?? Console.Out, cancellationToken);
 
         await using var app = CreateApplication(sources);
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
