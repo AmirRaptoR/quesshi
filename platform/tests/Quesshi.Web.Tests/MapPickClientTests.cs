@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
@@ -163,6 +165,92 @@ public sealed class MapPickClientTests : BunitContext
         Assert.Equal("52.82°, 4.07°", MapText.Coordinates(MapSelection.Point(52.817797, 4.067797)));
     }
 
+    [Fact]
+    public void World_map_asset_parser_reads_every_country_from_the_shipped_asset()
+    {
+        var svg = ShippedWorldSvg();
+        var countries = WorldMapAsset.Parse(svg);
+
+        Assert.Equal(Regex.Matches(svg, "<path id=\"[A-Z]{2}\"").Count, countries.Count);
+        Assert.NotEmpty(countries);
+        Assert.Equal(WorldMapCountries.Codes.OrderBy(code => code), countries.Select(country => country.Iso).OrderBy(code => code));
+        Assert.All(countries, country =>
+        {
+            Assert.StartsWith("M", country.Path);
+            Assert.False(string.IsNullOrWhiteSpace(country.Name), $"{country.Iso} has no <title>.");
+        });
+    }
+
+    [Theory]
+    [InlineData("IR", "Iran")]
+    [InlineData("NL", "Netherlands")]
+    [InlineData("DE", "Germany")]
+    public void Shipped_world_map_country_names_are_available_to_map_text(string iso, string expectedName)
+    {
+        var countries = WorldMapAsset.Parse(ShippedWorldSvg());
+        var country = countries.Single(country => country.Iso == iso);
+
+        Assert.Contains(expectedName, country.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(country.Name, MapText.CountryName(countries, iso.ToLowerInvariant()));
+    }
+
+    [Fact]
+    public void World_map_asset_parser_rejects_non_map_markup()
+    {
+        Assert.Empty(WorldMapAsset.Parse("<html><body><path id=\"nope\" d=\"M0,0Z\"/></body></html>"));
+        Assert.Empty(WorldMapAsset.Parse(string.Empty));
+    }
+
+    [Fact]
+    public async Task Map_text_editor_and_svg_attributes_remain_invariant_on_a_persian_thread()
+    {
+        var before = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("fa-IR");
+            var selection = MapSelection.Point(52.37, 4.9);
+
+            var label = MapText.Coordinates(selection);
+            Assert.Equal("52.37°, 4.9°", label);
+            Assert.Contains('.', label);
+            Assert.DoesNotContain('٫', label);
+            Assert.All(label.Where(char.IsDigit), character => Assert.True(char.IsAscii(character), $"'{character}' is not ASCII."));
+            Assert.Equal(MapSelection.Country("DE"), MapSelection.Country("de"));
+
+            var payload = Read<MapPickPayload>(Fixture("point"), "payload");
+            var writes = new List<object?>();
+            var editor = Render<MapPickEditor>(parameters => parameters
+                .Add(component => component.Kind, "map_pick")
+                .Add(component => component.Payload, payload)
+                .Add(component => component.Lang, "en")
+                .Add(component => component.PayloadChanged, EventCallback.Factory.Create<object?>(this, writes.Add)));
+
+            Assert.Equal("0", editor.Find("[aria-label='Latitude']").GetAttribute("value"));
+            Assert.Equal("179.9", editor.Find("[aria-label='Longitude']").GetAttribute("value"));
+            await editor.InvokeAsync(() => editor.FindComponent<MapField>().Instance.SelectionChanged.InvokeAsync(MapSelection.Point(payload.Target!.Latitude!.Value, payload.Target.Longitude!.Value)));
+            Assert.Equal(payload, Assert.IsType<MapPickPayload>(Assert.Single(writes)));
+
+            var world = Render<WorldMap>(parameters => parameters
+                .Add(component => component.Target, selection)
+                .Add(component => component.TargetRadiusKm, 50d)
+                .Add(component => component.Marks, new[] { new MapMark(selection, "Player", true) }));
+            var attributes = world.FindAll("[cx], [cy], [rx], [ry]")
+                .SelectMany(element => new[] { element.GetAttribute("cx"), element.GetAttribute("cy"), element.GetAttribute("rx"), element.GetAttribute("ry") })
+                .Where(value => value is not null)
+                .Cast<string>();
+            Assert.NotEmpty(attributes);
+            Assert.All(attributes, value =>
+            {
+                Assert.DoesNotContain('٫', value);
+                Assert.All(value, character => Assert.True(char.IsAscii(character), $"'{character}' is not ASCII."));
+            });
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = before;
+        }
+    }
+
     [Theory]
     [InlineData("basic")]
     [InlineData("point")]
@@ -251,6 +339,18 @@ public sealed class MapPickClientTests : BunitContext
             current = current.Parent;
         }
         throw new FileNotFoundException($"Could not find the {name} map_pick fixture.");
+    }
+
+    private static string ShippedWorldSvg()
+    {
+        var current = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (current is not null)
+        {
+            var asset = Path.Combine(current.FullName, "platform", "src", "Quesshi.Shared", "maps", "world.svg");
+            if (File.Exists(asset)) return File.ReadAllText(asset);
+            current = current.Parent;
+        }
+        throw new FileNotFoundException("Could not find the shipped world map asset.");
     }
 
     private static T Read<T>(JsonElement fixture, string property) =>
