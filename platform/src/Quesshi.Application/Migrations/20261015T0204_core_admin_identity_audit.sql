@@ -1,3 +1,4 @@
+-- This name sorts before the test-only ai_generation migration fixture.
 -- Admin identities are global state, while audit entries belong to one tenant.
 create table admins (
   id                   uuid primary key,

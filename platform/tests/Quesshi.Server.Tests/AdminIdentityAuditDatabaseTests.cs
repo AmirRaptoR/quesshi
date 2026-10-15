@@ -9,7 +9,7 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 {
-    private const string MigrationName = "20261015T0205_core_admin_identity_audit.sql";
+    private const string MigrationName = "20261015T0204_core_admin_identity_audit.sql";
     private static readonly Guid TenantA = Guid.Parse("8d6b19a5-9349-48ec-b63b-28e987f95158");
     private static readonly Guid TenantB = Guid.Parse("bd41c053-3e51-43ce-b842-3d625a56c7d1");
 
@@ -100,6 +100,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private static async Task ResetNewContractAsync(NpgsqlConnection owner)
     {
         await ExecuteAsync(owner, $"delete from schema_migrations where name = '{MigrationName}'; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
+        await ExecuteAsync(owner, "delete from tenants where id in (@a, @b)", ("a", TenantA), ("b", TenantB));
     }
 
     private static Task InsertTenantsAsync(NpgsqlConnection owner) =>
