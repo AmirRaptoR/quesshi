@@ -1,5 +1,7 @@
 using System.Data;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Quesshi.Plugin.Api;
 
 namespace Quesshi.Application.Jobs;
@@ -55,8 +57,14 @@ internal interface IJobStore
     Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default);
 }
 
-internal sealed class JobWorker(IJobStore jobs, JobHandlerRegistry handlers, ITenantDb tenantDatabase, ICapabilities capabilities)
+internal sealed class JobWorker(
+    IJobStore jobs,
+    JobHandlerRegistry handlers,
+    ITenantDb tenantDatabase,
+    ICapabilities capabilities,
+    ILogger<JobWorker>? logger = null)
 {
+    private readonly ILogger<JobWorker> _logger = logger ?? NullLogger<JobWorker>.Instance;
     internal const int MaximumConcurrentHandlers = 4;
 
     private readonly SemaphoreSlim _slots = new(MaximumConcurrentHandlers, MaximumConcurrentHandlers);
@@ -139,6 +147,14 @@ internal sealed class JobWorker(IJobStore jobs, JobHandlerRegistry handlers, ITe
         catch (Exception exception)
         {
             await jobs.FailAsync(job.Id, job.LockedBy, job.Attempts, job.MaxAttempts, exception.ToString(), cancellationToken);
+            // Unlimited jobs never transition to dead, so surface every failure rather than leaving
+            // an indefinitely retrying cleanup visible only in the jobs table.
+            if (job.MaxAttempts is null)
+            {
+                _logger.LogError(exception,
+                    "Unlimited durable job {Owner}/{Kind} ({JobId}) failed on attempt {Attempt} for tenant {TenantId}",
+                    job.Owner, job.Kind, job.Id, job.Attempts, job.TenantId);
+            }
         }
     }
 

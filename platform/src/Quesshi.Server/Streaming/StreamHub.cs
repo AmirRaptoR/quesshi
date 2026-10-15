@@ -4,6 +4,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Accounts;
 
 namespace Quesshi.Server.Streaming;
 
@@ -21,6 +22,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         SingleReader = true,
         SingleWriter = false
     });
+    private bool _terminal;
 
     public Guid TenantId { get; } = tenantId;
     public string PlayerId { get; } = playerId;
@@ -34,7 +36,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     {
         lock (_gate)
         {
-            if (view.Version <= Math.Max(LastSentVersion, LastQueuedVersion)) return;
+            if (_terminal || view.Version <= Math.Max(LastSentVersion, LastQueuedVersion)) return;
             LastQueuedVersion = view.Version;
             _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.View, view.Version, view.Json));
         }
@@ -46,14 +48,20 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         {
             // Preserve the convergence-critical view already in the one-slot buffer. The
             // periodic reconcile will retry this config after that view has been sent.
-            if (version <= LastConfigVersion || LastQueuedVersion > LastSentVersion) return;
+            if (_terminal || version <= LastConfigVersion || LastQueuedVersion > LastSentVersion) return;
             _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Config, version));
         }
     }
 
     public void QueueGone(string reason)
     {
-        lock (_gate) _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Gone, 0, Reason: reason));
+        lock (_gate)
+        {
+            if (_terminal) return;
+            _terminal = true;
+            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Gone, 0, Reason: reason));
+            _messages.Writer.TryComplete();
+        }
     }
 
     public bool MarkSent(StreamMessage message)
@@ -77,12 +85,16 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 
     public bool NeedsView(long version)
     {
-        lock (_gate) return version > Math.Max(LastSentVersion, LastQueuedVersion);
+        lock (_gate) return !_terminal && version > Math.Max(LastSentVersion, LastQueuedVersion);
     }
 
     public void Complete()
     {
-        lock (_gate) _messages.Writer.TryComplete();
+        lock (_gate)
+        {
+            _terminal = true;
+            _messages.Writer.TryComplete();
+        }
     }
 }
 
@@ -90,7 +102,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 /// Per-silo stream coordinator. It performs one snapshot/shared render for each watched session
 /// and only keeps the newest personal view per client.
 /// </summary>
-internal sealed class StreamHub : BackgroundService
+internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
 {
     private readonly ISessionSnapshotLoader snapshots;
     private readonly IViewRenderer renderer;
@@ -137,6 +149,20 @@ internal sealed class StreamHub : BackgroundService
         if (subscription.SessionId is { } sessionId) RemoveGateIfUnwatched((subscription.TenantId, sessionId));
     }
 
+    public void Deleted(IReadOnlyList<AccountDeletionPlayer> players)
+    {
+        foreach (var player in players)
+        {
+            foreach (var subscription in _subscriptions.Values.Where(subscription =>
+                         subscription.TenantId == player.TenantId
+                         && Guid.TryParse(subscription.PlayerId, out var playerId)
+                         && playerId == player.PlayerId))
+            {
+                subscription.QueueGone("revoked");
+            }
+        }
+    }
+
     public Task RenderInitialAsync(StreamSubscription subscription, CancellationToken cancellationToken) =>
         subscription.SessionId is { } sessionId ? RenderSessionAsync(subscription.TenantId, sessionId, cancellationToken) : Task.CompletedTask;
 
@@ -172,6 +198,8 @@ internal sealed class StreamHub : BackgroundService
         {
             var watched = tenant.Where(subscription => subscription.SessionId is not null)
                 .Select(subscription => subscription.SessionId!.Value).Distinct().ToArray();
+            var players = tenant.Select(subscription => Guid.TryParse(subscription.PlayerId, out var playerId) ? playerId : (Guid?)null)
+                .Where(playerId => playerId is not null).Select(playerId => playerId!.Value).Distinct().ToArray();
             var state = await database.InTenantAsync(tenant.Key, async transaction =>
             {
                 var sessionVersions = watched.Length == 0
@@ -181,12 +209,25 @@ internal sealed class StreamHub : BackgroundService
                         from sessions
                         where id = any(@sessionIds)
                         """, new { sessionIds = watched }, cancellationToken);
+                var livePlayers = players.Length == 0
+                    ? []
+                    : await transaction.QueryAsync<Guid>("""
+                        select id
+                        from players
+                        where id = any(@playerIds) and deleted_at is null
+                        """, new { playerIds = players }, cancellationToken);
                 var configVersion = await transaction.QuerySingleOrDefaultAsync<long?>(
                     "select config_version from tenants where id = @tenantId", new { tenantId = tenant.Key }, cancellationToken);
-                return new ReconciliationState(sessionVersions, configVersion);
+                return new ReconciliationState(sessionVersions, livePlayers, configVersion);
             }, cancellationToken: cancellationToken, readOnly: true);
 
             var versions = state.SessionVersions.ToDictionary(version => version.SessionId);
+            var livePlayerIds = state.LivePlayers.ToHashSet();
+            foreach (var subscription in tenant.Where(subscription =>
+                         Guid.TryParse(subscription.PlayerId, out var playerId) && !livePlayerIds.Contains(playerId)))
+            {
+                subscription.QueueGone("revoked");
+            }
             foreach (var sessionId in watched)
             {
                 var targets = tenant.Where(subscription => subscription.SessionId == sessionId).ToArray();
@@ -200,7 +241,7 @@ internal sealed class StreamHub : BackgroundService
     }
 
     internal sealed record SessionVersion(Guid SessionId, long Version);
-    private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, long? ConfigVersion);
+    private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<Guid> LivePlayers, long? ConfigVersion);
 
     private void OnNotification(StreamNotification notification)
     {
@@ -214,6 +255,9 @@ internal sealed class StreamHub : BackgroundService
                 break;
             case StreamNotification.Config config:
                 BroadcastConfig(config.TenantId, config.Version);
+                break;
+            case StreamNotification.Player player:
+                Deleted([new AccountDeletionPlayer(player.TenantId, player.PlayerId)]);
                 break;
             case StreamNotification.Reconnected:
                 _ = ReconcileAsync();

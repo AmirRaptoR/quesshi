@@ -8,6 +8,7 @@ using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Migrations;
 using Quesshi.Server.Commands;
 using Quesshi.Server.Health;
+using Quesshi.Server.Accounts;
 using Quesshi.Server.Jobs;
 using Quesshi.Server.Security;
 using Quesshi.Server.Tenants;
@@ -152,6 +153,7 @@ public static class Program
         builder.Services.AddSingleton<IStreamNotificationSource>(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
         builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
         builder.Services.AddSingleton<StreamHub>();
+        builder.Services.AddSingleton<IAccountDeletionNotifier>(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddHostedService(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddSingleton<ISessionDeadlineReconciler, NoopSessionDeadlineReconciler>();
         builder.Services.AddSingleton<IDueSessionSource, PostgresDueSessionSource>();
@@ -167,6 +169,8 @@ public static class Program
                 provider.GetRequiredService<DurableEvents>().HandleEventJobAsync(context, cancellationToken));
             registry.Jobs.Register("core", "cleanup-player", (context, cancellationToken) =>
                 provider.GetRequiredService<DurableEvents>().HandleCleanupJobAsync(context, cancellationToken));
+            registry.Jobs.Register("core", "account-player-cleanup", (context, cancellationToken) =>
+                provider.GetRequiredService<AccountPlayerCleanup>().HandleAsync(context, cancellationToken));
             return registry;
         });
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Capabilities);
@@ -180,6 +184,9 @@ public static class Program
         builder.Services.AddSingleton<IEvents>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<IPlayerCleanup>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<ISessionEffects>(provider => provider.GetRequiredService<DurableEvents>());
+        builder.Services.AddSingleton<AccountPlayerCleanup>();
+        builder.Services.AddSingleton<AccountDeletionService>(provider => new AccountDeletionService(
+            new SystemDb(sources), provider.GetRequiredService<IAccountDeletionNotifier>()));
         if (builder.Configuration.GetValue("Jobs:Enabled", true))
         {
             builder.Services.AddSingleton<IJobStore, PostgresJobStore>();

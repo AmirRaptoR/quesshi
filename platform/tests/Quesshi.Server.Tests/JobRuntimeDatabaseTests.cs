@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Quesshi.Application;
@@ -251,6 +252,26 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Unlimited_core_and_plugin_cleanup_failures_are_logged_as_alerts()
+    {
+        var registry = new JobHandlerRegistry();
+        registry.Register("core", "account-player-cleanup", (_, _) => throw new InvalidOperationException("core cleanup failed"));
+        registry.Register("sample-plugin", "cleanup-player", (_, _) => throw new InvalidOperationException("plugin cleanup failed"));
+        var tenant = Guid.NewGuid();
+        var store = new MemoryJobStore([
+            new LeasedJob(1, tenant, "core", "account-player-cleanup", default, Guid.NewGuid(), DateTimeOffset.UtcNow, 3, null),
+            new LeasedJob(2, tenant, "sample-plugin", "cleanup-player", default, Guid.NewGuid(), DateTimeOffset.UtcNow, 4, null)
+        ]);
+        var logger = new RecordingJobLogger();
+        var worker = new JobWorker(store, registry, new UnusedTenantDb(), new OffCapabilities(), logger);
+
+        await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
+
+        Assert.Contains(logger.Messages, message => message.Contains("core/account-player-cleanup", StringComparison.Ordinal) && message.Contains("attempt 3", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, message => message.Contains("sample-plugin/cleanup-player", StringComparison.Ordinal) && message.Contains("attempt 4", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Worker_shutdown_does_not_fault_when_a_handler_outlives_the_drain_timeout()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -295,6 +316,20 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
         public Task<bool> CancelAsync(long id, Guid lockedBy, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<IReadOnlyList<DeadJob>> ListDeadAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<DeadJob>>([]);
         public Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    }
+
+    private sealed class RecordingJobLogger : ILogger<JobWorker>
+    {
+        public List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                lock (Messages) Messages.Add(formatter(state, exception));
+            }
+        }
     }
 
     private sealed class UnusedTenantDb : ITenantDb

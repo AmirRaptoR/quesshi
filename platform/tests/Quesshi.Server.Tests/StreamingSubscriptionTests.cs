@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Accounts;
 using Quesshi.Server.Streaming;
 
 namespace Quesshi.Server.Tests;
@@ -62,6 +63,22 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public void Revocation_is_terminal_and_cannot_be_displaced_by_later_messages()
+    {
+        var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
+        subscription.QueueView(new RenderedSessionView(1, "{\"version\":1}"));
+
+        subscription.QueueGone("revoked");
+        subscription.QueueView(new RenderedSessionView(2, "{\"version\":2}"));
+        subscription.QueueConfig(2);
+
+        Assert.True(subscription.Messages.TryRead(out var message));
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.False(subscription.Messages.TryRead(out _));
+        Assert.True(subscription.Messages.Completion.IsCompleted);
+    }
+
+    [Fact]
     public async Task Config_notifications_are_fanned_out_only_within_their_tenant()
     {
         var tenant = Guid.NewGuid();
@@ -113,6 +130,59 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public async Task Account_deletion_revocation_closes_only_the_deleted_players_stream()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var deleted = hub.Subscribe(tenant, player.ToString(), null);
+        var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
+
+        hub.Deleted([new AccountDeletionPlayer(tenant, player)]);
+
+        var message = await ReadAsync(deleted);
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.False(other.Messages.TryRead(out _));
+        hub.Dispose();
+    }
+
+    [Fact]
+    public async Task Player_notification_closes_only_the_matching_deleted_players_stream()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var notifications = new Notifications();
+        var hub = new StreamHub(null!, null!, null!, null!, notifications,
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var deleted = hub.Subscribe(tenant, player.ToString(), null);
+        var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
+
+        notifications.Publish(new StreamNotification.Player(tenant, player));
+
+        var message = await ReadAsync(deleted);
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.False(other.Messages.TryRead(out _));
+        hub.Dispose();
+    }
+
+    [Fact]
+    public async Task Reconciliation_revokes_a_deleted_player()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var hub = new StreamHub(null!, null!, null!, new ReconciliationDatabase(Guid.NewGuid(), 0), new Notifications(),
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+        var subscription = hub.Subscribe(tenant, player.ToString(), null);
+
+        await hub.ReconcileAsync();
+
+        var message = await ReadAsync(subscription);
+        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        hub.Dispose();
+    }
+
+    [Fact]
     public async Task Unsubscribing_the_last_watcher_releases_its_idle_render_gate()
     {
         var hub = new StreamHub(new MissingSnapshotLoader(), null!, null!, null!, new Notifications(),
@@ -128,18 +198,22 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public void Listener_parses_session_and_config_notifications()
+    public void Listener_parses_session_config_and_player_notifications()
     {
         var tenantId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
 
         var session = Assert.IsType<StreamNotification.Session>(
             PostgresStreamNotificationListener.Parse($"{tenantId}:{sessionId}:7:3"));
         var config = Assert.IsType<StreamNotification.Config>(
             PostgresStreamNotificationListener.Parse($"config:{tenantId}:8"));
+        var player = Assert.IsType<StreamNotification.Player>(
+            PostgresStreamNotificationListener.Parse($"player:{tenantId}:{playerId}"));
 
         Assert.Equal((tenantId, sessionId, 7, "3"), (session.TenantId, session.SessionId, session.Version, session.Phase));
         Assert.Equal((tenantId, 8), (config.TenantId, config.Version));
+        Assert.Equal((tenantId, playerId), (player.TenantId, player.PlayerId));
         Assert.Null(PostgresStreamNotificationListener.Parse("not-a-stream-event"));
     }
 
@@ -271,7 +345,9 @@ public sealed class StreamingSubscriptionTests
     private sealed class ReconciliationTransaction(Guid sessionId, long version) : ITenantTx
     {
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<T>>([(T)(object)new StreamHub.SessionVersion(sessionId, version)]);
+            Task.FromResult<IReadOnlyList<T>>(typeof(T) == typeof(StreamHub.SessionVersion)
+                ? [(T)(object)new StreamHub.SessionVersion(sessionId, version)]
+                : []);
 
         public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(0);
