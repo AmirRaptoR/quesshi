@@ -118,12 +118,17 @@ public static class Program
         int? siloPort = null,
         int? gatewayPort = null,
         Action<ILoggingBuilder>? configureLogging = null,
-        FeatureRegistry? configuredFeatures = null)
+        FeatureRegistry? configuredFeatures = null,
+        IFormatRegistry? configuredFormats = null,
+        IKindRegistry? configuredKinds = null,
+        ISessionTurnObserver? turnObserver = null,
+        string? environmentName = null)
     {
         var options = new WebApplicationOptions
         {
             Args = [],
-            ApplicationName = typeof(Program).Assembly.GetName().Name
+            ApplicationName = typeof(Program).Assembly.GetName().Name,
+            EnvironmentName = environmentName
         };
         var builder = WebApplication.CreateBuilder(options);
         builder.WebHost.UseStaticWebAssets();
@@ -157,12 +162,13 @@ public static class Program
         builder.Services.AddSingleton<IAccountDeletionNotifier>(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddHostedService(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddSingleton<ISessionDeadlineReconciler, NoopSessionDeadlineReconciler>();
+        builder.Services.AddSingleton<ISessionTurnObserver>(turnObserver ?? NullSessionTurnObserver.Instance);
         builder.Services.AddSingleton<IDueSessionSource, PostgresDueSessionSource>();
         builder.Services.AddSingleton<ISessionTimeoutDispatcher, OrleansSessionTimeoutDispatcher>();
         builder.Services.AddSingleton<DeadlineSweep>();
         builder.Services.AddHostedService<DeadlineSweepService>();
-        builder.Services.AddSingleton<IFormatRegistry>(_ => PlatformFormats.CreateRegistry());
-        builder.Services.AddSingleton<IKindRegistry>(_ => new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
+        builder.Services.AddSingleton<IFormatRegistry>(_ => configuredFormats ?? PlatformFormats.CreateRegistry());
+        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(provider =>
         {
             var registry = configuredFeatures ?? FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));

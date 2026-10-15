@@ -21,7 +21,7 @@ public sealed class PlatformDatabaseHealth(DatabaseSources sources, ILogger<Plat
     {
         try
         {
-            await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
+            await using var connection = await sources.OpenApplicationConnectionAsync(cancellationToken);
             await connection.ExecuteScalarAsync<int>(new CommandDefinition("select 1", cancellationToken: cancellationToken));
             return true;
         }

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Quesshi.Application/Quesshi.Application.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Engine.Contracts/Quesshi.Engine.Contracts.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Formats.Testing/Quesshi.Formats.Testing.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Infrastructure/Quesshi.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Kinds/Quesshi.Kinds.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Server/Quesshi.Server.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Shared/Quesshi.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Microsoft.Orleans.Persistence.Memory" Version="10.2.2" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="bootstrap-roles.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

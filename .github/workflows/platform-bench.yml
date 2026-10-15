@@ -1,0 +1,35 @@
+name: Platform live benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        players: [20, 100, 250, 500]
+        scenario: [burst, spread, burst-streams, cold, pool10]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore platform/Quesshi.Platform.slnx
+      - run: dotnet run --project platform/bench/Quesshi.Bench.Live -- --players ${{ matrix.players }} --scenario ${{ matrix.scenario }} --output report-${{ matrix.players }}-${{ matrix.scenario }}.json
+        env:
+          QUESSHI_BENCH_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-live-${{ matrix.players }}-${{ matrix.scenario }}
+          path: report-*.json

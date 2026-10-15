@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Runtime;
@@ -19,8 +20,10 @@ public class SessionGrain(
     IClock clock,
     IViewRenderer views,
     ISessionDeadlineReconciler deadlines,
-    ILogger<SessionGrain> logger) : Grain, ISessionGrain
+    ILogger<SessionGrain> logger,
+    ISessionTurnObserver? turnObserver = null) : Grain, ISessionGrain
 {
+    private readonly ISessionTurnObserver _turnObserver = turnObserver ?? NullSessionTurnObserver.Instance;
     private SessionState? _state;
     private Guid _tenantId;
     private Guid _sessionId;
@@ -38,6 +41,9 @@ public class SessionGrain(
 
     public async Task<SessionCommandResult> ExecuteAsync(SessionCommand request)
     {
+        var started = Stopwatch.GetTimestamp();
+        SessionTurnKind? measuredKind = null;
+        DateTimeOffset? turnDueAt = null;
         try
         {
             _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
@@ -75,6 +81,8 @@ public class SessionGrain(
                 && (request.ReceivedAt > dueAt + format.Spec.Grace || clock.Now > dueAt + format.Spec.Grace))
                 return View("late_answer", format, request.PlayerId);
 
+            var previousPosition = _state.Session.Position;
+            turnDueAt = _state.Session.DueAt;
             var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
             try { format.Apply(transition, command); }
             catch (SessionCommandException exception) { return View(exception.Code, format, request.PlayerId); }
@@ -86,6 +94,13 @@ public class SessionGrain(
             if (!transition.Changed) return View("ok", format, request.PlayerId);
 
             var current = transition.Current;
+            if (command.Type == CommandType.Answer)
+            {
+                measuredKind = previousPosition?.Phase == 1
+                    && current.Session.Position?.Phase == 2
+                    ? SessionTurnKind.RoundClose
+                    : SessionTurnKind.OrdinaryAnswer;
+            }
             long version;
             try
             {
@@ -146,16 +161,26 @@ public class SessionGrain(
             DropState();
             return SessionCommandResult.Error("retryable", retryable: true);
         }
+        finally
+        {
+            if (measuredKind is { } kind)
+            {
+                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), turnDueAt, clock.Now));
+            }
+        }
     }
 
     public async Task TimeoutAsync(DateTimeOffset dueAt)
     {
+        var started = Stopwatch.GetTimestamp();
+        SessionTurnKind? measuredKind = null;
         try
         {
             _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
             if (_state is null) { Deactivate(); return; }
             if (_state.Session.Ended || _state.Session.DueAt != dueAt || dueAt > clock.Now
                 || _state.Session.RetryAt is { } retryAt && retryAt > clock.Now) { ArmDeadlineTimer(); return; }
+            _turnObserver.RecordTimerLag(clock.Now - dueAt);
             if (ShouldExpire(_state))
             {
                 await store.EndCoreAsync(_tenantId, _sessionId, CoreEndReason.Expired);
@@ -183,6 +208,12 @@ public class SessionGrain(
             // sweep deliveries cannot run the same timeout transition again.
             if (transition.Changed && transition.Current.Session.DueAt == dueAt) transition.ClearDeadline();
             if (!transition.Changed) { ArmDeadlineTimer(); return; }
+            measuredKind = _state.Session.Position?.Phase == 1
+                && transition.Current.Session.Position?.Phase == 2
+                ? SessionTurnKind.RoundClose
+                : transition.Current.Session.Ended
+                    ? SessionTurnKind.Finish
+                    : null;
             var version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, transition.Current);
             _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
             _state = _state with { Session = _state.Session with { Version = version } };
@@ -193,6 +224,13 @@ public class SessionGrain(
             logger.LogWarning(exception, "Session timeout has an uncertain persistence outcome for {SessionId}", _sessionId);
             DropState();
             throw;
+        }
+        finally
+        {
+            if (measuredKind is { } kind)
+            {
+                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), dueAt, clock.Now));
+            }
         }
     }
 
