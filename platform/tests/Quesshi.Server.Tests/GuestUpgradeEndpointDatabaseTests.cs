@@ -18,14 +18,17 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 {
+    private static int nextHttpPort = RandomNumberGenerator.GetInt32(55000, 56000);
+
     [SkippableFact]
     public async Task Upgrade_rotates_every_guest_session_and_keeps_the_same_player()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await InsertCodeAsync("upgrade-route@example.test", "123456");
-        await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
+        var httpPort = NextHttpPort();
+        await using var app = await StartAsync(httpPort);
+        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
         try
         {
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
@@ -72,8 +75,9 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         await CreateTenantAccountAsync(seeded.TenantId, "failed-route@example.test");
         await CreateTenantAccountAsync(seeded.TenantId, "expired-route@example.test");
         await InsertCodeAsync("failed-route@example.test", "123456");
-        await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
+        var httpPort = NextHttpPort();
+        await using var app = await StartAsync(httpPort);
+        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
         try
         {
             var context = new DefaultHttpContext();
@@ -114,8 +118,9 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         var seeded = await SeedAsync();
         var account = await CreateTenantAccountAsync(seeded.TenantId, "taken-route@example.test");
         await InsertCodeAsync("taken-route@example.test", "123456");
-        await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
+        var httpPort = NextHttpPort();
+        await using var app = await StartAsync(httpPort);
+        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
         try
         {
             var context = new DefaultHttpContext();
@@ -154,8 +159,9 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         var accountId = Guid.NewGuid();
         await using var owner = await OwnerAsync();
         await owner.ExecuteAsync("insert into accounts (id, email) values (@accountId, 'recovery@example.test'); update players set account_id = @accountId where tenant_id = @tenantId and id = @guestId", new { accountId, tenantId = seeded.TenantId, guestId = seeded.GuestId });
-        await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50148") };
+        var httpPort = NextHttpPort();
+        await using var app = await StartAsync(httpPort);
+        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
         try
         {
             var firstContext = new DefaultHttpContext();
@@ -220,14 +226,26 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         return account;
     }
 
-    private async Task<WebApplication> StartAsync()
+    private static int NextHttpPort() => Interlocked.Increment(ref nextHttpPort);
+
+    private static Uri LocalAddress(int httpPort) => new($"http://127.0.0.1:{httpPort}");
+
+    private async Task<WebApplication> StartAsync(int httpPort)
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        var app = Program.CreateApplication(sources, 11148, 30148);
-        app.Urls.Add("http://127.0.0.1:50148");
-        await app.StartAsync();
-        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
-        return app;
+        var app = Program.CreateApplication(sources, httpPort - 40000, httpPort - 20000);
+        app.Urls.Add(LocalAddress(httpPort).ToString());
+        try
+        {
+            await app.StartAsync();
+            await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+            return app;
+        }
+        catch
+        {
+            await app.DisposeAsync();
+            throw;
+        }
     }
 
     private async Task<NpgsqlConnection> OwnerAsync()
