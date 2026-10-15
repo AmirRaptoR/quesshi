@@ -90,9 +90,9 @@ internal sealed class FeatureRegistry(
             _cleanupHandlers.Add(id, builder.CleanupHandler);
         }
 
-        if (!feature.Retired && (builder.PlayerRouteContributions.Count != 0 || builder.OpenRouteContributions.Count != 0))
+        if (!feature.Retired && (builder.PlayerRouteContributions.Count != 0 || builder.OpenRouteContributions.Count != 0 || builder.AdminRouteContributions.Count != 0))
         {
-            _routes.Add(new FeatureRoutes(id, builder.PlayerRouteContributions, builder.OpenRouteContributions));
+            _routes.Add(new FeatureRoutes(id, builder.PlayerRouteContributions, builder.OpenRouteContributions, builder.AdminRouteContributions));
         }
 
         _features.Add(id, new RegisteredFeature(id, feature.Retired, feature.Settings));
@@ -147,7 +147,10 @@ internal sealed class FeatureRegistry(
     internal sealed record FeatureRoutes(
         string Id,
         IReadOnlyList<Action<RouteGroupBuilder>> Player,
-        IReadOnlyList<Action<RouteGroupBuilder>> Open);
+        IReadOnlyList<Action<RouteGroupBuilder>> Open,
+        IReadOnlyList<FeatureAdminRoutes> Admin);
+
+    internal sealed record FeatureAdminRoutes(AdminRole MinimumRole, IReadOnlyList<Action<RouteGroupBuilder>> Contributions);
 
     private sealed class FeatureBuilder(string featureId) : IFeatureBuilder
     {
@@ -156,6 +159,7 @@ internal sealed class FeatureRegistry(
         private readonly Dictionary<(string Kind, TimeSpan Interval), FeatureSchedule> _schedules = [];
         private readonly List<Action<RouteGroupBuilder>> _playerRoutes = [];
         private readonly List<Action<RouteGroupBuilder>> _openRoutes = [];
+        private readonly Dictionary<AdminRole, List<Action<RouteGroupBuilder>>> _adminRoutes = [];
 
         public IReadOnlyCollection<FeatureEventHandler> EventHandlers =>
             _eventHandlers.Select(pair => new FeatureEventHandler(pair.Key, pair.Value)).ToArray();
@@ -167,6 +171,11 @@ internal sealed class FeatureRegistry(
         public IReadOnlyList<Action<RouteGroupBuilder>> PlayerRouteContributions => _playerRoutes;
 
         public IReadOnlyList<Action<RouteGroupBuilder>> OpenRouteContributions => _openRoutes;
+
+        public IReadOnlyList<FeatureAdminRoutes> AdminRouteContributions => _adminRoutes
+            .OrderBy(pair => pair.Key)
+            .Select(pair => new FeatureAdminRoutes(pair.Key, pair.Value))
+            .ToArray();
 
         public Delegate? CleanupHandler { get; private set; }
 
@@ -180,6 +189,19 @@ internal sealed class FeatureRegistry(
         {
             ArgumentNullException.ThrowIfNull(routes);
             _openRoutes.Add(routes);
+        }
+
+        public void AdminRoutes(AdminRole minimumRole, Action<RouteGroupBuilder> routes)
+        {
+            if (!Enum.IsDefined(minimumRole))
+                throw new ArgumentOutOfRangeException(nameof(minimumRole));
+            ArgumentNullException.ThrowIfNull(routes);
+            if (!_adminRoutes.TryGetValue(minimumRole, out var contributions))
+            {
+                contributions = [];
+                _adminRoutes.Add(minimumRole, contributions);
+            }
+            contributions.Add(routes);
         }
 
         public void On<TEvent>(Func<ITenantTx, TEvent, CancellationToken, Task> handler)

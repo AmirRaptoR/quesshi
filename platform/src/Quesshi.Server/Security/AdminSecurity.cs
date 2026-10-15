@@ -8,14 +8,17 @@ using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Identity;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Security;
+using Quesshi.Plugin.Api;
 using Quesshi.Server.Tenants;
 
 namespace Quesshi.Server.Security;
 
 /// <summary>A tenant-bound platform administration identity. It is intentionally separate from player identity.</summary>
-public sealed record AdminIdentity(Guid TenantId, Guid AdminId, bool MustChangePassword)
+public sealed record AdminIdentity(Guid TenantId, Guid AdminId, bool MustChangePassword, bool IsPlatform, AdminRole? Role)
 {
     public string Subject => $"admin:{AdminId:N}";
+
+    public bool HasRole(AdminRole minimumRole) => IsPlatform || Role >= minimumRole;
 }
 
 internal interface IAdminSessionIssuer
@@ -62,14 +65,18 @@ internal sealed class AdminSessionService(DatabaseSources sources, IClock clock)
         if (!TryTokenHash(token, out var hash)) return null;
         await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
-        return await connection.QuerySingleOrDefaultAsync<AdminIdentity>(new CommandDefinition("""
-            select s.tenant_id as TenantId, s.admin_id as AdminId, a.must_change_password as MustChangePassword
+        var session = await connection.QuerySingleOrDefaultAsync<AdminSession>(new CommandDefinition("""
+            select s.tenant_id as TenantId, s.admin_id as AdminId, a.must_change_password as MustChangePassword,
+                   a.is_platform as IsPlatform, m.role as Role
             from auth_sessions s join admins a on a.id = s.admin_id
+              left join admin_memberships m on m.admin_id = a.id and m.tenant_id = s.tenant_id
             where s.token_hash = @hash and s.tenant_id = @tenantId and s.expires_at > now() and a.is_active
               and (a.is_platform or exists (
                 select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId
               ))
             """, new { hash, tenantId }, cancellationToken: cancellationToken));
+        return session is null ? null : new AdminIdentity(session.TenantId, session.AdminId, session.MustChangePassword, session.IsPlatform,
+            session.Role is null ? null : Enum.Parse<AdminRole>(session.Role, ignoreCase: true));
     }
 
     public async Task RevokeAsync(string token, CancellationToken cancellationToken = default)
@@ -102,6 +109,8 @@ internal sealed class AdminSessionService(DatabaseSources sources, IClock clock)
         MaxAge = Lifetime,
         Expires = clock.Now.Add(Lifetime)
     });
+
+    private sealed record AdminSession(Guid TenantId, Guid AdminId, bool MustChangePassword, bool IsPlatform, string? Role);
 }
 
 internal sealed class AdminSessionMiddleware(RequestDelegate next)
@@ -157,6 +166,7 @@ public static class AdminServices
         services.AddSingleton<IAdminSessionIssuer>(provider => provider.GetRequiredService<AdminSessionService>());
         services.AddSingleton<IAdminSessionResolver>(provider => provider.GetRequiredService<AdminSessionService>());
         services.AddSingleton<AdminAntiforgery>();
+        services.AddSingleton<AdminAuditLog>();
         return services;
     }
 

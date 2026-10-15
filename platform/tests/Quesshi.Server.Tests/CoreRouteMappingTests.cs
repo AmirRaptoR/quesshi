@@ -43,6 +43,7 @@ public sealed class CoreRouteMappingTests
         Assert.Single(profileRoutes, endpoint => endpoint.Metadata.GetMetadata<AllowGuestsMetadata>() is null);
         var upgrade = Assert.Single(endpoints, endpoint => endpoint.RoutePattern.RawText is "/api/me/upgrade");
         Assert.NotNull(upgrade.Metadata.GetMetadata<AllowGuestsMetadata>());
+        Assert.Contains(endpoints, endpoint => endpoint.RoutePattern.RawText is "/api/admin/audit");
     }
 
     [Fact]

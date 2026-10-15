@@ -17,15 +17,21 @@ public interface ICoreRouteModule
 /// <summary>Provides the only route groups used by core endpoint modules.</summary>
 public sealed class CoreRouteBuilder
 {
-    internal CoreRouteBuilder(RouteGroupBuilder playerRoutes, RouteGroupBuilder openRoutes)
+    internal CoreRouteBuilder(RouteGroupBuilder playerRoutes, RouteGroupBuilder openRoutes, RouteGroupBuilder adminRoutes)
     {
         PlayerRoutes = playerRoutes;
         OpenRoutes = openRoutes;
+        _adminRoutes = adminRoutes;
     }
 
     public RouteGroupBuilder PlayerRoutes { get; }
 
     public RouteGroupBuilder OpenRoutes { get; }
+
+    private readonly RouteGroupBuilder _adminRoutes;
+
+    /// <summary>Creates a role-protected core administration route group below <c>/api/admin</c>.</summary>
+    public RouteGroupBuilder AdminRoutes(AdminRole minimumRole) => RouteSecurity.SecureAdminRoutes(_adminRoutes.MapGroup(string.Empty), minimumRole);
 }
 
 internal static class RouteSecurity
@@ -36,7 +42,8 @@ internal static class RouteSecurity
         var playerRoutes = SecurePlayerRoutes(api.MapGroup(string.Empty));
         var openRoutes = SecureOpenRoutes(api.MapGroup(string.Empty));
         var openAdminAuthRoutes = SecureAdminAntiforgery(api.MapGroup("/admin/auth"));
-        var adminAuthRoutes = SecureAdminRoutes(api.MapGroup("/admin/auth"));
+        var adminAuthRoutes = SecureAuthenticatedAdminRoutes(api.MapGroup("/admin/auth"));
+        var adminRoutes = api.MapGroup("/admin");
 
         api.MapGet("/antiforgery", (HttpContext context, PlayerAntiforgery antiforgery) =>
         {
@@ -55,7 +62,7 @@ internal static class RouteSecurity
         playerRoutes.MapSessionCommands();
         AdminAuthEndpoints.Map(openAdminAuthRoutes, adminAuthRoutes);
 
-        var routes = new CoreRouteBuilder(playerRoutes, openRoutes);
+        var routes = new CoreRouteBuilder(playerRoutes, openRoutes, adminRoutes);
         foreach (var module in DiscoverCoreModules()) module.Map(routes);
 
         var features = app.Services.GetRequiredService<FeatureRegistry>();
@@ -69,6 +76,12 @@ internal static class RouteSecurity
 
             foreach (var contribution in feature.Player) contribution(featurePlayerRoutes);
             foreach (var contribution in feature.Open) contribution(featureOpenRoutes);
+            foreach (var admin in feature.Admin)
+            {
+                var featureAdminRoutes = SecureAdminRoutes(app.MapGroup($"/api/admin/x/{feature.Id}"), admin.MinimumRole);
+                featureAdminRoutes.AddEndpointFilter(RequireCapabilityAsync(feature.Id));
+                foreach (var contribution in admin.Contributions) contribution(featureAdminRoutes);
+            }
         }
     }
 
@@ -85,9 +98,18 @@ internal static class RouteSecurity
         return group;
     }
 
-    private static RouteGroupBuilder SecureAdminRoutes(RouteGroupBuilder group)
+    private static RouteGroupBuilder SecureAuthenticatedAdminRoutes(RouteGroupBuilder group)
     {
         group.AddEndpointFilter(RequireAdminAsync);
+        return SecureAdminAntiforgery(group);
+    }
+
+    internal static RouteGroupBuilder SecureAdminRoutes(RouteGroupBuilder group, AdminRole minimumRole)
+    {
+        if (!Enum.IsDefined(minimumRole)) throw new ArgumentOutOfRangeException(nameof(minimumRole));
+        group.AddEndpointFilter(AuditAdminRequestAsync);
+        group.AddEndpointFilter(RequireAdminAsync);
+        group.AddEndpointFilter(RequireAdminRoleAsync(minimumRole));
         return SecureAdminAntiforgery(group);
     }
 
@@ -132,6 +154,15 @@ internal static class RouteSecurity
         return await next(context);
     }
 
+    private static Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> RequireAdminRoleAsync(AdminRole minimumRole) =>
+        async (context, next) =>
+        {
+            var admin = context.HttpContext.Admin();
+            if (admin is null) return Results.Unauthorized();
+            if (admin.MustChangePassword || !admin.HasRole(minimumRole)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            return await next(context);
+        };
+
     private static async ValueTask<object?> RequireAntiforgeryAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var request = context.HttpContext.Request;
@@ -155,11 +186,23 @@ internal static class RouteSecurity
         var request = context.HttpContext.Request;
         if (HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method) || HttpMethods.IsOptions(request.Method)) return await next(context);
         if (!IsSameTenantOrigin(context.HttpContext)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-        if (!request.Headers.TryGetValue("X-CSRF", out var token)
+        if (!request.Headers.TryGetValue("X-CSRF-Admin", out var token)
             || !context.HttpContext.RequestServices.GetRequiredService<AdminAntiforgery>().IsValid(context.HttpContext, token.ToString()))
         {
             return Results.BadRequest();
         }
+        return await next(context);
+    }
+
+    private static async ValueTask<object?> AuditAdminRequestAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.HttpContext.Request;
+        if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) && !HttpMethods.IsOptions(request.Method))
+        {
+            await context.HttpContext.RequestServices.GetRequiredService<AdminAuditLog>()
+                .WriteRequestAsync(context.HttpContext, context.HttpContext.RequestAborted);
+        }
+
         return await next(context);
     }
 
