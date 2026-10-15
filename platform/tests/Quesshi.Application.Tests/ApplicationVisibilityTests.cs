@@ -35,6 +35,7 @@ public sealed class ApplicationVisibilityTests
                 typeof(SessionStateStore),
                 typeof(SessionTurnKind),
                 typeof(SessionTurnSample),
+                typeof(SessionTurnSource),
                 typeof(SessionViewSnapshot),
                 typeof(StaleActivationException),
                 typeof(ITenants),
