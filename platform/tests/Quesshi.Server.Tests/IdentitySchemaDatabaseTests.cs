@@ -172,9 +172,15 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             drop table account_identities;
             drop table login_codes;
             drop table auth_sessions;
+            -- Rewind dependent later migrations before simulating the pre-identity schema.
+            drop table audit_log;
+            drop table admin_password_resets;
+            drop table admin_memberships;
+            drop table admins;
             drop table auth_rate_limits;
             drop table rate_limits;
             drop table data_protection_keys;
+            delete from schema_migrations where name = '20261015T0204_core_admin_identity_audit.sql';
             delete from schema_migrations where name = '20261013T0203_core_effects.sql';
             delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
             delete from schema_migrations where name = '20261014T0204_core_deadlines.sql';
