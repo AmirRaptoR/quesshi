@@ -50,10 +50,10 @@ internal sealed class AccountDeletionService(ISystemDb database, IAccountDeletio
                 """, new { accountId }, cancellationToken);
             foreach (var player in livePlayers)
             {
-                var payload = JsonSerializer.Serialize(new AccountPlayerCleanupPayload(player.PlayerId));
+                var payload = JsonSerializer.Serialize(new PlayerCleanupPayload(player.PlayerId));
                 await transaction.ExecuteAsync("""
                     insert into jobs (tenant_id, owner, kind, payload, unique_key, run_at, max_attempts)
-                    values (@tenantId, 'core', 'account-player-cleanup', cast(@payload as jsonb), @uniqueKey, now(), null)
+                    values (@tenantId, 'core', 'player-cleanup', cast(@payload as jsonb), @uniqueKey, now(), null)
                     on conflict do nothing
                     """, new
                 {
@@ -79,4 +79,5 @@ internal sealed class AccountDeletionService(ISystemDb database, IAccountDeletio
     private sealed record AccountRow(string Email);
 }
 
-internal sealed record AccountPlayerCleanupPayload(Guid PlayerId);
+/// <summary>Input for the tenant-scoped, history-preserving player cleanup operation.</summary>
+internal sealed record PlayerCleanupPayload(Guid PlayerId);

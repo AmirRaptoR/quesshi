@@ -10,6 +10,12 @@ public sealed class PostgresJobScheduleTenants(DatabaseSources sources) : IJobSc
     public async Task<IReadOnlyList<Guid>> ListEnabledAsync(string owner, CancellationToken cancellationToken = default)
     {
         await using var connection = await sources.System.OpenConnectionAsync(cancellationToken);
+        if (string.Equals(owner, "core", StringComparison.Ordinal))
+        {
+            var allTenants = await connection.QueryAsync<Guid>(new CommandDefinition(
+                "select id from tenants order by id", cancellationToken: cancellationToken));
+            return allTenants.AsList();
+        }
         var command = new CommandDefinition("""
             select tenant_id
             from tenant_capabilities

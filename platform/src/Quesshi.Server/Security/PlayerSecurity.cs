@@ -67,14 +67,30 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
     {
         var token = RandomNumberGenerator.GetBytes(32);
         var hash = SHA256.HashData(token);
-        var player = await LivePlayerAsync(tenantId, playerId, cancellationToken);
-        if (player is null) throw new InvalidOperationException("The guest player is not available.");
-        await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition("""
-            insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
-            values (@hash, @tenantId, @playerId, now() + interval '30 days')
-            """, new { hash, tenantId, playerId }, cancellationToken: cancellationToken));
+        await tenantDb.InTenantAsync(tenantId, async transaction =>
+        {
+            // This key-share lock serializes guest issuance with the purge's FOR UPDATE
+            // eligibility lock. A session either commits before the sweep rechecks it, or
+            // observes the tombstone and is not issued. Players are tenant-owned rows, so
+            // this lock must use the tenant app role rather than the system session role.
+            // Retain the existing live-player behavior for guests that have since been
+            // attached to an account; the upgrade flow relies on this session-recovery
+            // path. A purge tombstone is the only unavailable state.
+            var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
+                select id from players
+                where id = @playerId and deleted_at is null
+                for key share
+                """, new { playerId }, cancellationToken);
+            if (player is null) throw new InvalidOperationException("The guest player is not available.");
+
+            await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await connection.ExecuteAsync(new CommandDefinition("""
+                insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
+                values (@hash, @tenantId, @playerId, now() + interval '30 days')
+                """, new { hash, tenantId, playerId }, cancellationToken: cancellationToken));
+            return 0;
+        }, cancellationToken: cancellationToken);
         WriteCookie(context, token);
     }
 

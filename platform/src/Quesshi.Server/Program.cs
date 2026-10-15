@@ -169,8 +169,17 @@ public static class Program
                 provider.GetRequiredService<DurableEvents>().HandleEventJobAsync(context, cancellationToken));
             registry.Jobs.Register("core", "cleanup-player", (context, cancellationToken) =>
                 provider.GetRequiredService<DurableEvents>().HandleCleanupJobAsync(context, cancellationToken));
+            registry.Jobs.Register("core", "player-cleanup", (context, cancellationToken) =>
+                provider.GetRequiredService<CorePlayerCleanup>().HandleAsync(context, cancellationToken));
+            // Keep already-persisted account-deletion cleanup jobs runnable while new jobs use
+            // the shared player-cleanup kind.
             registry.Jobs.Register("core", "account-player-cleanup", (context, cancellationToken) =>
-                provider.GetRequiredService<AccountPlayerCleanup>().HandleAsync(context, cancellationToken));
+                provider.GetRequiredService<CorePlayerCleanup>().HandleAsync(context, cancellationToken));
+            registry.Jobs.Register("core", "guest-purge", (context, cancellationToken) =>
+                provider.GetRequiredService<GuestPurge>().HandleAsync(context, cancellationToken));
+            registry.Jobs.Register("core", "guest-remove-player", (context, cancellationToken) =>
+                provider.GetRequiredService<GuestPlayerRemoval>().HandleAsync(context, cancellationToken));
+            registry.Schedules.Every("core", TimeSpan.FromDays(1), "guest-purge");
             return registry;
         });
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Capabilities);
@@ -184,7 +193,15 @@ public static class Program
         builder.Services.AddSingleton<IEvents>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<IPlayerCleanup>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<ISessionEffects>(provider => provider.GetRequiredService<DurableEvents>());
-        builder.Services.AddSingleton<AccountPlayerCleanup>();
+        builder.Services.AddSingleton<CorePlayerCleanup>();
+        builder.Services.AddSingleton<GuestPurge>(provider => new GuestPurge(
+            provider.GetRequiredService<ILocks>(),
+            provider.GetRequiredService<CorePlayerCleanup>(),
+            provider.GetRequiredService<IJobs>(),
+            new SystemDb(sources),
+            provider.GetRequiredService<IClock>()));
+        builder.Services.AddSingleton<GuestPlayerRemoval>(provider => new GuestPlayerRemoval(
+            provider.GetRequiredService<ILocks>(), new SystemDb(sources)));
         builder.Services.AddSingleton<AccountDeletionService>(provider => new AccountDeletionService(
             new SystemDb(sources), provider.GetRequiredService<IAccountDeletionNotifier>()));
         if (builder.Configuration.GetValue("Jobs:Enabled", true))
