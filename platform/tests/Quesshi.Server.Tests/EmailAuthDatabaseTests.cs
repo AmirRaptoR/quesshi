@@ -3,6 +3,7 @@ using System.Text;
 using Npgsql;
 using Quesshi.Application.Identity;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Infrastructure.Identity;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
@@ -141,6 +142,25 @@ public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
 
         Assert.True(await service.RequestCodeAsync("cleanup@example.test", "192.0.2.20", "en"));
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from auth_rate_limits where key in ('code:expired@example.test', 'profile:expired')"));
+    }
+
+    [SkippableFact]
+    public async Task Emailed_code_account_can_link_a_verified_external_identity()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var emailAuth = CreateService(sender);
+        var account = await VerifyNewAccountAsync(emailAuth, sender, "code@example.test", "192.0.2.30");
+        var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var external = new ExternalIdentityService(sources);
+
+        var completion = await external.CompleteExternalAsync("google", "email-code-subject", "code@example.test", true);
+
+        Assert.Equal(ExternalIdentityCompletionState.Completed, completion.State);
+        Assert.Equal(account, completion.AccountId);
+        Assert.Equal(TenantPlayerState.Missing, (await emailAuth.GetTenantPlayerAsync(TenantA, account)).State);
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from players where account_id = @account", ("account", account)));
     }
 
     private EmailAuthService CreateService(CapturingSender sender, int emailLimit = 5, int addressLimit = 20) => new(
