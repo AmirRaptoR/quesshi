@@ -63,7 +63,17 @@ public sealed class LiveBenchmarkRunner
         string? postgresVersion = null;
         foreach (var run in runs)
         {
-            var outcome = await RunOneAsync(run, administrationConnection, cancellationToken);
+            ScenarioOutcome outcome;
+            try
+            {
+                outcome = await RunOneAsync(run, administrationConnection, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    $"Benchmark scenario {run.Scenario} with {run.Players} players failed: {exception.Message}",
+                    exception);
+            }
             reports.Add(outcome.Report);
             postgresVersion ??= outcome.PostgreSqlVersion;
         }
