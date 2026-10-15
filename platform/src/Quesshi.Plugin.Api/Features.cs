@@ -59,6 +59,9 @@ public interface IFeatureBuilder
     /// <summary>Adds unauthenticated routes below this feature's <c>/api/x/{id}</c> path.</summary>
     void OpenRoutes(Action<RouteGroupBuilder> routes);
 
+    /// <summary>Adds administration routes below this feature's <c>/api/admin/x/{id}</c> path.</summary>
+    void AdminRoutes(AdminRole minimumRole, Action<RouteGroupBuilder> routes);
+
     void On<TEvent>(Func<ITenantTx, TEvent, CancellationToken, Task> handler);
 
     void CleanupPlayer(Func<ITenantTx, Guid, CancellationToken, Task> handler);
@@ -66,6 +69,14 @@ public interface IFeatureBuilder
     void Job(string kind, Func<JobContext, CancellationToken, Task> handler, WhenDisabled whenDisabled = WhenDisabled.Complete);
 
     void Every(TimeSpan interval, string kind);
+}
+
+/// <summary>The tenant role required to use an administration route.</summary>
+public enum AdminRole
+{
+    Moderator,
+    Editor,
+    Owner,
 }
 
 /// <summary>Marks a player route as available to guest players.</summary>

@@ -320,7 +320,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
         using var request = new HttpRequestMessage(method, path) { Content = content };
         request.Headers.Host = host;
         if (cookie is not null) request.Headers.TryAddWithoutValidation("Cookie", $"{cookieName}={cookie}");
-        if (csrf is not null) request.Headers.TryAddWithoutValidation("X-CSRF", csrf);
+        if (csrf is not null) request.Headers.TryAddWithoutValidation("X-CSRF-Admin", csrf);
         if (origin is not null) request.Headers.TryAddWithoutValidation("Origin", origin);
         return await client.SendAsync(request);
     }
