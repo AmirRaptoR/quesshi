@@ -128,13 +128,15 @@ public sealed class LiveBenchmarkRunner
             clients = await CreateClientsAsync(options.Players, endpoints, database.TenantHost, cancellationToken);
             var session = await SeedSessionAsync(database.OwnerConnectionString, tenant, options, clients, cancellationToken);
 
-            // The first real client command activates the grain, initializes the format, and arms its first deadline.
+            // The first real client command activates the grain and begins the shared
+            // countdown. Open the stream cohort during that countdown so setup cannot
+            // consume the question window that is under measurement.
             await SendCommandAsync(clients[0], session.Id, phase: "0", slot: 0, cancellationToken);
-            await WaitForPhaseAsync(database.OwnerConnectionString, session.Id, "1", cancellationToken);
             if (options.StreamCount > 0)
             {
                 streams = await OpenStreamsAsync(options.StreamCount, clients, session.Id, cancellationToken);
             }
+            await WaitForPhaseAsync(database.OwnerConnectionString, session.Id, "1", cancellationToken);
 
             // Login, seed, countdown, and initial view traffic are not benchmark samples. The
             // first command remains a distinct activation measurement for the cold scenario.
@@ -420,20 +422,26 @@ public sealed class LiveBenchmarkRunner
         Guid sessionId,
         CancellationToken cancellationToken)
     {
-        var subscriptions = new List<SseSubscription>(streamCount);
-        for (var index = 0; index < streamCount; index++)
+        var opens = Enumerable.Range(0, streamCount).Select(async index =>
         {
             var client = clients[index % clients.Count];
-            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/stream?session={sessionId:D}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/stream?session={sessionId:D}");
             request.Headers.Host = client.TenantHost;
             request.Headers.Add("Cookie", $"__Host-qp={client.Cookie}");
             var response = await client.Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            request.Dispose();
-            subscriptions.Add(await SseSubscription.CreateAsync(response, cancellationToken));
-        }
+            try
+            {
+                response.EnsureSuccessStatusCode();
+                return await SseSubscription.CreateAsync(response, cancellationToken);
+            }
+            catch
+            {
+                response.Dispose();
+                throw;
+            }
+        });
 
-        return subscriptions;
+        return [.. await Task.WhenAll(opens)];
     }
 
     private static async Task<ScenarioReport> CollectResultAsync(
