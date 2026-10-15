@@ -73,9 +73,12 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
             // eligibility lock. A session either commits before the sweep rechecks it, or
             // observes the tombstone and is not issued. Players are tenant-owned rows, so
             // this lock must use the tenant app role rather than the system session role.
+            // Retain the existing live-player behavior for guests that have since been
+            // attached to an account; the upgrade flow relies on this session-recovery
+            // path. A purge tombstone is the only unavailable state.
             var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
                 select id from players
-                where id = @playerId and account_id is null and deleted_at is null
+                where id = @playerId and deleted_at is null
                 for key share
                 """, new { playerId }, cancellationToken);
             if (player is null) throw new InvalidOperationException("The guest player is not available.");
