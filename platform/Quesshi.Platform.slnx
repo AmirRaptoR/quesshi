@@ -30,4 +30,8 @@
     <Project Path="tests/Quesshi.Testing/Quesshi.Testing.csproj" />
     <Project Path="tests/Quesshi.Infrastructure.Tests/Quesshi.Infrastructure.Tests.csproj" />
   </Folder>
+  <Folder Name="/bench/">
+    <Project Path="bench/Quesshi.Bench.Live/Quesshi.Bench.Live.csproj" />
+    <Project Path="bench/Quesshi.Bench.Live.Tests/Quesshi.Bench.Live.Tests.csproj" />
+  </Folder>
 </Solution>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.Bench.Live/Quesshi.Bench.Live.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Formats.Testing/Quesshi.Formats.Testing.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Infrastructure/Quesshi.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Kinds/Quesshi.Kinds.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Server/Quesshi.Server.csproj" />
+    <ProjectReference Include="../../tests/Quesshi.Testing/Quesshi.Testing.csproj" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+  </ItemGroup>
+  <Import Project="../../tests/TestProject.props" />
+</Project>

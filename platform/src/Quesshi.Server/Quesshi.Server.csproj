@@ -18,5 +18,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Quesshi.Server.Tests" />
+    <InternalsVisibleTo Include="Quesshi.Bench.Live" />
   </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Orleans;
@@ -55,6 +56,10 @@ internal static class SessionCommandEndpoints
         var command = new SessionCommand(player, document.Type, document.At.Phase ?? "", document.At.Slot, document.At.Step,
             document.Revision, document.Name, document.Payload?.GetRawText(), receipt);
         var result = await grains.GetGrain<ISessionGrain>($"{tenant.Id}/{id}").ExecuteAsync(command);
+        // The live benchmark needs the server's receipt and semantic result, because a
+        // rendered stale-position view is intentionally still an HTTP 200 response.
+        context.Response.Headers["X-Quesshi-Command-Code"] = result.Code;
+        context.Response.Headers["X-Quesshi-Command-Received-At"] = receipt.ToString("O", CultureInfo.InvariantCulture);
         if (result.ViewJson is not null) return Results.Content(result.ViewJson, "application/json", Encoding.UTF8, StatusCodes.Status200OK);
         return Error(result.Code, Status(result.Code));
     }

@@ -1,0 +1,1859 @@
+{
+  "SourceRevision": "3b9c919d9754a3952c6a95268031cd20431fbcd1",
+  "RunAtUtc": "2026-10-15T17:25:16.2988301+00:00",
+  "Command": "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix --allow-disposable-postgres",
+  "Environment": {
+    "Hostname": "vps-c4d96c06",
+    "CpuModel": "Intel Core Processor (Haswell, no TSX)",
+    "LogicalProcessorCount": 6,
+    "AvailableMemoryBytes": 12238286848,
+    "OperatingSystem": "Ubuntu 26.04.1 LTS",
+    "DotNet": "10.0.12",
+    "PostgreSqlVersion": "16.15 (Debian 16.15-1.pgdg13\u002B2)",
+    "PostgreSqlLocation": "local PostgreSQL at 127.0.0.1:55455"
+  },
+  "Scenarios": [
+    {
+      "Players": 20,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 31.7921,
+        "P95": 124.7228,
+        "P99": 124.7228,
+        "Max": 124.7228,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 86.3469,
+        "P95": 86.3469,
+        "P99": 86.3469,
+        "Max": 86.3469,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 191.3298,
+        "P95": 191.3298,
+        "P99": 191.3298,
+        "Max": 191.3298,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 543.7267,
+        "P95": 658.9649,
+        "P99": 733.5313,
+        "Max": 733.5313,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 11.4097,
+        "P95": 165.9082,
+        "P99": 165.9082,
+        "Max": 165.9082,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 74,
+        "P50": 0.0105,
+        "P95": 24.6096,
+        "P99": 31.4459,
+        "Max": 31.4459,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 681.9715,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 100,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 72,
+        "P50": 21.1015,
+        "P95": 55.417,
+        "P99": 307.3228,
+        "Max": 307.3228,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 348.5646,
+        "P95": 348.5646,
+        "P99": 348.5646,
+        "Max": 348.5646,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 299.5467,
+        "P95": 299.5467,
+        "P99": 299.5467,
+        "Max": 299.5467,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1571.8127,
+        "P95": 2363.0091,
+        "P99": 2363.5484,
+        "Max": 2363.9564,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 2.4388,
+        "P95": 102.8244,
+        "P99": 102.8244,
+        "Max": 102.8244,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 260,
+        "P50": 0.0078,
+        "P95": 0.0125,
+        "P99": 48.2448,
+        "Max": 189.0815,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2001.5817,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 72,
+      "LateAnswers": 0,
+      "StalePositions": 28,
+      "OtherErrors": 0,
+      "Failures": 28,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 28
+      }
+    },
+    {
+      "Players": 250,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 55,
+        "P50": 32.3879,
+        "P95": 68.2958,
+        "P99": 214.0911,
+        "Max": 214.0911,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1059.0304,
+        "P95": 1059.0304,
+        "P99": 1059.0304,
+        "Max": 1059.0304,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 1310.6454,
+        "P95": 1310.6454,
+        "P99": 1310.6454,
+        "Max": 1310.6454,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 3236.1078,
+        "P95": 3294.1259,
+        "P99": 3304.356,
+        "Max": 3307.8258,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 22.391,
+        "P95": 51.3572,
+        "P99": 51.3572,
+        "Max": 51.3572,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 376,
+        "P50": 0.0049,
+        "P95": 0.0357,
+        "P99": 67.7426,
+        "Max": 96.5302,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2022.3081,
+      "OnTimeRefusedAtClose": 45,
+      "CommandsSent": 250,
+      "Accepted": 55,
+      "LateAnswers": 0,
+      "StalePositions": 195,
+      "OtherErrors": 0,
+      "Failures": 195,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 195
+      }
+    },
+    {
+      "Players": 500,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 46,
+        "P50": 38.55,
+        "P95": 123.4207,
+        "P99": 280.4624,
+        "Max": 280.4624,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1594.3716,
+        "P95": 1594.3716,
+        "P99": 1594.3716,
+        "Max": 1594.3716,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 844.8116,
+        "P95": 844.8116,
+        "P99": 844.8116,
+        "Max": 844.8116,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 3822.4942,
+        "P95": 3932.8265,
+        "P99": 3947.6547,
+        "Max": 3951.6422,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 23.4407,
+        "P95": 68.7857,
+        "P99": 68.7857,
+        "Max": 68.7857,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 608,
+        "P50": 0.0044,
+        "P95": 0.0131,
+        "P99": 39.3077,
+        "Max": 77.3509,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2023.3369,
+      "OnTimeRefusedAtClose": 35,
+      "CommandsSent": 500,
+      "Accepted": 46,
+      "LateAnswers": 0,
+      "StalePositions": 454,
+      "OtherErrors": 0,
+      "Failures": 454,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 454
+      }
+    },
+    {
+      "Players": 20,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 25.247,
+        "P95": 56.6031,
+        "P99": 56.6031,
+        "Max": 56.6031,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 61.5526,
+        "P95": 61.5526,
+        "P99": 61.5526,
+        "Max": 61.5526,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 41.3643,
+        "P95": 41.3643,
+        "P99": 41.3643,
+        "Max": 41.3643,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 36.2852,
+        "P95": 69.7016,
+        "P99": 70.5484,
+        "Max": 70.5484,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 240.3338,
+        "P95": 240.3338,
+        "P99": 240.3338,
+        "Max": 240.3338,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 62,
+        "P50": 0.009,
+        "P95": 0.0131,
+        "P99": 0.014,
+        "Max": 0.014,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": -179.5368,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 100,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 99,
+        "P50": 22.1619,
+        "P95": 33.0249,
+        "P99": 39.6456,
+        "Max": 39.6456,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 171.341,
+        "P95": 171.341,
+        "P99": 171.341,
+        "Max": 171.341,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 188.0492,
+        "P95": 188.0492,
+        "P99": 188.0492,
+        "Max": 188.0492,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 28.4333,
+        "P95": 47.1083,
+        "P99": 75.5667,
+        "Max": 175.9277,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 2.2964,
+        "P95": 2.2964,
+        "P99": 2.2964,
+        "Max": 2.2964,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 312,
+        "P50": 0.009,
+        "P95": 0.0155,
+        "P99": 0.1041,
+        "Max": 22.5789,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": -73.8723,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 100,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 250,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 249,
+        "P50": 21.023,
+        "P95": 34.6515,
+        "P99": 46.3187,
+        "Max": 55.8707,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 372.7074,
+        "P95": 372.7074,
+        "P99": 372.7074,
+        "Max": 372.7074,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "no finish occurred"
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 26.3204,
+        "P95": 43.7953,
+        "P99": 65.7272,
+        "Max": 377.4877,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 241.1713,
+        "P95": 241.1713,
+        "P99": 241.1713,
+        "Max": 241.1713,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 762,
+        "P50": 0.0088,
+        "P95": 0.0135,
+        "P99": 0.0249,
+        "Max": 16.8131,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 127.1542,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 250,
+      "Accepted": 250,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 500,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 499,
+        "P50": 28.2416,
+        "P95": 52.8578,
+        "P99": 75.887,
+        "Max": 136.6753,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 596.3836,
+        "P95": 596.3836,
+        "P99": 596.3836,
+        "Max": 596.3836,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 606.5548,
+        "P95": 606.5548,
+        "P99": 606.5548,
+        "Max": 606.5548,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 36.545,
+        "P95": 528.8603,
+        "P99": 574.4906,
+        "Max": 600.6315,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 0.5454,
+        "P95": 0.5454,
+        "P99": 0.5454,
+        "Max": 0.5454,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 1512,
+        "P50": 0.0087,
+        "P95": 0.0135,
+        "P99": 0.0262,
+        "Max": 32.8697,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 349.2182,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 500,
+      "Accepted": 500,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 20,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 1741,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 28.1864,
+        "P95": 99.1597,
+        "P99": 99.1597,
+        "Max": 99.1597,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 59.6026,
+        "P95": 59.6026,
+        "P99": 59.6026,
+        "Max": 59.6026,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 45.5748,
+        "P95": 45.5748,
+        "P99": 45.5748,
+        "Max": 45.5748,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 293.496,
+        "P95": 656.3525,
+        "P99": 705.1363,
+        "Max": 705.1363,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 12.7491,
+        "P95": 403.2042,
+        "P99": 403.2042,
+        "Max": 403.2042,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 94,
+        "P50": 0.0084,
+        "P95": 0.0148,
+        "P99": 0.0239,
+        "Max": 0.0239,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 654.1668,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 100,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 3721,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 92,
+        "P50": 19.0878,
+        "P95": 46.4107,
+        "P99": 75.8899,
+        "Max": 75.8899,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 309.2506,
+        "P95": 309.2506,
+        "P99": 309.2506,
+        "Max": 309.2506,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 230.0668,
+        "P95": 230.0668,
+        "P99": 230.0668,
+        "Max": 230.0668,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1150.6245,
+        "P95": 2383.4742,
+        "P99": 2416.6907,
+        "Max": 2420.1971,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 8.2213,
+        "P95": 25.6052,
+        "P99": 25.6052,
+        "Max": 25.6052,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 346,
+        "P50": 0.0073,
+        "P95": 0.0139,
+        "P99": 0.0261,
+        "Max": 0.0332,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2008.1265,
+      "OnTimeRefusedAtClose": 8,
+      "CommandsSent": 100,
+      "Accepted": 92,
+      "LateAnswers": 0,
+      "StalePositions": 8,
+      "OtherErrors": 0,
+      "Failures": 8,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 8
+      }
+    },
+    {
+      "Players": 250,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 4555,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 53,
+        "P50": 26.8605,
+        "P95": 104.9948,
+        "P99": 172.5101,
+        "Max": 172.5101,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 839.4816,
+        "P95": 839.4816,
+        "P99": 839.4816,
+        "Max": 839.4816,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 326.9267,
+        "P95": 326.9267,
+        "P99": 326.9267,
+        "Max": 326.9267,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 3094.3263,
+        "P95": 3135.4203,
+        "P99": 3145.4357,
+        "Max": 3149.7592,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 49.5339,
+        "P95": 173.2885,
+        "P99": 173.2885,
+        "Max": 173.2885,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 415,
+        "P50": 0.0052,
+        "P95": 0.0127,
+        "P99": 0.0263,
+        "Max": 0.0341,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2049.4501,
+      "OnTimeRefusedAtClose": 98,
+      "CommandsSent": 250,
+      "Accepted": 53,
+      "LateAnswers": 0,
+      "StalePositions": 197,
+      "OtherErrors": 0,
+      "Failures": 197,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 197
+      }
+    },
+    {
+      "Players": 500,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 3444,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 35,
+        "P50": 46.9949,
+        "P95": 185.3708,
+        "P99": 289.1053,
+        "Max": 289.1053,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1573.0175,
+        "P95": 1573.0175,
+        "P99": 1573.0175,
+        "Max": 1573.0175,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "no finish occurred"
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 3923.8395,
+        "P95": 3947.7347,
+        "P99": 3960.7961,
+        "Max": 3977.6886,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 20.0817,
+        "P95": 81.663,
+        "P99": 81.663,
+        "Max": 81.663,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 624,
+        "P50": 0.0042,
+        "P95": 0.0108,
+        "P99": 0.0228,
+        "Max": 0.0929,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2020.0252,
+      "OnTimeRefusedAtClose": 38,
+      "CommandsSent": 500,
+      "Accepted": 35,
+      "LateAnswers": 0,
+      "StalePositions": 465,
+      "OtherErrors": 0,
+      "Failures": 465,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 465
+      }
+    },
+    {
+      "Players": 20,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 24.426,
+        "P95": 73.0199,
+        "P99": 73.0199,
+        "Max": 73.0199,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 38.8328,
+        "P95": 38.8328,
+        "P99": 38.8328,
+        "Max": 38.8328,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 232.0872,
+        "P95": 362.6943,
+        "P99": 390.2262,
+        "Max": 390.2262,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 13.9917,
+        "P95": 13.9917,
+        "P99": 13.9917,
+        "Max": 13.9917,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 82,
+        "P50": 0.0076,
+        "P95": 0.0321,
+        "P99": 53.2146,
+        "Max": 53.2146,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 45.0882,
+        "P95": 45.0882,
+        "P99": 45.0882,
+        "Max": 45.0882,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 95,
+        "P50": 0.0096,
+        "P95": 0.0175,
+        "P99": 44.2468,
+        "Max": 44.2468,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 339.6187,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 100,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 66,
+        "P50": 23.5917,
+        "P95": 65.7767,
+        "P99": 189.4648,
+        "Max": 189.4648,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 190.5916,
+        "P95": 190.5916,
+        "P99": 190.5916,
+        "Max": 190.5916,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1872.6459,
+        "P95": 2351.839,
+        "P99": 2366.2813,
+        "Max": 2372.9857,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 10.0024,
+        "P95": 11.8198,
+        "P99": 11.8198,
+        "Max": 11.8198,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 302,
+        "P50": 0.0074,
+        "P95": 0.0138,
+        "P99": 48.0624,
+        "Max": 66.2087,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 42.1041,
+        "P95": 42.1041,
+        "P99": 42.1041,
+        "Max": 42.1041,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 415,
+        "P50": 0.0083,
+        "P95": 0.0152,
+        "P99": 0.0567,
+        "Max": 56.2171,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2011.7599,
+      "OnTimeRefusedAtClose": 34,
+      "CommandsSent": 100,
+      "Accepted": 66,
+      "LateAnswers": 0,
+      "StalePositions": 34,
+      "OtherErrors": 0,
+      "Failures": 34,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 34
+      }
+    },
+    {
+      "Players": 250,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 56,
+        "P50": 29.6067,
+        "P95": 100.6322,
+        "P99": 142.0184,
+        "Max": 142.0184,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 573.2335,
+        "P95": 573.2335,
+        "P99": 573.2335,
+        "Max": 573.2335,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 2696.1496,
+        "P95": 2793.9145,
+        "P99": 2799.717,
+        "Max": 2800.0038,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 1.5209,
+        "P95": 16.2578,
+        "P99": 16.2578,
+        "Max": 16.2578,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 432,
+        "P50": 0.0056,
+        "P95": 0.0191,
+        "P99": 29.6568,
+        "Max": 42.8441,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 31.9118,
+        "P95": 31.9118,
+        "P99": 31.9118,
+        "Max": 31.9118,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 1015,
+        "P50": 0.008,
+        "P95": 0.0137,
+        "P99": 0.0284,
+        "Max": 45.9103,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2001.4717,
+      "OnTimeRefusedAtClose": 71,
+      "CommandsSent": 250,
+      "Accepted": 56,
+      "LateAnswers": 0,
+      "StalePositions": 194,
+      "OtherErrors": 0,
+      "Failures": 194,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 194
+      }
+    },
+    {
+      "Players": 500,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 49,
+        "P50": 30.9928,
+        "P95": 102.8942,
+        "P99": 339.2415,
+        "Max": 339.2415,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1169.4839,
+        "P95": 1169.4839,
+        "P99": 1169.4839,
+        "Max": 1169.4839,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 3352.7286,
+        "P95": 3407.064,
+        "P99": 3420.9718,
+        "Max": 3425.5482,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 1.8543,
+        "P95": 106.6401,
+        "P99": 106.6401,
+        "Max": 106.6401,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 661,
+        "P50": 0.0044,
+        "P95": 0.022,
+        "P99": 81.9049,
+        "Max": 131.6805,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 32.5901,
+        "P95": 32.5901,
+        "P99": 32.5901,
+        "Max": 32.5901,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 2015,
+        "P50": 0.0086,
+        "P95": 0.0136,
+        "P99": 0.0265,
+        "Max": 29.736,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2001.7756,
+      "OnTimeRefusedAtClose": 29,
+      "CommandsSent": 500,
+      "Accepted": 49,
+      "LateAnswers": 0,
+      "StalePositions": 451,
+      "OtherErrors": 0,
+      "Failures": 451,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 451
+      }
+    },
+    {
+      "Players": 20,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 19.0485,
+        "P95": 39.1607,
+        "P99": 39.1607,
+        "Max": 39.1607,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 43.159,
+        "P95": 43.159,
+        "P99": 43.159,
+        "Max": 43.159,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "no finish occurred"
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 208.2929,
+        "P95": 254.0903,
+        "P99": 287.8001,
+        "Max": 287.8001,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 13.0058,
+        "P95": 405.8268,
+        "P99": 405.8268,
+        "Max": 405.8268,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 64,
+        "P50": 0.0078,
+        "P95": 0.0375,
+        "P99": 25.7134,
+        "Max": 25.7134,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 237.079,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 100,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 99,
+        "P50": 18.6577,
+        "P95": 48.3736,
+        "P99": 107.9078,
+        "Max": 107.9078,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 142.1861,
+        "P95": 142.1861,
+        "P99": 142.1861,
+        "Max": 142.1861,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 180.4547,
+        "P95": 180.4547,
+        "P99": 180.4547,
+        "Max": 180.4547,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1040.64,
+        "P95": 1952.6294,
+        "P99": 2179.0515,
+        "Max": 2201.6602,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 2.6488,
+        "P95": 48.3382,
+        "P99": 48.3382,
+        "Max": 48.3382,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 314,
+        "P50": 0.0083,
+        "P95": 0.026,
+        "P99": 103.8114,
+        "Max": 132.0785,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2124.1368,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 100,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {}
+    },
+    {
+      "Players": 250,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 79,
+        "P50": 21.433,
+        "P95": 46.8132,
+        "P99": 184.4598,
+        "Max": 184.4598,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 516.1519,
+        "P95": 516.1519,
+        "P99": 516.1519,
+        "Max": 516.1519,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 239.4787,
+        "P95": 239.4787,
+        "P99": 239.4787,
+        "Max": 239.4787,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 2628.7509,
+        "P95": 2688.6649,
+        "P99": 2713.0319,
+        "Max": 2716.994,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 35.6931,
+        "P95": 491.1954,
+        "P99": 491.1954,
+        "Max": 491.1954,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 424,
+        "P50": 0.0063,
+        "P95": 0.0333,
+        "P99": 74.4475,
+        "Max": 89.7167,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2010.6123,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 250,
+      "Accepted": 79,
+      "LateAnswers": 0,
+      "StalePositions": 171,
+      "OtherErrors": 0,
+      "Failures": 171,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 171
+      }
+    },
+    {
+      "Players": 500,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 59,
+        "P50": 25.7389,
+        "P95": 133.0268,
+        "P99": 240.3795,
+        "Max": 240.3795,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1050.8879,
+        "P95": 1050.8879,
+        "P99": 1050.8879,
+        "Max": 1050.8879,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 545.8872,
+        "P95": 545.8872,
+        "P99": 545.8872,
+        "Max": 545.8872,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 3250.9399,
+        "P95": 3306.6986,
+        "P99": 3321.7266,
+        "Max": 3325.3744,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 23.4381,
+        "P95": 313.3607,
+        "P99": 313.3607,
+        "Max": 313.3607,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 634,
+        "P50": 0.0046,
+        "P95": 0.1949,
+        "P99": 43.9193,
+        "Max": 113.5403,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedCommittedAfterDeadlineMs": 2023.353,
+      "OnTimeRefusedAtClose": 5,
+      "CommandsSent": 500,
+      "Accepted": 59,
+      "LateAnswers": 0,
+      "StalePositions": 441,
+      "OtherErrors": 0,
+      "Failures": 441,
+      "Timeouts": 0,
+      "CommandsWithoutServerReceipt": 0,
+      "FailureCauses": {
+        "http:200:command:stale_position": 441
+      }
+    }
+  ]
+}

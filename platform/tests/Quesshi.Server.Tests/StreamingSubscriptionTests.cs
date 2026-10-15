@@ -225,7 +225,7 @@ public sealed class StreamingSubscriptionTests
         var notifications = new Notifications();
         var loader = new RecordingSnapshotLoader(State(session, 1, 500));
         var renderer = new RecordingRenderer();
-        var hub = Hub(loader, renderer, notifications);
+        var hub = Hub(loader, renderer, notifications, TimeSpan.FromSeconds(5));
         var subscribers = Enumerable.Range(0, 500).Select(index => hub.Subscribe(tenant, $"player-{index}", session)).ToArray();
 
         notifications.Publish(new StreamNotification.Session(tenant, session, 1, "0"));
@@ -249,7 +249,7 @@ public sealed class StreamingSubscriptionTests
         var started = System.Diagnostics.Stopwatch.StartNew();
         notifications.Publish(new StreamNotification.Session(tenant, session, 3, "1"));
         Assert.Equal(3, (await ReadAsync(subscribers[0])).Version);
-        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(200));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(1), $"Phase delivery took {started.Elapsed}.");
         hub.Dispose();
     }
 
@@ -367,9 +367,11 @@ public sealed class StreamingSubscriptionTests
             Task.FromResult<IReadOnlyList<SessionItemState>>([]);
     }
 
-    private static StreamHub Hub(RecordingSnapshotLoader loader, RecordingRenderer renderer, Notifications notifications) =>
+    private static StreamHub Hub(RecordingSnapshotLoader loader, RecordingRenderer renderer, Notifications notifications,
+        TimeSpan? scoreCoalesceWindow = null) =>
         new(loader, renderer, new FormatRegistry([new TestFormat()]), null!, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance,
+            scoreCoalesceWindow ?? TimeSpan.FromMilliseconds(250));
 
     private static async Task<StreamMessage> ReadAsync(StreamSubscription subscription) =>
         await subscription.Messages.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));

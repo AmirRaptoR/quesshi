@@ -38,7 +38,7 @@ public sealed class TenantDb(DatabaseSources sources, IInboxBumpSink? inboxBumpS
 
     private async Task<T> RunAttemptAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, IsolationLevel isolationLevel, CancellationToken cancellationToken, bool readOnly)
     {
-        await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
+        await using var connection = await sources.OpenApplicationConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken);
         var tenantTransaction = new TenantTransaction(connection, transaction, tenantId, _inboxBumpSink);
         var commitStarted = false;

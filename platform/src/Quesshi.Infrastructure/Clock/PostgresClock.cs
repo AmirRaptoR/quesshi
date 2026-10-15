@@ -31,7 +31,7 @@ public sealed class PostgresDatabaseClock(DatabaseSources sources) : IDatabaseCl
 {
     public async Task<DateTimeOffset> ReadAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = await sources.App.OpenConnectionAsync(cancellationToken);
+        await using var connection = await sources.OpenApplicationConnectionAsync(cancellationToken);
         var utc = await connection.ExecuteScalarAsync<DateTime>(new CommandDefinition("select clock_timestamp()", cancellationToken: cancellationToken));
         return new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
     }

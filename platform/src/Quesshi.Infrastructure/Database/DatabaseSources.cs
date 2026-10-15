@@ -1,4 +1,5 @@
 using Npgsql;
+using Quesshi.Infrastructure.Clock;
 
 namespace Quesshi.Infrastructure.Database;
 
@@ -9,9 +10,17 @@ public sealed class DatabaseSources : IAsyncDisposable
         RequiredConnectionString("ConnectionStrings__App"),
         RequiredConnectionString("ConnectionStrings__System"));
 
-    public DatabaseSources(string appConnectionString, string systemConnectionString)
+    private readonly IDatabasePoolObserver _poolObserver;
+
+    public DatabaseSources(
+        string appConnectionString,
+        string systemConnectionString,
+        int applicationPoolSize = 40,
+        IDatabasePoolObserver? poolObserver = null)
     {
-        App = Build(appConnectionString, "quesshi_app", 40);
+        ArgumentOutOfRangeException.ThrowIfLessThan(applicationPoolSize, 1);
+        _poolObserver = poolObserver ?? NullDatabasePoolObserver.Instance;
+        App = Build(appConnectionString, "quesshi_app", applicationPoolSize);
         System = Build(systemConnectionString, "quesshi_system", 10);
         SystemConnectionString = new NpgsqlConnectionStringBuilder(systemConnectionString)
         {
@@ -25,6 +34,19 @@ public sealed class DatabaseSources : IAsyncDisposable
     internal NpgsqlDataSource System { get; }
 
     public string SystemConnectionString { get; }
+
+    internal async Task<NpgsqlConnection> OpenApplicationConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        var started = PoolWaitTimer.Start();
+        try
+        {
+            return await App.OpenConnectionAsync(cancellationToken);
+        }
+        finally
+        {
+            _poolObserver.RecordApplicationPoolWait(PoolWaitTimer.Elapsed(started));
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -47,4 +69,22 @@ public sealed class DatabaseSources : IAsyncDisposable
         Environment.GetEnvironmentVariable(name) is { Length: > 0 } connectionString
             ? connectionString
             : throw new InvalidOperationException($"{name} is required.");
+}
+
+public interface IDatabasePoolObserver
+{
+    void RecordApplicationPoolWait(TimeSpan wait);
+}
+
+public sealed class NullDatabasePoolObserver : IDatabasePoolObserver
+{
+    public static readonly NullDatabasePoolObserver Instance = new();
+
+    private NullDatabasePoolObserver()
+    {
+    }
+
+    public void RecordApplicationPoolWait(TimeSpan wait)
+    {
+    }
 }
