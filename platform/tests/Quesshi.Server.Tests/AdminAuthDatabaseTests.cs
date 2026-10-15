@@ -172,6 +172,38 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
     }
 
     [SkippableFact]
+    public async Task Inactive_admin_sessions_cannot_resolve_or_access_admin_routes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var hasher = new IdentityPasswordHasher();
+        var admin = await InsertAdminAsync(owner, hasher, "deactivated-admin", "deactivated@example.test", "A strong password 2026!");
+        await ExecuteAsync(owner, "insert into admin_memberships (tenant_id, admin_id) values (@tenant, @admin)", ("tenant", TenantA), ("admin", admin));
+        var sessions = new AdminSessionService(sources, new TestClock(DateTimeOffset.UtcNow));
+        var context = new DefaultHttpContext();
+        Assert.True(await sessions.IssueAsync(context, TenantA, admin, mustChangePassword: false));
+        var token = CookieValue(context.Response.Headers.SetCookie, "__Host-qa");
+        await ExecuteAsync(owner, "update admins set is_active = false where id = @admin", ("admin", admin));
+
+        Assert.Null(await sessions.ResolveAsync(TenantA, token));
+
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50149") };
+        var host = "admin-auth-a.example.test";
+        try
+        {
+            using var response = await SendAsync(client, host, HttpMethod.Post, "/api/admin/auth/password", token, null, $"http://{host}",
+                JsonContent.Create(new { currentPassword = "A strong password 2026!", newPassword = "An updated strong password 2026!" }));
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
     public async Task Login_and_sign_out_use_the_separate_admin_cookie_and_antiforgery_contract()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -211,6 +243,10 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
 
             using var signOut = await SendAsync(client, host, HttpMethod.Post, "/api/admin/auth/sign-out", cookie, adminCsrf, origin);
             Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);
+            var clearedCookie = signOut.Headers.GetValues("Set-Cookie").Single(header => header.StartsWith("__Host-qa=", StringComparison.Ordinal));
+            Assert.StartsWith("__Host-qa=;", clearedCookie, StringComparison.Ordinal);
+            Assert.Contains("path=/", clearedCookie, StringComparison.OrdinalIgnoreCase);
+            Assert.True(clearedCookie.Contains("expires=", StringComparison.OrdinalIgnoreCase) || clearedCookie.Contains("max-age=0", StringComparison.OrdinalIgnoreCase));
             Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from auth_sessions where admin_id = @admin", ("admin", admin)));
             Assert.Equal(admin, (await sessions.ResolveAsync(TenantA, otherToken))?.AdminId);
         }
