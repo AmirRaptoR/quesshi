@@ -46,7 +46,17 @@ public sealed class BenchLiveFormat : IFormat
             else Finish(session);
         }
     }
-    public object View(IViewing session) => new { phase = session.Session.Position?.Phase, slot = session.Session.Position?.Slot, ended = session.Session.Ended };
+    public object View(IViewing session)
+    {
+        var position = session.Session.Position;
+        return new
+        {
+            phase = position?.Phase,
+            slot = position?.Slot,
+            ended = session.Session.Ended,
+            card = position is { Slot: >= 0 } ? session.Card(position.Slot) : (JsonElement?)null,
+        };
+    }
     public DateTimeOffset? Deadline(IViewing session) => session.Session.Position is { Phase: QuestionPhase } && session.Session.PositionStartedAt is { } opened ? opened + Question : session.Session.DueAt;
     public JsonElement UpgradeRules(int from, JsonElement rules) => rules.Clone();
     public JsonElement UpgradeState(int from, JsonElement state) => state.Clone();

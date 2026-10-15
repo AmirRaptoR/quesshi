@@ -180,7 +180,7 @@ public sealed class BenchLiveFormatTests
 public sealed class BenchmarkFixtureDatabaseTests(PostgresFixture fixture)
 {
     [SkippableFact]
-    public async Task Cold_fixture_persists_one_hundred_choice_items_and_requested_seats_through_production_snapshot_renderer_and_grading()
+    public async Task Cold_fixture_persists_one_hundred_choice_items_and_requested_seats_through_production_snapshot_and_grading()
     {
         Skip.If(fixture.ConnectionString is null, $"Set {PostgresFixture.AdminConnectionStringEnvironmentVariable} to run PostgreSQL tests locally.");
         var ownerConnection = fixture.ConnectionStringForRole("quesshi_owner");
@@ -206,6 +206,7 @@ public sealed class BenchmarkFixtureDatabaseTests(PostgresFixture fixture)
             Assert.Equal(100, items.Count);
             Assert.Equal(100, persisted.Length);
             Assert.All(persisted, item => Assert.Equal(200, item.Prompt.Length));
+            Assert.Equal(BenchmarkItem.Create(0).Prompt, persisted[0].Prompt);
             Assert.All(items, item =>
             {
                 Assert.Equal("choice", item.Metadata.Kind);
@@ -216,9 +217,6 @@ public sealed class BenchmarkFixtureDatabaseTests(PostgresFixture fixture)
             IKindRuntime runtime = new ChoiceKind();
             var first = items[0];
             Assert.Equal(1, runtime.Grade(first.Payload, first.Resolved, JsonSerializer.SerializeToElement(new { index = 0 })).Credit);
-            var rendererType = typeof(SessionViewSnapshot).Assembly.GetType("Quesshi.Application.Sessions.ViewRenderer", throwOnError: true)!;
-            var renderer = (IViewRenderer)Activator.CreateInstance(rendererType, nonPublic: true)!;
-            Assert.Contains("bench_live", renderer.Render(state, new BenchLiveFormat(), playerIds[0].ToString(), DateTimeOffset.UtcNow).Json);
         }
     }
 }

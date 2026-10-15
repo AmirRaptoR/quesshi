@@ -77,11 +77,27 @@ commands that reached the server and have a receipt timestamp; the table's
 raw-report `CommandsWithoutServerReceipt` field is zero for every row, so there is no unclassified client
 cohort in this run.
 
-The burst zero-refusal evidence is: 20 players **yes** (0 refused of 20
-receipt-stamped commands), 100 **no** (6 of 100), 250 **no** (30 of 250), and
-500 **yes** (0 of 500). The raw report attributes every non-accepted command in
-those rows to `http:200:command:stale_position`; it records no transport or
-unclassified failures.
+The receipt-bound burst zero-refusal result required for each player count is:
+20 players **yes** (0 observed on-time refusals), 100 **no** (6), 250 **no**
+(30), and 500 **yes, only by the endpoint-receipt definition** (0). This is
+not a claim that the engine accepted every answer a client submitted on time.
+The endpoint stamps receipt after it has read the request body; the benchmark
+does not observe time spent queued in the shared process before that point.
+
+The raw report shows why that distinction matters. At 500 burst, 472 of 500
+commands returned `http:200:command:stale_position`, and all 472 had been
+receipt-stamped after the question deadline; consequently none contributes to
+`OnTimeRefusedAtClose`. The client-observed p95 for that row was 4962.0441 ms.
+Across the 100-, 250-, and 500-player burst-related rows, client p95 ranges
+from 2227.1110 ms to 6674.8103 ms. The clients, two silos, and PostgreSQL all
+shared the six-logical-processor host described above, so this queueing is part
+of the measured end-to-end configuration and cannot be attributed solely to
+the engine. In particular, the 20- and 500-player receipt-bound **yes** values
+are not evidence that the engine would refuse zero answers arriving at the
+deadline under an independently paced client load. The raw report attributes
+every non-accepted command in those rows to
+`http:200:command:stale_position`; it records no transport or unclassified
+failures.
 
 The highest passing count is **none**. The 20-player burst drains 426.6711 ms
 after its deadline but exceeds the ordinary and close turn-time budgets
