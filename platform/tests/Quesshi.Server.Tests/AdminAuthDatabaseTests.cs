@@ -40,6 +40,8 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
             Assert.Equal(AdminLoginStatus.InvalidCredentials, (await service.LoginAsync(TenantA, "tenant-admin", "incorrect password")).Status);
 
         Assert.Equal(AdminLoginStatus.Locked, (await service.LoginAsync(TenantA, "tenant-admin", "incorrect password")).Status);
+        Assert.Equal(AdminLoginStatus.InvalidCredentials, (await service.LoginAsync(TenantB, "tenant-admin", "A strong password 2026!")).Status);
+        Assert.Equal((short)10, await ScalarAsync<short>(owner, "select failed_attempts from admins where id = @admin", ("admin", admin)));
         Assert.Equal(AdminLoginStatus.Locked, (await service.LoginAsync(TenantA, "tenant-admin", "A strong password 2026!")).Status);
 
         await ExecuteAsync(owner, "update admins set locked_until = @until where id = @admin", ("admin", admin), ("until", clock.Now.UtcDateTime.AddSeconds(-1)));
@@ -83,6 +85,23 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
     }
 
     [SkippableFact]
+    public async Task Login_limits_unknown_usernames_per_client_address_before_password_work()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var hasher = new CountingHasher();
+        var service = new AdminAuthService(sources, hasher, new CapturingMailer(), new TestClock(DateTimeOffset.UtcNow));
+
+        for (var attempt = 0; attempt < 20; attempt++)
+            Assert.Equal(AdminLoginStatus.InvalidCredentials, (await service.LoginAsync(TenantA, $"missing-{attempt}", "anything", "192.0.2.1")).Status);
+
+        Assert.Equal(AdminLoginStatus.InvalidCredentials, (await service.LoginAsync(TenantA, "missing-limited", "anything", "192.0.2.1")).Status);
+        Assert.Equal(20, hasher.Burns);
+        Assert.Equal(21, await ScalarAsync<int>(owner, "select count from auth_rate_limits where key = @key", ("key", "admin-ip:192.0.2.1")));
+    }
+
+    [SkippableFact]
     public async Task Password_resets_are_hashed_and_consumed_once_after_a_valid_new_password()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -112,6 +131,12 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
         var expiredToken = TokenFrom(mailer.Links.Last());
         await ExecuteAsync(owner, "update admin_password_resets set expires_at = now() - interval '1 second' where token_hash = @hash", ("hash", HashToken(expiredToken)));
         Assert.Equal(AdminPasswordChangeStatus.ExpiredToken, (await service.ResetAsync(expiredToken, "Another strong password 2026!")).Status);
+
+        await InsertAdminAsync(owner, hasher, "reset-handle", "winner@example.test", "A strong password 2026!");
+        await InsertAdminAsync(owner, hasher, "other-admin", "reset-handle", "A strong password 2026!");
+        await service.RequestResetAsync("reset-handle", "https://tenant-a.example/admin/reset");
+        Assert.Equal("reset-handle", mailer.Usernames.Last());
+        Assert.Equal("winner@example.test", mailer.Emails.Last());
     }
 
     [SkippableFact]
@@ -298,10 +323,14 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
     private sealed class CapturingMailer : IAdminPasswordResetMailer
     {
         public ConcurrentQueue<string> Links { get; } = [];
+        public ConcurrentQueue<string> Usernames { get; } = [];
+        public ConcurrentQueue<string> Emails { get; } = [];
 
         public Task SendAsync(string email, string username, string resetLink, CancellationToken cancellationToken = default)
         {
             Links.Enqueue(resetLink);
+            Usernames.Enqueue(username);
+            Emails.Enqueue(email);
             return Task.CompletedTask;
         }
     }

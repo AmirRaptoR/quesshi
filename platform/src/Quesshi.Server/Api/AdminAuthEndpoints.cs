@@ -20,7 +20,8 @@ internal static class AdminAuthEndpoints
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context);
         if (tenant is null) return Results.NotFound();
-        var result = await authentication.LoginAsync(tenant.Id, body.Username ?? string.Empty, body.Password ?? string.Empty, context.RequestAborted);
+        var address = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var result = await authentication.LoginAsync(tenant.Id, body.Username ?? string.Empty, body.Password ?? string.Empty, address, context.RequestAborted);
         if (result.Status == AdminLoginStatus.Locked)
             return Results.Json(new { code = "admin.auth.locked", lockedUntil = result.LockedUntil }, statusCode: StatusCodes.Status429TooManyRequests);
         if (result.Status != AdminLoginStatus.Success || result.AdminId is not { } adminId)

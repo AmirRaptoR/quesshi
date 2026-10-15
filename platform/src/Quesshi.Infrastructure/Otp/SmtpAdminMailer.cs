@@ -13,7 +13,7 @@ internal sealed class SmtpAdminMailer(IConfiguration configuration, ILogger<Smtp
         var host = configuration["Smtp:Host"];
         if (string.IsNullOrWhiteSpace(host))
         {
-            logger.LogInformation("Admin password reset generated for {Username} at {Email}", username, email);
+            logger.LogInformation("Admin password reset generated for {Username} at {Email}: {ResetLink}", username, email, resetLink);
             return;
         }
 
