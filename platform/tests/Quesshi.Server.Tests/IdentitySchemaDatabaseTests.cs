@@ -18,9 +18,10 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         var names = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly).Select(migration => migration.Name).ToArray();
 
         Assert.Contains("20261013T0202_core_identity_security.sql", names);
-        Assert.Contains("20261015T0300_core_subject_only_external_identities.sql", names);
+        Assert.Contains("20261015T0301_core_subject_only_external_identities.sql", names);
         Assert.True(Array.IndexOf(names, "20261013T0201_core_job_schedule_windows.sql") < Array.IndexOf(names, "20261013T0202_core_identity_security.sql"));
-        Assert.True(Array.IndexOf(names, "20261014T0204_core_deadlines.sql") < Array.IndexOf(names, "20261015T0300_core_subject_only_external_identities.sql"));
+        Assert.True(Array.IndexOf(names, "20261014T0204_core_deadlines.sql") < Array.IndexOf(names, "20261015T0301_core_subject_only_external_identities.sql"));
+        Assert.True(Array.IndexOf(names, "20261015T0204_core_admin_identity_audit.sql") < Array.IndexOf(names, "20261015T0301_core_subject_only_external_identities.sql"));
     }
 
     [SkippableFact]
@@ -206,7 +207,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             delete from schema_migrations where name = '20261013T0203_core_effects.sql';
             delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
             delete from schema_migrations where name = '20261014T0204_core_deadlines.sql';
-            delete from schema_migrations where name = '20261015T0300_core_subject_only_external_identities.sql';
+            delete from schema_migrations where name = '20261015T0301_core_subject_only_external_identities.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p
                             where p.account_id = accounts.id

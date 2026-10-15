@@ -17,7 +17,7 @@ public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
     {
         var migrations = MigrationRunner.Discover(typeof(ITenants).Assembly);
 
-        var migration = Assert.Single(migrations, migration => migration.Name == "20261015T0300_core_subject_only_external_identities.sql");
+        var migration = Assert.Single(migrations, migration => migration.Name == "20261015T0301_core_subject_only_external_identities.sql");
         Assert.Contains("drop constraint if exists accounts_check", Encoding.UTF8.GetString(migration.Contents.Span), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("drop constraint if exists accounts_email_deleted_check", Encoding.UTF8.GetString(migration.Contents.Span), StringComparison.OrdinalIgnoreCase);
     }
