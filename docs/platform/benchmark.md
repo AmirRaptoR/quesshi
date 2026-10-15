@@ -8,8 +8,8 @@ outcomes, command-receipt coverage, and failure causes, is
 
 ## Reproducing the run
 
-The checked-in raw report was generated on 2026-10-15 15:37 UTC from benchmark
-implementation revision `9b25dd7edfa2d8cbc755f3c60b4f0e183a84b9bb` (an
+The checked-in raw report was generated on 2026-10-15 17:25 UTC from benchmark
+implementation revision `3b9c919d9754a3952c6a95268031cd20431fbcd1` (an
 ancestor of this documentation commit):
 
 ```text
@@ -43,30 +43,30 @@ receipt, other errors, or timeouts in this run.
 
 | Players | Scenario | Streams/items/pool | Ordinary max | Close max | Finish max | Cold max | Command p95 | Timer max | Pool max | Drain | Refused | Outcome |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 20 | burst | 0/1/40 | 188.6633 | 52.9310 | 77.0603 | — | 435.8624 | 17.5410 | 36.5048 | 426.6711 | 0 | 20/20; stale 0 |
-| 100 | burst | 0/1/40 | 134.4986 | 220.9234 | 132.0848 | — | 2324.5514 | 75.2869 | 98.0794 | 2010.5189 | 6 | 76/100; stale 24 |
-| 250 | burst | 0/1/40 | 165.9969 | 611.1208 | — | — | 2810.1825 | 39.3804 | 89.1776 | 2013.1519 | 30 | 72/250; stale 178 |
-| 500 | burst | 0/1/40 | 266.0699 | 2667.0983 | 1540.5463 | — | 4962.0441 | 45.0088 | 462.9674 | 2030.2662 | 0 | 28/500; stale 472 |
-| 20 | spread | 0/1/40 | 462.9469 | 32.1377 | — | — | 854.6702 | 0.2474 | 0.1266 | -213.2419 | 0 | 20/20; stale 0 |
-| 100 | spread | 0/1/40 | 63.5706 | 137.2904 | 173.9919 | — | 46.0159 | 244.1899 | 0.0350 | -108.2109 | 0 | 100/100; stale 0 |
-| 250 | spread | 0/1/40 | 340.8987 | 293.8742 | 371.6634 | — | 55.7451 | 0.2083 | 21.9703 | 47.0437 | 0 | 250/250; stale 0 |
-| 500 | spread | 0/1/40 | 111.2310 | 676.5329 | 659.6461 | — | 86.2202 | 570.3886 | 27.4406 | 433.4246 | 0 | 500/500; stale 0 |
-| 20 | burst-streams | 500/1/40 | 84.4158 | 46.1880 | 42.9938 | — | 328.7185 | 153.7182 | 0.0261 | 312.8697 | 0 | 20/20; stale 0 |
-| 100 | burst-streams | 500/1/40 | 77.8927 | 226.9609 | 158.5549 | — | 2292.5696 | 20.8181 | 0.0313 | 2011.3072 | 6 | 94/100; stale 6 |
-| 250 | burst-streams | 500/1/40 | 131.4633 | 677.2613 | — | — | 2456.7979 | 1112.3521 | 0.3867 | 2003.3968 | 0 | 23/250; stale 227 |
-| 500 | burst-streams | 500/1/40 | 244.9964 | 1489.8450 | 686.5219 | — | 3756.8802 | 22.8842 | 0.1457 | 2019.4467 | 55 | 39/500; stale 461 |
-| 20 | cold | 0/100/40 | 171.4196 | 50.8558 | — | 42.5810 | 2252.8906 | 1525.8973 | 1718.5123 | 2017.8351 | 0 | 11/20; stale 9 |
-| 100 | cold | 0/100/40 | 179.0420 | 157.4794 | — | 39.9548 | 2258.8154 | 14.9881 | 122.9362 | 2014.9087 | 2 | 77/100; stale 23 |
-| 250 | cold | 0/100/40 | 679.5571 | 761.1625 | — | 37.6830 | 3192.8467 | 437.2024 | 555.7566 | 2112.5068 | 0 | 2/250; stale 248 |
-| 500 | cold | 0/100/40 | 505.1801 | 4156.3133 | — | 82.3952 | 6674.8103 | 1121.1452 | 387.5169 | 2056.9085 | 0 | 16/500; stale 484 |
-| 20 | pool10 | 0/1/10 | 93.5882 | 45.6943 | 43.3835 | — | 441.3685 | 364.2411 | 49.0860 | 411.4983 | 0 | 20/20; stale 0 |
-| 100 | pool10 | 0/1/10 | 122.8074 | 152.6197 | 309.6944 | — | 2227.1110 | 571.2344 | 119.2356 | 2016.4997 | 8 | 92/100; stale 8 |
-| 250 | pool10 | 0/1/10 | 453.3315 | 1556.9310 | — | — | 3829.7214 | 253.8847 | 262.4494 | 2039.5431 | 0 | 26/250; stale 224 |
-| 500 | pool10 | 0/1/10 | 351.6792 | 1367.2320 | 768.0082 | — | 3641.6549 | 73.4570 | 103.4518 | 2023.6031 | 7 | 52/500; stale 448 |
+| 20 | burst | 0/1/40 | 124.7228 | 86.3469 | 191.3298 | — | 658.9649 | 165.9082 | 31.4459 | 681.9715 | 0 | 20/20; stale 0 |
+| 100 | burst | 0/1/40 | 307.3228 | 348.5646 | 299.5467 | — | 2363.0091 | 102.8244 | 189.0815 | 2001.5817 | 0 | 72/100; stale 28 |
+| 250 | burst | 0/1/40 | 214.0911 | 1059.0304 | 1310.6454 | — | 3294.1259 | 51.3572 | 96.5302 | 2022.3081 | 45 | 55/250; stale 195 |
+| 500 | burst | 0/1/40 | 280.4624 | 1594.3716 | 844.8116 | — | 3932.8265 | 68.7857 | 77.3509 | 2023.3369 | 35 | 46/500; stale 454 |
+| 20 | spread | 0/1/40 | 56.6031 | 61.5526 | 41.3643 | — | 69.7016 | 240.3338 | 0.0140 | -179.5368 | 0 | 20/20; stale 0 |
+| 100 | spread | 0/1/40 | 39.6456 | 171.3410 | 188.0492 | — | 47.1083 | 2.2964 | 22.5789 | -73.8723 | 0 | 100/100; stale 0 |
+| 250 | spread | 0/1/40 | 55.8707 | 372.7074 | — | — | 43.7953 | 241.1713 | 16.8131 | 127.1542 | 0 | 250/250; stale 0 |
+| 500 | spread | 0/1/40 | 136.6753 | 596.3836 | 606.5548 | — | 528.8603 | 0.5454 | 32.8697 | 349.2182 | 0 | 500/500; stale 0 |
+| 20 | burst-streams | 500/1/40 | 99.1597 | 59.6026 | 45.5748 | — | 656.3525 | 403.2042 | 0.0239 | 654.1668 | 0 | 20/20; stale 0 |
+| 100 | burst-streams | 500/1/40 | 75.8899 | 309.2506 | 230.0668 | — | 2383.4742 | 25.6052 | 0.0332 | 2008.1265 | 8 | 92/100; stale 8 |
+| 250 | burst-streams | 500/1/40 | 172.5101 | 839.4816 | 326.9267 | — | 3135.4203 | 173.2885 | 0.0341 | 2049.4501 | 98 | 53/250; stale 197 |
+| 500 | burst-streams | 500/1/40 | 289.1053 | 1573.0175 | — | — | 3947.7347 | 81.6630 | 0.0929 | 2020.0252 | 38 | 35/500; stale 465 |
+| 20 | cold | 0/100/40 | 73.0199 | 38.8328 | — | 45.0882 | 362.6943 | 13.9917 | 53.2146 | 339.6187 | 0 | 20/20; stale 0 |
+| 100 | cold | 0/100/40 | 189.4648 | 190.5916 | — | 42.1041 | 2351.8390 | 11.8198 | 66.2087 | 2011.7599 | 34 | 66/100; stale 34 |
+| 250 | cold | 0/100/40 | 142.0184 | 573.2335 | — | 31.9118 | 2793.9145 | 16.2578 | 42.8441 | 2001.4717 | 71 | 56/250; stale 194 |
+| 500 | cold | 0/100/40 | 339.2415 | 1169.4839 | — | 32.5901 | 3407.0640 | 106.6401 | 131.6805 | 2001.7756 | 29 | 49/500; stale 451 |
+| 20 | pool10 | 0/1/10 | 39.1607 | 43.1590 | — | — | 254.0903 | 405.8268 | 25.7134 | 237.0790 | 0 | 20/20; stale 0 |
+| 100 | pool10 | 0/1/10 | 107.9078 | 142.1861 | 180.4547 | — | 1952.6294 | 48.3382 | 132.0785 | 2124.1368 | 0 | 100/100; stale 0 |
+| 250 | pool10 | 0/1/10 | 184.4598 | 516.1519 | 239.4787 | — | 2688.6649 | 491.1954 | 89.7167 | 2010.6123 | 0 | 79/250; stale 171 |
+| 500 | pool10 | 0/1/10 | 240.3795 | 1050.8879 | 545.8872 | — | 3306.6986 | 313.3607 | 113.5403 | 2023.3530 | 5 | 59/500; stale 441 |
 
 Cold rows deliberately stop after their first loaded slot, so finish is
 unavailable; their `Cold max` is the cold 100-item activation turn. The
-`burst-streams` rows received 1,525, 4,022, 2,441, and 3,603 views respectively.
+`burst-streams` rows received 1,741, 3,721, 4,555, and 3,444 views respectively.
 
 ## Budget reading
 
@@ -78,32 +78,32 @@ raw-report `CommandsWithoutServerReceipt` field is zero for every row, so there 
 cohort in this run.
 
 The receipt-bound burst zero-refusal result required for each player count is:
-20 players **yes** (0 observed on-time refusals), 100 **no** (6), 250 **no**
-(30), and 500 **yes, only by the endpoint-receipt definition** (0). This is
+20 players **yes** (0 observed on-time refusals), 100 **yes** (0), 250 **no**
+(45), and 500 **no** (35). This is
 not a claim that the engine accepted every answer a client submitted on time.
 The endpoint stamps receipt after it has read the request body; the benchmark
 does not observe time spent queued in the shared process before that point.
 
-The raw report shows why that distinction matters. At 500 burst, 472 of 500
-commands returned `http:200:command:stale_position`, and all 472 had been
-receipt-stamped after the question deadline; consequently none contributes to
-`OnTimeRefusedAtClose`. The client-observed p95 for that row was 4962.0441 ms.
+The raw report shows why that distinction matters. At 500 burst, 454 of 500
+commands returned `http:200:command:stale_position`, while 35 of them were
+receipt-stamped by the question deadline and therefore contribute to
+`OnTimeRefusedAtClose`. The client-observed p95 for that row was 3932.8265 ms.
 Across the 100-, 250-, and 500-player burst-related rows, client p95 ranges
-from 2227.1110 ms to 6674.8103 ms. The clients, two silos, and PostgreSQL all
+from 1952.6294 ms to 3947.7347 ms. The clients, two silos, and PostgreSQL all
 shared the six-logical-processor host described above, so this queueing is part
 of the measured end-to-end configuration and cannot be attributed solely to
-the engine. In particular, the 20- and 500-player receipt-bound **yes** values
+the engine. In particular, the 20- and 100-player receipt-bound **yes** values
 are not evidence that the engine would refuse zero answers arriving at the
 deadline under an independently paced client load. The raw report attributes
 every non-accepted command in those rows to
 `http:200:command:stale_position`; it records no transport or unclassified
 failures.
 
-The highest passing count is **none**. The 20-player burst drains 426.6711 ms
-after its deadline but exceeds the ordinary and close turn-time budgets
-(188.6633 ms ordinary, 52.9310 ms close, and 77.0603 ms finish).
+The highest passing count is **none**. The 20-player burst drains 681.9715 ms
+after its deadline but exceeds the ordinary, close, and finish turn-time budgets
+(124.7228 ms ordinary, 86.3469 ms close, and 191.3298 ms finish).
 At 100, 250, and 500 players the burst drain is at or beyond the two-second
-grace and the turn maxima exceed the applicable budgets; 100 and 250 also have
+grace and the turn maxima exceed the applicable budgets; 250 and 500 also have
 on-time refusals. Streamed and pool-limited cases likewise contain budget and,
 where shown, refusal failures. These failures are reported plainly rather than
 tuned away.
