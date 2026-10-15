@@ -209,7 +209,9 @@ public sealed class LiveBenchmarkRunner
         var players = new List<BenchClient>(playerCount);
         for (var index = 0; index < playerCount; index++)
         {
-            var http = new HttpClient { BaseAddress = endpoints[index % endpoints.Count], Timeout = TimeSpan.FromSeconds(30) };
+            // Streams intentionally stay open throughout the question. Command deadlines
+            // are enforced per request so they cannot also abort an SSE subscription.
+            var http = new HttpClient { BaseAddress = endpoints[index % endpoints.Count], Timeout = Timeout.InfiniteTimeSpan };
             var token = await GetAntiforgeryTokenAsync(http, tenantHost, cookie: null, cancellationToken);
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/guest")
             {
@@ -361,7 +363,9 @@ public sealed class LiveBenchmarkRunner
         try
         {
             using var request = BuildAnswerRequest(client, sessionId, "1", 0);
-            using var response = await client.Http.SendAsync(request, cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var response = await client.Http.SendAsync(request, timeout.Token);
             var code = response.Headers.TryGetValues("X-Quesshi-Command-Code", out var values) ? values.SingleOrDefault() : null;
             var receivedAt = response.Headers.TryGetValues("X-Quesshi-Command-Received-At", out var receivedValues)
                 && DateTimeOffset.TryParse(receivedValues.SingleOrDefault(), out var parsedReceipt)
