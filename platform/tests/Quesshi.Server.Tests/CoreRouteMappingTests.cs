@@ -39,6 +39,8 @@ public sealed class CoreRouteMappingTests
         var profileRoutes = endpoints.Where(endpoint => endpoint.RoutePattern.RawText is "/api/me").ToArray();
         Assert.Equal(2, profileRoutes.Length);
         Assert.All(profileRoutes, endpoint => Assert.NotNull(endpoint.Metadata.GetMetadata<AllowGuestsMetadata>()));
+        var upgrade = Assert.Single(endpoints, endpoint => endpoint.RoutePattern.RawText is "/api/me/upgrade");
+        Assert.NotNull(upgrade.Metadata.GetMetadata<AllowGuestsMetadata>());
     }
 
     [Fact]

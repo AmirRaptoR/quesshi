@@ -141,7 +141,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
+        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'identity-a', 'Identity A', 'en'), (@b, 'identity-b', 'Identity B', 'en')", ("a", TenantA), ("b", TenantB));
         return owner;
     }
@@ -150,7 +150,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from tenants; delete from accounts");
+        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await ExecuteAsync(owner, """
             drop function session_ended_effect_jobs(uuid);
             drop function due_sessions(timestamptz, int, uuid[]);
