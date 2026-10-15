@@ -1,1 +1,1789 @@
-{"SourceRevision":"cc2b442b8b3ebf3a87f43d38ec4f8e887e39a77c","RunAtUtc":"2026-10-15T09:48:37.0061238+00:00","Command":"dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix","Machine":"vps-c4d96c06","Environment":".NET 10.0.12; PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)","Scenarios":[{"Players":20,"Scenario":"burst","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":19,"P50":44.9496,"P95":205.6023,"P99":205.6023,"Max":205.6023,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":167.1919,"P95":167.1919,"P99":167.1919,"Max":167.1919,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":166.3833,"P95":166.3833,"P99":166.3833,"Max":166.3833,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":20,"P50":516.8189,"P95":877.0021,"P99":1027.4332,"Max":1027.4332,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":2.3769,"P95":93.2834,"P99":93.2834,"Max":93.2834,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":74,"P50":0.0103,"P95":0.0401,"P99":32.2012,"Max":32.2012,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-40.329,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":100,"Scenario":"burst","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":24,"P50":88.8333,"P95":140.4765,"P99":214.5752,"Max":214.5752,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":508.0826,"P95":508.0826,"P99":508.0826,"Max":508.0826,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":394.5631,"P95":394.5631,"P99":394.5631,"Max":394.5631,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":100,"P50":2640.4626,"P95":2718.1533,"P99":2776.1452,"Max":2779.7022,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":131.0066,"P95":1003.2901,"P99":1003.2901,"Max":1003.2901,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":164,"P50":0.0093,"P95":69.0229,"P99":209.8407,"Max":219.3871,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2019.796,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":250,"Scenario":"burst","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":36,"P50":45.9796,"P95":184.7832,"P99":256.0205,"Max":256.0205,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":924.0969,"P95":924.0969,"P99":924.0969,"Max":924.0969,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"no finish occurred"},"CommandLatency":{"SampleCount":250,"P50":3094.532,"P95":3173.4585,"P99":3194.8521,"Max":3200.5378,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":9.0526,"P95":11.7299,"P99":11.7299,"Max":11.7299,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":338,"P50":0.0056,"P95":0.0292,"P99":82.548,"Max":101.2368,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2019.065,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":500,"Scenario":"burst","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":29,"P50":62.7198,"P95":221.7172,"P99":259.2805,"Max":259.2805,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":1827.1653,"P95":1827.1653,"P99":1827.1653,"Max":1827.1653,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"no finish occurred"},"CommandLatency":{"SampleCount":500,"P50":4104.8555,"P95":4139.6548,"P99":4150.2959,"Max":4168.0021,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":6.6108,"P95":12.4452,"P99":12.4452,"Max":12.4452,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":574,"P50":0.006,"P95":0.014,"P99":41.3067,"Max":137.2336,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2060.481,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":20,"Scenario":"spread","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":19,"P50":27.05,"P95":55.1346,"P99":55.1346,"Max":55.1346,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":96.6511,"P95":96.6511,"P99":96.6511,"Max":96.6511,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":62.1944,"P95":62.1944,"P99":62.1944,"Max":62.1944,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":20,"P50":41.5463,"P95":86.6756,"P99":116.0613,"Max":116.0613,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":1,"P50":227.7014,"P95":227.7014,"P99":227.7014,"Max":227.7014,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":62,"P50":0.01,"P95":0.0221,"P99":0.0565,"Max":0.0565,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-226.482,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":100,"Scenario":"spread","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":99,"P50":32.6178,"P95":77.4052,"P99":99.71,"Max":99.71,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":276.2762,"P95":276.2762,"P99":276.2762,"Max":276.2762,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"no finish occurred"},"CommandLatency":{"SampleCount":100,"P50":43.4444,"P95":100.8565,"P99":121.6454,"Max":281.1732,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":1,"P50":251.4811,"P95":251.4811,"P99":251.4811,"Max":251.4811,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":312,"P50":0.0105,"P95":0.0149,"P99":0.0312,"Max":0.1862,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-246.984,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":250,"Scenario":"spread","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":249,"P50":25.8832,"P95":53.2348,"P99":91.3028,"Max":186.1153,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":461.1563,"P95":461.1563,"P99":461.1563,"Max":461.1563,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"no finish occurred"},"CommandLatency":{"SampleCount":250,"P50":32.4058,"P95":78.5508,"P99":194.3862,"Max":468.5939,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":1,"P50":0.4385,"P95":0.4385,"P99":0.4385,"Max":0.4385,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":763,"P50":0.0101,"P95":0.015,"P99":0.0312,"Max":132.5669,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-243.025,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":500,"Scenario":"spread","Streams":0,"Items":1,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":499,"P50":28.827,"P95":55.6191,"P99":75.1347,"Max":111.8104,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":1278.9176,"P95":1278.9176,"P99":1278.9176,"Max":1278.9176,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":1254.2023,"P95":1254.2023,"P99":1254.2023,"Max":1254.2023,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":500,"P50":36.4152,"P95":311.4741,"P99":358.2203,"Max":1448.7883,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":1,"P50":0.133,"P95":0.133,"P99":0.133,"Max":0.133,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":1512,"P50":0.0103,"P95":0.0155,"P99":0.0309,"Max":55.8016,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-231.246,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":20,"Scenario":"burst-streams","Streams":500,"Items":1,"PoolConnections":null,"ViewsReceived":1750,"OrdinaryAnswerBusy":{"SampleCount":19,"P50":20.8286,"P95":701.1633,"P99":701.1633,"Max":701.1633,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":134.8774,"P95":134.8774,"P99":134.8774,"Max":134.8774,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":36.3107,"P95":36.3107,"P99":36.3107,"Max":36.3107,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":20,"P50":532.5833,"P95":1073.285,"P99":1142.1186,"Max":1142.1186,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":464.5692,"P95":475.7044,"P99":475.7044,"Max":475.7044,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":92,"P50":0.0099,"P95":31.2698,"P99":44.3441,"Max":44.3441,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":571.652,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":100,"Scenario":"burst-streams","Streams":500,"Items":1,"PoolConnections":null,"ViewsReceived":4000,"OrdinaryAnswerBusy":{"SampleCount":70,"P50":21.9577,"P95":82.5368,"P99":130.7567,"Max":130.7567,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":188.5883,"P95":188.5883,"P99":188.5883,"Max":188.5883,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":212.5632,"P95":212.5632,"P99":212.5632,"Max":212.5632,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":100,"P50":1668.8418,"P95":2298.3798,"P99":2407.9411,"Max":2443.6374,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":114.0612,"P95":597.6292,"P99":597.6292,"Max":597.6292,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":292,"P50":0.0089,"P95":0.016,"P99":39.8854,"Max":59.3488,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2008.25,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":250,"Scenario":"burst-streams","Streams":500,"Items":1,"PoolConnections":null,"ViewsReceived":4250,"OrdinaryAnswerBusy":{"SampleCount":61,"P50":24.7193,"P95":121.848,"P99":170.0823,"Max":170.0823,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":633.6623,"P95":633.6623,"P99":633.6623,"Max":633.6623,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":306.4409,"P95":306.4409,"P99":306.4409,"Max":306.4409,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":250,"P50":3197.0385,"P95":3421.709,"P99":3423.3603,"Max":3447.4928,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":25.958,"P95":64.9949,"P99":64.9949,"Max":64.9949,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":419,"P50":0.0062,"P95":0.0267,"P99":66.5944,"Max":199.0969,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2035.555,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":500,"Scenario":"burst-streams","Streams":500,"Items":1,"PoolConnections":null,"ViewsReceived":1995,"OrdinaryAnswerBusy":{"SampleCount":1,"P50":395.4501,"P95":395.4501,"P99":395.4501,"Max":395.4501,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":2617.4714,"P95":2617.4714,"P99":2617.4714,"Max":2617.4714,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":664.4315,"P95":664.4315,"P99":664.4315,"Max":664.4315,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":500,"P50":3168.5321,"P95":3217.1962,"P99":3227.172,"Max":3237.3446,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":236.1449,"P95":364.9187,"P99":364.9187,"Max":364.9187,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":518,"P50":0.0048,"P95":0.0329,"P99":79.2788,"Max":158.8484,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":622.706,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":20,"Scenario":"cold","Streams":0,"Items":100,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":19,"P50":19.8658,"P95":56.6377,"P99":56.6377,"Max":56.6377,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":39.2105,"P95":39.2105,"P99":39.2105,"Max":39.2105,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"cold activation stops after the first loaded slot"},"CommandLatency":{"SampleCount":20,"P50":230.2485,"P95":316.6781,"P99":345.1874,"Max":345.1874,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":1,"P50":6.7411,"P95":6.7411,"P99":6.7411,"Max":6.7411,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":82,"P50":0.0092,"P95":0.0267,"P99":23.2261,"Max":23.2261,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-44.662,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":100,"Scenario":"cold","Streams":0,"Items":100,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":42,"P50":33.8327,"P95":172.1759,"P99":187.6996,"Max":187.6996,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":233.6535,"P95":233.6535,"P99":233.6535,"Max":233.6535,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"cold activation stops after the first loaded slot"},"CommandLatency":{"SampleCount":100,"P50":2310.0194,"P95":2384.1374,"P99":2385.5105,"Max":2385.9884,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":8.2919,"P95":36.357,"P99":36.357,"Max":36.357,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":230,"P50":0.0089,"P95":0.0243,"P99":63.5336,"Max":133.1292,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2009.363,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":250,"Scenario":"cold","Streams":0,"Items":100,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":70,"P50":24.8501,"P95":72.0829,"P99":158.5638,"Max":158.5638,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":667.1757,"P95":667.1757,"P99":667.1757,"Max":667.1757,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"cold activation stops after the first loaded slot"},"CommandLatency":{"SampleCount":250,"P50":2797.3478,"P95":2889.6706,"P99":2900.5925,"Max":2905.0188,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":11.415,"P95":61.7543,"P99":61.7543,"Max":61.7543,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":474,"P50":0.0079,"P95":0.0177,"P99":55.7596,"Max":133.9434,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2018.413,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":500,"Scenario":"cold","Streams":0,"Items":100,"PoolConnections":null,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":47,"P50":32.6684,"P95":146.9369,"P99":195.6776,"Max":195.6776,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":1268.7845,"P95":1268.7845,"P99":1268.7845,"Max":1268.7845,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"cold activation stops after the first loaded slot"},"CommandLatency":{"SampleCount":500,"P50":3473.1955,"P95":3526.114,"P99":3539.7396,"Max":3541.6433,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":21.2218,"P95":66.2275,"P99":66.2275,"Max":66.2275,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":655,"P50":0.0052,"P95":0.0138,"P99":46.6036,"Max":98.4817,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2052.402,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":20,"Scenario":"pool10","Streams":0,"Items":1,"PoolConnections":10,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":19,"P50":18.3657,"P95":50.6804,"P99":50.6804,"Max":50.6804,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":34.9134,"P95":34.9134,"P99":34.9134,"Max":34.9134,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":34.571,"P95":34.571,"P99":34.571,"Max":34.571,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":20,"P50":209.3489,"P95":265.5375,"P99":290.0681,"Max":290.0681,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":2,"P50":6.5856,"P95":267.551,"P99":267.551,"Max":267.551,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":64,"P50":0.0087,"P95":12.4727,"P99":30.6253,"Max":30.6253,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":-46.048,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":100,"Scenario":"pool10","Streams":0,"Items":1,"PoolConnections":10,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":95,"P50":19.7092,"P95":41.9846,"P99":170.5032,"Max":170.5032,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":154.4528,"P95":154.4528,"P99":154.4528,"Max":154.4528,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":179.7481,"P95":179.7481,"P99":179.7481,"Max":179.7481,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":100,"P50":1265.4651,"P95":2082.2855,"P99":2225.1063,"Max":2227.1801,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":11.5245,"P95":29.0937,"P99":29.0937,"Max":29.0937,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":306,"P50":0.0097,"P95":0.035,"P99":86.2259,"Max":118.1136,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2011.917,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":250,"Scenario":"pool10","Streams":0,"Items":1,"PoolConnections":10,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":82,"P50":21.7506,"P95":58.466,"P99":136.9083,"Max":136.9083,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":572.7491,"P95":572.7491,"P99":572.7491,"Max":572.7491,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":1,"P50":298.2355,"P95":298.2355,"P99":298.2355,"Max":298.2355,"Unit":"ms","UnavailableReason":null},"CommandLatency":{"SampleCount":250,"P50":2688.7196,"P95":2749.2586,"P99":2755.6043,"Max":2755.7722,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":24.045,"P95":326.4137,"P99":326.4137,"Max":326.4137,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":430,"P50":0.0072,"P95":0.1261,"P99":52.2369,"Max":74.2809,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2021.389,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0},{"Players":500,"Scenario":"pool10","Streams":0,"Items":1,"PoolConnections":10,"ViewsReceived":0,"OrdinaryAnswerBusy":{"SampleCount":47,"P50":30.6809,"P95":104.8955,"P99":241.077,"Max":241.077,"Unit":"ms","UnavailableReason":null},"RoundCloseBusy":{"SampleCount":1,"P50":1528.0184,"P95":1528.0184,"P99":1528.0184,"Max":1528.0184,"Unit":"ms","UnavailableReason":null},"FinishBusy":{"SampleCount":0,"P50":null,"P95":null,"P99":null,"Max":null,"Unit":"ms","UnavailableReason":"no finish occurred"},"CommandLatency":{"SampleCount":500,"P50":3750.6085,"P95":3800.0236,"P99":3811.4724,"Max":3817.3589,"Unit":"ms","UnavailableReason":null},"TimerLag":{"SampleCount":3,"P50":57.0973,"P95":594.2572,"P99":594.2572,"Max":594.2572,"Unit":"ms","UnavailableReason":null},"PoolWait":{"SampleCount":610,"P50":0.0053,"P95":0.7349,"P99":44.6375,"Max":117.1604,"Unit":"ms","UnavailableReason":null},"LastAcceptedAfterDeadlineMs":2062.306,"OnTimeRefusedAtClose":0,"Failures":0,"Timeouts":0}]}
+{
+  "SourceRevision": "510797e8bf1086de771843edd81d3a863eb347c0",
+  "RunAtUtc": "2026-10-15T12:47:24.3796017+00:00",
+  "Command": "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix --allow-disposable-postgres",
+  "Machine": "vps-c4d96c06",
+  "Environment": ".NET 10.0.12; PostgreSQL 18.6 (Debian 18.6-1.pgdg13\u002B2)",
+  "Scenarios": [
+    {
+      "Players": 20,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 24.8385,
+        "P95": 352.3625,
+        "P99": 352.3625,
+        "Max": 352.3625,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 58.9257,
+        "P95": 58.9257,
+        "P99": 58.9257,
+        "Max": 58.9257,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 167.1369,
+        "P95": 167.1369,
+        "P99": 167.1369,
+        "Max": 167.1369,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 712.0153,
+        "P95": 955.0862,
+        "P99": 1006.877,
+        "Max": 1006.877,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 1.8337,
+        "P95": 143.5498,
+        "P99": 143.5498,
+        "Max": 143.5498,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 74,
+        "P50": 0.0107,
+        "P95": 60.5559,
+        "P99": 140.5246,
+        "Max": 140.5246,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": 41.662,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 100,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 60,
+        "P50": 28.0502,
+        "P95": 71.1741,
+        "P99": 148.3716,
+        "Max": 148.3716,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 274.0422,
+        "P95": 274.0422,
+        "P99": 274.0422,
+        "Max": 274.0422,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 406.608,
+        "P95": 406.608,
+        "P99": 406.608,
+        "Max": 406.608,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1910.5563,
+        "P95": 2382.4537,
+        "P99": 2515.1504,
+        "Max": 2516.56,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 72.5961,
+        "P95": 339.1861,
+        "P99": 339.1861,
+        "Max": 339.1861,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 236,
+        "P50": 0.0091,
+        "P95": 0.1197,
+        "P99": 82.6203,
+        "Max": 188.5476,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": 59.091,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 60,
+      "LateAnswers": 0,
+      "StalePositions": 40,
+      "OtherErrors": 0,
+      "Failures": 40,
+      "Timeouts": 0
+    },
+    {
+      "Players": 250,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 38,
+        "P50": 46.0567,
+        "P95": 153.1666,
+        "P99": 200.3674,
+        "Max": 200.3674,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 840.9485,
+        "P95": 840.9485,
+        "P99": 840.9485,
+        "Max": 840.9485,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 342.1108,
+        "P95": 342.1108,
+        "P99": 342.1108,
+        "Max": 342.1108,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 3064.9206,
+        "P95": 3089.0766,
+        "P99": 3152.7403,
+        "Max": 3165.4432,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 81.8977,
+        "P95": 906.7896,
+        "P99": 906.7896,
+        "Max": 906.7896,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 342,
+        "P50": 0.0063,
+        "P95": 0.0145,
+        "P99": 72.6807,
+        "Max": 115.2374,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": 36.455,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 250,
+      "Accepted": 38,
+      "LateAnswers": 0,
+      "StalePositions": 212,
+      "OtherErrors": 0,
+      "Failures": 212,
+      "Timeouts": 0
+    },
+    {
+      "Players": 500,
+      "Scenario": "burst",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 12,
+        "P50": 141.1433,
+        "P95": 639.7843,
+        "P99": 639.7843,
+        "Max": 639.7843,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 3241.9475,
+        "P95": 3241.9475,
+        "P99": 3241.9475,
+        "Max": 3241.9475,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 1371.5285,
+        "P95": 1371.5285,
+        "P99": 1371.5285,
+        "Max": 1371.5285,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 7083.9179,
+        "P95": 7270.0288,
+        "P99": 7297.7526,
+        "Max": 7307.4102,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 101.6258,
+        "P95": 269.2328,
+        "P99": 269.2328,
+        "Max": 269.2328,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 540,
+        "P50": 0.0062,
+        "P95": 0.0345,
+        "P99": 171.1605,
+        "Max": 251.9515,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": 93.225,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 500,
+      "Accepted": 12,
+      "LateAnswers": 0,
+      "StalePositions": 1,
+      "OtherErrors": 487,
+      "Failures": 488,
+      "Timeouts": 0
+    },
+    {
+      "Players": 20,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 36.8107,
+        "P95": 98.0795,
+        "P99": 98.0795,
+        "Max": 98.0795,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 51.5137,
+        "P95": 51.5137,
+        "P99": 51.5137,
+        "Max": 51.5137,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 59.3942,
+        "P95": 59.3942,
+        "P99": 59.3942,
+        "Max": 59.3942,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 54.691,
+        "P95": 109.5288,
+        "P99": 121.7358,
+        "Max": 121.7358,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 1.3729,
+        "P95": 1.3729,
+        "P99": 1.3729,
+        "Max": 1.3729,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 67,
+        "P50": 0.0101,
+        "P95": 0.0163,
+        "P99": 0.0295,
+        "Max": 0.0295,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -234.831,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 100,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 99,
+        "P50": 17.5308,
+        "P95": 27.295,
+        "P99": 71.8805,
+        "Max": 71.8805,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 130.7351,
+        "P95": 130.7351,
+        "P99": 130.7351,
+        "Max": 130.7351,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 175.5535,
+        "P95": 175.5535,
+        "P99": 175.5535,
+        "Max": 175.5535,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 22.9456,
+        "P95": 36.5369,
+        "P99": 76.3197,
+        "Max": 134.4239,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 0.6419,
+        "P95": 0.6419,
+        "P99": 0.6419,
+        "Max": 0.6419,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 312,
+        "P50": 0.0095,
+        "P95": 0.0173,
+        "P99": 0.0344,
+        "Max": 25.8871,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -246.269,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 100,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 250,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 249,
+        "P50": 25.0892,
+        "P95": 40.7599,
+        "P99": 49.017,
+        "Max": 51.2737,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 599.8368,
+        "P95": 599.8368,
+        "P99": 599.8368,
+        "Max": 599.8368,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 490.064,
+        "P95": 490.064,
+        "P99": 490.064,
+        "Max": 490.064,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 31.5705,
+        "P95": 54.6936,
+        "P99": 63.2712,
+        "Max": 605.4601,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 242.9976,
+        "P95": 242.9976,
+        "P99": 242.9976,
+        "Max": 242.9976,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 762,
+        "P50": 0.01,
+        "P95": 0.0146,
+        "P99": 0.0288,
+        "Max": 23.6745,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -245.132,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 250,
+      "Accepted": 250,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 500,
+      "Scenario": "spread",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 499,
+        "P50": 36.041,
+        "P95": 63.0878,
+        "P99": 85.9766,
+        "Max": 98.8894,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 986.5283,
+        "P95": 986.5283,
+        "P99": 986.5283,
+        "Max": 986.5283,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 965.9624,
+        "P95": 965.9624,
+        "P99": 965.9624,
+        "Max": 965.9624,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 161.7442,
+        "P95": 595.7631,
+        "P99": 666.567,
+        "Max": 1611.7218,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 6.0308,
+        "P95": 627.8243,
+        "P99": 627.8243,
+        "Max": 627.8243,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 1514,
+        "P50": 0.0104,
+        "P95": 0.0152,
+        "P99": 0.0324,
+        "Max": 18.9949,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -246.846,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 500,
+      "Accepted": 500,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 20,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 1458,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 19.185,
+        "P95": 37.0229,
+        "P99": 37.0229,
+        "Max": 37.0229,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 39.314,
+        "P95": 39.314,
+        "P99": 39.314,
+        "Max": 39.314,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 43.2971,
+        "P95": 43.2971,
+        "P99": 43.2971,
+        "Max": 43.2971,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 121.2074,
+        "P95": 222.9122,
+        "P99": 250.7828,
+        "Max": 250.7828,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 0.3799,
+        "P95": 10.9333,
+        "P99": 10.9333,
+        "Max": 10.9333,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 91,
+        "P50": 0.0098,
+        "P95": 0.014,
+        "P99": 0.0297,
+        "Max": 0.0297,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -43.293,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 100,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 4734,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 88,
+        "P50": 19.3051,
+        "P95": 51.9412,
+        "P99": 120.8483,
+        "Max": 120.8483,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 252.8441,
+        "P95": 252.8441,
+        "P99": 252.8441,
+        "Max": 252.8441,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 183.2859,
+        "P95": 183.2859,
+        "P99": 183.2859,
+        "Max": 183.2859,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1256.773,
+        "P95": 2354.6812,
+        "P99": 2361.6462,
+        "Max": 2364.7482,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 37.8594,
+        "P95": 511.5158,
+        "P99": 511.5158,
+        "Max": 511.5158,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 337,
+        "P50": 0.0092,
+        "P95": 0.0143,
+        "P99": 0.0319,
+        "Max": 0.6702,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -67.513,
+      "OnTimeRefusedAtClose": 12,
+      "CommandsSent": 100,
+      "Accepted": 88,
+      "LateAnswers": 0,
+      "StalePositions": 12,
+      "OtherErrors": 0,
+      "Failures": 12,
+      "Timeouts": 0
+    },
+    {
+      "Players": 250,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 4422,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 46,
+        "P50": 29.2904,
+        "P95": 128.2348,
+        "P99": 301.3301,
+        "Max": 301.3301,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1105.2763,
+        "P95": 1105.2763,
+        "P99": 1105.2763,
+        "Max": 1105.2763,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "no finish occurred"
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 3274.9352,
+        "P95": 3336.819,
+        "P99": 3348.4566,
+        "Max": 3350.2379,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 43.0046,
+        "P95": 188.2633,
+        "P99": 188.2633,
+        "Max": 188.2633,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 397,
+        "P50": 0.006,
+        "P95": 0.0127,
+        "P99": 0.0231,
+        "Max": 0.0318,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -150.686,
+      "OnTimeRefusedAtClose": 85,
+      "CommandsSent": 250,
+      "Accepted": 46,
+      "LateAnswers": 0,
+      "StalePositions": 204,
+      "OtherErrors": 0,
+      "Failures": 204,
+      "Timeouts": 0
+    },
+    {
+      "Players": 500,
+      "Scenario": "burst-streams",
+      "Streams": 500,
+      "Items": 1,
+      "PoolConnections": 40,
+      "ViewsReceived": 3101,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 32,
+        "P50": 43.2303,
+        "P95": 220.5458,
+        "P99": 305.1191,
+        "Max": 305.1191,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1935.6694,
+        "P95": 1935.6694,
+        "P99": 1935.6694,
+        "Max": 1935.6694,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "no finish occurred"
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 4386.8698,
+        "P95": 4468.5136,
+        "P99": 4479.2276,
+        "Max": 4486.3864,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 94.1923,
+        "P95": 109.9416,
+        "P99": 109.9416,
+        "Max": 109.9416,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 614,
+        "P50": 0.0051,
+        "P95": 0.0142,
+        "P99": 0.1046,
+        "Max": 0.4328,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -56.159,
+      "OnTimeRefusedAtClose": 51,
+      "CommandsSent": 500,
+      "Accepted": 32,
+      "LateAnswers": 0,
+      "StalePositions": 468,
+      "OtherErrors": 0,
+      "Failures": 468,
+      "Timeouts": 0
+    },
+    {
+      "Players": 20,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 18.8111,
+        "P95": 67.3294,
+        "P99": 67.3294,
+        "Max": 67.3294,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 39.9925,
+        "P95": 39.9925,
+        "P99": 39.9925,
+        "Max": 39.9925,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 222.1491,
+        "P95": 287.6145,
+        "P99": 316.47,
+        "Max": 316.47,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 1,
+        "P50": 7.4679,
+        "P95": 7.4679,
+        "P99": 7.4679,
+        "Max": 7.4679,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 82,
+        "P50": 0.0093,
+        "P95": 0.0266,
+        "P99": 39.524,
+        "Max": 39.524,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 39.6568,
+        "P95": 39.6568,
+        "P99": 39.6568,
+        "Max": 39.6568,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 95,
+        "P50": 0.0111,
+        "P95": 0.0202,
+        "P99": 41.195,
+        "Max": 41.195,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedAfterDeadlineMs": -47.172,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 100,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 37,
+        "P50": 43.114,
+        "P95": 85.25,
+        "P99": 340.9364,
+        "Max": 340.9364,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 408.6614,
+        "P95": 408.6614,
+        "P99": 408.6614,
+        "Max": 408.6614,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 2485.6787,
+        "P95": 2682.3061,
+        "P99": 2699.7708,
+        "Max": 2700.5085,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 13.2309,
+        "P95": 317.3123,
+        "P99": 317.3123,
+        "Max": 317.3123,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 225,
+        "P50": 0.009,
+        "P95": 0.0185,
+        "P99": 71.5983,
+        "Max": 186.4235,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 47.8313,
+        "P95": 47.8313,
+        "P99": 47.8313,
+        "Max": 47.8313,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 415,
+        "P50": 0.0104,
+        "P95": 0.0148,
+        "P99": 0.0633,
+        "Max": 76.4429,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedAfterDeadlineMs": 120.35,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 37,
+      "LateAnswers": 0,
+      "StalePositions": 63,
+      "OtherErrors": 0,
+      "Failures": 63,
+      "Timeouts": 0
+    },
+    {
+      "Players": 250,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 68,
+        "P50": 24.3986,
+        "P95": 77.7434,
+        "P99": 209.8434,
+        "Max": 209.8434,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 551.9418,
+        "P95": 551.9418,
+        "P99": 551.9418,
+        "Max": 551.9418,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 2675.95,
+        "P95": 2741.2045,
+        "P99": 2747.4943,
+        "Max": 2818.6691,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 0.1929,
+        "P95": 15.68,
+        "P99": 15.68,
+        "Max": 15.68,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 468,
+        "P50": 0.0072,
+        "P95": 0.0228,
+        "P99": 64.2698,
+        "Max": 245.1115,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 36.5737,
+        "P95": 36.5737,
+        "P99": 36.5737,
+        "Max": 36.5737,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 1015,
+        "P50": 0.01,
+        "P95": 0.0145,
+        "P99": 0.022,
+        "Max": 51.2407,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedAfterDeadlineMs": 5.547,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 250,
+      "Accepted": 68,
+      "LateAnswers": 0,
+      "StalePositions": 182,
+      "OtherErrors": 0,
+      "Failures": 182,
+      "Timeouts": 0
+    },
+    {
+      "Players": 500,
+      "Scenario": "cold",
+      "Streams": 0,
+      "Items": 100,
+      "PoolConnections": 40,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 47,
+        "P50": 31.4889,
+        "P95": 87.153,
+        "P99": 312.4018,
+        "Max": 312.4018,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1145.6334,
+        "P95": 1145.6334,
+        "P99": 1145.6334,
+        "Max": 1145.6334,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "cold activation stops after the first loaded slot"
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 3364.0884,
+        "P95": 3389.1102,
+        "P99": 3395.0041,
+        "Max": 3408.5592,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 15.3514,
+        "P95": 19.3849,
+        "P99": 19.3849,
+        "Max": 19.3849,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 655,
+        "P50": 0.0056,
+        "P95": 0.0136,
+        "P99": 38.494,
+        "Max": 124.7258,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 1,
+        "P50": 48.56,
+        "P95": 48.56,
+        "P99": 48.56,
+        "Max": 48.56,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 2015,
+        "P50": 0.0101,
+        "P95": 0.0154,
+        "P99": 0.0298,
+        "Max": 38.7262,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "LastAcceptedAfterDeadlineMs": 7.023,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 500,
+      "Accepted": 47,
+      "LateAnswers": 0,
+      "StalePositions": 453,
+      "OtherErrors": 0,
+      "Failures": 453,
+      "Timeouts": 0
+    },
+    {
+      "Players": 20,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 19,
+        "P50": 20.8791,
+        "P95": 70.9816,
+        "P99": 70.9816,
+        "Max": 70.9816,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 99.8326,
+        "P95": 99.8326,
+        "P99": 99.8326,
+        "Max": 99.8326,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 40.6657,
+        "P95": 40.6657,
+        "P99": 40.6657,
+        "Max": 40.6657,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 20,
+        "P50": 336.4601,
+        "P95": 416.3148,
+        "P99": 505.4694,
+        "Max": 505.4694,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 2,
+        "P50": 0.516,
+        "P95": 42.6607,
+        "P99": 42.6607,
+        "Max": 42.6607,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 64,
+        "P50": 0.0101,
+        "P95": 23.978,
+        "P99": 28.5928,
+        "Max": 28.5928,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -46.118,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 20,
+      "Accepted": 20,
+      "LateAnswers": 0,
+      "StalePositions": 0,
+      "OtherErrors": 0,
+      "Failures": 0,
+      "Timeouts": 0
+    },
+    {
+      "Players": 100,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 60,
+        "P50": 27.4516,
+        "P95": 74.136,
+        "P99": 171.6073,
+        "Max": 171.6073,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 273.6947,
+        "P95": 273.6947,
+        "P99": 273.6947,
+        "Max": 273.6947,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 202.2084,
+        "P95": 202.2084,
+        "P99": 202.2084,
+        "Max": 202.2084,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 100,
+        "P50": 1900.6489,
+        "P95": 2406.1063,
+        "P99": 2419.0171,
+        "Max": 2424.8805,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 7.696,
+        "P95": 43.1169,
+        "P99": 43.1169,
+        "Max": 43.1169,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 236,
+        "P50": 0.0094,
+        "P95": 3.0156,
+        "P99": 70.8617,
+        "Max": 79.4371,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": 38.198,
+      "OnTimeRefusedAtClose": 0,
+      "CommandsSent": 100,
+      "Accepted": 60,
+      "LateAnswers": 0,
+      "StalePositions": 40,
+      "OtherErrors": 0,
+      "Failures": 40,
+      "Timeouts": 0
+    },
+    {
+      "Players": 250,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 69,
+        "P50": 23.77,
+        "P95": 69.3058,
+        "P99": 151.0184,
+        "Max": 151.0184,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 621.6156,
+        "P95": 621.6156,
+        "P99": 621.6156,
+        "Max": 621.6156,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 354.5293,
+        "P95": 354.5293,
+        "P99": 354.5293,
+        "Max": 354.5293,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 250,
+        "P50": 2774.261,
+        "P95": 2828.8164,
+        "P99": 2836.6187,
+        "Max": 2838.7158,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 0.6314,
+        "P95": 19.5829,
+        "P99": 19.5829,
+        "Max": 19.5829,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 404,
+        "P50": 0.0074,
+        "P95": 0.0354,
+        "P99": 40.1726,
+        "Max": 104.5634,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -27.724,
+      "OnTimeRefusedAtClose": 21,
+      "CommandsSent": 250,
+      "Accepted": 69,
+      "LateAnswers": 0,
+      "StalePositions": 181,
+      "OtherErrors": 0,
+      "Failures": 181,
+      "Timeouts": 0
+    },
+    {
+      "Players": 500,
+      "Scenario": "pool10",
+      "Streams": 0,
+      "Items": 1,
+      "PoolConnections": 10,
+      "ViewsReceived": 0,
+      "OrdinaryAnswerBusy": {
+        "SampleCount": 62,
+        "P50": 26.472,
+        "P95": 92.5434,
+        "P99": 208.5214,
+        "Max": 208.5214,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "RoundCloseBusy": {
+        "SampleCount": 1,
+        "P50": 1273.0899,
+        "P95": 1273.0899,
+        "P99": 1273.0899,
+        "Max": 1273.0899,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "FinishBusy": {
+        "SampleCount": 1,
+        "P50": 611.5116,
+        "P95": 611.5116,
+        "P99": 611.5116,
+        "Max": 611.5116,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "CommandLatency": {
+        "SampleCount": 500,
+        "P50": 3480.2275,
+        "P95": 3505.8752,
+        "P99": 3509.4834,
+        "Max": 3513.164,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "TimerLag": {
+        "SampleCount": 3,
+        "P50": 58.9325,
+        "P95": 430.8081,
+        "P99": 430.8081,
+        "Max": 430.8081,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "PoolWait": {
+        "SampleCount": 640,
+        "P50": 0.005,
+        "P95": 0.2237,
+        "P99": 34.3739,
+        "Max": 70.9509,
+        "Unit": "ms",
+        "UnavailableReason": null
+      },
+      "ColdActivationBusy": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "ColdActivationPoolWait": {
+        "SampleCount": 0,
+        "P50": null,
+        "P95": null,
+        "P99": null,
+        "Max": null,
+        "Unit": "ms",
+        "UnavailableReason": "not a cold activation scenario"
+      },
+      "LastAcceptedAfterDeadlineMs": -1.582,
+      "OnTimeRefusedAtClose": 2,
+      "CommandsSent": 500,
+      "Accepted": 62,
+      "LateAnswers": 0,
+      "StalePositions": 438,
+      "OtherErrors": 0,
+      "Failures": 438,
+      "Timeouts": 0
+    }
+  ]
+}
