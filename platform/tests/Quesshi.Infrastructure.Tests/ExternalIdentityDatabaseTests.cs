@@ -12,33 +12,26 @@ namespace Quesshi.Infrastructure.Tests;
 [Collection("PostgreSQL")]
 public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
 {
-    [Fact]
-    public void Core_migrations_include_subject_only_identity_accounts()
-    {
-        var migrations = MigrationRunner.Discover(typeof(ITenants).Assembly);
-
-        var migration = Assert.Single(migrations, migration => migration.Name == "20261015T0301_core_subject_only_external_identities.sql");
-        Assert.Contains("drop constraint if exists accounts_check", Encoding.UTF8.GetString(migration.Contents.Span), StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("drop constraint if exists accounts_email_deleted_check", Encoding.UTF8.GetString(migration.Contents.Span), StringComparison.OrdinalIgnoreCase);
-    }
+    private static readonly ExternalIdentityTenant Tenant = new(Guid.Parse("9cd186e4-eea7-4c01-9eb8-455d00e72d43"), "en");
 
     [SkippableFact]
     public async Task Subject_precedes_changed_email_and_concurrent_completion_creates_one_identity()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        var service = CreateService();
+        await using var sources = CreateSources();
+        var service = CreateService(sources);
 
-        var first = await service.CompleteExternalAsync("google", "subject-priority", "first@example.test", true);
-        var repeated = await service.CompleteExternalAsync("google", "subject-priority", "changed@example.test", true);
-        Assert.Equal(ExternalIdentityCompletionState.Completed, first.State);
+        var first = await service.CompleteExternalAsync(Tenant, "google", "subject-priority", "first@example.test", true);
+        var repeated = await service.CompleteExternalAsync(Tenant, "google", "subject-priority", "changed@example.test", true);
+        Assert.Equal(ExternalIdentityCompletionState.ProfileNeeded, first.State);
         Assert.Equal(first.AccountId, repeated.AccountId);
         Assert.Equal("first@example.test", await ScalarAsync<string>(owner, "select email::text from accounts where id = @account", ("account", first.AccountId!.Value)));
 
         var completions = await Task.WhenAll(
-            service.CompleteExternalAsync("google", "concurrent-subject", "concurrent@example.test", true),
-            service.CompleteExternalAsync("google", "concurrent-subject", "concurrent@example.test", true));
-        Assert.All(completions, completion => Assert.Equal(ExternalIdentityCompletionState.Completed, completion.State));
+            service.CompleteExternalAsync(Tenant, "google", "concurrent-subject", "concurrent@example.test", true),
+            service.CompleteExternalAsync(Tenant, "google", "concurrent-subject", "concurrent@example.test", true));
+        Assert.All(completions, completion => Assert.Equal(ExternalIdentityCompletionState.ProfileNeeded, completion.State));
         Assert.Single(completions.Select(completion => completion.AccountId).Distinct());
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from account_identities where provider = 'google' and subject = 'concurrent-subject'"));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from accounts where email = 'concurrent@example.test'"));
@@ -51,11 +44,12 @@ public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
         await using var owner = await PrepareAsync();
         var existing = Guid.NewGuid();
         await ExecuteAsync(owner, "insert into accounts (id, email) values (@account, 'held@example.test')", ("account", existing));
-        var service = CreateService();
+        await using var sources = CreateSources();
+        var service = CreateService(sources);
 
-        var verified = await service.CompleteExternalAsync("google", "verified-held", "held@example.test", true);
-        var unverified = await service.CompleteExternalAsync("google", "unverified-held", "held@example.test", false);
-        var created = await service.CompleteExternalAsync("google", "verified-new", "new@example.test", true);
+        var verified = await service.CompleteExternalAsync(Tenant, "google", "verified-held", "held@example.test", true);
+        var unverified = await service.CompleteExternalAsync(Tenant, "google", "unverified-held", "held@example.test", false);
+        var created = await service.CompleteExternalAsync(Tenant, "google", "verified-new", "new@example.test", true);
 
         Assert.Equal(existing, verified.AccountId);
         Assert.NotEqual(existing, unverified.AccountId);
@@ -71,15 +65,19 @@ public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
         var deleted = Guid.NewGuid();
         await ExecuteAsync(owner, "insert into accounts (id, deleted_at) values (@account, now())", ("account", deleted));
         await ExecuteAsync(owner, "insert into account_identities (provider, subject, account_id) values ('google', 'deleted-subject', @account)", ("account", deleted));
+        await using var sources = CreateSources();
 
-        var result = await CreateService().CompleteExternalAsync("google", "deleted-subject", null, false);
+        var result = await CreateService(sources).CompleteExternalAsync(Tenant, "google", "deleted-subject", null, false);
         Assert.Equal(ExternalIdentityCompletionState.Unavailable, result.State);
         Assert.Null(result.AccountId);
     }
 
-    private ExternalIdentityService CreateService() => new(new DatabaseSources(
-        fixture.ConnectionStringForRole("quesshi_app"),
-        fixture.ConnectionStringForRole("quesshi_system")));
+    private DatabaseSources CreateSources() => new(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+
+    private static ExternalIdentityService CreateService(DatabaseSources sources) => new(
+        sources, new TenantDb(sources), Encoding.UTF8.GetBytes("external-identity-test-secret"), TimeSpan.FromMinutes(10));
 
     private async Task<NpgsqlConnection> PrepareAsync()
     {

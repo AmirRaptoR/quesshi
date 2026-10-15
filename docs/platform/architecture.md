@@ -1461,8 +1461,10 @@ friends, abandonments and the settled-match dedup list. That document is split: 
   an existing account by email only when the email is verified. An unverified email neither selects
   nor claims an address: the core creates a separate subject-only account, even if that address is
   stored by another account. This owner-approved core behavior differs from today's Google flow,
-  which rejects unverified emails. Its routes are filled into a core-built group under
-  `/api/auth/x/{method}`. Google is the first.
+  which rejects unverified emails. Completion then resolves the account's player for the current
+  tenant: a live player gets a signed-in outcome, while a missing player gets a profile-needed
+  outcome with the usual confirmation token and no player is created before confirmation. Its
+  routes are filled into a core-built group under `/api/auth/x/{method}`. Google is the first.
 - **Admins** keep today's username and password sign-in with ASP.NET Identity's hasher, the
   lock-out rule, single-use reset tokens, activation and deactivation, a unique email for resets,
   and last sign-in time. The last active platform admin cannot be deactivated or removed, nor the

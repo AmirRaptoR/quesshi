@@ -1,21 +1,55 @@
 using Dapper;
 using Npgsql;
+using Quesshi.Application.Identity;
 using Quesshi.Domain;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Infrastructure.Otp;
 using Quesshi.Plugin.Api;
 
 namespace Quesshi.Infrastructure.Identity;
 
-/// <summary>Completes provider-validated identities against the global account store.</summary>
-public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
+/// <summary>Completes provider-validated identities against the global account store and tenant player state.</summary>
+public sealed class ExternalIdentityService : IIdentity
 {
+    private readonly DatabaseSources _sources;
+    private readonly EmailAuthService _emailAuth;
+
+    public ExternalIdentityService(
+        DatabaseSources sources,
+        ITenantDb tenantDb,
+        byte[] profileTokenSecret,
+        TimeSpan profileTokenLifetime,
+        TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(tenantDb);
+        ArgumentNullException.ThrowIfNull(profileTokenSecret);
+        if (profileTokenLifetime <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(profileTokenLifetime));
+        }
+
+        _sources = sources;
+        _emailAuth = new EmailAuthService(
+            sources,
+            tenantDb,
+            profileTokenSecret,
+            new EmailAuthOptions(1, 1, TimeSpan.FromMinutes(1), profileTokenLifetime),
+            UnusedEmailCodeSender.Instance,
+            timeProvider);
+    }
+
     public async Task<ExternalIdentityCompletion> CompleteExternalAsync(
+        ExternalIdentityTenant tenant,
         string provider,
         string subject,
         string? email,
         bool emailVerified,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(tenant);
+        if (tenant.Id == Guid.Empty) throw new ArgumentException("A tenant is required.", nameof(tenant));
+        if (string.IsNullOrWhiteSpace(tenant.DefaultLanguage)) throw new ArgumentException("A tenant default language is required.", nameof(tenant));
         if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("An identity provider is required.", nameof(provider));
         if (string.IsNullOrWhiteSpace(subject)) throw new ArgumentException("An identity subject is required.", nameof(subject));
 
@@ -30,7 +64,40 @@ public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
             normalizedEmail = EmailAddress.Normalize(email);
         }
 
-        await using var connection = new NpgsqlConnection(sources.SystemConnectionString);
+        var accountId = await CompleteAccountAsync(provider, subject, normalizedEmail, cancellationToken);
+        if (accountId is null)
+        {
+            return new ExternalIdentityCompletion(ExternalIdentityCompletionState.Unavailable);
+        }
+
+        var player = await _emailAuth.GetTenantPlayerAsync(tenant.Id, accountId.Value, cancellationToken);
+        if (player.State == TenantPlayerState.Unavailable)
+        {
+            return new ExternalIdentityCompletion(ExternalIdentityCompletionState.Unavailable);
+        }
+        if (player.State == TenantPlayerState.Live)
+        {
+            return new ExternalIdentityCompletion(ExternalIdentityCompletionState.SignedIn, accountId);
+        }
+
+        var seed = await _emailAuth.GetLatestProfileAsync(accountId.Value, cancellationToken);
+        return new ExternalIdentityCompletion(
+            ExternalIdentityCompletionState.ProfileNeeded,
+            accountId,
+            new ExternalIdentityProfile(
+                _emailAuth.CreateProfileToken(tenant.Id, accountId.Value),
+                seed?.DisplayName,
+                seed?.AvatarSeed,
+                seed?.Language ?? tenant.DefaultLanguage));
+    }
+
+    private async Task<Guid?> CompleteAccountAsync(
+        string provider,
+        string subject,
+        string? normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
@@ -51,8 +118,8 @@ public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
         {
             await transaction.CommitAsync(cancellationToken);
             return existing.DeletedAt is null
-                ? new ExternalIdentityCompletion(ExternalIdentityCompletionState.Completed, existing.AccountId)
-                : new ExternalIdentityCompletion(ExternalIdentityCompletionState.Unavailable);
+                ? existing.AccountId
+                : null;
         }
 
         var accountId = Guid.NewGuid();
@@ -74,7 +141,7 @@ public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
             if (linkedAccount is null)
             {
                 await transaction.CommitAsync(cancellationToken);
-                return new ExternalIdentityCompletion(ExternalIdentityCompletionState.Unavailable);
+                return null;
             }
 
             accountId = linkedAccount.Value;
@@ -85,8 +152,16 @@ public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
             values (@provider, @subject, @accountId)
             """, new { provider, subject, accountId }, transaction, cancellationToken: cancellationToken));
         await transaction.CommitAsync(cancellationToken);
-        return new ExternalIdentityCompletion(ExternalIdentityCompletionState.Completed, accountId);
+        return accountId;
     }
 
     private sealed record AccountIdentityRow(Guid AccountId, DateTime? DeletedAt);
+
+    private sealed class UnusedEmailCodeSender : IEmailCodeSender
+    {
+        public static readonly UnusedEmailCodeSender Instance = new();
+
+        public Task SendAsync(string email, string code, string language, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("External identity completion does not deliver email codes.");
+    }
 }
