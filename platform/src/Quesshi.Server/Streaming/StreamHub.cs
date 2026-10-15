@@ -104,6 +104,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 /// </summary>
 internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
 {
+    private static readonly TimeSpan ScoreCoalesceWindow = TimeSpan.FromMilliseconds(250);
     private readonly ISessionSnapshotLoader snapshots;
     private readonly IViewRenderer renderer;
     private readonly IFormatRegistry formats;
@@ -111,6 +112,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
     private readonly IStreamNotificationSource notifications;
     private readonly IClock clock;
     private readonly ILogger<StreamHub> logger;
+    private readonly TimeSpan scoreCoalesceWindow;
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
     private readonly object _sessionGateLock = new();
@@ -120,6 +122,12 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
         IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger)
+        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow)
+    {
+    }
+
+    internal StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
@@ -128,6 +136,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
         this.notifications = notifications;
         this.clock = clock;
         this.logger = logger;
+        this.scoreCoalesceWindow = scoreCoalesceWindow;
         notifications.Received += OnNotification;
     }
 
@@ -274,7 +283,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
             {
                 // A phase marker wakes the coalescer immediately. Other changes wait for the
                 // next 250ms window, capping same-phase deliveries at four per second.
-                if (!immediate) await Task.WhenAny(Task.Delay(TimeSpan.FromMilliseconds(250)), signal.Task);
+                if (!immediate) await Task.WhenAny(Task.Delay(scoreCoalesceWindow), signal.Task);
                 await RenderSessionAsync(tenantId, sessionId, CancellationToken.None, schedule);
             }
         }
@@ -332,7 +341,9 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                 if (version < 0) return false;
                 _pendingVersion = -1;
                 _immediate = false;
-                _phaseChanged = NewSignal();
+                // A score-only delivery waits on this signal. Keep it active until a
+                // phase notification can complete it; immediate deliveries do not wait.
+                if (immediate) _phaseChanged = NewSignal();
                 return true;
             }
         }
