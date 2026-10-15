@@ -66,6 +66,30 @@ public sealed class JobScheduleDatabaseTests(PostgresFixture fixture)
         Assert.Equal(2L, await ScheduleWindowCountAsync());
     }
 
+    [SkippableFact]
+    public async Task Core_schedule_visits_every_tenant_once_per_daily_window()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var time = new MutableTimeProvider(DateTimeOffset.Parse("2026-10-13T10:01:30Z"));
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var handlers = new JobHandlerRegistry();
+        handlers.Register("core", "guest-purge", (_, _) => Task.CompletedTask);
+        var schedules = new JobScheduleRegistry(handlers);
+        schedules.Every("core", TimeSpan.FromDays(1), "guest-purge");
+        var first = new JobScheduler(schedules, new PostgresJobScheduleTenants(sources), new SystemJobs(sources), time);
+        var second = new JobScheduler(schedules, new PostgresJobScheduleTenants(sources), new SystemJobs(sources), time);
+
+        await Task.WhenAll(first.RunPassAsync(), second.RunPassAsync());
+        Assert.Equal(3L, await JobCountAsync("owner = 'core' and kind = 'guest-purge'"));
+        Assert.Equal(1L, await JobCountAsync("tenant_id = @tenant and owner = 'core'", ("tenant", DisabledTenant)));
+
+        time.Advance(TimeSpan.FromDays(1));
+        await Task.WhenAll(first.RunPassAsync(), second.RunPassAsync());
+        Assert.Equal(6L, await JobCountAsync("owner = 'core' and kind = 'guest-purge'"));
+    }
+
     private static JobScheduler CreateScheduler(DatabaseSources sources, TimeProvider time)
     {
         var handlers = new JobHandlerRegistry();

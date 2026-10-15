@@ -43,7 +43,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         Assert.Equal(0L, await ScalarAsync<long>("select count(*) from auth_sessions where account_id = @account", ("account", seeded.Account)));
         Assert.Equal(0L, await ScalarAsync<long>("select count(*) from account_identities where account_id = @account", ("account", seeded.Account)));
         Assert.Equal(0L, await ScalarAsync<long>("select count(*) from login_codes where email = @email", ("email", seeded.Email)));
-        Assert.Equal(2L, await ScalarAsync<long>("select count(*) from jobs where kind = 'account-player-cleanup' and owner = 'core' and max_attempts is null"));
+        Assert.Equal(2L, await ScalarAsync<long>("select count(*) from jobs where kind = 'player-cleanup' and owner = 'core' and max_attempts is null"));
         Assert.Null(await sessions.ResolveAsync(seeded.FirstTenant, CookieValue(first)));
         Assert.Null(await sessions.ResolveAsync(seeded.SecondTenant, CookieValue(second)));
         var replacement = Guid.NewGuid();
@@ -73,7 +73,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from auth_sessions where account_id = @account", ("account", seeded.Account)));
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from account_identities where account_id = @account", ("account", seeded.Account)));
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from login_codes where email = @email", ("email", seeded.Email)));
-        Assert.Equal(0L, await ScalarAsync<long>("select count(*) from jobs where owner = 'core' and kind = 'account-player-cleanup'"));
+        Assert.Equal(0L, await ScalarAsync<long>("select count(*) from jobs where owner = 'core' and kind = 'player-cleanup'"));
         Assert.Empty(notifier.Players);
     }
 
@@ -136,28 +136,28 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         var feature = new CleanupFeature("installed-but-disabled", retired: true);
         var registry = FeatureRegistry.Create([feature]);
         var effects = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new NullSessionEffectsNotifier());
-        var cleanup = new AccountPlayerCleanup(new TenantLocks(), effects);
-        registry.Jobs.Register("core", "account-player-cleanup", cleanup.HandleAsync);
+        var cleanup = new CorePlayerCleanup(new TenantLocks(), effects);
+        registry.Jobs.Register("core", "player-cleanup", cleanup.HandleAsync);
         registry.Jobs.Register("core", "cleanup-player", effects.HandleCleanupJobAsync);
         var worker = new JobWorker(new PostgresJobStore(sources), registry.Jobs, new TenantDb(sources), new OffCapabilities());
 
         await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
 
-        Assert.Equal(AccountPlayerCleanup.DeletedDisplayName, await TenantScalarAsync<string>(seeded.FirstTenant, "select display_name from players where id = @player", new { player = seeded.FirstPlayer }));
-        Assert.Equal(AccountPlayerCleanup.DeletedAvatarSeed, await TenantScalarAsync<string>(seeded.FirstTenant, "select avatar_seed from players where id = @player", new { player = seeded.FirstPlayer }));
+        Assert.Equal(CorePlayerCleanup.DeletedDisplayName, await TenantScalarAsync<string>(seeded.FirstTenant, "select display_name from players where id = @player", new { player = seeded.FirstPlayer }));
+        Assert.Equal(CorePlayerCleanup.DeletedAvatarSeed, await TenantScalarAsync<string>(seeded.FirstTenant, "select avatar_seed from players where id = @player", new { player = seeded.FirstPlayer }));
         Assert.True(await TenantScalarAsync<bool>(seeded.FirstTenant, "select deleted_at is not null from players where id = @player", new { player = seeded.FirstPlayer }));
         Assert.Equal("Other", await TenantScalarAsync<string>(seeded.FirstTenant, "select display_name from players where id = @player", new { player = seeded.OtherPlayer }));
         Assert.False(await TenantScalarAsync<bool>(seeded.FirstTenant, "select deleted_at is not null from players where id = @player", new { player = seeded.OtherPlayer }));
         Assert.Equal(1L, await TenantScalarAsync<long>(seeded.FirstTenant, "select count(*) from session_participants where player_id = @player", new { player = seeded.FirstPlayer }));
-        Assert.Equal(AccountPlayerCleanup.DeletedDisplayName, await TenantScalarAsync<string>(seeded.FirstTenant, """
+        Assert.Equal(CorePlayerCleanup.DeletedDisplayName, await TenantScalarAsync<string>(seeded.FirstTenant, """
             select p.display_name from session_participants sp
             join players p on p.id = sp.player_id
             where sp.player_id = @player
             """, new { player = seeded.FirstPlayer }));
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player' and status = 'ready'", ("tenant", seeded.FirstTenant)));
 
-        await cleanup.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "account-player-cleanup",
-            JsonSerializer.SerializeToElement(new AccountPlayerCleanupPayload(seeded.FirstPlayer)), new TenantDb(sources)), CancellationToken.None);
+        await cleanup.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "player-cleanup",
+            JsonSerializer.SerializeToElement(new PlayerCleanupPayload(seeded.FirstPlayer)), new TenantDb(sources)), CancellationToken.None);
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player'", ("tenant", seeded.FirstTenant)));
 
         await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
@@ -175,9 +175,9 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         var feature = new CleanupFeature("retry-plugin", retired: false);
         var registry = FeatureRegistry.Create([feature]);
         var effects = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new NullSessionEffectsNotifier());
-        var cleanup = new AccountPlayerCleanup(new TenantLocks(), effects);
+        var cleanup = new CorePlayerCleanup(new TenantLocks(), effects);
         var firstAttempt = true;
-        registry.Jobs.Register("core", "account-player-cleanup", async (context, cancellationToken) =>
+        registry.Jobs.Register("core", "player-cleanup", async (context, cancellationToken) =>
         {
             if (context.TenantId == seeded.FirstTenant && firstAttempt)
             {
@@ -190,19 +190,170 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         var worker = new JobWorker(new PostgresJobStore(sources), registry.Jobs, new TenantDb(sources), new OffCapabilities());
 
         await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
-        Assert.Equal(1, await ScalarAsync<int>("select attempts from jobs where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant)));
-        Assert.Equal("ready", await ScalarAsync<string>("select status from jobs where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant)));
+        Assert.Equal(1, await ScalarAsync<int>("select attempts from jobs where tenant_id = @tenant and kind = 'player-cleanup'", ("tenant", seeded.FirstTenant)));
+        Assert.Equal("ready", await ScalarAsync<string>("select status from jobs where tenant_id = @tenant and kind = 'player-cleanup'", ("tenant", seeded.FirstTenant)));
         await using (var connection = await OpenAsync("quesshi_system"))
-            await ExecuteAsync(connection, "update jobs set run_at = now() where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant));
+            await ExecuteAsync(connection, "update jobs set run_at = now() where tenant_id = @tenant and kind = 'player-cleanup'", ("tenant", seeded.FirstTenant));
 
         // The successful tenant can have queued its plugin cleanup first. Drain both
         // ready jobs so this pass reaches the retried core cleanup deterministically.
         await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
         Assert.True(await TenantScalarAsync<bool>(seeded.FirstTenant, "select deleted_at is not null from players where id = @player", new { player = seeded.FirstPlayer }));
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player'", ("tenant", seeded.FirstTenant)));
-        await cleanup.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "account-player-cleanup",
-            JsonSerializer.SerializeToElement(new AccountPlayerCleanupPayload(seeded.FirstPlayer)), new TenantDb(sources)), CancellationToken.None);
+        await cleanup.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "player-cleanup",
+            JsonSerializer.SerializeToElement(new PlayerCleanupPayload(seeded.FirstPlayer)), new TenantDb(sources)), CancellationToken.None);
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player'", ("tenant", seeded.FirstTenant)));
+    }
+
+    [SkippableFact]
+    public async Task Guest_purge_uses_disabled_plugin_cleanup_before_removing_an_abandoned_guest()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        var guest = Guid.NewGuid();
+        await using (var connection = await OpenAsync())
+        {
+            await ExecuteAsync(connection, """
+                insert into players (tenant_id, id, display_name, avatar_seed, lang, created_at)
+                values (@tenant, @guest, 'Guest', 'guest', 'en', now() - interval '31 days')
+                """, ("tenant", seeded.FirstTenant), ("guest", guest));
+        }
+
+        await using var sources = Sources();
+        var feature = new CleanupFeature("guest-cleanup", retired: true);
+        var registry = FeatureRegistry.Create([feature]);
+        var effects = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new NullSessionEffectsNotifier());
+        var coreCleanup = new CorePlayerCleanup(new TenantLocks(), effects);
+        var removal = new GuestPlayerRemoval(new TenantLocks(), new SystemDb(sources));
+        registry.Jobs.Register("core", "cleanup-player", effects.HandleCleanupJobAsync);
+        registry.Jobs.Register("core", "guest-remove-player", removal.HandleAsync);
+        var purge = new GuestPurge(new TenantLocks(), coreCleanup, new TenantJobs(), new SystemDb(sources), new TestClock(DateTimeOffset.UtcNow));
+
+        await purge.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "guest-purge",
+            JsonSerializer.SerializeToElement(new { }), new TenantDb(sources)), CancellationToken.None);
+        Assert.True(await TenantScalarAsync<bool>(seeded.FirstTenant,
+            "select deleted_at is not null from players where id = @guest", new { guest }));
+        Assert.Equal(1L, await ScalarAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player'",
+            ("tenant", seeded.FirstTenant)));
+
+        var worker = new JobWorker(new PostgresJobStore(sources), registry.Jobs, new TenantDb(sources), new OffCapabilities());
+        await worker.RunPassAsync(1, TimeSpan.FromMinutes(1));
+        Assert.True(await TenantScalarAsync<bool>(seeded.FirstTenant,
+            "select exists(select 1 from players where id = @guest)", new { guest }));
+        await worker.RunPassAsync(1, TimeSpan.FromMinutes(1));
+        await worker.RunPassAsync(1, TimeSpan.FromMinutes(1));
+
+        Assert.False(await TenantScalarAsync<bool>(seeded.FirstTenant,
+            "select exists(select 1 from players where id = @guest)", new { guest }));
+        Assert.Equal(1L, await TenantScalarAsync<long>(seeded.FirstTenant,
+            "select count(*) from plugin_effects where plugin = @plugin and event_key = @key",
+            new { plugin = "cleanup:guest-cleanup", key = $"player:{guest}" }));
+    }
+
+    [SkippableFact]
+    public async Task Guest_purge_only_scrubs_guests_past_the_exact_cutoff_without_current_activity()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        var now = new DateTimeOffset(2040, 1, 31, 12, 0, 0, TimeSpan.Zero);
+        var retainedHistory = Guid.NewGuid();
+        var atCutoff = Guid.NewGuid();
+        var younger = Guid.NewGuid();
+        var authenticated = Guid.NewGuid();
+        var seated = Guid.NewGuid();
+        await using (var connection = await OpenAsync())
+        {
+            await ExecuteAsync(connection, """
+                insert into players (tenant_id, id, display_name, avatar_seed, lang, created_at)
+                values
+                  (@tenant, @retainedHistory, 'History', 'history', 'en', @old),
+                  (@tenant, @atCutoff, 'Cutoff', 'cutoff', 'en', @cutoff),
+                  (@tenant, @younger, 'Young', 'young', 'en', @young),
+                  (@tenant, @authenticated, 'Auth', 'auth', 'en', @old),
+                  (@tenant, @seated, 'Seated', 'seated', 'en', @old);
+                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase, started_at, ended_at)
+                values (@tenant, @finishedSession, 'purgedone', 'test', @owner, 'en', 'finished', 2, '{}'::jsonb, 'finished', now(), now());
+                insert into session_participants (tenant_id, session_id, player_id, seat)
+                values (@tenant, @finishedSession, @retainedHistory, 0);
+                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase)
+                values (@tenant, @activeSession, 'purgeopen', 'test', @owner, 'en', 'lobby', 2, '{}'::jsonb, 'lobby');
+                insert into session_participants (tenant_id, session_id, player_id, seat)
+                values (@tenant, @activeSession, @seated, 0);
+                insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
+                values (decode('d1', 'hex'), @tenant, @authenticated, now() + interval '1 day');
+                """,
+                ("tenant", seeded.FirstTenant), ("retainedHistory", retainedHistory), ("atCutoff", atCutoff), ("younger", younger),
+                ("authenticated", authenticated), ("seated", seated), ("old", now - TimeSpan.FromDays(30) - TimeSpan.FromMinutes(1)),
+                ("cutoff", now - TimeSpan.FromDays(30)), ("young", now - TimeSpan.FromDays(29)),
+                ("finishedSession", Guid.NewGuid()), ("activeSession", Guid.NewGuid()), ("owner", seeded.OtherPlayer));
+        }
+
+        await using var sources = Sources();
+        var registry = FeatureRegistry.Create([]);
+        var effects = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new NullSessionEffectsNotifier());
+        var purge = new GuestPurge(new TenantLocks(), new CorePlayerCleanup(new TenantLocks(), effects), new TenantJobs(), new SystemDb(sources), new TestClock(now));
+        await purge.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "guest-purge",
+            JsonSerializer.SerializeToElement(new { }), new TenantDb(sources)), CancellationToken.None);
+
+        Assert.Equal(CorePlayerCleanup.DeletedDisplayName, await TenantScalarAsync<string>(seeded.FirstTenant,
+            "select display_name from players where id = @player", new { player = retainedHistory }));
+        Assert.True(await TenantScalarAsync<bool>(seeded.FirstTenant,
+            "select deleted_at is not null from players where id = @player", new { player = retainedHistory }));
+        foreach (var player in new[] { atCutoff, younger, authenticated, seated })
+        {
+            Assert.False(await TenantScalarAsync<bool>(seeded.FirstTenant,
+                "select deleted_at is not null from players where id = @player", new { player }));
+        }
+    }
+
+    [SkippableFact]
+    public async Task Guest_purge_rechecks_sessions_and_unfinished_seats_after_waiting_for_guest_activity()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        var now = DateTimeOffset.UtcNow;
+        var authenticated = Guid.NewGuid();
+        var seated = Guid.NewGuid();
+        var activeSession = Guid.NewGuid();
+        await using (var connection = await OpenAsync())
+        {
+            await ExecuteAsync(connection, """
+                insert into players (tenant_id, id, display_name, avatar_seed, lang, created_at)
+                values (@tenant, @authenticated, 'Auth', 'auth', 'en', @createdAt),
+                       (@tenant, @seated, 'Seat', 'seat', 'en', @createdAt);
+                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, phase)
+                values (@tenant, @session, 'purgerace', 'test', @owner, 'en', 'lobby', 2, '{}'::jsonb, 'lobby');
+                """, ("tenant", seeded.FirstTenant), ("authenticated", authenticated), ("seated", seated),
+                ("createdAt", now - TimeSpan.FromDays(31)), ("session", activeSession), ("owner", seeded.OtherPlayer));
+        }
+
+        await using var sources = Sources();
+        var registry = FeatureRegistry.Create([]);
+        var effects = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new NullSessionEffectsNotifier());
+        var purge = new GuestPurge(new TenantLocks(), new CorePlayerCleanup(new TenantLocks(), effects), new TenantJobs(), new SystemDb(sources), new TestClock(now));
+        await using var blocker = await OpenAsync();
+        await using var transaction = await blocker.BeginTransactionAsync();
+        await ExecuteAsync(blocker, "select id from players where id in (@authenticated, @seated) for key share", transaction,
+            ("authenticated", authenticated), ("seated", seated));
+
+        var running = purge.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "guest-purge",
+            JsonSerializer.SerializeToElement(new { }), new TenantDb(sources)), CancellationToken.None);
+        await Task.Delay(100);
+        Assert.False(running.IsCompleted);
+        await ExecuteAsync(blocker, """
+            insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
+            values (decode('d2', 'hex'), @tenant, @authenticated, now() + interval '1 day');
+            insert into session_participants (tenant_id, session_id, player_id, seat)
+            values (@tenant, @session, @seated, 0);
+            """, transaction, ("tenant", seeded.FirstTenant), ("authenticated", authenticated), ("session", activeSession), ("seated", seated));
+        await transaction.CommitAsync();
+        await running;
+
+        foreach (var player in new[] { authenticated, seated })
+        {
+            Assert.False(await TenantScalarAsync<bool>(seeded.FirstTenant,
+                "select deleted_at is not null from players where id = @player", new { player }));
+        }
     }
 
     private async Task<(Guid Account, Guid FirstTenant, Guid SecondTenant, Guid FirstPlayer, Guid SecondPlayer, Guid OtherPlayer, string Email)> SeedAsync()
