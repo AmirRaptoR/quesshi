@@ -18,15 +18,21 @@ internal sealed class AdminAuditLog(ITenantDb database)
         if (tenant is null || admin is null) return Task.CompletedTask;
 
         var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? context.Request.Path.Value ?? "/";
+        var metadata = context.GetEndpoint()?.Metadata.GetMetadata<AdminAuditMetadata>();
+        var targetId = context.Request.RouteValues.TryGetValue("id", out var routeId) && Guid.TryParse(routeId?.ToString(), out var parsedId)
+            ? parsedId
+            : (Guid?)null;
         var data = new AdminAuditData(context.Request.Method, route);
         return database.InTenantAsync(tenant.Id, transaction => transaction.ExecuteAsync("""
             insert into audit_log (tenant_id, actor_type, actor_id, action, target_type, target_id, data)
-            values (@tenantId, 'admin', @actorId, @action, 'route', null, @data)
+            values (@tenantId, 'admin', @actorId, @action, @targetType, @targetId, @data)
             """, new
         {
             tenantId = tenant.Id,
             actorId = admin.AdminId,
-            action = $"admin.{context.Request.Method.ToLowerInvariant()}",
+            action = metadata?.Action ?? $"admin.{context.Request.Method.ToLowerInvariant()}",
+            targetType = metadata?.TargetType ?? "route",
+            targetId,
             data = new Jsonb<AdminAuditData>(data, AdminAuditJsonContext.Default.AdminAuditData),
         }, cancellationToken), cancellationToken: cancellationToken);
     }
@@ -86,6 +92,9 @@ internal sealed record AdminAuditEntry(
 internal sealed record AdminAuditPage(IReadOnlyList<AdminAuditEntry> Items, long? Next);
 
 internal sealed record AdminAuditData(string Method, string Route);
+
+/// <summary>Describes the semantic audit action for a protected administration endpoint.</summary>
+internal sealed record AdminAuditMetadata(string Action, string TargetType);
 
 [JsonSerializable(typeof(AdminAuditData))]
 internal partial class AdminAuditJsonContext : JsonSerializerContext;

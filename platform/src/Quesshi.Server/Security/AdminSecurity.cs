@@ -162,6 +162,7 @@ public static class AdminServices
         services.AddSingleton<IAdminPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IAdminPasswordResetMailer, SmtpAdminMailer>();
         services.AddSingleton<AdminAuthService>();
+        services.AddSingleton<IAdminAccountManager, AdminAccountManager>();
         services.AddSingleton<AdminSessionService>();
         services.AddSingleton<IAdminSessionIssuer>(provider => provider.GetRequiredService<AdminSessionService>());
         services.AddSingleton<IAdminSessionResolver>(provider => provider.GetRequiredService<AdminSessionService>());
