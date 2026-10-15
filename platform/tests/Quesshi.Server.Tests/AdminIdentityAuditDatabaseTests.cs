@@ -136,6 +136,8 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
         Assert.Equal(expectedState, exception.SqlState);
     }
 
-    private static Task AssertSqlStateAsync<T>(Func<Task<T>> action, string expectedState) =>
-        AssertSqlStateAsync(async () => await action(), expectedState);
+    private static async Task AssertSqlStateAsync<T>(Func<Task<T>> action, string expectedState)
+    {
+        await AssertSqlStateAsync(async () => { _ = await action(); }, expectedState);
+    }
 }

@@ -21,6 +21,9 @@ create table admin_memberships (
   primary key (tenant_id, admin_id)
 );
 create index admin_memberships_admin on admin_memberships (admin_id);
+select quesshi_tenant_table('admin_memberships', 'core');
+create policy admin_memberships_system on admin_memberships for all to quesshi_system
+  using (true) with check (true);
 
 create table admin_password_resets (
   token_hash bytea primary key,
