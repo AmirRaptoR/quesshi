@@ -145,6 +145,7 @@ public static class Program
         builder.Services.AddSingleton<PlatformHealth>();
         builder.Services.AddTenantResolution();
         builder.Services.AddPlayerSecurity();
+        builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
         builder.Services.AddSingleton<SessionStateStore>();
@@ -247,6 +248,7 @@ public static class Program
         app.UseForwardedHeaders();
         app.UseWhen(context => !context.Request.Path.StartsWithSegments("/health"), tenant => tenant.UseTenantResolution());
         app.UsePlayerSessionAuthentication();
+        app.UseAdminSessionAuthentication();
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot"))
