@@ -91,7 +91,20 @@ public class SessionGrain(
                 await RecordFaultAsync(exception);
                 return SessionCommandResult.Error("session_busy", retryable: true);
             }
-            if (!transition.Changed) return View("ok", format, request.PlayerId);
+            if (!transition.Changed)
+            {
+                // A cold command can load the whole session without changing the durable
+                // state (the benchmark's initial countdown command does exactly that).
+                // Preserve that activation cost as its own measurement rather than
+                // dropping it with ordinary unchanged commands.
+                measuredKind = SessionTurnClassifier.ForCommand(
+                    activated,
+                    changed: false,
+                    command.Type == CommandType.Answer,
+                    _state.Session.Position?.Phase,
+                    _state.Session.Position?.Phase);
+                return View("ok", format, request.PlayerId);
+            }
 
             var current = transition.Current;
             measuredKind = SessionTurnClassifier.ForCommand(
