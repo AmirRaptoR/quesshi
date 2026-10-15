@@ -43,6 +43,7 @@ public class SessionGrain(
         var started = clock.Now;
         SessionTurnKind? measuredKind = null;
         DateTimeOffset? turnDueAt = null;
+        var activated = _state is null;
         try
         {
             _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
@@ -93,13 +94,12 @@ public class SessionGrain(
             if (!transition.Changed) return View("ok", format, request.PlayerId);
 
             var current = transition.Current;
-            if (command.Type == CommandType.Answer)
-            {
-                measuredKind = previousPosition?.Phase == 1
-                    && current.Session.Position?.Phase == 2
-                    ? SessionTurnKind.RoundClose
-                    : SessionTurnKind.OrdinaryAnswer;
-            }
+            measuredKind = SessionTurnClassifier.ForCommand(
+                activated,
+                changed: true,
+                command.Type == CommandType.Answer,
+                previousPosition?.Phase,
+                current.Session.Position?.Phase);
             long version;
             try
             {
@@ -207,12 +207,11 @@ public class SessionGrain(
             // sweep deliveries cannot run the same timeout transition again.
             if (transition.Changed && transition.Current.Session.DueAt == dueAt) transition.ClearDeadline();
             if (!transition.Changed) { ArmDeadlineTimer(); return; }
-            measuredKind = _state.Session.Position?.Phase == 1
-                && transition.Current.Session.Position?.Phase == 2
-                ? SessionTurnKind.RoundClose
-                : transition.Current.Session.Ended
-                    ? SessionTurnKind.Finish
-                    : null;
+            measuredKind = SessionTurnClassifier.ForTimeout(
+                changed: true,
+                _state.Session.Position?.Phase,
+                transition.Current.Session.Position?.Phase,
+                transition.Current.Session.Ended);
             var version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, transition.Initial, transition.Current);
             _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
             _state = _state with { Session = _state.Session with { Version = version } };

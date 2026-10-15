@@ -13,9 +13,59 @@ public interface ISessionTurnObserver
 
 public enum SessionTurnKind
 {
+    ColdActivation,
     OrdinaryAnswer,
     RoundClose,
     Finish
+}
+
+internal static class SessionTurnClassifier
+{
+    public static SessionTurnKind? ForCommand(
+        bool activated,
+        bool changed,
+        bool isAnswer,
+        int? previousPhase,
+        int? currentPhase)
+    {
+        if (!changed)
+        {
+            return null;
+        }
+
+        if (activated)
+        {
+            return SessionTurnKind.ColdActivation;
+        }
+
+        if (!isAnswer)
+        {
+            return null;
+        }
+
+        return previousPhase == 1 && currentPhase == 2
+            ? SessionTurnKind.RoundClose
+            : SessionTurnKind.OrdinaryAnswer;
+    }
+
+    public static SessionTurnKind? ForTimeout(
+        bool changed,
+        int? previousPhase,
+        int? currentPhase,
+        bool sessionCompleted)
+    {
+        if (!changed)
+        {
+            return null;
+        }
+
+        if (previousPhase == 1 && currentPhase == 2)
+        {
+            return SessionTurnKind.RoundClose;
+        }
+
+        return sessionCompleted ? SessionTurnKind.Finish : null;
+    }
 }
 
 public sealed record SessionTurnSample(

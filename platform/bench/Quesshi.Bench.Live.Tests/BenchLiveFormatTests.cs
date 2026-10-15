@@ -67,8 +67,12 @@ public sealed class BenchLiveFormatTests
                 Assert.Equal(scenario == LiveScenario.BurstStreams ? 500 : 0, options.StreamCount);
                 Assert.Equal(scenario == LiveScenario.Cold ? 100 : 1, options.ItemCount);
                 Assert.Equal(scenario == LiveScenario.Pool10 ? 10 : null, options.PoolSize);
+                Assert.Equal(scenario == LiveScenario.Pool10 ? 10 : 40, options.ApplicationPoolSize);
             }
         }
+
+        var disposable = BenchmarkOptions.Parse(["--players", "20", "--scenario", "burst", "--allow-disposable-postgres"]);
+        Assert.True(disposable.DisposablePostgreSql);
     }
 
     [Fact]
@@ -82,6 +86,54 @@ public sealed class BenchLiveFormatTests
         var unavailable = ReportBuilder.DistributionOf(Enumerable.Empty<TimeSpan>(), "cold activation does not finish all 100 slots");
         Assert.Equal(0, unavailable.SampleCount);
         Assert.Equal("cold activation does not finish all 100 slots", unavailable.UnavailableReason);
+    }
+
+    [Fact]
+    public void Command_measurements_classify_responses_and_only_count_server_on_time_refusals()
+    {
+        var deadline = DateTimeOffset.UnixEpoch.AddSeconds(20);
+        var player = Guid.NewGuid();
+        var commands = new[]
+        {
+            new CommandSample(player, deadline.AddMilliseconds(-20), deadline.AddMilliseconds(-10), TimeSpan.FromMilliseconds(2), CommandOutcome.Accepted, null),
+            new CommandSample(Guid.NewGuid(), deadline.AddMilliseconds(-20), deadline.AddMilliseconds(-5), TimeSpan.FromMilliseconds(3), CommandOutcome.StalePosition, null),
+            new CommandSample(Guid.NewGuid(), deadline.AddMilliseconds(-20), deadline.AddMilliseconds(5), TimeSpan.FromMilliseconds(4), CommandOutcome.LateAnswer, null),
+            new CommandSample(Guid.NewGuid(), deadline.AddMilliseconds(-20), null, TimeSpan.FromMilliseconds(5), CommandOutcome.Failed, "missing measurement headers"),
+        };
+
+        Assert.Equal(CommandOutcome.Accepted, BenchmarkMeasurementClassifier.ResponseOutcome("ok", true));
+        Assert.Equal(CommandOutcome.StalePosition, BenchmarkMeasurementClassifier.ResponseOutcome("stale_position", true));
+        Assert.Equal(CommandOutcome.LateAnswer, BenchmarkMeasurementClassifier.ResponseOutcome("late_answer", false));
+        Assert.Equal(1, BenchmarkMeasurementClassifier.OnTimeRefusals(commands, deadline));
+
+        var outcomes = BenchmarkMeasurementClassifier.Summarize(commands);
+        Assert.Equal(4, outcomes.CommandsSent);
+        Assert.Equal(1, outcomes.Accepted);
+        Assert.Equal(1, outcomes.StalePositions);
+        Assert.Equal(1, outcomes.LateAnswers);
+        Assert.Equal(1, outcomes.OtherErrors);
+    }
+
+    [Fact]
+    public void Structured_report_includes_cold_and_command_outcome_fields()
+    {
+        var report = new ScenarioReport(
+            100, "cold", 0, 100, 40, 0,
+            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(12)]),
+            ReportBuilder.DistributionOf([]),
+            ReportBuilder.DistributionOf([]),
+            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(1)]),
+            ReportBuilder.DistributionOf([]),
+            ReportBuilder.DistributionOf([]),
+            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(18)]),
+            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(2)]),
+            null, 0, 1, 0, 0, 0, 0, 0, 0);
+
+        Assert.Equal(100, report.Items);
+        Assert.Equal(40, report.PoolConnections);
+        Assert.Equal(1, report.ColdActivationBusy.SampleCount);
+        Assert.Equal(1, report.CommandsSent);
+        Assert.Equal(0, report.Failures);
     }
 
     private static (BenchLiveFormat Format, TestClock Clock, InMemorySession Session) Create()

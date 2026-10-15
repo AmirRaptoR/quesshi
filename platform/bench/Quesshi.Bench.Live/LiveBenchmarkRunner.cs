@@ -36,14 +36,21 @@ public sealed class LiveBenchmarkRunner
 
     public async Task<BenchmarkReport> RunAsync(BenchmarkOptions options, CancellationToken cancellationToken = default)
     {
-        var administrationConnection = options.PostgreSql
+        var configuredConnection = options.PostgreSql
             ?? Environment.GetEnvironmentVariable("QUESSHI_BENCH_POSTGRES")
-            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Owner")
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Owner");
+        var administrationConnection = configuredConnection
             ?? Environment.GetEnvironmentVariable("QUESSHI_TEST_POSTGRES");
         if (string.IsNullOrWhiteSpace(administrationConnection))
         {
             throw new InvalidOperationException(
                 "Set QUESSHI_BENCH_POSTGRES (an owner PostgreSQL connection string) before running the live benchmark.");
+        }
+        if (!options.DisposablePostgreSql
+            && !string.Equals(Environment.GetEnvironmentVariable("QUESSHI_BENCH_DISPOSABLE_POSTGRES"), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The benchmark changes its disposable database roles. Pass --allow-disposable-postgres only for an isolated PostgreSQL server.");
         }
 
         var runs = options.Matrix
@@ -96,7 +103,7 @@ public sealed class LiveBenchmarkRunner
         {
             var tenant = await SeedTenantAsync(database.OwnerConnectionString, database.TenantHost, cancellationToken);
 
-            firstSources = new DatabaseSources(database.AppConnectionString, database.SystemConnectionString, options.PoolSize ?? 40, measurements);
+            firstSources = new DatabaseSources(database.AppConnectionString, database.SystemConnectionString, options.ApplicationPoolSize, measurements);
             // Both silos share one application data source so the pool-10 scenario is
             // genuinely capped at ten connections across the complete live path.
             secondSources = firstSources;
@@ -119,11 +126,16 @@ public sealed class LiveBenchmarkRunner
                 streams = await OpenStreamsAsync(options.StreamCount, clients, session.Id, cancellationToken);
             }
 
-            // Login, seed, countdown, and initial view traffic are not benchmark samples.
+            // Login, seed, countdown, and initial view traffic are not benchmark samples. The
+            // first command remains a distinct activation measurement for the cold scenario.
+            var coldActivation = options.Scenario == LiveScenario.Cold
+                ? measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.ColdActivation).ToArray()
+                : [];
+            var coldPoolWaits = options.Scenario == LiveScenario.Cold ? measurements.PoolWaits.ToArray() : [];
             measurements.Reset();
             var deadline = await GetDeadlineAsync(database.OwnerConnectionString, session.Id, cancellationToken);
             var commands = await SubmitAnswersAsync(options, clients, session.Id, deadline, cancellationToken);
-            var final = await CollectResultAsync(database.OwnerConnectionString, session, options, deadline, commands, measurements, streams, cancellationToken);
+            var final = await CollectResultAsync(database.OwnerConnectionString, session, options, deadline, commands, measurements, coldActivation, coldPoolWaits, streams, cancellationToken);
             return new ScenarioOutcome(final, database.PostgreSqlVersion);
         }
         finally
@@ -350,15 +362,23 @@ public sealed class LiveBenchmarkRunner
         {
             using var request = BuildAnswerRequest(client, sessionId, "1", 0);
             using var response = await client.Http.SendAsync(request, cancellationToken);
-            return new CommandSample(client.PlayerId, sentAt, stopwatch.Elapsed, response.IsSuccessStatusCode, null);
+            var code = response.Headers.TryGetValues("X-Quesshi-Command-Code", out var values) ? values.SingleOrDefault() : null;
+            var receivedAt = response.Headers.TryGetValues("X-Quesshi-Command-Received-At", out var receivedValues)
+                && DateTimeOffset.TryParse(receivedValues.SingleOrDefault(), out var parsedReceipt)
+                    ? parsedReceipt
+                    : (DateTimeOffset?)null;
+            var outcome = code is null || receivedAt is null
+                ? CommandOutcome.Failed
+                : BenchmarkMeasurementClassifier.ResponseOutcome(code, response.IsSuccessStatusCode);
+            return new CommandSample(client.PlayerId, sentAt, receivedAt, stopwatch.Elapsed, outcome, code is null || receivedAt is null ? "missing measurement headers" : null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new CommandSample(client.PlayerId, sentAt, stopwatch.Elapsed, false, "timeout");
+            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.TimedOut, "timeout");
         }
         catch (Exception exception)
         {
-            return new CommandSample(client.PlayerId, sentAt, stopwatch.Elapsed, false, exception.GetType().Name);
+            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.Failed, exception.GetType().Name);
         }
     }
 
@@ -409,6 +429,8 @@ public sealed class LiveBenchmarkRunner
         DateTimeOffset questionDeadline,
         IReadOnlyList<CommandSample> commands,
         BenchmarkMeasurements measurements,
+        IReadOnlyList<SessionTurnSample> coldActivation,
+        IReadOnlyList<TimeSpan> coldPoolWaits,
         IReadOnlyList<SseSubscription> streams,
         CancellationToken cancellationToken)
     {
@@ -418,7 +440,12 @@ public sealed class LiveBenchmarkRunner
         }
 
         var accepted = await AcceptedPlayersAsync(ownerConnectionString, session.Id, cancellationToken);
-        var onTimeRefused = commands.Count(command => command.SentAt <= questionDeadline && !accepted.Contains(command.PlayerId));
+        var reconciledCommands = commands.Select(command =>
+            command.Outcome == CommandOutcome.Accepted && !accepted.Contains(command.PlayerId)
+                ? command with { Outcome = CommandOutcome.Failed, Error = "accepted response had no persisted answer" }
+                : command).ToArray();
+        var outcomes = BenchmarkMeasurementClassifier.Summarize(reconciledCommands);
+        var onTimeRefused = BenchmarkMeasurementClassifier.OnTimeRefusals(reconciledCommands, questionDeadline);
         var close = measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.RoundClose).ToArray();
         var finish = measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.Finish).ToArray();
         var ordinary = measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.OrdinaryAnswer).ToArray();
@@ -429,7 +456,7 @@ public sealed class LiveBenchmarkRunner
             options.Scenario.CliName(),
             options.StreamCount,
             options.ItemCount,
-            options.PoolSize,
+            options.ApplicationPoolSize,
             streams.Sum(stream => stream.ViewsReceived),
             ReportBuilder.DistributionOf(ordinary.Select(sample => sample.Duration), "no ordinary answers were accepted"),
             ReportBuilder.DistributionOf(close.Select(sample => sample.Duration), "no round close occurred"),
@@ -437,10 +464,17 @@ public sealed class LiveBenchmarkRunner
             ReportBuilder.DistributionOf(commands.Select(command => command.Latency), "no commands were sent"),
             ReportBuilder.DistributionOf(measurements.TimerLags, "no due timer fired"),
             ReportBuilder.DistributionOf(measurements.PoolWaits, "no application-pool checkout occurred"),
+            ReportBuilder.DistributionOf(coldActivation.Select(sample => sample.Duration), options.Scenario == LiveScenario.Cold ? "cold activation sample was not observed" : "not a cold activation scenario"),
+            ReportBuilder.DistributionOf(coldPoolWaits, options.Scenario == LiveScenario.Cold ? "no application-pool checkout occurred during cold activation" : "not a cold activation scenario"),
             lastAccepted is null ? null : (lastAccepted.Value - questionDeadline).TotalMilliseconds,
             onTimeRefused,
-            commands.Count(command => !command.Success),
-            commands.Count(command => command.Error?.Contains("timeout", StringComparison.OrdinalIgnoreCase) == true));
+            outcomes.CommandsSent,
+            outcomes.Accepted,
+            outcomes.LateAnswers,
+            outcomes.StalePositions,
+            outcomes.OtherErrors,
+            outcomes.LateAnswers + outcomes.StalePositions + outcomes.OtherErrors,
+            outcomes.Timeouts);
     }
 
     private static async Task WaitForPhaseAsync(string ownerConnectionString, Guid sessionId, string phase, CancellationToken cancellationToken)
@@ -482,7 +516,7 @@ public sealed class LiveBenchmarkRunner
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        var players = await connection.QueryAsync<Guid>(new CommandDefinition("select player_id from session_answers where session_id = @SessionId and slot = 0", new { SessionId = sessionId }, cancellationToken: cancellationToken));
+        var players = await connection.QueryAsync<Guid>(new CommandDefinition("select player_id from session_answers where session_id = @SessionId and slot = 0 and answer is not null", new { SessionId = sessionId }, cancellationToken: cancellationToken));
         return players.ToHashSet();
     }
 
@@ -490,7 +524,7 @@ public sealed class LiveBenchmarkRunner
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
-        return await connection.ExecuteScalarAsync<DateTimeOffset?>(new CommandDefinition("select max(received_at) from session_answers where session_id = @SessionId and slot = 0", new { SessionId = sessionId }, cancellationToken: cancellationToken));
+        return await connection.ExecuteScalarAsync<DateTimeOffset?>(new CommandDefinition("select max(received_at) from session_answers where session_id = @SessionId and slot = 0 and answer is not null", new { SessionId = sessionId }, cancellationToken: cancellationToken));
     }
 
     private static string SourceRevision()
@@ -516,13 +550,12 @@ public sealed class LiveBenchmarkRunner
 
     private static string CommandLine(BenchmarkOptions options)
         => options.Matrix
-            ? "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix"
-            : $"dotnet run --project platform/bench/Quesshi.Bench.Live -- --players {options.Players} --scenario {options.Scenario.CliName()}";
+            ? "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix --allow-disposable-postgres"
+            : $"dotnet run --project platform/bench/Quesshi.Bench.Live -- --players {options.Players} --scenario {options.Scenario.CliName()}{(options.DisposablePostgreSql ? " --allow-disposable-postgres" : "")}";
 
     private sealed record GuestIdentity(Guid Id);
     private sealed record BenchSession(Guid Id, Guid OwnerId);
     private sealed record BenchTenant(Guid Id);
-    private sealed record CommandSample(Guid PlayerId, DateTimeOffset SentAt, TimeSpan Latency, bool Success, string? Error);
     private sealed record ScenarioOutcome(ScenarioReport Report, string PostgreSqlVersion);
 
     private sealed class BenchClient(HttpClient http, string tenantHost, string cookie, string antiforgeryToken, Guid playerId) : IDisposable
