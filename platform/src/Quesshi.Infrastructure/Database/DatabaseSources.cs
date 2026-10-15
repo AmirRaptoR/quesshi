@@ -1,5 +1,5 @@
 using Npgsql;
-using System.Diagnostics;
+using Quesshi.Infrastructure.Clock;
 
 namespace Quesshi.Infrastructure.Database;
 
@@ -37,14 +37,14 @@ public sealed class DatabaseSources : IAsyncDisposable
 
     internal async Task<NpgsqlConnection> OpenApplicationConnectionAsync(CancellationToken cancellationToken = default)
     {
-        var started = Stopwatch.GetTimestamp();
+        var started = PoolWaitTimer.Start();
         try
         {
             return await App.OpenConnectionAsync(cancellationToken);
         }
         finally
         {
-            _poolObserver.RecordApplicationPoolWait(Stopwatch.GetElapsedTime(started));
+            _poolObserver.RecordApplicationPoolWait(PoolWaitTimer.Elapsed(started));
         }
     }
 

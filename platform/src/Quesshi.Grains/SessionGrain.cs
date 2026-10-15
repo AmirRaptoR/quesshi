@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Runtime;
@@ -41,7 +40,7 @@ public class SessionGrain(
 
     public async Task<SessionCommandResult> ExecuteAsync(SessionCommand request)
     {
-        var started = Stopwatch.GetTimestamp();
+        var started = clock.Now;
         SessionTurnKind? measuredKind = null;
         DateTimeOffset? turnDueAt = null;
         try
@@ -165,14 +164,14 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), turnDueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, turnDueAt, clock.Now));
             }
         }
     }
 
     public async Task TimeoutAsync(DateTimeOffset dueAt)
     {
-        var started = Stopwatch.GetTimestamp();
+        var started = clock.Now;
         SessionTurnKind? measuredKind = null;
         try
         {
@@ -229,7 +228,7 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), dueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, dueAt, clock.Now));
             }
         }
     }
