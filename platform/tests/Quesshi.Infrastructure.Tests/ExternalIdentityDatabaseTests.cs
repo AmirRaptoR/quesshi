@@ -1,3 +1,4 @@
+using System.Text;
 using Npgsql;
 using Quesshi.Application.Tenancy;
 using Quesshi.Infrastructure.Database;
@@ -14,11 +15,10 @@ public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
     [Fact]
     public void Core_migrations_include_subject_only_identity_accounts()
     {
-        var migrations = MigrationRunner.Discover(typeof(ITenants).Assembly)
-            .Select(migration => migration.Name)
-            .ToArray();
+        var migrations = MigrationRunner.Discover(typeof(ITenants).Assembly);
 
-        Assert.Contains("20261015T0300_core_subject_only_external_identities.sql", migrations);
+        var migration = Assert.Single(migrations, migration => migration.Name == "20261015T0300_core_subject_only_external_identities.sql");
+        Assert.Contains("drop constraint if exists accounts_check", Encoding.UTF8.GetString(migration.Contents.Span), StringComparison.OrdinalIgnoreCase);
     }
 
     [SkippableFact]
