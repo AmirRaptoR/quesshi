@@ -195,7 +195,9 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         await using (var connection = await OpenAsync("quesshi_system"))
             await ExecuteAsync(connection, "update jobs set run_at = now() where tenant_id = @tenant and kind = 'account-player-cleanup'", ("tenant", seeded.FirstTenant));
 
-        await worker.RunPassAsync(1, TimeSpan.FromMinutes(1));
+        // The successful tenant can have queued its plugin cleanup first. Drain both
+        // ready jobs so this pass reaches the retried core cleanup deterministically.
+        await worker.RunPassAsync(2, TimeSpan.FromMinutes(1));
         Assert.True(await TenantScalarAsync<bool>(seeded.FirstTenant, "select deleted_at is not null from players where id = @player", new { player = seeded.FirstPlayer }));
         Assert.Equal(1L, await ScalarAsync<long>("select count(*) from jobs where tenant_id = @tenant and kind = 'cleanup-player'", ("tenant", seeded.FirstTenant)));
         await cleanup.HandleAsync(new JobContext(0, seeded.FirstTenant, "core", "account-player-cleanup",
