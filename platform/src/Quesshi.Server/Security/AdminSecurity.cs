@@ -170,7 +170,12 @@ public static class AdminServices
         return services;
     }
 
-    public static IApplicationBuilder UseAdminSessionAuthentication(this IApplicationBuilder app) => app.UseMiddleware<AdminSessionMiddleware>();
+    public static IApplicationBuilder UseAdminSessionAuthentication(this IApplicationBuilder app)
+    {
+        app.UseMiddleware<AdminSessionMiddleware>();
+        app.UseMiddleware<AdminRouteSecurityMiddleware>();
+        return app;
+    }
 
     internal static AdminIdentity? Admin(this HttpContext context) => context.Items.TryGetValue(typeof(AdminIdentity), out var value) ? value as AdminIdentity : null;
 }

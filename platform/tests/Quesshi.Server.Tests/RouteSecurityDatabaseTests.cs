@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -163,13 +164,13 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
-        await using var app = Program.CreateApplication(sources, 11147, 30147, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:50147");
+        await using var app = Program.CreateApplication(sources, 11152, 30152, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50152");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50147") };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50152") };
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var ownerCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.OwnerAdminId);
@@ -257,6 +258,63 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             await app.Services.GetRequiredService<IAdminSessionResolver>().RevokeAsync(ownerCookie);
             using (var revoked = await SendAdminAsync(client, TenantHost, HttpMethod.Get, "/api/admin/audit", ownerCookie, null, null))
                 Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Admin_routes_enforce_security_before_typed_json_binding()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11153, 30153, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50153");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50153") };
+            var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var ownerCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.OwnerAdminId);
+
+            using (var knownAdmin = await SendAdminAsync(
+                       client,
+                       TenantHost,
+                       HttpMethod.Post,
+                       "/api/admin/x/security/moderator-typed",
+                       ownerCookie,
+                       "not-an-admin-token",
+                       "https://foreign.example.test",
+                       new StringContent("{", Encoding.UTF8, "application/json")))
+            {
+                Assert.Equal(HttpStatusCode.Forbidden, knownAdmin.StatusCode);
+            }
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.TenantId }));
+
+            using (var anonymous = await SendAdminAsync(
+                       client,
+                       TenantHost,
+                       HttpMethod.Post,
+                       "/api/admin/x/security/moderator-typed",
+                       null,
+                       null,
+                       null,
+                       new StringContent("{", Encoding.UTF8, "application/json")))
+            {
+                Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            }
+
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.TenantId }));
         }
         finally
         {
@@ -435,6 +493,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     private sealed record AuditPage(IReadOnlyList<AuditItem> Items, long? Next);
     private sealed record AuditItem(long Id, Guid? ActorId);
     private sealed record AuditRow(Guid? ActorId, string Action, string TargetType, string Data);
+    private sealed record TypedAdminPayload(string Value);
 
     private sealed class SecurityRoutesFeature : IFeature
     {
@@ -457,6 +516,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             feature.AdminRoutes(AdminRole.Moderator, routes =>
             {
                 routes.MapPost("/moderator", () => Results.Ok());
+                routes.MapPost("/moderator-typed", (TypedAdminPayload _) => Results.Ok());
                 routes.MapPost("/moderator-multipart", async (HttpRequest request) =>
                 {
                     var form = await request.ReadFormAsync();
