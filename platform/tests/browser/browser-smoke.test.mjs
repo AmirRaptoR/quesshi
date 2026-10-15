@@ -90,6 +90,7 @@ test('published client uses each tenant configuration online and after an offlin
     await page.goto(host.tenantUrl('contoso.localhost'));
     await page.locator('h1').waitFor();
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await page.waitForFunction(() => document.documentElement.dir === 'rtl');
     assert.equal(await page.locator('h1').textContent(), 'کویشی کنتوسو');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
     await page.reload();
