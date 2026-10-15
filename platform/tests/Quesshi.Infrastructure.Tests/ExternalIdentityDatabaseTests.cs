@@ -33,7 +33,7 @@ public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
         var repeated = await service.CompleteExternalAsync("google", "subject-priority", "changed@example.test", true);
         Assert.Equal(ExternalIdentityCompletionState.Completed, first.State);
         Assert.Equal(first.AccountId, repeated.AccountId);
-        Assert.Equal("first@example.test", await ScalarAsync<string>(owner, "select email from accounts where id = @account", ("account", first.AccountId!.Value)));
+        Assert.Equal("first@example.test", await ScalarAsync<string>(owner, "select email::text from accounts where id = @account", ("account", first.AccountId!.Value)));
 
         var completions = await Task.WhenAll(
             service.CompleteExternalAsync("google", "concurrent-subject", "concurrent@example.test", true),
@@ -60,7 +60,7 @@ public sealed class ExternalIdentityDatabaseTests(PostgresFixture fixture)
         Assert.Equal(existing, verified.AccountId);
         Assert.NotEqual(existing, unverified.AccountId);
         Assert.True(await ScalarAsync<bool>(owner, "select email is null from accounts where id = @account", ("account", unverified.AccountId!.Value)));
-        Assert.Equal("new@example.test", await ScalarAsync<string>(owner, "select email from accounts where id = @account", ("account", created.AccountId!.Value)));
+        Assert.Equal("new@example.test", await ScalarAsync<string>(owner, "select email::text from accounts where id = @account", ("account", created.AccountId!.Value)));
     }
 
     [SkippableFact]

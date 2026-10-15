@@ -41,7 +41,7 @@ public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
             new { provider, subject }, transaction, cancellationToken: cancellationToken));
 
         var existing = await connection.QuerySingleOrDefaultAsync<AccountIdentityRow>(new CommandDefinition("""
-            select ai.account_id as AccountId, a.deleted_at as DeletedAt
+            select ai.account_id as "AccountId", a.deleted_at as "DeletedAt"
             from account_identities ai
             join accounts a on a.id = ai.account_id
             where ai.provider = @provider and ai.subject = @subject
@@ -88,5 +88,5 @@ public sealed class ExternalIdentityService(DatabaseSources sources) : IIdentity
         return new ExternalIdentityCompletion(ExternalIdentityCompletionState.Completed, accountId);
     }
 
-    private sealed record AccountIdentityRow(Guid AccountId, DateTimeOffset? DeletedAt);
+    private sealed record AccountIdentityRow(Guid AccountId, DateTime? DeletedAt);
 }
