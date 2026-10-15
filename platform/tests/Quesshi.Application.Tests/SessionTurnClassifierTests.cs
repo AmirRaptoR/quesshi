@@ -14,6 +14,9 @@ public sealed class SessionTurnClassifierTests
             SessionTurnKind.OrdinaryAnswer,
             SessionTurnClassifier.ForCommand(false, true, true, previousPhase: 1, currentPhase: 1));
         Assert.Equal(
+            SessionTurnKind.ColdActivation,
+            SessionTurnClassifier.ForCommand(true, false, true, previousPhase: 0, currentPhase: 0));
+        Assert.Equal(
             SessionTurnKind.RoundClose,
             SessionTurnClassifier.ForTimeout(true, previousPhase: 1, currentPhase: 2, sessionCompleted: false));
         Assert.Equal(

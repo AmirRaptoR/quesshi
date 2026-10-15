@@ -28,14 +28,14 @@ internal static class SessionTurnClassifier
         int? previousPhase,
         int? currentPhase)
     {
-        if (!changed)
-        {
-            return null;
-        }
-
         if (activated)
         {
             return SessionTurnKind.ColdActivation;
+        }
+
+        if (!changed)
+        {
+            return null;
         }
 
         if (!isAnswer)
