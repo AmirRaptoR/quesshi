@@ -88,26 +88,39 @@ dotnet test Quesshi.slnx --no-build --configuration Release
 
 ## 3. Platform layout and dependency rules
 
-| Project (`platform/src/`) | Contents | May reference |
-| --- | --- | --- |
-| `Quesshi.Shared` | DTOs, views, cards, commands, the kind contract | nothing in the solution |
-| `Quesshi.Domain` | Pure rules: scoring, positions, standings | nothing |
-| `Quesshi.Kinds` | One folder per question kind (`Choice/`, `Order/`, `MapPick/`, …) | `Shared` only |
-| `Quesshi.Engine.Contracts` | Format contract, in-memory session handle, `IClock`; pure types only | `Shared` only |
-| `Quesshi.Formats` | One folder per format (`AsyncDuel/`, `Poll/`) | `Engine.Contracts`, `Domain`, `Shared` |
-| `Quesshi.Plugin.Api` | What plugins may see of the core: `ITenantTx`, `ITenantDb`, `ISessions`, `IContent`, `ILocks`, `IInbox` | |
-| `Quesshi.Features` | One folder per feature, sign-in method, content source | `Plugin.Api` only |
-| `Quesshi.Application` | The core: tenancy, identity, content, session engine, events, jobs. Its types are `internal` | implements `Plugin.Api` |
-| `Quesshi.Infrastructure` | PostgreSQL access, mail, storage, model provider, clock | |
-| `Quesshi.Grains.Abstractions` / `Quesshi.Grains` | The session grain's interface / `SessionGrain` | |
-| `Quesshi.Server` | Host: API, streams, silo, registry, migrate command (`Program.cs`) | |
-| `Quesshi.Web`, `Quesshi.Web.Plugins`, `Quesshi.Web.Admin`, `Quesshi.Kinds.MapPick.Client` | Blazor WebAssembly client and its lazy-loaded libraries | |
+The "References" column lists each project's current project references (`PluginGuards` is
+the analyzer in `platform/build/`). Projects marked **fixed** must never gain a reference: their
+isolation is the architecture. For the other projects, add a reference only when architecture
+section 4 allows it, and say in the pull request which reference you added and why.
+
+| Project (`platform/src/`) | Contents | References | |
+| --- | --- | --- | --- |
+| `Quesshi.Shared` | DTOs, views, cards, commands, the kind contract | none | **fixed** |
+| `Quesshi.Domain` | Pure rules: scoring, positions, standings | none | **fixed** |
+| `Quesshi.Kinds` | One folder per question kind (`Choice/`, `Order/`, `MapPick/`, …) | `Shared`, `PluginGuards` | **fixed** |
+| `Quesshi.Engine.Contracts` | Format contract, in-memory session handle, `IClock`; pure types only | `Shared` | **fixed** |
+| `Quesshi.Formats` | One folder per format (`AsyncDuel/`, `Poll/`) | `Engine.Contracts`, `Domain`, `Shared`, `PluginGuards` | **fixed** |
+| `Quesshi.Plugin.Api` | What plugins may see of the core: `ITenantTx`, `ITenantDb`, `ISessions`, `IContent`, `ILocks`, `IInbox` | none | **fixed** |
+| `Quesshi.Features` | One folder per feature, sign-in method, content source | `Plugin.Api` | **fixed** |
+| `Quesshi.Application` | The core: tenancy, identity, content, session engine, events, jobs. Its types are `internal` | `Domain`, `Engine.Contracts`, `Plugin.Api`, `Shared` | |
+| `Quesshi.Infrastructure` | PostgreSQL access, mail, storage, model provider, clock | `Application`, `Engine.Contracts` | |
+| `Quesshi.Grains.Abstractions` | The session grain's interface and its command and result types | none | |
+| `Quesshi.Grains` | `SessionGrain` | `Application`, `Grains.Abstractions` | |
+| `Quesshi.Server` | Host: API, streams, silo, registry, migrate command (`Program.cs`) | `Application`, `Features`, `Infrastructure`, `Grains`, `Grains.Abstractions`, `Formats`, `Kinds`, `Web` | |
+| `Quesshi.Formats.Testing` | Test helpers for formats (`InMemorySession`, `EchoFormat`); used only by test projects | `Application`, `Domain`, `Engine.Contracts`, `Shared` | |
+| `Quesshi.Web` | Blazor WebAssembly shell: routing, auth, lobby, profile | `Shared`, `Kinds`, `Web.Plugins`, `Web.Admin`, `Kinds.MapPick.Client` | client |
+| `Quesshi.Web.Plugins` | Client half of kinds, formats and features | `Kinds`, `Shared` | client |
+| `Quesshi.Web.Admin` | Admin area, lazy-loaded | none | client |
+| `Quesshi.Kinds.MapPick.Client` | Map kind components and the world map, lazy-loaded | `Shared`, `Kinds`, `Web.Plugins` | client |
+
+Client projects run in the browser: they must never reference `Application`, `Infrastructure`,
+`Grains`, `Server`, `Features` or `Plugin.Api`.
 
 These rules are enforced, and you must never work around them:
 
-- **Project references.** Never add a project reference that the table does not allow. A
-  feature never references `Application`; a format never references anything that can reach a
-  database.
+- **Project references.** Follow the table above: never add a reference to a **fixed** or client
+  project beyond what it lists. A feature never references `Application`; a format never
+  references anything that can reach a database.
 - **Banned APIs in `Kinds` and `Formats`** (`platform/BannedSymbols.txt`,
   `platform/PluginBannedNamespaces.txt`): no `System.Net`, `System.IO`, `System.Reflection.Emit`,
   `Npgsql`, `Random.Shared`, `DateTime.Now/UtcNow`, `DateTimeOffset.Now/UtcNow`,
