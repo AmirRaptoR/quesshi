@@ -1,14 +1,110 @@
 @using Microsoft.AspNetCore.Components
 @using Quesshi.Kinds.MapPick
+@using Quesshi.Shared
 
-<div data-kind="map_pick"></div>
+@if (MapPayload is not null)
+{
+    <section class="map_pick-editor" data-kind="map_pick">
+        <label>Base layer
+            <select value="@baseLayer" @onchange="SetBaseLayerAsync">
+                <option value="@MapBaseLayer.Blank">Blank</option>
+                <option value="@MapBaseLayer.Borders">Borders</option>
+            </select>
+        </label>
+        <label>Answer type
+            <select value="@shape" @onchange="SetShapeAsync">
+                <option value="@MapTargetKind.Country">Country</option>
+                <option value="@MapTargetKind.Point">Point</option>
+            </select>
+        </label>
+
+        @if (shape == MapTargetKind.Country)
+        {
+            <label>Country code <input aria-label="Country code" value="@countryCode" @onchange="SetCountryAsync" /></label>
+        }
+        else
+        {
+            <label>Latitude <input aria-label="Latitude" inputmode="decimal" value="@latitude" @onchange="SetLatitudeAsync" /></label>
+            <label>Longitude <input aria-label="Longitude" inputmode="decimal" value="@longitude" @onchange="SetLongitudeAsync" /></label>
+            <label>Radius (km) <input aria-label="Radius (km)" inputmode="decimal" value="@radiusKm" @onchange="SetRadiusAsync" /></label>
+        }
+
+        <MapField Shape="shape" BaseLayer="baseLayer" Selection="selection" SelectionChanged="SelectOnMapAsync"
+                  ToleranceKm="@(shape == MapTargetKind.Point ? Number(radiusKm) : null)" />
+
+        @foreach (var problem in problems)
+        {
+            <p class="form-error" role="alert">@problem.Message</p>
+        }
+    </section>
+}
+else
+{
+    <p role="alert">This map payload is unavailable.</p>
+}
 
 @code {
-    // The map UI is delivered by the map_pick child; this component is the lazy client's typed root.
     [Parameter, EditorRequired] public string Kind { get; set; } = string.Empty;
     [Parameter, EditorRequired] public object? Payload { get; set; }
     [Parameter, EditorRequired] public EventCallback<object?> PayloadChanged { get; set; }
     [Parameter, EditorRequired] public string Lang { get; set; } = string.Empty;
 
+    private static readonly MapPickKind MapKind = new();
+    private object? lastPayload;
+    private MapBaseLayer? baseLayer;
+    private MapTargetKind? shape;
+    private string countryCode = string.Empty;
+    private string latitude = string.Empty;
+    private string longitude = string.Empty;
+    private string radiusKm = string.Empty;
+    private MapSelection? selection;
+    private IReadOnlyList<Problem> problems = [];
     private MapPickPayload? MapPayload => Payload as MapPickPayload;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(lastPayload, Payload) || MapPayload is not { } payload) return;
+        lastPayload = Payload;
+        baseLayer = payload.BaseLayer;
+        shape = payload.Target?.Shape;
+        countryCode = payload.Target?.CountryCode ?? string.Empty;
+        latitude = Number(payload.Target?.Latitude);
+        longitude = Number(payload.Target?.Longitude);
+        radiusKm = Number(payload.Target?.RadiusKm);
+        selection = payload.Target?.Shape == MapTargetKind.Country ? MapSelection.Country(countryCode) :
+            payload.Target?.Shape == MapTargetKind.Point && payload.Target.Latitude is { } lat && payload.Target.Longitude is { } lon ? MapSelection.Point(lat, lon) : null;
+        problems = MapKind.Validate(payload, new ValidateEnv(Lang));
+    }
+
+    private Task SetBaseLayerAsync(ChangeEventArgs args) { baseLayer = ParseEnum<MapBaseLayer>(args.Value); return PublishAsync(); }
+    private Task SetShapeAsync(ChangeEventArgs args) { shape = ParseEnum<MapTargetKind>(args.Value); return PublishAsync(); }
+    private Task SetCountryAsync(ChangeEventArgs args) { countryCode = args.Value?.ToString() ?? string.Empty; selection = MapSelection.Country(countryCode); return PublishAsync(); }
+    private Task SetLatitudeAsync(ChangeEventArgs args) { latitude = args.Value?.ToString() ?? string.Empty; return PublishAsync(); }
+    private Task SetLongitudeAsync(ChangeEventArgs args) { longitude = args.Value?.ToString() ?? string.Empty; return PublishAsync(); }
+    private Task SetRadiusAsync(ChangeEventArgs args) { radiusKm = args.Value?.ToString() ?? string.Empty; return PublishAsync(); }
+
+    private Task SelectOnMapAsync(MapSelection value)
+    {
+        selection = value;
+        if (value.IsCountry) countryCode = value.CountryCode!;
+        else { latitude = Number(value.Latitude); longitude = Number(value.Longitude); }
+        return PublishAsync();
+    }
+
+    private async Task PublishAsync()
+    {
+        MapTarget? target = shape == MapTargetKind.Country
+            ? new(shape, countryCode)
+            : shape == MapTargetKind.Point
+                ? new(shape, null, Number(latitude), Number(longitude), Number(radiusKm))
+                : new(shape);
+        MapPickPayload value = new(baseLayer, target);
+        problems = MapKind.Validate(value, new ValidateEnv(Lang));
+        await PayloadChanged.InvokeAsync(value);
+    }
+
+    private static T? ParseEnum<T>(object? value) where T : struct, Enum =>
+        Enum.TryParse(value?.ToString(), out T result) ? result : null;
+    private static string Number(double? value) => value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+    private static double? Number(string value) => double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double result) ? result : null;
 }

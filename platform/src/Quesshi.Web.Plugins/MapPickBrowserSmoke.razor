@@ -1,0 +1,36 @@
+@using Quesshi.Kinds.MapPick
+@using Microsoft.AspNetCore.Components.Web
+
+<section data-map-pick-browser-smoke>
+    <button type="button" @onclick="ToggleMapAsync">@(showMap ? "Hide map components" : "Render map components")</button>
+
+    @if (showMap)
+    {
+        <section data-map-pick-component="play">
+            <KindPlay Card="@CardValue" OnAnswer="IgnoreAsync" />
+        </section>
+        <section data-map-pick-component="reveal">
+            <KindReveal Card="@CardValue" Reveal="@RevealValue" Answers="@AnswersValue" />
+        </section>
+        <section data-map-pick-component="editor">
+            <KindEditor Kind="map_pick" Payload="@PayloadValue" PayloadChanged="IgnoreAsync" Lang="en" />
+        </section>
+    }
+</section>
+
+@code {
+    private static readonly KindCard CardValue = new("map_pick", 1, new MapPickCard(MapBaseLayer.Borders, MapTargetKind.Country));
+    private static readonly MapPickPayload PayloadValue = new(MapBaseLayer.Borders, new(MapTargetKind.Country, "GB"));
+    private static readonly MapPickReveal RevealValue = new(new(MapTargetKind.Country, "GB"));
+    private static readonly MapPickStored[] AnswersValue = [MapPickStored.Country("GB"), MapPickStored.Country("FR")];
+
+    private bool showMap;
+
+    private Task ToggleMapAsync()
+    {
+        showMap = !showMap;
+        return Task.CompletedTask;
+    }
+
+    private static Task IgnoreAsync(object? _) => Task.CompletedTask;
+}
