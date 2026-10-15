@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
 namespace Quesshi.Plugin.Api;
@@ -15,6 +16,13 @@ public interface ISignIn
     void MapOpenRoutes(RouteGroupBuilder routes);
 }
 
+/// <summary>Projects an enabled sign-in method's settings into the public tenant configuration.</summary>
+public interface IPublicSignInSettings
+{
+    /// <summary>Returns settings that are safe to send to an unauthenticated browser.</summary>
+    object GetPublicSettings(object settings);
+}
+
 /// <summary>Completes a validated external identity using the platform's account and tenant player stores.</summary>
 public interface IIdentity
 {
@@ -30,6 +38,16 @@ public interface IIdentity
         string? email,
         bool emailVerified,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>Provides the tenant and session boundary needed by an external sign-in route.</summary>
+public interface IExternalSignInContext
+{
+    /// <summary>Gets the tenant selected by the core request pipeline.</summary>
+    ExternalIdentityTenant? GetTenant(HttpContext context);
+
+    /// <summary>Issues the normal tenant-bound account session after a successful completion.</summary>
+    Task IssueAccountSessionAsync(HttpContext context, Guid tenantId, Guid accountId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The resolved tenant context used to complete a provider-validated account sign-in.</summary>
