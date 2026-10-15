@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Kinds.Choice;
 
@@ -40,8 +41,9 @@ public sealed record Distribution(int SampleCount, double? P50, double? P95, dou
 public enum CommandOutcome { Accepted, LateAnswer, StalePosition, Failed, TimedOut }
 public sealed record CommandSample(Guid PlayerId, DateTimeOffset SentAt, DateTimeOffset? ReceivedAt, TimeSpan Latency, CommandOutcome Outcome, string? Error);
 public sealed record CommandOutcomeSummary(int CommandsSent, int Accepted, int LateAnswers, int StalePositions, int OtherErrors, int Timeouts);
-public sealed record ScenarioReport(int Players, string Scenario, int Streams, int Items, int PoolConnections, int ViewsReceived, Distribution OrdinaryAnswerBusy, Distribution RoundCloseBusy, Distribution FinishBusy, Distribution CommandLatency, Distribution TimerLag, Distribution PoolWait, Distribution ColdActivationBusy, Distribution ColdActivationPoolWait, double? LastAcceptedAfterDeadlineMs, int OnTimeRefusedAtClose, int CommandsSent, int Accepted, int LateAnswers, int StalePositions, int OtherErrors, int Failures, int Timeouts);
-public sealed record BenchmarkReport(string SourceRevision, DateTimeOffset RunAtUtc, string Command, string Machine, string Environment, IReadOnlyList<ScenarioReport> Scenarios);
+public sealed record ScenarioReport(int Players, string Scenario, int Streams, int Items, int PoolConnections, int ViewsReceived, Distribution OrdinaryAnswerBusy, Distribution RoundCloseBusy, Distribution FinishBusy, Distribution CommandLatency, Distribution TimerLag, Distribution PoolWait, Distribution ColdActivationBusy, Distribution ColdActivationPoolWait, double? LastAcceptedCommittedAfterDeadlineMs, int OnTimeRefusedAtClose, int CommandsSent, int Accepted, int LateAnswers, int StalePositions, int OtherErrors, int Failures, int Timeouts, int CommandsWithoutServerReceipt, IReadOnlyDictionary<string, int> FailureCauses);
+public sealed record BenchmarkRunEnvironment(string Hostname, string CpuModel, int LogicalProcessorCount, long AvailableMemoryBytes, string OperatingSystem, string DotNet, string PostgreSqlVersion, string PostgreSqlLocation);
+public sealed record BenchmarkReport(string SourceRevision, DateTimeOffset RunAtUtc, string Command, BenchmarkRunEnvironment Environment, IReadOnlyList<ScenarioReport> Scenarios);
 
 public static class BenchmarkMeasurementClassifier
 {
@@ -78,5 +80,63 @@ public static class ReportBuilder
         if (values.Length == 0) return new(0, null, null, null, null, UnavailableReason: unavailable ?? "no samples");
         double At(double percentile) => values[Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * percentile) - 1)];
         return new(values.Length, At(.50), At(.95), At(.99), values[^1]);
+    }
+}
+
+public static class BenchmarkReportAssembler
+{
+    public static ScenarioReport Build(
+        BenchmarkOptions options,
+        int viewsReceived,
+        DateTimeOffset questionDeadline,
+        IEnumerable<CommandSample> commands,
+        IEnumerable<SessionTurnSample> measurements,
+        IEnumerable<TimeSpan> timerLags,
+        IEnumerable<TimeSpan> poolWaits,
+        IEnumerable<SessionTurnSample> coldActivation,
+        IEnumerable<TimeSpan> coldPoolWaits)
+    {
+        var commandSamples = commands.ToArray();
+        var turns = measurements.ToArray();
+        var outcomes = BenchmarkMeasurementClassifier.Summarize(commandSamples);
+        var close = turns.Where(sample => sample.Kind == SessionTurnKind.RoundClose).ToArray();
+        var finish = turns.Where(sample => sample.Kind == SessionTurnKind.Finish).ToArray();
+        var ordinary = turns.Where(sample => sample.Kind == SessionTurnKind.OrdinaryAnswer).ToArray();
+        var committed = turns.Where(sample => sample.Source == SessionTurnSource.Command
+            && sample.Kind is SessionTurnKind.OrdinaryAnswer or SessionTurnKind.RoundClose)
+            .Select(sample => sample.CompletedAt)
+            .DefaultIfEmpty()
+            .Max();
+        var failureCauses = commandSamples.Where(sample => sample.Outcome != CommandOutcome.Accepted)
+            .GroupBy(sample => sample.Error ?? $"command:{sample.Outcome}", StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+        return new ScenarioReport(
+            options.Players,
+            options.Scenario.CliName(),
+            options.StreamCount,
+            options.ItemCount,
+            options.ApplicationPoolSize,
+            viewsReceived,
+            ReportBuilder.DistributionOf(ordinary.Select(sample => sample.Duration), "no ordinary answers were accepted"),
+            ReportBuilder.DistributionOf(close.Select(sample => sample.Duration), "no round close occurred"),
+            ReportBuilder.DistributionOf(finish.Select(sample => sample.Duration), options.ItemCount == 1 ? "no finish occurred" : "cold activation stops after the first loaded slot"),
+            ReportBuilder.DistributionOf(commandSamples.Select(command => command.Latency), "no commands were sent"),
+            ReportBuilder.DistributionOf(timerLags, "no due timer fired"),
+            ReportBuilder.DistributionOf(poolWaits, "no application-pool checkout occurred"),
+            ReportBuilder.DistributionOf(coldActivation.Select(sample => sample.Duration), options.Scenario == LiveScenario.Cold ? "cold activation sample was not observed" : "not a cold activation scenario"),
+            ReportBuilder.DistributionOf(coldPoolWaits, options.Scenario == LiveScenario.Cold ? "no application-pool checkout occurred during cold activation" : "not a cold activation scenario"),
+            committed == default ? null : (committed - questionDeadline).TotalMilliseconds,
+            BenchmarkMeasurementClassifier.OnTimeRefusals(commandSamples, questionDeadline),
+            outcomes.CommandsSent,
+            outcomes.Accepted,
+            outcomes.LateAnswers,
+            outcomes.StalePositions,
+            outcomes.OtherErrors,
+            outcomes.LateAnswers + outcomes.StalePositions + outcomes.OtherErrors,
+            outcomes.Timeouts,
+            commandSamples.Count(sample => sample.ReceivedAt is null),
+            failureCauses);
     }
 }

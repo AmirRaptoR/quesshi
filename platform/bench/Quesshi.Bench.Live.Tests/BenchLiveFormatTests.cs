@@ -1,12 +1,20 @@
 using System.Text.Json;
+using Dapper;
 using Quesshi.Application.Sessions;
 using Quesshi.Bench.Live;
 using Quesshi.Engine.Contracts;
 using Quesshi.Formats.Testing;
 using Quesshi.Kinds.Choice;
 using Quesshi.Shared;
+using Quesshi.Infrastructure.Database;
+using Quesshi.Server;
+using Quesshi.Testing;
+using Xunit.Sdk;
 
 namespace Quesshi.Bench.Live.Tests;
+
+[CollectionDefinition("PostgreSQL", DisableParallelization = true)]
+public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>;
 
 public sealed class BenchLiveFormatTests
 {
@@ -73,6 +81,15 @@ public sealed class BenchLiveFormatTests
 
         var disposable = BenchmarkOptions.Parse(["--players", "20", "--scenario", "burst", "--allow-disposable-postgres"]);
         Assert.True(disposable.DisposablePostgreSql);
+
+        var matrix = from scenario in Enum.GetValues<LiveScenario>()
+                     from players in BenchmarkOptions.PlayerCounts
+                     select new BenchmarkOptions(players, scenario, null);
+        Assert.Equal(20, matrix.Count());
+        Assert.Equal(Enum.GetValues<LiveScenario>(), matrix.Select(run => run.Scenario).Distinct());
+        Assert.All(
+            matrix.GroupBy(run => run.Scenario),
+            runs => Assert.Equal(BenchmarkOptions.PlayerCounts, runs.Select(run => run.Players)));
     }
 
     [Fact]
@@ -115,25 +132,35 @@ public sealed class BenchLiveFormatTests
     }
 
     [Fact]
-    public void Structured_report_includes_cold_and_command_outcome_fields()
+    public void Report_assembly_uses_commit_completion_and_preserves_failure_evidence()
     {
-        var report = new ScenarioReport(
-            100, "cold", 0, 100, 40, 0,
-            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(12)]),
-            ReportBuilder.DistributionOf([]),
-            ReportBuilder.DistributionOf([]),
-            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(1)]),
-            ReportBuilder.DistributionOf([]),
-            ReportBuilder.DistributionOf([]),
-            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(18)]),
-            ReportBuilder.DistributionOf([TimeSpan.FromMilliseconds(2)]),
-            null, 0, 1, 0, 0, 0, 0, 0, 0);
+        var deadline = DateTimeOffset.UnixEpoch.AddSeconds(20);
+        var report = BenchmarkReportAssembler.Build(
+            new BenchmarkOptions(100, LiveScenario.Cold, null),
+            viewsReceived: 0,
+            deadline,
+            [
+                new CommandSample(Guid.NewGuid(), deadline.AddMilliseconds(-2), deadline.AddMilliseconds(-1), TimeSpan.FromMilliseconds(1), CommandOutcome.Accepted, null),
+                new CommandSample(Guid.NewGuid(), deadline.AddMilliseconds(-2), null, TimeSpan.FromMilliseconds(2), CommandOutcome.Failed, "http:503:missing-command-code"),
+            ],
+            [
+                new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, TimeSpan.FromMilliseconds(12), deadline, deadline.AddMilliseconds(41)),
+                new SessionTurnSample(SessionTurnKind.RoundClose, TimeSpan.FromMilliseconds(17), deadline, deadline.AddMilliseconds(43)),
+                new SessionTurnSample(SessionTurnKind.RoundClose, TimeSpan.FromMilliseconds(9), deadline, deadline.AddMilliseconds(44), SessionTurnSource.Timer),
+            ],
+            [], [],
+            [new SessionTurnSample(SessionTurnKind.ColdActivation, TimeSpan.FromMilliseconds(18), null, deadline)],
+            [TimeSpan.FromMilliseconds(2)]);
 
         Assert.Equal(100, report.Items);
         Assert.Equal(40, report.PoolConnections);
         Assert.Equal(1, report.ColdActivationBusy.SampleCount);
-        Assert.Equal(1, report.CommandsSent);
-        Assert.Equal(0, report.Failures);
+        Assert.Equal(2, report.CommandsSent);
+        Assert.Equal(1, report.Failures);
+        Assert.Equal(1, report.CommandsWithoutServerReceipt);
+        Assert.Equal(1, report.FailureCauses["http:503:missing-command-code"]);
+        Assert.Equal(43, report.LastAcceptedCommittedAfterDeadlineMs);
+        Assert.Equal(2, report.RoundCloseBusy.SampleCount);
     }
 
     private static (BenchLiveFormat Format, TestClock Clock, InMemorySession Session) Create()
@@ -147,4 +174,51 @@ public sealed class BenchLiveFormatTests
     }
     private static void Answer(BenchLiveFormat format, InMemorySession session, TestClock clock, string player) =>
         format.Apply(session, new Command(CommandType.Answer, player, session.Session.Position!, 0, null, JsonSerializer.SerializeToElement(new { index = 0 }), clock.Now));
+}
+
+[Collection("PostgreSQL")]
+public sealed class BenchmarkFixtureDatabaseTests(PostgresFixture fixture)
+{
+    [SkippableFact]
+    public async Task Cold_fixture_persists_one_hundred_choice_items_and_requested_seats_through_production_snapshot_renderer_and_grading()
+    {
+        Skip.If(fixture.ConnectionString is null, $"Set {PostgresFixture.AdminConnectionStringEnvironmentVariable} to run PostgreSQL tests locally.");
+        var ownerConnection = fixture.ConnectionStringForRole("quesshi_owner");
+        await Quesshi.Server.Program.MigrateAsync(ownerConnection);
+        await using var owner = new Npgsql.NpgsqlConnection(ownerConnection);
+        await owner.OpenAsync();
+
+        foreach (var players in BenchmarkOptions.PlayerCounts)
+        {
+            var tenant = await BenchmarkFixture.SeedTenantAsync(ownerConnection, $"bench-{players}.test");
+            var playerIds = Enumerable.Range(0, players).Select(_ => Guid.NewGuid()).ToArray();
+            await owner.ExecuteAsync("insert into players (tenant_id, id, display_name, avatar_seed, lang) select @tenant, id, 'Benchmark player', 'bench', 'en' from unnest(@players) as id", new { tenant = tenant.Id, players = playerIds });
+            var session = await BenchmarkFixture.SeedSessionAsync(ownerConnection, tenant, new BenchmarkOptions(players, LiveScenario.Cold, null), playerIds);
+
+            await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+            var loader = new SessionSnapshotLoader(new TenantDb(sources));
+            var state = Assert.IsType<SessionState>(await loader.LoadAsync(tenant.Id, session.Id));
+            var items = await loader.LoadItemsAsync(tenant.Id, session.Id, Enumerable.Range(0, 100).ToArray());
+            var persisted = (await owner.QueryAsync<(string Prompt, string Payload)>("select prompt, payload::text from session_items where session_id = @session order by slot", new { session = session.Id })).ToArray();
+
+            Assert.Equal(players, state.Seats.Count);
+            Assert.Equal(100, state.ItemCount);
+            Assert.Equal(100, items.Count);
+            Assert.Equal(100, persisted.Length);
+            Assert.All(persisted, item => Assert.Equal(200, item.Prompt.Length));
+            Assert.All(items, item =>
+            {
+                Assert.Equal("choice", item.Metadata.Kind);
+                Assert.Equal(4, item.Payload.GetProperty("options").GetArrayLength());
+                Assert.All(item.Payload.GetProperty("options").EnumerateArray(), option => Assert.Equal(80, option.GetString()!.Length));
+            });
+
+            IKindRuntime runtime = new ChoiceKind();
+            var first = items[0];
+            Assert.Equal(1, runtime.Grade(first.Payload, first.Resolved, JsonSerializer.SerializeToElement(new { index = 0 })).Credit);
+            var rendererType = typeof(SessionViewSnapshot).Assembly.GetType("Quesshi.Application.Sessions.ViewRenderer", throwOnError: true)!;
+            var renderer = (IViewRenderer)Activator.CreateInstance(rendererType, nonPublic: true)!;
+            Assert.Contains("bench_live", renderer.Render(state, new BenchLiveFormat(), playerIds[0].ToString(), DateTimeOffset.UtcNow).Json);
+        }
+    }
 }

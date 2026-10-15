@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Dapper;
@@ -82,8 +83,7 @@ public sealed class LiveBenchmarkRunner
             SourceRevision(),
             DateTimeOffset.UtcNow,
             CommandLine(options),
-            Environment.MachineName,
-            $".NET {Environment.Version}; PostgreSQL {postgresVersion ?? "unavailable"}",
+            DescribeEnvironment(administrationConnection, postgresVersion),
             reports);
     }
 
@@ -111,7 +111,7 @@ public sealed class LiveBenchmarkRunner
         var streams = new List<SseSubscription>();
         try
         {
-            var tenant = await SeedTenantAsync(database.OwnerConnectionString, database.TenantHost, cancellationToken);
+            var tenant = await BenchmarkFixture.SeedTenantAsync(database.OwnerConnectionString, database.TenantHost, cancellationToken);
 
             firstSources = new DatabaseSources(database.AppConnectionString, database.SystemConnectionString, options.ApplicationPoolSize, measurements);
             // Both silos share one application data source so the pool-10 scenario is
@@ -126,7 +126,7 @@ public sealed class LiveBenchmarkRunner
                 new Uri($"http://127.0.0.1:{secondHttp}"),
             };
             clients = await CreateClientsAsync(options.Players, endpoints, database.TenantHost, cancellationToken);
-            var session = await SeedSessionAsync(database.OwnerConnectionString, tenant, options, clients, cancellationToken);
+            var session = await BenchmarkFixture.SeedSessionAsync(database.OwnerConnectionString, tenant, options, clients.Select(client => client.PlayerId).ToArray(), cancellationToken);
 
             // The first real client command activates the grain and begins the shared
             // countdown. Open the stream cohort during that countdown so setup cannot
@@ -258,82 +258,6 @@ public sealed class LiveBenchmarkRunner
             ?? throw new InvalidOperationException("Antiforgery endpoint returned an empty token.");
     }
 
-    private static async Task<BenchSession> SeedSessionAsync(
-        string ownerConnectionString,
-        BenchTenant tenant,
-        BenchmarkOptions options,
-        IReadOnlyList<BenchClient> clients,
-        CancellationToken cancellationToken)
-    {
-        var session = new BenchSession(Guid.NewGuid(), clients[0].PlayerId);
-        var now = DateTimeOffset.UtcNow;
-        await using var connection = new NpgsqlConnection(ownerConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        const string insertSession = """
-            insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, rules, phase, slot, step, phase_started_at, due_at, started_at)
-            values (@TenantId, @Id, @Code, 'bench_live', @OwnerId, 'en', 'running', @Capacity, '{}'::jsonb, '{}'::jsonb, '0', 0, 0, @Now, @DueAt, @Now);
-            """;
-        await connection.ExecuteAsync(new CommandDefinition(insertSession, new
-        {
-            TenantId = tenant.Id,
-            session.Id,
-            Code = $"B{session.Id.ToString("N")[..7].ToUpperInvariant()}",
-            session.OwnerId,
-            Capacity = options.Players,
-            Now = now,
-            DueAt = now + BenchLiveFormat.Countdown,
-        }, transaction, cancellationToken: cancellationToken));
-
-        const string insertParticipant = """
-            insert into session_participants (tenant_id, session_id, player_id, seat, role, status, eligible, phase, slot)
-            values (@TenantId, @SessionId, @PlayerId, @Seat, 'player', 'active', true, '0', 0);
-            """;
-        for (var seat = 0; seat < clients.Count; seat++)
-        {
-            await connection.ExecuteAsync(new CommandDefinition(insertParticipant, new { TenantId = tenant.Id, SessionId = session.Id, PlayerId = clients[seat].PlayerId, Seat = seat }, transaction, cancellationToken: cancellationToken));
-        }
-
-        const string insertItem = """
-            insert into session_items (tenant_id, session_id, slot, kind, kind_version, prompt, payload, resolved, card, reveal)
-            values (@TenantId, @SessionId, @Slot, 'choice', 1, @Prompt, @Payload::jsonb, '{}'::jsonb, @Card::jsonb, @Reveal::jsonb);
-            """;
-        for (var slot = 0; slot < options.ItemCount; slot++)
-        {
-            var item = BenchmarkItem.Create(slot);
-            await connection.ExecuteAsync(new CommandDefinition(insertItem, new
-            {
-                TenantId = tenant.Id,
-                SessionId = session.Id,
-                Slot = slot,
-                item.Prompt,
-                Payload = item.Payload.GetRawText(),
-                Card = item.Card.GetRawText(),
-                Reveal = item.Reveal.GetRawText(),
-            }, transaction, cancellationToken: cancellationToken));
-        }
-
-        await transaction.CommitAsync(cancellationToken);
-        return session;
-    }
-
-    private static async Task<BenchTenant> SeedTenantAsync(string ownerConnectionString, string tenantHost, CancellationToken cancellationToken)
-    {
-        var tenantId = Guid.NewGuid();
-        await using var connection = new NpgsqlConnection(ownerConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition("""
-            insert into tenants (id, slug, name, default_language)
-            values (@Id, @Slug, 'Benchmark tenant', 'en');
-            insert into tenant_hosts (tenant_id, host) values (@Id, @Host);
-            insert into tenant_languages (tenant_id, code, name, english_name, direction, sort_order)
-            values (@Id, 'en', 'English', 'English', 'ltr', 0);
-            insert into tenant_capabilities (tenant_id, type, key, entitled, enabled)
-            values (@Id, 'switch', 'guests', true, true);
-            """, new { Id = tenantId, Slug = $"bench-{tenantId:N}", Host = tenantHost }, cancellationToken: cancellationToken));
-        return new BenchTenant(tenantId);
-    }
-
     private static async Task SendCommandAsync(BenchClient client, Guid sessionId, string phase, int slot, CancellationToken cancellationToken)
     {
         using var request = BuildAnswerRequest(client, sessionId, phase, slot);
@@ -386,15 +310,22 @@ public sealed class LiveBenchmarkRunner
             var outcome = code is null || receivedAt is null
                 ? CommandOutcome.Failed
                 : BenchmarkMeasurementClassifier.ResponseOutcome(code, response.IsSuccessStatusCode);
-            return new CommandSample(client.PlayerId, sentAt, receivedAt, stopwatch.Elapsed, outcome, code is null || receivedAt is null ? "missing measurement headers" : null);
+            var error = outcome == CommandOutcome.Accepted
+                ? null
+                : code is null
+                    ? $"http:{(int)response.StatusCode}:missing-command-code"
+                    : receivedAt is null
+                        ? $"http:{(int)response.StatusCode}:command:{code}:missing-receipt"
+                        : $"http:{(int)response.StatusCode}:command:{code}";
+            return new CommandSample(client.PlayerId, sentAt, receivedAt, stopwatch.Elapsed, outcome, error);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.TimedOut, "timeout");
+            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.TimedOut, "timeout:command-request");
         }
         catch (Exception exception)
         {
-            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.Failed, exception.GetType().Name);
+            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.Failed, $"exception:{exception.GetType().Name}");
         }
     }
 
@@ -446,7 +377,7 @@ public sealed class LiveBenchmarkRunner
 
     private static async Task<ScenarioReport> CollectResultAsync(
         string ownerConnectionString,
-        BenchSession session,
+        BenchmarkSession session,
         BenchmarkOptions options,
         DateTimeOffset questionDeadline,
         IReadOnlyList<CommandSample> commands,
@@ -464,39 +395,18 @@ public sealed class LiveBenchmarkRunner
         var accepted = await AcceptedPlayersAsync(ownerConnectionString, session.Id, cancellationToken);
         var reconciledCommands = commands.Select(command =>
             command.Outcome == CommandOutcome.Accepted && !accepted.Contains(command.PlayerId)
-                ? command with { Outcome = CommandOutcome.Failed, Error = "accepted response had no persisted answer" }
+                ? command with { Outcome = CommandOutcome.Failed, Error = "accepted-response-without-persisted-answer" }
                 : command).ToArray();
-        var outcomes = BenchmarkMeasurementClassifier.Summarize(reconciledCommands);
-        var onTimeRefused = BenchmarkMeasurementClassifier.OnTimeRefusals(reconciledCommands, questionDeadline);
-        var close = measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.RoundClose).ToArray();
-        var finish = measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.Finish).ToArray();
-        var ordinary = measurements.Samples.Where(sample => sample.Kind == SessionTurnKind.OrdinaryAnswer).ToArray();
-        var lastAccepted = await LastAcceptedAtAsync(ownerConnectionString, session.Id, cancellationToken);
-
-        return new ScenarioReport(
-            options.Players,
-            options.Scenario.CliName(),
-            options.StreamCount,
-            options.ItemCount,
-            options.ApplicationPoolSize,
+        return BenchmarkReportAssembler.Build(
+            options,
             streams.Sum(stream => stream.ViewsReceived),
-            ReportBuilder.DistributionOf(ordinary.Select(sample => sample.Duration), "no ordinary answers were accepted"),
-            ReportBuilder.DistributionOf(close.Select(sample => sample.Duration), "no round close occurred"),
-            ReportBuilder.DistributionOf(finish.Select(sample => sample.Duration), options.ItemCount == 1 ? "no finish occurred" : "cold activation stops after the first loaded slot"),
-            ReportBuilder.DistributionOf(commands.Select(command => command.Latency), "no commands were sent"),
-            ReportBuilder.DistributionOf(measurements.TimerLags, "no due timer fired"),
-            ReportBuilder.DistributionOf(measurements.PoolWaits, "no application-pool checkout occurred"),
-            ReportBuilder.DistributionOf(coldActivation.Select(sample => sample.Duration), options.Scenario == LiveScenario.Cold ? "cold activation sample was not observed" : "not a cold activation scenario"),
-            ReportBuilder.DistributionOf(coldPoolWaits, options.Scenario == LiveScenario.Cold ? "no application-pool checkout occurred during cold activation" : "not a cold activation scenario"),
-            lastAccepted is null ? null : (lastAccepted.Value - questionDeadline).TotalMilliseconds,
-            onTimeRefused,
-            outcomes.CommandsSent,
-            outcomes.Accepted,
-            outcomes.LateAnswers,
-            outcomes.StalePositions,
-            outcomes.OtherErrors,
-            outcomes.LateAnswers + outcomes.StalePositions + outcomes.OtherErrors,
-            outcomes.Timeouts);
+            questionDeadline,
+            reconciledCommands,
+            measurements.Samples,
+            measurements.TimerLags,
+            measurements.PoolWaits,
+            coldActivation,
+            coldPoolWaits);
     }
 
     private static async Task WaitForPhaseAsync(string ownerConnectionString, Guid sessionId, string phase, CancellationToken cancellationToken)
@@ -542,11 +452,34 @@ public sealed class LiveBenchmarkRunner
         return players.ToHashSet();
     }
 
-    private static async Task<DateTimeOffset?> LastAcceptedAtAsync(string connectionString, Guid sessionId, CancellationToken cancellationToken)
+    private static BenchmarkRunEnvironment DescribeEnvironment(string administrationConnection, string? postgresVersion)
     {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        return await connection.ExecuteScalarAsync<DateTimeOffset?>(new CommandDefinition("select max(received_at) from session_answers where session_id = @SessionId and slot = 0 and answer is not null", new { SessionId = sessionId }, cancellationToken: cancellationToken));
+        var builder = new NpgsqlConnectionStringBuilder(administrationConnection);
+        var host = builder.Host;
+        var local = string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || host is "127.0.0.1" or "::1";
+        var cpu = RuntimeInformation.ProcessArchitecture.ToString();
+        try
+        {
+            cpu = File.ReadLines("/proc/cpuinfo")
+                .Select(line => line.Split(':', 2))
+                .FirstOrDefault(parts => parts.Length == 2 && parts[0].Trim().Equals("model name", StringComparison.OrdinalIgnoreCase))?[1].Trim()
+                ?? cpu;
+        }
+        catch (IOException)
+        {
+            // /proc is Linux-specific; the portable architecture is still useful evidence.
+        }
+
+        return new BenchmarkRunEnvironment(
+            Environment.MachineName,
+            cpu,
+            Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
+            RuntimeInformation.OSDescription.Trim(),
+            Environment.Version.ToString(),
+            postgresVersion ?? "unavailable",
+            $"{(local ? "local" : "remote")} PostgreSQL at {host}:{builder.Port}");
     }
 
     private static string SourceRevision()
@@ -576,8 +509,6 @@ public sealed class LiveBenchmarkRunner
             : $"dotnet run --project platform/bench/Quesshi.Bench.Live -- --players {options.Players} --scenario {options.Scenario.CliName()}{(options.DisposablePostgreSql ? " --allow-disposable-postgres" : "")}";
 
     private sealed record GuestIdentity(Guid Id);
-    private sealed record BenchSession(Guid Id, Guid OwnerId);
-    private sealed record BenchTenant(Guid Id);
     private sealed record ScenarioOutcome(ScenarioReport Report, string PostgreSqlVersion);
 
     private sealed class BenchClient(HttpClient http, string tenantHost, string cookie, string antiforgeryToken, Guid playerId) : IDisposable

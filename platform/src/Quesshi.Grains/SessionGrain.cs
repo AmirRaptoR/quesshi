@@ -240,7 +240,7 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, dueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, dueAt, clock.Now, SessionTurnSource.Timer));
             }
         }
     }

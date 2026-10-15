@@ -19,6 +19,12 @@ public enum SessionTurnKind
     Finish
 }
 
+public enum SessionTurnSource
+{
+    Command,
+    Timer,
+}
+
 internal static class SessionTurnClassifier
 {
     public static SessionTurnKind? ForCommand(
@@ -72,7 +78,8 @@ public sealed record SessionTurnSample(
     SessionTurnKind Kind,
     TimeSpan Duration,
     DateTimeOffset? DueAt,
-    DateTimeOffset CompletedAt);
+    DateTimeOffset CompletedAt,
+    SessionTurnSource Source = SessionTurnSource.Command);
 
 public sealed class NullSessionTurnObserver : ISessionTurnObserver
 {
