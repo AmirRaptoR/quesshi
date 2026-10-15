@@ -163,7 +163,7 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
         await ExecuteAsync(owner, "insert into players (tenant_id, id, display_name, avatar_seed, lang) values (@tenant, @id, 'guest-1', 'seed', 'en'), (@tenant, @other, 'guest-2', 'seed', 'en')", ("tenant", TenantA), ("id", Guid.NewGuid()), ("other", Guid.NewGuid()));
         await AssertSqlStateAsync(() => ExecuteAsync(owner, "insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang) values (@tenant, @id, @account, 'missing', 'seed', 'en')", ("tenant", TenantA), ("id", Guid.NewGuid()), ("account", Guid.NewGuid())), "23503");
         await AssertSqlStateAsync(() => ExecuteAsync(owner, "insert into accounts (id, email, deleted_at) values (@id, 'still-present@example.test', now())", ("id", Guid.NewGuid())), "23514");
-        await AssertSqlStateAsync(() => ExecuteAsync(owner, "insert into accounts (id) values (@id)", ("id", Guid.NewGuid())), "23514");
+        await ExecuteAsync(owner, "insert into accounts (id) values (@id)", ("id", Guid.NewGuid()));
         await ExecuteAsync(owner, "insert into accounts (id, deleted_at) values (@id, now())", ("id", Guid.NewGuid()));
     }
 

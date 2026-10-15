@@ -3,6 +3,7 @@ using System.Text;
 using Npgsql;
 using Quesshi.Application.Identity;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Infrastructure.Identity;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
@@ -143,12 +144,75 @@ public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from auth_rate_limits where key in ('code:expired@example.test', 'profile:expired')"));
     }
 
+    [SkippableFact]
+    public async Task Emailed_code_account_returns_profile_needed_through_external_completion_without_a_player()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var emailAuth = CreateService(sender);
+        var account = await VerifyNewAccountAsync(emailAuth, sender, "code@example.test", "192.0.2.30");
+        await using var externalSources = CreateSources();
+        var external = CreateExternalService(externalSources);
+
+        var completion = await external.CompleteExternalAsync(new ExternalIdentityTenant(TenantA, "en"), "google", "email-code-subject", "code@example.test", true);
+
+        Assert.Equal(ExternalIdentityCompletionState.ProfileNeeded, completion.State);
+        Assert.Equal(account, completion.AccountId);
+        Assert.NotNull(completion.Profile);
+        Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from players where account_id = @account", ("account", account)));
+    }
+
+    [SkippableFact]
+    public async Task External_completion_returns_signed_in_for_a_live_player()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var emailAuth = CreateService(sender);
+        var account = await VerifyNewAccountAsync(emailAuth, sender, "live@example.test", "192.0.2.31");
+        await emailAuth.ConfirmProfileAsync(TenantA, account, "Live player", "live-seed", "en");
+        await using var externalSources = CreateSources();
+
+        var completion = await CreateExternalService(externalSources).CompleteExternalAsync(
+            new ExternalIdentityTenant(TenantA, "en"), "google", "live-player-subject", "live@example.test", true);
+
+        Assert.Equal(ExternalIdentityCompletionState.SignedIn, completion.State);
+        Assert.Equal(account, completion.AccountId);
+        Assert.Null(completion.Profile);
+    }
+
+    [SkippableFact]
+    public async Task External_completion_refuses_an_unavailable_tenant_player()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var sender = new CapturingSender();
+        var emailAuth = CreateService(sender);
+        var account = await VerifyNewAccountAsync(emailAuth, sender, "banned@example.test", "192.0.2.32");
+        await emailAuth.ConfirmProfileAsync(TenantA, account, "Banned player", "banned-seed", "en");
+        await ExecuteAsync(owner, "update players set banned_at = now() where tenant_id = @tenant and account_id = @account", ("tenant", TenantA), ("account", account));
+        await using var externalSources = CreateSources();
+
+        var completion = await CreateExternalService(externalSources).CompleteExternalAsync(
+            new ExternalIdentityTenant(TenantA, "en"), "google", "banned-player-subject", "banned@example.test", true);
+
+        Assert.Equal(ExternalIdentityCompletionState.Unavailable, completion.State);
+        Assert.Null(completion.AccountId);
+    }
+
     private EmailAuthService CreateService(CapturingSender sender, int emailLimit = 5, int addressLimit = 20) => new(
         new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system")),
         new TenantDb(new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"))),
         Encoding.UTF8.GetBytes("email-auth-test-secret"),
         new EmailAuthOptions(emailLimit, addressLimit, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10)),
         sender);
+
+    private DatabaseSources CreateSources() => new(
+        fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+    private static ExternalIdentityService CreateExternalService(DatabaseSources sources) => new(
+        sources, new TenantDb(sources), Encoding.UTF8.GetBytes("email-auth-test-secret"), TimeSpan.FromMinutes(10));
 
     private static async Task<Guid> VerifyNewAccountAsync(EmailAuthService service, CapturingSender sender, string email, string address)
     {

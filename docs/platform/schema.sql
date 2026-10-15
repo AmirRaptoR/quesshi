@@ -125,10 +125,10 @@ create table tenant_capabilities (
 
 create table accounts (
   id         uuid primary key,
-  email      citext unique,                              -- null only after deletion
+  email      citext unique,                              -- optional for subject-only external accounts
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
-  check ((email is null) = (deleted_at is not null))
+  check (deleted_at is null or email is null)
 );
 
 create table account_identities (

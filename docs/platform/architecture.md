@@ -1397,7 +1397,9 @@ map of names, so a tenant can use a language the code has never heard of.
 A person has **one account across every tenant** and **one player profile per tenant** they have
 used.
 
-- **`accounts`** is global: an id and an email. Sign-in identities and emailed codes are global too.
+- **`accounts`** is global: an id and an optional email. Sign-in identities and emailed codes are
+  global too. A live account may be subject-only when an external provider did not verify an
+  asserted email; stored addresses remain unique, and a deleted account must still have no email.
 - **`players`** is tenant-owned: display name, avatar, language, ban state, and a nullable
   `account_id`. Sessions, stats, friendships, packs and reports reference the player, never the
   account. Tenant isolation is therefore the same as if accounts were separate.
@@ -1456,8 +1458,13 @@ friends, abandonments and the settled-match dedup list. That document is split: 
   left, so two concurrent requests cannot both succeed. Five wrong attempts void the code.
 - **Other sign-in methods are plugins.** A method proves an external identity and hands the core
   `(provider, subject, email, emailVerified)`. The core matches on the subject first and links to
-  an existing account by email only when the email is verified. Its routes are filled into a
-  core-built group under `/api/auth/x/{method}`. Google is the first.
+  an existing account by email only when the email is verified. An unverified email neither selects
+  nor claims an address: the core creates a separate subject-only account, even if that address is
+  stored by another account. This owner-approved core behavior differs from today's Google flow,
+  which rejects unverified emails. Completion then resolves the account's player for the current
+  tenant: a live player gets a signed-in outcome, while a missing player gets a profile-needed
+  outcome with the usual confirmation token and no player is created before confirmation. Its
+  routes are filled into a core-built group under `/api/auth/x/{method}`. Google is the first.
 - **Admins** keep today's username and password sign-in with ASP.NET Identity's hasher, the
   lock-out rule, single-use reset tokens, activation and deactivation, a unique email for resets,
   and last sign-in time. The last active platform admin cannot be deactivated or removed, nor the
