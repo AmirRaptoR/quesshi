@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Quesshi.Application;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Api;
 using Quesshi.Server.Sessions;
 using Quesshi.Server.Tenants;
 
@@ -34,8 +35,16 @@ internal static class RouteSecurity
         var api = app.MapGroup("/api");
         var playerRoutes = SecurePlayerRoutes(api.MapGroup(string.Empty));
         var openRoutes = SecureOpenRoutes(api.MapGroup(string.Empty));
+        var openAdminAuthRoutes = SecureAdminAntiforgery(api.MapGroup("/admin/auth"));
+        var adminAuthRoutes = SecureAdminRoutes(api.MapGroup("/admin/auth"));
 
         api.MapGet("/antiforgery", (HttpContext context, PlayerAntiforgery antiforgery) =>
+        {
+            context.Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
+            context.Response.Headers.Pragma = "no-cache";
+            return Results.Ok(new { token = antiforgery.Issue(context) });
+        });
+        api.MapGet("/admin/antiforgery", (HttpContext context, AdminAntiforgery antiforgery) =>
         {
             context.Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
             context.Response.Headers.Pragma = "no-cache";
@@ -44,6 +53,7 @@ internal static class RouteSecurity
 
         openRoutes.MapPost("/auth/sign-out", SignOutAsync);
         playerRoutes.MapSessionCommands();
+        AdminAuthEndpoints.Map(openAdminAuthRoutes, adminAuthRoutes);
 
         var routes = new CoreRouteBuilder(playerRoutes, openRoutes);
         foreach (var module in DiscoverCoreModules()) module.Map(routes);
@@ -72,6 +82,18 @@ internal static class RouteSecurity
     private static RouteGroupBuilder SecureOpenRoutes(RouteGroupBuilder group)
     {
         group.AddEndpointFilter(RequireAntiforgeryAsync);
+        return group;
+    }
+
+    private static RouteGroupBuilder SecureAdminRoutes(RouteGroupBuilder group)
+    {
+        group.AddEndpointFilter(RequireAdminAsync);
+        return SecureAdminAntiforgery(group);
+    }
+
+    private static RouteGroupBuilder SecureAdminAntiforgery(RouteGroupBuilder group)
+    {
+        group.AddEndpointFilter(RequireAdminAntiforgeryAsync);
         return group;
     }
 
@@ -104,6 +126,12 @@ internal static class RouteSecurity
         return await next(context);
     }
 
+    private static async ValueTask<object?> RequireAdminAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        if (context.HttpContext.Admin() is null) return Results.Unauthorized();
+        return await next(context);
+    }
+
     private static async ValueTask<object?> RequireAntiforgeryAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var request = context.HttpContext.Request;
@@ -119,6 +147,19 @@ internal static class RouteSecurity
             return Results.BadRequest();
         }
 
+        return await next(context);
+    }
+
+    private static async ValueTask<object?> RequireAdminAntiforgeryAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.HttpContext.Request;
+        if (HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method) || HttpMethods.IsOptions(request.Method)) return await next(context);
+        if (!IsSameTenantOrigin(context.HttpContext)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!request.Headers.TryGetValue("X-CSRF", out var token)
+            || !context.HttpContext.RequestServices.GetRequiredService<AdminAntiforgery>().IsValid(context.HttpContext, token.ToString()))
+        {
+            return Results.BadRequest();
+        }
         return await next(context);
     }
 

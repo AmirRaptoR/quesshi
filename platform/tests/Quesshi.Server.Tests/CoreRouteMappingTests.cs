@@ -27,6 +27,7 @@ public sealed class CoreRouteMappingTests
         builder.Services.AddSingleton<ITenantDb>(_ => null!);
         builder.Services.AddSingleton<ICapabilities>(_ => null!);
         builder.Services.AddSingleton(new PlayerAntiforgery(new EphemeralDataProtectionProvider(), new TestClock(DateTimeOffset.UnixEpoch)));
+        builder.Services.AddAdminServices();
         using var app = builder.Build();
 
         app.MapRoutes();
@@ -73,6 +74,7 @@ public sealed class CoreRouteMappingTests
         builder.Services.AddSingleton<ITenantDb>(_ => null!);
         builder.Services.AddSingleton<ICapabilities>(_ => null!);
         builder.Services.AddSingleton(new PlayerAntiforgery(new EphemeralDataProtectionProvider(), new TestClock(DateTimeOffset.UnixEpoch)));
+        builder.Services.AddAdminServices();
         using var app = builder.Build();
 
         app.MapRoutes();
