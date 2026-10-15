@@ -215,7 +215,9 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         {
             await ExecuteAsync(connection, """
                 insert into players (tenant_id, id, display_name, avatar_seed, lang, created_at)
-                values (@tenant, @guest, 'Guest', 'guest', 'en', now() - interval '31 days')
+                values (@tenant, @guest, 'Guest', 'guest', 'en', now() - interval '31 days');
+                insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
+                values (decode('d0', 'hex'), @tenant, @guest, now() - interval '1 day')
                 """, ("tenant", seeded.FirstTenant), ("guest", guest));
         }
 

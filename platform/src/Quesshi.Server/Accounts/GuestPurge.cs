@@ -38,7 +38,7 @@ internal sealed class GuestPurge(ILocks locks, CorePlayerCleanup cleanup, IJobs 
                 var hasAuthSession = await system.QuerySingleOrDefaultAsync<bool>("""
                     select exists(
                         select 1 from auth_sessions
-                        where tenant_id = @tenantId and guest_id = @playerId)
+                        where tenant_id = @tenantId and guest_id = @playerId and expires_at > now())
                     """, new { tenantId, playerId }, cancellationToken);
                 if (hasAuthSession) return 0;
 
@@ -100,7 +100,7 @@ internal sealed class GuestPlayerRemoval(ILocks locks, ISystemDb system)
                 "select exists(select 1 from session_participants where player_id = @playerId)",
                 new { playerId = payload.PlayerId }, cancellationToken);
             var hasAuthSession = await system.QuerySingleOrDefaultAsync<bool>("""
-                select exists(select 1 from auth_sessions where tenant_id = @tenantId and guest_id = @playerId)
+                select exists(select 1 from auth_sessions where tenant_id = @tenantId and guest_id = @playerId and expires_at > now())
                 """, new { tenantId, playerId = payload.PlayerId }, cancellationToken);
             if (!hasSeats && !hasAuthSession)
             {

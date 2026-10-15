@@ -67,23 +67,27 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
     {
         var token = RandomNumberGenerator.GetBytes(32);
         var hash = SHA256.HashData(token);
-        await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        // This key-share lock serializes guest issuance with the purge's FOR UPDATE
-        // eligibility lock. A session either commits before the sweep rechecks it, or
-        // observes the tombstone and is not issued.
-        var player = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
-            select id from players
-            where tenant_id = @tenantId and id = @playerId and account_id is null and deleted_at is null
-            for key share
-            """, new { tenantId, playerId }, transaction, cancellationToken: cancellationToken));
-        if (player is null) throw new InvalidOperationException("The guest player is not available.");
-        await connection.ExecuteAsync(new CommandDefinition("""
-            insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
-            values (@hash, @tenantId, @playerId, now() + interval '30 days')
-            """, new { hash, tenantId, playerId }, transaction, cancellationToken: cancellationToken));
-        await transaction.CommitAsync(cancellationToken);
+        await tenantDb.InTenantAsync(tenantId, async transaction =>
+        {
+            // This key-share lock serializes guest issuance with the purge's FOR UPDATE
+            // eligibility lock. A session either commits before the sweep rechecks it, or
+            // observes the tombstone and is not issued. Players are tenant-owned rows, so
+            // this lock must use the tenant app role rather than the system session role.
+            var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
+                select id from players
+                where id = @playerId and account_id is null and deleted_at is null
+                for key share
+                """, new { playerId }, cancellationToken);
+            if (player is null) throw new InvalidOperationException("The guest player is not available.");
+
+            await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await connection.ExecuteAsync(new CommandDefinition("""
+                insert into auth_sessions (token_hash, tenant_id, guest_id, expires_at)
+                values (@hash, @tenantId, @playerId, now() + interval '30 days')
+                """, new { hash, tenantId, playerId }, cancellationToken: cancellationToken));
+            return 0;
+        }, cancellationToken: cancellationToken);
         WriteCookie(context, token);
     }
 
