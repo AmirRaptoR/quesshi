@@ -8,6 +8,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Accounts;
+using Quesshi.Server.Security;
 using Quesshi.Server.Streaming;
 
 namespace Quesshi.Server.Tests;
@@ -148,7 +149,7 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public async Task Player_notification_closes_only_the_matching_deleted_players_stream()
+    public async Task Player_ban_revocation_hook_closes_only_the_matching_stream()
     {
         var tenant = Guid.NewGuid();
         var player = Guid.NewGuid();
@@ -158,7 +159,7 @@ public sealed class StreamingSubscriptionTests
         var deleted = hub.Subscribe(tenant, player.ToString(), null);
         var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
 
-        notifications.Publish(new StreamNotification.Player(tenant, player));
+        ((IPlayerAccessRevocationNotifier)hub).RevokePlayer(tenant, player);
 
         var message = await ReadAsync(deleted);
         Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
@@ -167,7 +168,7 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public async Task Reconciliation_revokes_a_deleted_player()
+    public async Task Reconciliation_revokes_a_banned_player_when_its_signal_is_lost()
     {
         var tenant = Guid.NewGuid();
         var player = Guid.NewGuid();
