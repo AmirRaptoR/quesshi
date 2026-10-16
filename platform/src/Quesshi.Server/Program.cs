@@ -1,5 +1,7 @@
 using Quesshi.Application;
+using Quesshi.Application.Identity;
 using Quesshi.Application.Jobs;
+using Quesshi.Features.SignIn.Google;
 using Quesshi.Infrastructure.Capabilities;
 using Quesshi.Infrastructure.Jobs;
 using Quesshi.Plugin.Api;
@@ -25,6 +27,7 @@ using Quesshi.Shared;
 using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Infrastructure.Identity;
+using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Security;
 using Quesshi.Server.Streaming;
 using System.Net;
@@ -156,7 +159,8 @@ public static class Program
         IFormatRegistry? configuredFormats = null,
         IKindRegistry? configuredKinds = null,
         ISessionTurnObserver? turnObserver = null,
-        string? environmentName = null)
+        string? environmentName = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var options = new WebApplicationOptions
         {
@@ -174,6 +178,7 @@ public static class Program
 
         var sources = configuredSources ?? DatabaseSources.FromEnvironment();
         builder.Services.AddSingleton(sources);
+        builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         builder.Services.AddSingleton<IDatabaseClock, PostgresDatabaseClock>();
         builder.Services.AddSingleton<PostgresClock>();
         builder.Services.AddSingleton<IClock>(provider => provider.GetRequiredService<PostgresClock>());
@@ -186,6 +191,18 @@ public static class Program
         builder.Services.AddPlayerSecurity();
         builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+        builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
+        builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
+        builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
+            provider.GetRequiredService<DatabaseSources>(),
+            provider.GetRequiredService<ITenantDb>(),
+            EmailAuthService.SecretFromEnvironment(),
+            TimeSpan.FromSeconds(provider.GetRequiredService<IConfiguration>().GetValue(
+                "EmailAuth:ProfileTokenLifetimeSeconds",
+                (int)EmailAuthOptions.Default.ProfileTokenLifetime.TotalSeconds)),
+            provider.GetRequiredService<TimeProvider>()));
+        builder.Services.AddHttpClient<GoogleIdTokenValidator>(client => client.Timeout = TimeSpan.FromSeconds(10));
+        builder.Services.AddSingleton<GoogleKeySetCache>();
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
@@ -223,7 +240,15 @@ public static class Program
             registry.Schedules.Every("core", TimeSpan.FromDays(1), "guest-purge");
             return registry;
         });
-        builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Capabilities);
+        builder.Services.AddSingleton<SignInRegistry>(provider => SignInRegistry.Create(
+            provider.GetRequiredService<FeatureRegistry>().Capabilities,
+            SignInRegistry.Discover(typeof(FeaturesMarker).Assembly)));
+        builder.Services.AddSingleton(provider =>
+        {
+            var features = provider.GetRequiredService<FeatureRegistry>();
+            _ = provider.GetRequiredService<SignInRegistry>();
+            return features.Capabilities;
+        });
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Jobs);
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Schedules);
         builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
@@ -276,6 +301,8 @@ public static class Program
             });
         });
 
+        configureServices?.Invoke(builder.Services);
+
         var app = builder.Build();
         app.MapGet("/health", async (PlatformHealth health, CancellationToken cancellationToken) =>
         {
@@ -313,8 +340,12 @@ public static class Program
         return app;
     }
 
-    private static CapabilityRegistry CreateCapabilityRegistry() =>
-        FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly)).Capabilities;
+    private static CapabilityRegistry CreateCapabilityRegistry()
+    {
+        var features = FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
+        _ = SignInRegistry.Create(features.Capabilities, SignInRegistry.Discover(typeof(FeaturesMarker).Assembly));
+        return features.Capabilities;
+    }
 
     internal static string? GetStaticAssetsManifestPath(string? baseDirectory = null)
     {

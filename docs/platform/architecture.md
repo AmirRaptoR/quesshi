@@ -1751,7 +1751,8 @@ content; `moderator` may handle reports and players.
   service worker caches, as today. It is not rewritten per tenant. What differs per tenant is
   fetched from three small routes that are resolved by host and are not part of the integrity
   manifest: `/theme.css` (the theme as CSS variables, linked from the shell), `/manifest.webmanifest`
-  and `GET /api/config` (name, languages, text direction, enabled plugin ids, `configVersion`).
+  and `GET /api/config` (name, languages, text direction, enabled plugin ids, browser-safe
+  settings for enabled sign-in methods, `configVersion`).
   - All three are served with an `ETag` and revalidated on every load, never cached blindly.
   - The service worker keeps the last good copy of each and serves it when offline, so the shell
     still paints with the right colours and direction.

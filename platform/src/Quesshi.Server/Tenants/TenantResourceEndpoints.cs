@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Net.Http.Headers;
 using Quesshi.Application;
+using Quesshi.Application.Identity;
 using Quesshi.Plugin.Api;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -47,7 +48,12 @@ internal static class TenantResourceEndpoints
         return endpoints;
     }
 
-    private static async Task WriteConfigAsync(HttpContext context, ITenantDb tenantDb, CapabilityRegistry registry, CancellationToken cancellationToken)
+    private static async Task WriteConfigAsync(
+        HttpContext context,
+        ITenantDb tenantDb,
+        CapabilityRegistry registry,
+        SignInRegistry signIns,
+        CancellationToken cancellationToken)
     {
         var data = await LoadAsync(context, tenantDb, cancellationToken);
         if (data is null)
@@ -66,11 +72,18 @@ internal static class TenantResourceEndpoints
                 .Order(StringComparer.Ordinal)
                 .ToArray(),
             StringComparer.Ordinal);
+        var signInMethods = data.Capabilities
+            .Where(capability => string.Equals(capability.Type, "signin", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(capability => capability.Key, StringComparer.Ordinal)
+            .Select(capability => ToSignInMethod(capability, registry, signIns))
+            .OfType<SignInMethodDocument>()
+            .ToArray();
         var document = new ConfigDocument(
             data.Name,
             data.Languages.Select(language => new LanguageDocument(language.Code, language.Name, language.Direction, appNames.GetValueOrDefault(language.Code))).ToArray(),
             data.DefaultLanguage,
             capabilities,
+            signInMethods,
             data.ConfigVersion,
             ServerBuildId);
         await WriteAsync(context, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions), "application/json; charset=utf-8", cancellationToken);
@@ -130,7 +143,7 @@ internal static class TenantResourceEndpoints
                 order by sort_order, code
                 """, cancellationToken: cancellationToken);
             var capabilities = await transaction.QueryAsync<TenantCapability>("""
-                select type as Type, key as Key
+                select type as Type, key as Key, settings as Settings
                 from tenant_capabilities
                 where entitled and enabled
                 """, cancellationToken: cancellationToken);
@@ -160,9 +173,29 @@ internal static class TenantResourceEndpoints
 
     private sealed record TenantSettings(string Name, string DefaultLanguage, JsonElement Branding, long ConfigVersion);
     private sealed record TenantLanguage(string Code, string Name, string Direction);
-    private sealed record TenantCapability(string Type, string Key);
+    private static SignInMethodDocument? ToSignInMethod(TenantCapability capability, CapabilityRegistry registry, SignInRegistry signIns)
+    {
+        var definition = registry.TryGet(CapabilityType.Signin, capability.Key);
+        var signIn = signIns.TryGet(capability.Key);
+        if (definition is null || signIn?.SignIn is not IPublicSignInSettings publicSettings)
+        {
+            return null;
+        }
+
+        return new SignInMethodDocument(capability.Key, publicSettings.GetPublicSettings(definition.Deserialize(capability.Settings)));
+    }
+
+    private sealed record TenantCapability(string Type, string Key, JsonElement Settings);
     private sealed record TenantResourceData(string Name, string DefaultLanguage, JsonElement Branding, long ConfigVersion, IReadOnlyList<TenantLanguage> Languages, IReadOnlyList<TenantCapability> Capabilities);
-    private sealed record ConfigDocument(string Name, IReadOnlyList<LanguageDocument> Languages, string DefaultLanguage, IReadOnlyDictionary<string, string[]> Capabilities, long ConfigVersion, string ServerBuildId);
+    private sealed record ConfigDocument(
+        string Name,
+        IReadOnlyList<LanguageDocument> Languages,
+        string DefaultLanguage,
+        IReadOnlyDictionary<string, string[]> Capabilities,
+        IReadOnlyList<SignInMethodDocument> SignInMethods,
+        long ConfigVersion,
+        string ServerBuildId);
+    private sealed record SignInMethodDocument(string Id, object Settings);
     private sealed record LanguageDocument(string Code, string DisplayName, string Direction, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AppName);
     private sealed record ManifestDocument(
         [property: JsonPropertyName("name")] string Name,
