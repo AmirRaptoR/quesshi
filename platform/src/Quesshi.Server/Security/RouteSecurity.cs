@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Quesshi.Application;
+using Quesshi.Application.Identity;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Api;
 using Quesshi.Server.Sessions;
@@ -134,6 +135,13 @@ internal static class RouteSecurity
                 foreach (var contribution in admin.Contributions) contribution(featureAdminRoutes);
             }
         }
+
+        foreach (var signIn in app.Services.GetService<SignInRegistry>()?.SignIns ?? [])
+        {
+            var signInRoutes = SecureOpenRoutes(app.MapGroup($"/api/auth/x/{signIn.Id}"));
+            signInRoutes.AddEndpointFilter(RequireCapabilityAsync(CapabilityType.Signin, signIn.Id));
+            signIn.SignIn.MapOpenRoutes(signInRoutes);
+        }
     }
 
     private static RouteGroupBuilder SecurePlayerRoutes(RouteGroupBuilder group)
@@ -235,13 +243,16 @@ internal static class RouteSecurity
     }
 
     private static Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> RequireCapabilityAsync(string featureId) =>
+        RequireCapabilityAsync(CapabilityType.Feature, featureId);
+
+    private static Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> RequireCapabilityAsync(CapabilityType type, string key) =>
         async (context, next) =>
         {
             var tenant = TenantResolutionMiddleware.GetTenant(context.HttpContext);
             if (tenant is null) return Results.NotFound();
 
             var capabilities = context.HttpContext.RequestServices.GetRequiredService<ICapabilities>();
-            if (!await capabilities.IsOnAsync(tenant.Id, CapabilityType.Feature, featureId, context.HttpContext.RequestAborted))
+            if (!await capabilities.IsOnAsync(tenant.Id, type, key, context.HttpContext.RequestAborted))
             {
                 return Results.NotFound();
             }

@@ -18,7 +18,8 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 {
-    private static int nextHttpPort = RandomNumberGenerator.GetInt32(55000, 56000);
+    // 11161-11164 / 30161-30164 / 50161-50164 are reserved for this class.
+    private static int nextHttpPort = 50160;
 
     [SkippableFact]
     public async Task Upgrade_rotates_every_guest_session_and_keeps_the_same_player()
