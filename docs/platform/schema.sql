@@ -272,7 +272,6 @@ create table questions (
   level        smallint check (level between 1 and 5),   -- null for kinds with no difficulty
   prompt       text not null,
   payload      jsonb not null check (jsonb_typeof(payload) = 'object'),
-  media_id     uuid,
   explanation  text,
   topic        text,                                     -- "subject|aspect", for duplicate control
   fingerprint  text,                                     -- normalised prompt words
@@ -283,7 +282,6 @@ create table questions (
   updated_at   timestamptz not null default now(),
   primary key (tenant_id, id),
   foreign key (tenant_id, category_id) references categories on delete set null (category_id),
-  foreign key (tenant_id, media_id) references media_assets,
   foreign key (tenant_id, owner_id) references players on delete cascade,
   check ((source = 'player') = (owner_id is not null))
 );
@@ -294,7 +292,6 @@ create unique index questions_topic on questions (tenant_id, lang, family, topic
 create index questions_draw on questions (tenant_id, lang, kind, category_id, level)
   where status = 'approved' and owner_id is null;
 create index questions_owner on questions (tenant_id, owner_id) where owner_id is not null;
-create index questions_media on questions (tenant_id, media_id) where media_id is not null;
 create index questions_review on questions (tenant_id, status, created_at desc);
 create index questions_prompt_trgm on questions using gin (prompt gin_trgm_ops);
 

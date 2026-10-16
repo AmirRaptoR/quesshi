@@ -23,6 +23,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Formats;
 using Quesshi.Kinds.PollChoice;
 using Quesshi.Kinds.PollRoster;
+using Quesshi.Kinds.Choice;
 using Quesshi.Server.Sessions;
 using Quesshi.Shared;
 using Quesshi.Infrastructure.Clock;
@@ -193,6 +194,7 @@ public static class Program
         builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
         builder.Services.AddSingleton<ICategoryService, CategoryService>();
+        builder.Services.AddSingleton<IContent, QuestionService>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
         builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
         builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
@@ -222,7 +224,7 @@ public static class Program
         builder.Services.AddSingleton<DeadlineSweep>();
         builder.Services.AddHostedService<DeadlineSweepService>();
         builder.Services.AddSingleton<IFormatRegistry>(_ => configuredFormats ?? PlatformFormats.CreateRegistry());
-        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
+        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new ChoiceKind(), new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(provider =>
         {
             var registry = configuredFeatures ?? FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
