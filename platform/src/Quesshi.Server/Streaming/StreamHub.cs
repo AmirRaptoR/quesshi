@@ -124,14 +124,14 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private int _disposed;
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
-        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness? sessionLiveness = null)
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness sessionLiveness)
         : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness)
     {
     }
 
     internal StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
         IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow,
-        IStreamSessionLiveness? sessionLiveness = null)
+        IStreamSessionLiveness sessionLiveness)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
@@ -141,7 +141,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         this.clock = clock;
         this.logger = logger;
         this.scoreCoalesceWindow = scoreCoalesceWindow;
-        this.sessionLiveness = sessionLiveness ?? AllSessionsLive.Instance;
+        this.sessionLiveness = sessionLiveness;
         notifications.Received += OnNotification;
     }
 

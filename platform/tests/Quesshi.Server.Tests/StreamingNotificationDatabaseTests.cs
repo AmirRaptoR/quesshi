@@ -281,7 +281,16 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
 
     private static StreamHub Hub(SnapshotLoader loader, ReconciliationDatabase database, IStreamNotificationSource notifications) =>
         new(loader, new TestRenderer(), new FormatRegistry([new TestFormat()]), database, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
+
+    private sealed class TestSessionLiveness : IStreamSessionLiveness
+    {
+        public static TestSessionLiveness Instance { get; } = new();
+
+        public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
+    }
 
     private static async Task<StreamMessage> ReadAsync(StreamSubscription subscription, TimeSpan? timeout = null) =>
         await subscription.Messages.ReadAsync().AsTask().WaitAsync(timeout ?? TimeSpan.FromSeconds(10));

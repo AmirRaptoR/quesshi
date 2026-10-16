@@ -41,7 +41,7 @@ internal sealed record PlayerSessionResolution(PlayerIdentity? Player, bool IsBa
 /// <summary>Opaque key for revalidating the sign-in session that opened a stream.</summary>
 internal sealed record PlayerStreamSession(string Key);
 
-internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb, IClock clock, ILocks? locks = null) : IPlayerSessionIssuer, IPlayerSessionResolver
+internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb, IClock clock, ILocks locks) : IPlayerSessionIssuer, IPlayerSessionResolver
 {
     internal const string CookieName = "__Host-qp";
     private static readonly TimeSpan Lifetime = TimeSpan.FromDays(30);
@@ -50,7 +50,6 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
     {
         var token = RandomNumberGenerator.GetBytes(32);
         var hash = SHA256.HashData(token);
-        var tenantLocks = locks ?? new TenantLocks();
         await tenantDb.InTenantAsync(tenantId, async transaction =>
         {
             var candidate = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
@@ -58,7 +57,7 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
                 """, new { accountId }, cancellationToken);
             if (candidate is null) throw new InvalidOperationException("The account is not available.");
 
-            await tenantLocks.PlayersAsync(transaction, [candidate.Value], cancellationToken);
+            await locks.PlayersAsync(transaction, [candidate.Value], cancellationToken);
             var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
                 select id from players
                 where id = @playerId and account_id = @accountId and deleted_at is null and banned_at is null

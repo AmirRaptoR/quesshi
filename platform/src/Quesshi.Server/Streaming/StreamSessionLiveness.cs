@@ -30,11 +30,3 @@ internal sealed class StreamSessionLiveness(DatabaseSources sources) : IStreamSe
         return live.Select(Convert.ToHexString).ToHashSet(StringComparer.Ordinal);
     }
 }
-
-internal sealed class AllSessionsLive : IStreamSessionLiveness
-{
-    public static AllSessionsLive Instance { get; } = new();
-
-    public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
-}

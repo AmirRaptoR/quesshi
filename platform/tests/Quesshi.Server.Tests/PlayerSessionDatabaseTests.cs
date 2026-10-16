@@ -19,7 +19,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = CreateSources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch), new TenantLocks());
         var context = new DefaultHttpContext();
 
         await sessions.IssueAccountAsync(context, seeded.TenantA, seeded.Account);
@@ -63,7 +63,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = CreateSources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch), new TenantLocks());
         await using var owner = await OpenAsync("quesshi_owner");
         await using var deletion = await owner.BeginTransactionAsync();
         await ExecuteAsync(owner, "select id from accounts where id = @account for update", deletion, ("account", seeded.Account));
