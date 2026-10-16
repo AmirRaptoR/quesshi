@@ -164,7 +164,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
+        await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from categories; delete from tenants; delete from accounts");
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'identity-a', 'Identity A', 'en'), (@b, 'identity-b', 'Identity B', 'en')", ("a", TenantA), ("b", TenantB));
         return owner;
     }
@@ -203,11 +203,13 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             drop table auth_rate_limits;
             drop table rate_limits;
             drop table data_protection_keys;
+            drop table categories;
             delete from schema_migrations where name = '20261015T0204_core_admin_identity_audit.sql';
             delete from schema_migrations where name = '20261013T0203_core_effects.sql';
             delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
             delete from schema_migrations where name = '20261014T0204_core_deadlines.sql';
             delete from schema_migrations where name = '20261015T0301_core_subject_only_external_identities.sql';
+            delete from schema_migrations where name = '20261016T0100_core_categories.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p
                             where p.account_id = accounts.id

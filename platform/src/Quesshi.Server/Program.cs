@@ -1,4 +1,5 @@
 using Quesshi.Application;
+using Quesshi.Application.Content;
 using Quesshi.Application.Identity;
 using Quesshi.Application.Jobs;
 using Quesshi.Features.SignIn.Google;
@@ -191,6 +192,7 @@ public static class Program
         builder.Services.AddPlayerSecurity();
         builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+        builder.Services.AddSingleton<ICategoryService, CategoryService>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
         builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
         builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
