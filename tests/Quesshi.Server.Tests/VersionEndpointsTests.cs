@@ -42,16 +42,24 @@ public sealed class VersionEndpointsTests
     }
 
     [Fact]
-    public async Task Version_and_health_report_development_when_metadata_is_absent()
+    public async Task Version_reports_development_when_metadata_is_absent()
     {
         await using var host = new VersionTestHost(BuildMetadata.Development);
 
         var version = await host.Client.GetAsync("/version");
-        var health = await host.Client.GetAsync("/health");
 
         version.EnsureSuccessStatusCode();
-        health.EnsureSuccessStatusCode();
         Assert.Equal(BuildMetadata.Development, await version.Content.ReadFromJsonAsync<BuildMetadata>());
+    }
+
+    [Fact]
+    public async Task Health_reports_development_when_metadata_is_absent()
+    {
+        await using var host = new VersionTestHost(BuildMetadata.Development);
+
+        var health = await host.Client.GetAsync("/health");
+
+        health.EnsureSuccessStatusCode();
         Assert.Equal(
             new HealthResponse(true, "quesshi", "development", "development", "development"),
             await health.Content.ReadFromJsonAsync<HealthResponse>());
