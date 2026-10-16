@@ -4,6 +4,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Security;
 using Quesshi.Plugin.Api;
+using Npgsql;
 
 namespace Quesshi.Infrastructure.Identity;
 
@@ -15,38 +16,48 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
         await database.QueryAsync<ManagedAdminAccount>("""
             select a.id as Id, a.username as Username, a.email as Email, a.is_active as IsActive,
                    a.is_platform as IsPlatform, a.must_change_password as MustChangePassword,
-                   a.created_at as CreatedAt, a.last_login_at as LastLoginAt, m.role as Role
+                   a.locked_until as LockedUntil, a.created_at as CreatedAt,
+                   a.last_login_at as LastLoginAt, m.role as Role
             from admin_memberships m join admins a on a.id = m.admin_id
             where m.tenant_id = @tenantId
             order by a.username
             """, new { tenantId }, cancellationToken);
 
-    public Task<AdminAccountChangeResult> CreateAsync(Guid tenantId, CreateManagedAdmin request, CancellationToken cancellationToken = default)
+    public async Task<AdminAccountChangeResult> CreateAsync(Guid tenantId, CreateManagedAdmin request, CancellationToken cancellationToken = default)
     {
         var username = request.Username?.Trim() ?? string.Empty;
-        if (username.Length is < 3 or > 32) return Task.FromResult(new AdminAccountChangeResult(AdminAccountChangeStatus.InvalidUsername));
-        if (!EmailAddress.IsValid(request.Email)) return Task.FromResult(new AdminAccountChangeResult(AdminAccountChangeStatus.InvalidEmail));
+        if (username.Length is < 3 or > 32) return new AdminAccountChangeResult(AdminAccountChangeStatus.InvalidUsername);
+        if (!EmailAddress.IsValid(request.Email)) return new AdminAccountChangeResult(AdminAccountChangeStatus.InvalidEmail);
         var problems = AdminPasswordPolicy.Problems(request.Password);
-        if (problems.Count > 0) return Task.FromResult(new AdminAccountChangeResult(AdminAccountChangeStatus.WeakPassword, Problems: problems));
+        if (problems.Count > 0) return new AdminAccountChangeResult(AdminAccountChangeStatus.WeakPassword, Problems: problems);
 
-        return database.InTransactionAsync(async transaction =>
+        try
         {
-            var email = EmailAddress.Normalize(request.Email);
-            await LockNewIdentityAsync(transaction, username, email, cancellationToken);
-            if (await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from admins where username = @username for update", new { username }, cancellationToken) is not null)
-                return new AdminAccountChangeResult(AdminAccountChangeStatus.UsernameTaken);
-            if (await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from admins where email = @email for update", new { email }, cancellationToken) is not null)
-                return new AdminAccountChangeResult(AdminAccountChangeStatus.EmailTaken);
+            return await database.InTransactionAsync(async transaction =>
+            {
+                var email = EmailAddress.Normalize(request.Email);
+                await LockNewIdentityAsync(transaction, username, email, cancellationToken);
+                if (await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from admins where username = @username for update", new { username }, cancellationToken) is not null)
+                    return new AdminAccountChangeResult(AdminAccountChangeStatus.UsernameTaken);
+                if (await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from admins where email = @email for update", new { email }, cancellationToken) is not null)
+                    return new AdminAccountChangeResult(AdminAccountChangeStatus.EmailTaken);
 
-            var id = Guid.NewGuid();
-            await transaction.ExecuteAsync("""
-                insert into admins (id, username, email, password_hash, is_platform, must_change_password)
-                values (@id, @username, @email, @passwordHash, @isPlatform, true);
-                insert into admin_memberships (tenant_id, admin_id, role) values (@tenantId, @id, 'owner')
-                """, new { id, username, email, passwordHash = passwords.Hash(request.Password), isPlatform = request.IsPlatform, tenantId }, cancellationToken);
-            return new AdminAccountChangeResult(AdminAccountChangeStatus.Success,
-                new ManagedAdminAccount(id, username, email, true, request.IsPlatform, true, clock.Now, null, AdminRole.Owner));
-        }, cancellationToken);
+                var id = Guid.NewGuid();
+                await transaction.ExecuteAsync("""
+                    insert into admins (id, username, email, password_hash, is_platform, must_change_password)
+                    values (@id, @username, @email, @passwordHash, @isPlatform, true);
+                    insert into admin_memberships (tenant_id, admin_id, role) values (@tenantId, @id, 'owner')
+                    """, new { id, username, email, passwordHash = passwords.Hash(request.Password), isPlatform = request.IsPlatform, tenantId }, cancellationToken);
+                return new AdminAccountChangeResult(AdminAccountChangeStatus.Success,
+                    new ManagedAdminAccount(id, username, email, true, request.IsPlatform, true, null, clock.Now, null, AdminRole.Owner));
+            }, cancellationToken);
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            if (exception.ConstraintName == "admins_username_key") return new AdminAccountChangeResult(AdminAccountChangeStatus.UsernameTaken);
+            if (exception.ConstraintName == "admins_email_key") return new AdminAccountChangeResult(AdminAccountChangeStatus.EmailTaken);
+            throw;
+        }
     }
 
     public Task<AdminAccountChangeResult> ChangeRoleAsync(Guid tenantId, Guid adminId, AdminRole role, CancellationToken cancellationToken = default)

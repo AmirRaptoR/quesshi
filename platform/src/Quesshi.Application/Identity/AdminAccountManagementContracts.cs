@@ -9,6 +9,7 @@ internal sealed record ManagedAdminAccount(
     bool IsActive,
     bool IsPlatform,
     bool MustChangePassword,
+    DateTimeOffset? LockedUntil,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
     AdminRole Role);
