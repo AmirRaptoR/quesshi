@@ -38,7 +38,10 @@ internal static class StreamEndpoints
         context.Response.Headers["Content-Encoding"] = "identity";
         context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
-        var subscription = hub.Subscribe(tenant.Id, player.PlayerId.ToString(), session);
+        var sessionKey = context.Items.TryGetValue(typeof(PlayerStreamSession), out var streamSession)
+            ? (streamSession as PlayerStreamSession)?.Key
+            : null;
+        var subscription = hub.Subscribe(tenant.Id, player.PlayerId.ToString(), session, sessionKey);
         try
         {
             await context.Response.StartAsync(cancellationToken);

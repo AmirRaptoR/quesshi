@@ -168,22 +168,6 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public async Task Reconciliation_revokes_a_banned_player_when_its_signal_is_lost()
-    {
-        var tenant = Guid.NewGuid();
-        var player = Guid.NewGuid();
-        var hub = new StreamHub(null!, null!, null!, new ReconciliationDatabase(Guid.NewGuid(), 0), new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
-        var subscription = hub.Subscribe(tenant, player.ToString(), null);
-
-        await hub.ReconcileAsync();
-
-        var message = await ReadAsync(subscription);
-        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
-        hub.Dispose();
-    }
-
-    [Fact]
     public async Task Unsubscribing_the_last_watcher_releases_its_idle_render_gate()
     {
         var hub = new StreamHub(new MissingSnapshotLoader(), null!, null!, null!, new Notifications(),

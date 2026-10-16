@@ -36,9 +36,12 @@ internal interface IPlayerSessionResolver
     Task RevokeAsync(string token, CancellationToken cancellationToken = default);
 }
 
-internal sealed record PlayerSessionResolution(PlayerIdentity? Player, bool IsBanned);
+internal sealed record PlayerSessionResolution(PlayerIdentity? Player, bool IsBanned, string? SessionKey = null);
 
-internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb, IClock clock) : IPlayerSessionIssuer, IPlayerSessionResolver
+/// <summary>Opaque key for revalidating the sign-in session that opened a stream.</summary>
+internal sealed record PlayerStreamSession(string Key);
+
+internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb, IClock clock, ILocks? locks = null) : IPlayerSessionIssuer, IPlayerSessionResolver
 {
     internal const string CookieName = "__Host-qp";
     private static readonly TimeSpan Lifetime = TimeSpan.FromDays(30);
@@ -47,22 +50,24 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
     {
         var token = RandomNumberGenerator.GetBytes(32);
         var hash = SHA256.HashData(token);
-        await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var account = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
-            select id from accounts where id = @accountId and deleted_at is null for update
-            """, new { accountId }, transaction, cancellationToken: cancellationToken));
-        if (account is null) throw new InvalidOperationException("The account is not available.");
-        var stillLive = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
-            select id from accounts where id = @accountId and deleted_at is null
-            """, new { accountId }, transaction, cancellationToken: cancellationToken));
-        if (stillLive is null) throw new InvalidOperationException("The account is not available.");
-        await connection.ExecuteAsync(new CommandDefinition("""
-            insert into auth_sessions (token_hash, tenant_id, account_id, expires_at)
-            values (@hash, @tenantId, @accountId, now() + interval '30 days')
-            """, new { hash, tenantId, accountId }, transaction, cancellationToken: cancellationToken));
-        await transaction.CommitAsync(cancellationToken);
+        var tenantLocks = locks ?? new TenantLocks();
+        await tenantDb.InTenantAsync(tenantId, async transaction =>
+        {
+            var candidate = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
+                select id from players where account_id = @accountId and deleted_at is null
+                """, new { accountId }, cancellationToken);
+            if (candidate is null) throw new InvalidOperationException("The account is not available.");
+
+            await tenantLocks.PlayersAsync(transaction, [candidate.Value], cancellationToken);
+            var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
+                select id from players
+                where id = @playerId and account_id = @accountId and deleted_at is null and banned_at is null
+                """, new { playerId = candidate.Value, accountId }, cancellationToken);
+            if (player is null) throw new InvalidOperationException("The account is not available.");
+
+            await InsertAccountSessionAsync(tenantId, accountId, hash, cancellationToken);
+            return 0;
+        }, cancellationToken: cancellationToken);
         WriteCookie(context, token);
     }
 
@@ -117,7 +122,8 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
             var player = await PlayerAsync(tenantId, guestId, cancellationToken);
             if (player is null) return new(null, false);
             if (player.BannedAt is not null) return new(null, true);
-            return new(session.RevokedAt is null ? new PlayerIdentity(tenantId, player.Id, null, true) : null, false);
+            return new(session.RevokedAt is null ? new PlayerIdentity(tenantId, player.Id, null, true) : null, false,
+                session.RevokedAt is null ? Convert.ToHexString(hash) : null);
         }
         if (session.AccountId is not { } accountId) return new(null, false);
         var account = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
@@ -126,7 +132,8 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
         var accountPlayer = await AccountPlayerAsync(tenantId, accountId, cancellationToken);
         if (accountPlayer is null) return new(null, false);
         if (accountPlayer.BannedAt is not null) return new(null, true);
-        return new(session.RevokedAt is null ? new PlayerIdentity(tenantId, accountPlayer.Id, accountId, false) : null, false);
+        return new(session.RevokedAt is null ? new PlayerIdentity(tenantId, accountPlayer.Id, accountId, false) : null, false,
+            session.RevokedAt is null ? Convert.ToHexString(hash) : null);
     }
 
     public async Task RevokeAsync(string token, CancellationToken cancellationToken = default)
@@ -146,6 +153,22 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
         tenantDb.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<PlayerRow>("""
             select id as Id, banned_at as BannedAt from players where account_id = @accountId and deleted_at is null
             """, new { accountId }, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
+
+    private async Task InsertAccountSessionAsync(Guid tenantId, Guid accountId, byte[] hash, CancellationToken cancellationToken)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var account = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
+            select id from accounts where id = @accountId and deleted_at is null for update
+            """, new { accountId }, transaction, cancellationToken: cancellationToken));
+        if (account is null) throw new InvalidOperationException("The account is not available.");
+        await connection.ExecuteAsync(new CommandDefinition("""
+            insert into auth_sessions (token_hash, tenant_id, account_id, expires_at)
+            values (@hash, @tenantId, @accountId, now() + interval '30 days')
+            """, new { hash, tenantId, accountId }, transaction, cancellationToken: cancellationToken));
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     private static bool TryTokenHash(string token, out byte[] hash)
     {
@@ -186,6 +209,7 @@ internal sealed class PlayerSessionMiddleware(RequestDelegate next)
             if (resolution.Player is { } player)
             {
                 context.Items[typeof(PlayerIdentity)] = player;
+                if (resolution.SessionKey is { } sessionKey) context.Items[typeof(PlayerStreamSession)] = new PlayerStreamSession(sessionKey);
                 context.User = new ClaimsPrincipal(new ClaimsIdentity(
                     [new Claim(ClaimTypes.NameIdentifier, player.PlayerId.ToString()), new Claim("tenant", player.TenantId.ToString())],
                     PlayerSessionService.CookieName));

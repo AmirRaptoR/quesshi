@@ -14,7 +14,7 @@ internal enum StreamMessageKind { View, Config, Gone }
 internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null);
 
 /// <summary>One bounded local stream subscription. Delivery is always convergence-oriented.</summary>
-internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId)
+internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null)
 {
     private readonly object _gate = new();
     private readonly Channel<StreamMessage> _messages = Channel.CreateBounded<StreamMessage>(new BoundedChannelOptions(1)
@@ -28,6 +28,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public Guid TenantId { get; } = tenantId;
     public string PlayerId { get; } = playerId;
     public Guid? SessionId { get; } = sessionId;
+    public string? AuthenticationSessionKey { get; } = authenticationSessionKey;
     public ChannelReader<StreamMessage> Messages => _messages.Reader;
     public long LastSentVersion { get; private set; } = -1;
     public long LastQueuedVersion { get; private set; } = -1;
@@ -113,6 +114,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private readonly IStreamNotificationSource notifications;
     private readonly IClock clock;
     private readonly ILogger<StreamHub> logger;
+    private readonly IStreamSessionLiveness sessionLiveness;
     private readonly TimeSpan scoreCoalesceWindow;
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
@@ -122,13 +124,14 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private int _disposed;
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
-        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger)
-        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow)
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness? sessionLiveness = null)
+        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness)
     {
     }
 
     internal StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
-        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow)
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow,
+        IStreamSessionLiveness? sessionLiveness = null)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
@@ -138,12 +141,13 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         this.clock = clock;
         this.logger = logger;
         this.scoreCoalesceWindow = scoreCoalesceWindow;
+        this.sessionLiveness = sessionLiveness ?? AllSessionsLive.Instance;
         notifications.Received += OnNotification;
     }
 
-    public StreamSubscription Subscribe(Guid tenantId, string playerId, Guid? sessionId)
+    public StreamSubscription Subscribe(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null)
     {
-        var subscription = new StreamSubscription(tenantId, playerId, sessionId);
+        var subscription = new StreamSubscription(tenantId, playerId, sessionId, authenticationSessionKey);
         _subscriptions.TryAdd(Guid.NewGuid(), subscription);
         return subscription;
     }
@@ -210,6 +214,8 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 .Select(subscription => subscription.SessionId!.Value).Distinct().ToArray();
             var players = tenant.Select(subscription => Guid.TryParse(subscription.PlayerId, out var playerId) ? playerId : (Guid?)null)
                 .Where(playerId => playerId is not null).Select(playerId => playerId!.Value).Distinct().ToArray();
+            var sessionKeys = tenant.Where(subscription => subscription.AuthenticationSessionKey is not null)
+                .Select(subscription => subscription.AuthenticationSessionKey!).Distinct(StringComparer.Ordinal).ToArray();
             var state = await database.InTenantAsync(tenant.Key, async transaction =>
             {
                 var sessionVersions = watched.Length == 0
@@ -233,8 +239,10 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
 
             var versions = state.SessionVersions.ToDictionary(version => version.SessionId);
             var livePlayerIds = state.LivePlayers.ToHashSet();
+            var liveSessionKeys = await sessionLiveness.LiveAsync(tenant.Key, sessionKeys, cancellationToken);
             foreach (var subscription in tenant.Where(subscription =>
-                         Guid.TryParse(subscription.PlayerId, out var playerId) && !livePlayerIds.Contains(playerId)))
+                         (Guid.TryParse(subscription.PlayerId, out var playerId) && !livePlayerIds.Contains(playerId))
+                         || (subscription.AuthenticationSessionKey is { } key && !liveSessionKeys.Contains(key))))
             {
                 subscription.QueueGone("revoked");
             }

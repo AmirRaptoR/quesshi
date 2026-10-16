@@ -80,6 +80,32 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Account_session_issuance_cannot_outlive_a_concurrent_tenant_ban()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = CreateSources();
+        var locks = new TenantLocks();
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch), locks);
+        var manager = new PlayerBanManager(new TenantDb(sources), locks, new NoopRevocationNotifier());
+        await using var owner = await OpenAsync("quesshi_owner");
+        await using var held = await owner.BeginTransactionAsync();
+        await ExecuteAsync(owner, "select id from players where tenant_id = @tenant and id = @player for no key update", held,
+            ("tenant", seeded.TenantA), ("player", seeded.Player));
+
+        var ban = manager.BanAsync(seeded.TenantA, seeded.Player);
+        await WaitForLockWaiterAsync(owner, held);
+        var issuance = sessions.IssueAccountAsync(new DefaultHttpContext(), seeded.TenantA, seeded.Account);
+        await held.CommitAsync();
+
+        Assert.Equal(PlayerBanChangeStatus.Success, (await ban).Status);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => issuance);
+        await using var system = await OpenAsync("quesshi_system");
+        Assert.Equal(0L, await ScalarAsync<long>(system, "select count(*) from auth_sessions where tenant_id = @tenant and account_id = @account",
+            ("tenant", seeded.TenantA), ("account", seeded.Account)));
+    }
+
+    [SkippableFact]
     public async Task Data_protection_keys_are_shared_across_server_containers_and_survive_a_restart()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -162,5 +188,22 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
         await using var command = new NpgsqlCommand(sql, connection);
         foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
         return (T)(await command.ExecuteScalarAsync())!;
+    }
+
+    private static async Task WaitForLockWaiterAsync(NpgsqlConnection connection, NpgsqlTransaction transaction)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            await using var command = new NpgsqlCommand("select count(*) from pg_locks where not granted", connection, transaction);
+            if ((long)(await command.ExecuteScalarAsync())! > 0) return;
+            await Task.Delay(10);
+        }
+
+        throw new InvalidOperationException("The ban did not wait for the player lock.");
+    }
+
+    private sealed class NoopRevocationNotifier : IPlayerAccessRevocationNotifier
+    {
+        public void RevokePlayer(Guid tenantId, Guid playerId) { }
     }
 }

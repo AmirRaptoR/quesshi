@@ -257,6 +257,78 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task A_deleted_player_session_is_refused_on_core_and_plugin_routes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11178, 30178, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50178");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50178") };
+            var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var context = new DefaultHttpContext();
+            await sessions.IssueAccountAsync(context, seeded.TenantId, seeded.AccountId);
+            var cookie = CookieValue(context);
+            var token = await AntiforgeryAsync(client, cookie);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            await owner.ExecuteAsync("update players set deleted_at = now() where tenant_id = @tenantId and id = @playerId",
+                new { tenantId = seeded.TenantId, playerId = seeded.PlayerId });
+
+            using (var core = await SendAsync(client, HttpMethod.Get, "/api/me", cookie, null))
+                await AssertDeletedIdentityAsync(core);
+            using (var plugin = await SendAsync(client, HttpMethod.Post, "/api/x/security/player/json", cookie, token, TenantOrigin))
+                await AssertDeletedIdentityAsync(plugin);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task A_deleted_account_session_is_refused_on_core_and_plugin_routes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11179, 30179, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50179");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50179") };
+            var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var context = new DefaultHttpContext();
+            await sessions.IssueAccountAsync(context, seeded.TenantId, seeded.AccountId);
+            var cookie = CookieValue(context);
+            var token = await AntiforgeryAsync(client, cookie);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            await owner.ExecuteAsync("update accounts set deleted_at = now(), email = null where id = @accountId",
+                new { accountId = seeded.AccountId });
+
+            using (var core = await SendAsync(client, HttpMethod.Get, "/api/me", cookie, null))
+                await AssertDeletedIdentityAsync(core);
+            using (var plugin = await SendAsync(client, HttpMethod.Post, "/api/x/security/player/json", cookie, token, TenantOrigin))
+                await AssertDeletedIdentityAsync(plugin);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
     public async Task Banned_email_verification_is_indistinguishable_from_a_wrong_code_and_unban_allows_sign_in()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -620,6 +692,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<BannedError>();
         Assert.Equal("banned", error?.Error);
+    }
+
+    private static async Task AssertDeletedIdentityAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.DoesNotContain("banned", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     private async Task InsertLoginCodeAsync(string email, string code)

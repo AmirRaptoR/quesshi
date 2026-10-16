@@ -19,7 +19,7 @@ internal interface IPlayerBanManager
 }
 
 /// <summary>Changes a tenant player ban while atomically revoking that tenant's player sessions.</summary>
-internal sealed class PlayerBanManager(ITenantDb database, IPlayerAccessRevocationNotifier notifier) : IPlayerBanManager
+internal sealed class PlayerBanManager(ITenantDb database, ILocks locks, IPlayerAccessRevocationNotifier notifier) : IPlayerBanManager
 {
     public Task<PlayerBanChangeResult> BanAsync(Guid tenantId, Guid playerId, CancellationToken cancellationToken = default) =>
         ChangeAsync(tenantId, playerId, ban: true, cancellationToken);
@@ -31,8 +31,9 @@ internal sealed class PlayerBanManager(ITenantDb database, IPlayerAccessRevocati
     {
         var found = await database.InTenantAsync(tenantId, async transaction =>
         {
+            await locks.PlayersAsync(transaction, [playerId], cancellationToken);
             var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
-                select id from players where id = @playerId and deleted_at is null for update
+                select id from players where id = @playerId and deleted_at is null
                 """, new { playerId }, cancellationToken);
             if (player is null) return false;
 
