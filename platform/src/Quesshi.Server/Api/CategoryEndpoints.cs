@@ -81,9 +81,9 @@ public sealed class CategoryEndpoints : ICoreRouteModule
 
     private static IResult Error(string error, int statusCode) => Results.Json(new { error }, statusCode: statusCode);
 
-    private sealed record CategoryWriteRequest(string? Slug, Dictionary<string, string>? Names, string? Icon, string? Color, int SortOrder)
+    private sealed record CategoryWriteRequest(string? Slug, Dictionary<string, string>? Names, string? Icon, string? Color, int SortOrder, bool? IsActive)
     {
-        public CategoryWrite ToWrite() => new(Slug, Names, Icon, Color, SortOrder);
+        public CategoryWrite ToWrite() => new(Slug, Names, Icon, Color, SortOrder, IsActive);
     }
 
     private sealed record CategoryOrderRequest(Guid[]? Ids);

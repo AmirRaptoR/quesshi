@@ -53,7 +53,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
                 if (!await NamesAreValidAsync(transaction, normalized.Names, cancellationToken)) return CategoryChangeResult.Invalid;
                 var category = await transaction.QuerySingleOrDefaultAsync<PersistedCategory>("""
                     insert into categories (tenant_id, id, slug, names, icon, color, is_active, sort_order)
-                    values (@tenantId, @id, @slug, @names, @icon, @color, true, @sortOrder)
+                    values (@tenantId, @id, @slug, @names, @icon, @color, @isActive, @sortOrder)
                     returning id as Id, slug as Slug, names::text as NamesJson, icon as Icon, color as Color,
                               is_active as IsActive, sort_order as SortOrder
                     """, new
@@ -64,6 +64,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
                     names = new Jsonb<Dictionary<string, string>>(normalized.Names, CategoryJsonContext.Default.DictionaryStringString),
                     normalized.Icon,
                     normalized.Color,
+                    isActive = normalized.IsActive ?? true,
                     normalized.SortOrder,
                 }, cancellationToken);
                 return category is null ? CategoryChangeResult.Failed : new CategoryChangeResult(ToDefinition(category));
@@ -90,7 +91,8 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
                 if (!await NamesAreValidAsync(transaction, normalized.Names, cancellationToken)) return CategoryChangeResult.Invalid;
                 var category = await transaction.QuerySingleOrDefaultAsync<PersistedCategory>("""
                     update categories
-                    set slug = @slug, names = @names, icon = @icon, color = @color, sort_order = @sortOrder
+                    set slug = @slug, names = @names, icon = @icon, color = @color,
+                        is_active = coalesce(@isActive, is_active), sort_order = @sortOrder
                     where id = @id
                     returning id as Id, slug as Slug, names::text as NamesJson, icon as Icon, color as Color,
                               is_active as IsActive, sort_order as SortOrder
@@ -101,6 +103,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
                     names = new Jsonb<Dictionary<string, string>>(normalized.Names, CategoryJsonContext.Default.DictionaryStringString),
                     normalized.Icon,
                     normalized.Color,
+                    normalized.IsActive,
                     normalized.SortOrder,
                 }, cancellationToken);
                 return category is null ? CategoryChangeResult.Missing : new CategoryChangeResult(ToDefinition(category));
@@ -165,7 +168,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
     private static bool TryNormalize(CategoryWrite request, out NormalizedCategoryWrite normalized)
     {
         normalized = default!;
-        var slug = request.Slug?.Trim();
+        var slug = NormalizeSlug(request.Slug);
         var icon = request.Icon?.Trim() ?? string.Empty;
         var color = request.Color?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(slug) || request.Names is null || request.Names.Count == 0)
@@ -181,8 +184,16 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
                 return false;
         }
 
-        normalized = new(slug, names, icon, color, request.SortOrder);
+        normalized = new(slug, names, icon, color, request.IsActive, request.SortOrder);
         return true;
+    }
+
+    private static string? NormalizeSlug(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var dashed = new string([.. value.Trim().ToLowerInvariant().Select(character => char.IsWhiteSpace(character) ? '-' : character)]);
+        var slug = new string([.. dashed.Where(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_')]);
+        return slug.Trim('-');
     }
 
     private static CategoryDefinition ToDefinition(PersistedCategory category) => new(
@@ -202,7 +213,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
     }
 
     private sealed record PersistedCategory(Guid Id, string Slug, string NamesJson, string Icon, string Color, bool IsActive, int SortOrder);
-    private sealed record NormalizedCategoryWrite(string Slug, Dictionary<string, string> Names, string Icon, string Color, int SortOrder);
+    private sealed record NormalizedCategoryWrite(string Slug, Dictionary<string, string> Names, string Icon, string Color, bool? IsActive, int SortOrder);
 }
 
 internal interface ICategoryService
@@ -236,7 +247,7 @@ internal sealed record CategoryDefinition(
 
 internal sealed record CategoryDisplay(Guid Id, string Slug, string Name, string Icon, string Color, int SortOrder);
 
-internal sealed record CategoryWrite(string? Slug, IReadOnlyDictionary<string, string>? Names, string? Icon, string? Color, int SortOrder);
+internal sealed record CategoryWrite(string? Slug, IReadOnlyDictionary<string, string>? Names, string? Icon, string? Color, int SortOrder, bool? IsActive = null);
 
 internal enum CategoryChangeStatus
 {

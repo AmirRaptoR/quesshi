@@ -90,11 +90,15 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var listedCategories = await listed.Content.ReadFromJsonAsync<CategoryAdminResponse[]>()
             ?? throw new InvalidOperationException("The category administration response was empty.");
         var history = listedCategories.Single(category => category.Slug == "world-history");
+        using var reactivateBody = JsonContent.Create(new { slug = "world-history", names = new Dictionary<string, string> { ["en"] = "World history", ["fa"] = "تاریخ جهان" }, icon = "globe", color = "#123456", sortOrder = 1, isActive = true });
+        using var reactivate = await SendAsync(client, HttpMethod.Put, $"/api/admin/categories/{firstId}", editorCookie, editorToken, reactivateBody);
+        var reactivated = await reactivate.Content.ReadFromJsonAsync<CategoryAdminResponse>();
 
-        Assert.Equal((HttpStatusCode.Created, HttpStatusCode.Created, HttpStatusCode.OK, HttpStatusCode.NoContent, HttpStatusCode.NoContent, HttpStatusCode.OK),
-            (first.StatusCode, second.StatusCode, update.StatusCode, reorder.StatusCode, deactivate.StatusCode, listed.StatusCode));
+        Assert.Equal((HttpStatusCode.Created, HttpStatusCode.Created, HttpStatusCode.OK, HttpStatusCode.NoContent, HttpStatusCode.NoContent, HttpStatusCode.OK, HttpStatusCode.OK),
+            (first.StatusCode, second.StatusCode, update.StatusCode, reorder.StatusCode, deactivate.StatusCode, listed.StatusCode, reactivate.StatusCode));
         Assert.Equal(("تاریخ جهان", "globe", "#123456", false, 1),
             (history.Names["fa"], history.Icon, history.Color, history.IsActive, history.SortOrder));
+        Assert.True(reactivated!.IsActive);
         Assert.Equal(["science", "world-history"], listedCategories.Select(category => category.Slug));
     }
 
@@ -177,6 +181,11 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         using var originalBody = JsonContent.Create(new { slug = "history", names = new Dictionary<string, string> { ["en"] = "History", ["fa"] = "تاریخ" }, icon = "book", color = "#111111", sortOrder = 3 });
         using var original = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookieA, tokenA, originalBody);
         var originalId = (await original.Content.ReadFromJsonAsync<CategoryResponse>())!.Id;
+        using var canonicalBody = JsonContent.Create(new { slug = "News / 2026", names = new Dictionary<string, string> { ["en"] = "News" }, icon = "newspaper", color = "#444444", sortOrder = 4 });
+        using var canonical = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookieA, tokenA, canonicalBody);
+        var canonicalCategory = await canonical.Content.ReadFromJsonAsync<CategoryAdminResponse>();
+        using var emptyCanonicalBody = JsonContent.Create(new { slug = "///", names = new Dictionary<string, string> { ["en"] = "Invalid" }, icon = "x", color = "#000000", sortOrder = 0 });
+        using var emptyCanonical = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookieA, tokenA, emptyCanonicalBody);
         using var conflictingBody = JsonContent.Create(new { slug = "geography", names = new Dictionary<string, string> { ["en"] = "Geography" }, icon = "map", color = "#222222", sortOrder = 4 });
         using var conflicting = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookieA, tokenA, conflictingBody);
         using var duplicateUpdateBody = JsonContent.Create(new { slug = "geography", names = new Dictionary<string, string> { ["en"] = "Changed" }, icon = "changed", color = "#333333", sortOrder = 5 });
@@ -186,6 +195,9 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         using var foreignBody = JsonContent.Create(new { slug = "history", names = new Dictionary<string, string> { ["en"] = "History B" }, icon = "book", color = "#111111", sortOrder = 0 });
         using var foreign = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookieB, tokenB, foreignBody, host: "categories-b.example.test");
 
+        Assert.Equal(HttpStatusCode.Created, canonical.StatusCode);
+        Assert.Equal("news--2026", canonicalCategory!.Slug);
+        Assert.Equal(HttpStatusCode.BadRequest, emptyCanonical.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, duplicateUpdate.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, invalidUpdate.StatusCode);
         Assert.Equal(HttpStatusCode.Created, foreign.StatusCode);
@@ -199,14 +211,14 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
     {
         if (fixture.ConnectionString is null) return;
         await using var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from auth_sessions; delete from admin_memberships; delete from admins; delete from categories; delete from tenant_languages; delete from tenants");
+        await ResetDatabaseAsync(owner);
     }
 
     private async Task<NpgsqlConnection> PrepareAsync()
     {
         await Quesshi.Server.Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
-        await ExecuteAsync(owner, "delete from auth_sessions; delete from admin_memberships; delete from admins; delete from categories; delete from tenant_languages; delete from tenants");
+        await ResetDatabaseAsync(owner);
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'categories-a', 'Categories A', 'en'), (@b, 'categories-b', 'Categories B', 'en')", ("a", TenantA), ("b", TenantB));
         await ExecuteAsync(owner, "insert into tenant_languages (tenant_id, code, name, english_name) values (@a, 'en', 'English', 'English'), (@a, 'fa', 'فارسی', 'Persian'), (@a, 'nl', 'Nederlands', 'Dutch'), (@b, 'en', 'English', 'English'), (@b, 'fa', 'فارسی', 'Persian')", ("a", TenantA), ("b", TenantB));
         await ExecuteAsync(owner, "insert into tenant_hosts (tenant_id, host) values (@a, 'categories-a.example.test'), (@b, 'categories-b.example.test')", ("a", TenantA), ("b", TenantB));
@@ -214,6 +226,9 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
     }
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+    private static Task ResetDatabaseAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "delete from session_participants; delete from sessions; delete from auth_sessions; delete from admin_memberships; delete from admins; delete from categories; delete from tenant_languages; delete from tenants");
 
     private static async Task<WebApplication> StartAsync(DatabaseSources sources)
     {
