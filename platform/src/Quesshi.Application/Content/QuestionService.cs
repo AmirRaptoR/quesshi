@@ -131,8 +131,9 @@ internal sealed class QuestionService(IKindRegistry kinds) : IContent
         {
             return new(QuestionWriteResult.Validation(new ContentProblem("payload.invalid", exception.Message)), null);
         }
+        var topic = string.IsNullOrWhiteSpace(request.Topic) ? null : request.Topic.Trim();
         var normalized = new PreparedWrite(request.Kind.Trim(), kind.Version, kind.Family, request.Language.Trim(), request.CategoryId, request.Level,
-            request.Prompt.Trim(), payload.Clone(), request.Explanation?.Trim(), request.Topic?.Trim(), PromptFingerprint.Normalise(request.Prompt), request.Status, request.Source, request.OwnerId);
+            request.Prompt.Trim(), payload.Clone(), request.Explanation?.Trim(), topic, PromptFingerprint.Normalise(request.Prompt), request.Status, request.Source, request.OwnerId);
         return new(null, normalized);
     }
 

@@ -24,6 +24,8 @@ using Quesshi.Formats;
 using Quesshi.Kinds.PollChoice;
 using Quesshi.Kinds.PollRoster;
 using Quesshi.Kinds.Choice;
+using Quesshi.Kinds.MapPick;
+using Quesshi.Kinds.Order;
 using Quesshi.Server.Sessions;
 using Quesshi.Shared;
 using Quesshi.Infrastructure.Clock;
@@ -224,7 +226,7 @@ public static class Program
         builder.Services.AddSingleton<DeadlineSweep>();
         builder.Services.AddHostedService<DeadlineSweepService>();
         builder.Services.AddSingleton<IFormatRegistry>(_ => configuredFormats ?? PlatformFormats.CreateRegistry());
-        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new ChoiceKind(), new PollChoiceKind(), new PollRosterKind()]));
+        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new ChoiceKind(), new MapPickKind(), new OrderKind(), new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(provider =>
         {
             var registry = configuredFeatures ?? FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));

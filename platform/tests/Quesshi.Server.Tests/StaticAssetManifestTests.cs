@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Shared;
 
 namespace Quesshi.Server.Tests;
 
@@ -47,6 +49,21 @@ public sealed class StaticAssetManifestTests
         await using var app = Program.CreateApplication(sources, 11121, 30121);
 
         Assert.NotNull(app);
+    }
+
+    [Theory]
+    [InlineData("order")]
+    [InlineData("map_pick")]
+    public async Task Registers_each_supported_content_kind(string kind)
+    {
+        await using var sources = new DatabaseSources(
+            "Host=127.0.0.1;Database=quesshi;Username=app;Password=test",
+            "Host=127.0.0.1;Database=quesshi;Username=system;Password=test");
+        await using var app = Program.CreateApplication(sources, 11121, 30121);
+
+        var registry = app.Services.GetRequiredService<IKindRegistry>();
+
+        Assert.True(registry.TryGetCurrent(kind, out _));
     }
 
     [Fact]

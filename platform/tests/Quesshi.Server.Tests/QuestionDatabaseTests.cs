@@ -258,6 +258,37 @@ public sealed class QuestionDatabaseTests(PostgresFixture fixture) : IAsyncLifet
     }
 
     [SkippableFact]
+    public async Task Blank_topic_is_stored_as_null()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var app = Quesshi.Server.Program.CreateApplication(Sources());
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var created = await database.InTenantAsync(TenantA, transaction => content.CreateAsync(transaction, ValidQuestion("What is the tallest mountain?", topic: "   ")));
+        var id = created.Question?.Id ?? throw new InvalidOperationException("Question creation failed.");
+
+        var stored = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, id));
+
+        Assert.Null(stored?.Topic);
+    }
+
+    [SkippableFact]
+    public async Task Blank_bank_topics_do_not_collide()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var app = Quesshi.Server.Program.CreateApplication(Sources());
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        _ = await database.InTenantAsync(TenantA, transaction => content.CreateAsync(transaction, ValidQuestion("What is the tallest mountain?", topic: " ")));
+
+        var result = await database.InTenantAsync(TenantA, transaction => content.CreateAsync(transaction, ValidQuestion("Which planet is closest to the Sun?", topic: string.Empty)));
+
+        Assert.Equal(QuestionWriteOutcome.Success, result.Outcome);
+    }
+
+    [SkippableFact]
     public async Task Bank_topic_uniqueness_allows_other_languages_families_and_player_owned_questions()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");

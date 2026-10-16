@@ -204,6 +204,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             drop table auth_rate_limits;
             drop table rate_limits;
             drop table data_protection_keys;
+            alter table session_items drop constraint session_items_question_fk;
+            alter table session_items drop constraint session_items_category_fk;
+            drop table questions;
             drop table categories;
             delete from schema_migrations where name = '20261015T0204_core_admin_identity_audit.sql';
             delete from schema_migrations where name = '20261013T0203_core_effects.sql';
@@ -212,6 +215,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             delete from schema_migrations where name = '20261015T0301_core_subject_only_external_identities.sql';
             delete from schema_migrations where name = '20261016T0100_core_categories.sql';
             delete from schema_migrations where name = '20261016T0100_core_player_bans.sql';
+            delete from schema_migrations where name = '20261016T0200_core_questions.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p
                             where p.account_id = accounts.id
