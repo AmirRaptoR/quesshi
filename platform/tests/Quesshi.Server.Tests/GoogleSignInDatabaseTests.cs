@@ -91,6 +91,44 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         }
     }
 
+    [SkippableTheory]
+    [InlineData("empty")]
+    [InlineData("missing_token")]
+    [InlineData("blank_token")]
+    [InlineData("malformed_json")]
+    [InlineData("not_a_jwt")]
+    [InlineData("text_plain")]
+    public async Task Malformed_google_requests_have_no_identity_or_session_side_effects(string requestKind)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var tenant = await SeedAsync(entitled: true, enabled: true);
+        await using var sources = CreateSources();
+        await using var app = CreateApplication(sources, 11160, 30160);
+        app.Urls.Add("http://127.0.0.1:50160");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            var before = await StateAsync(owner);
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50160") };
+            using var response = await PostContentAsync(
+                client,
+                tenant,
+                CreateMalformedContent(requestKind),
+                await AntiforgeryAsync(client, tenant),
+                TenantOrigin(tenant));
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal(before, await StateAsync(owner));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
     [SkippableFact]
     public async Task Valid_google_tokens_return_profile_needed_or_signed_in_for_the_tenant_account()
     {
@@ -349,10 +387,12 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
 
     private static async Task<HttpResponseMessage> PostAsync(HttpClient client, GoogleTenant tenant, string idToken, string? antiforgery, string origin)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/x/google")
-        {
-            Content = JsonContent.Create(new { idToken })
-        };
+        return await PostContentAsync(client, tenant, JsonContent.Create(new { idToken }), antiforgery, origin);
+    }
+
+    private static async Task<HttpResponseMessage> PostContentAsync(HttpClient client, GoogleTenant tenant, HttpContent content, string? antiforgery, string origin)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/x/google") { Content = content };
         request.Headers.Host = tenant.Host;
         request.Headers.TryAddWithoutValidation("Origin", origin);
         if (antiforgery is not null)
@@ -361,6 +401,17 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         }
         return await client.SendAsync(request);
     }
+
+    private static HttpContent CreateMalformedContent(string requestKind) => requestKind switch
+    {
+        "empty" => new ByteArrayContent([]),
+        "missing_token" => JsonContent.Create(new { }),
+        "blank_token" => JsonContent.Create(new { idToken = "  " }),
+        "malformed_json" => new StringContent("{", Encoding.UTF8, "application/json"),
+        "not_a_jwt" => JsonContent.Create(new { idToken = "not-a-jwt" }),
+        "text_plain" => new StringContent("{\"idToken\":\"not-a-jwt\"}", Encoding.UTF8, "text/plain"),
+        _ => throw new ArgumentOutOfRangeException(nameof(requestKind))
+    };
 
     private static async Task<HttpResponseMessage> GetConfigAsync(HttpClient client, GoogleTenant tenant)
     {

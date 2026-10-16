@@ -42,6 +42,11 @@ public sealed class GoogleSignIn : ISignIn, IPublicSignInSettings
         }
 
         GoogleSignInRequest? request;
+        if (!context.Request.HasJsonContentType())
+        {
+            return Results.Unauthorized();
+        }
+
         try
         {
             request = await context.Request.ReadFromJsonAsync<GoogleSignInRequest>(cancellationToken);
@@ -115,7 +120,7 @@ public sealed record GooglePublicSettings(string ClientId);
 public sealed record GoogleIdentityToken(string Subject, string? Email, bool EmailVerified);
 
 /// <summary>Validates RS256 Google ID tokens against Google's fixed public-key endpoint.</summary>
-public sealed class GoogleIdTokenValidator(HttpClient client, TimeProvider timeProvider)
+public sealed class GoogleIdTokenValidator(HttpClient client, TimeProvider timeProvider, GoogleKeySetCache keySetCache)
 {
     public static readonly Uri KeySetAddress = new("https://www.googleapis.com/oauth2/v3/certs");
 
@@ -130,24 +135,7 @@ public sealed class GoogleIdTokenValidator(HttpClient client, TimeProvider timeP
             return null;
         }
 
-        GoogleKeys? keys;
-        try
-        {
-            await using var stream = await client.GetStreamAsync(KeySetAddress, cancellationToken);
-            keys = await JsonSerializer.DeserializeAsync<GoogleKeys>(stream, cancellationToken: cancellationToken);
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return null;
-        }
+        var keys = await keySetCache.GetAsync(client, parsed.KeyId, cancellationToken);
 
         var key = keys?.Keys?.SingleOrDefault(candidate => string.Equals(candidate.Kid, parsed.KeyId, StringComparison.Ordinal));
         if (key is null || !string.Equals(key.Kty, "RSA", StringComparison.Ordinal) || !TryDecodeBase64Url(key.N, out var modulus) || !TryDecodeBase64Url(key.E, out var exponent))
@@ -266,9 +254,9 @@ public sealed class GoogleIdTokenValidator(HttpClient client, TimeProvider timeP
         }
     }
 
-    private sealed record GoogleKeys([property: JsonPropertyName("keys")] IReadOnlyList<GoogleKey>? Keys);
+    internal sealed record GoogleKeys([property: JsonPropertyName("keys")] IReadOnlyList<GoogleKey>? Keys);
 
-    private sealed record GoogleKey(
+    internal sealed record GoogleKey(
         [property: JsonPropertyName("kid")] string? Kid,
         [property: JsonPropertyName("kty")] string? Kty,
         [property: JsonPropertyName("n")] string? N,
@@ -276,6 +264,111 @@ public sealed class GoogleIdTokenValidator(HttpClient client, TimeProvider timeP
 
     private sealed record ParsedToken(string KeyId, string Subject, string? Email, bool EmailVerified, string SigningInput, byte[] Signature);
 }
+
+/// <summary>Caches Google's signed-key set according to the freshness response headers.</summary>
+public sealed class GoogleKeySetCache(TimeProvider timeProvider)
+{
+    private static readonly TimeSpan DefaultCacheLifetime = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan UnknownKeyRefreshInterval = TimeSpan.FromMinutes(1);
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private CachedKeys? cached;
+
+    internal async Task<GoogleIdTokenValidator.GoogleKeys?> GetAsync(HttpClient client, string keyId, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var now = timeProvider.GetUtcNow();
+            var unknownKey = cached is not null && !ContainsKey(cached.Keys, keyId);
+            if (cached is null
+                || cached.ExpiresAt <= now
+                || (unknownKey && cached.NextUnknownKeyRefreshAt <= now))
+            {
+                var refreshed = await FetchAsync(client, now, unknownKey, cancellationToken);
+                if (refreshed is not null)
+                {
+                    cached = refreshed;
+                }
+                else if (cached is null || cached.ExpiresAt <= now)
+                {
+                    return null;
+                }
+            }
+
+            return cached?.Keys;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static bool ContainsKey(GoogleIdTokenValidator.GoogleKeys keys, string keyId) =>
+        keys.Keys?.Any(candidate => string.Equals(candidate.Kid, keyId, StringComparison.Ordinal)) is true;
+
+    private static TimeSpan CacheLifetime(HttpResponseMessage response)
+    {
+        var cacheControl = response.Headers.CacheControl;
+        if (cacheControl?.NoStore is true || cacheControl?.NoCache is true)
+        {
+            return TimeSpan.Zero;
+        }
+
+        return cacheControl?.MaxAge is { } maxAge
+            ? maxAge > TimeSpan.Zero ? maxAge : TimeSpan.Zero
+            : DefaultCacheLifetime;
+    }
+
+    private static async Task<CachedKeys?> FetchAsync(
+        HttpClient client,
+        DateTimeOffset now,
+        bool unknownKeyRefresh,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await client.GetAsync(GoogleIdTokenValidator.KeySetAddress, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var keys = await JsonSerializer.DeserializeAsync(
+                stream,
+                GoogleSignInJsonContext.Default.GoogleKeys,
+                cancellationToken);
+            if (keys is null)
+            {
+                return null;
+            }
+
+            var lifetime = CacheLifetime(response);
+            return new CachedKeys(
+                keys,
+                now.Add(lifetime),
+                unknownKeyRefresh
+                    ? now.Add(lifetime < UnknownKeyRefreshInterval ? lifetime : UnknownKeyRefreshInterval)
+                    : now);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private sealed record CachedKeys(
+        GoogleIdTokenValidator.GoogleKeys Keys,
+        DateTimeOffset ExpiresAt,
+        DateTimeOffset NextUnknownKeyRefreshAt);
+}
+
+[JsonSerializable(typeof(GoogleIdTokenValidator.GoogleKeys))]
+internal partial class GoogleSignInJsonContext : JsonSerializerContext;
 
 /// <summary>Reads the enabled tenant's Google client-id setting at the core boundary.</summary>
 public interface IGoogleSignInSettings

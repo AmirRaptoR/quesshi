@@ -75,12 +75,45 @@ public sealed class GoogleIdTokenValidatorTests
     public async Task Missing_google_client_id_setting_rejects_the_token()
     {
         using var key = RSA.Create(2048);
-        var validator = new GoogleIdTokenValidator(new HttpClient(new KeySetHandler(key)), new FixedTimeProvider(Now));
+        var timeProvider = new FixedTimeProvider(Now);
+        var validator = new GoogleIdTokenValidator(new HttpClient(new KeySetHandler(key)), timeProvider, new GoogleKeySetCache(timeProvider));
         var context = new DefaultHttpContext { RequestServices = new ServiceCollection().BuildServiceProvider() };
 
         var result = await validator.ValidateAsync(CreateToken(key, "https://accounts.google.com", ClientId, Now.AddMinutes(5)), context);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task Repeated_google_token_validations_reuse_the_cached_key_set()
+    {
+        using var key = RSA.Create(2048);
+        var handler = new KeySetHandler(key);
+        var timeProvider = new FixedTimeProvider(Now);
+        var validator = new GoogleIdTokenValidator(new HttpClient(handler), timeProvider, new GoogleKeySetCache(timeProvider));
+        var token = CreateToken(key, "https://accounts.google.com", ClientId, Now.AddMinutes(5));
+
+        await validator.ValidateAsync(token, CreateContext());
+        await validator.ValidateAsync(token, CreateContext());
+
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task An_unknown_key_identifier_refreshes_the_cached_key_set_once()
+    {
+        using var key = RSA.Create(2048);
+        var handler = new KeySetHandler(key);
+        var timeProvider = new FixedTimeProvider(Now);
+        var validator = new GoogleIdTokenValidator(new HttpClient(handler), timeProvider, new GoogleKeySetCache(timeProvider));
+        var knownToken = CreateToken(key, "https://accounts.google.com", ClientId, Now.AddMinutes(5));
+        var unknownToken = CreateToken(key, "https://accounts.google.com", ClientId, Now.AddMinutes(5), keyId: "rotated-key");
+
+        await validator.ValidateAsync(knownToken, CreateContext());
+        await validator.ValidateAsync(unknownToken, CreateContext());
+        await validator.ValidateAsync(unknownToken, CreateContext());
+
+        Assert.Equal(2, handler.RequestCount);
     }
 
     [Theory]
@@ -96,8 +129,11 @@ public sealed class GoogleIdTokenValidatorTests
         Assert.NotEmpty(errors);
     }
 
-    private static GoogleIdTokenValidator CreateValidator(RSA key) =>
-        new(new HttpClient(new KeySetHandler(key)), new FixedTimeProvider(Now));
+    private static GoogleIdTokenValidator CreateValidator(RSA key)
+    {
+        var timeProvider = new FixedTimeProvider(Now);
+        return new GoogleIdTokenValidator(new HttpClient(new KeySetHandler(key)), timeProvider, new GoogleKeySetCache(timeProvider));
+    }
 
     private static DefaultHttpContext CreateContext()
     {
@@ -106,9 +142,9 @@ public sealed class GoogleIdTokenValidatorTests
         return new DefaultHttpContext { RequestServices = services.BuildServiceProvider() };
     }
 
-    private static string CreateToken(RSA key, string issuer, string audience, DateTimeOffset expiresAt)
+    private static string CreateToken(RSA key, string issuer, string audience, DateTimeOffset expiresAt, string keyId = "test-key")
     {
-        var header = Encode(JsonSerializer.SerializeToUtf8Bytes(new { alg = "RS256", kid = "test-key" }));
+        var header = Encode(JsonSerializer.SerializeToUtf8Bytes(new { alg = "RS256", kid = keyId }));
         var payload = Encode(JsonSerializer.SerializeToUtf8Bytes(new
         {
             sub = "google-subject",
@@ -138,8 +174,11 @@ public sealed class GoogleIdTokenValidatorTests
 
     private sealed class KeySetHandler(RSA key) : HttpMessageHandler
     {
+        public int RequestCount { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            RequestCount++;
             var parameters = key.ExportParameters(false);
             var body = JsonSerializer.Serialize(new
             {
@@ -148,7 +187,9 @@ public sealed class GoogleIdTokenValidatorTests
                     new { kid = "test-key", kty = "RSA", n = Encode(parameters.Modulus!), e = Encode(parameters.Exponent!) }
                 }
             });
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
+            response.Headers.TryAddWithoutValidation("Cache-Control", "public, max-age=3600");
+            return Task.FromResult(response);
         }
     }
 }

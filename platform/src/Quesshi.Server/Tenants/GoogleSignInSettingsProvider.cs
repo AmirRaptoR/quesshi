@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Quesshi.Features.SignIn.Google;
 using Quesshi.Plugin.Api;
 
@@ -25,9 +26,12 @@ internal sealed class GoogleSignInSettingsProvider(ITenantDb tenantDb) : IGoogle
                 """, cancellationToken: cancellationToken);
             return row is null
                 ? null
-                : JsonSerializer.Deserialize<GoogleSignInSettings>(row.Settings);
+                : JsonSerializer.Deserialize(row.Settings, GoogleSignInSettingsJsonContext.Default.GoogleSignInSettings);
         }, cancellationToken: cancellationToken, readOnly: true);
     }
 
     private sealed record GoogleSettingsRow(JsonElement Settings);
 }
+
+[JsonSerializable(typeof(GoogleSignInSettings))]
+internal partial class GoogleSignInSettingsJsonContext : JsonSerializerContext;

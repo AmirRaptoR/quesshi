@@ -202,6 +202,7 @@ public static class Program
                 (int)EmailAuthOptions.Default.ProfileTokenLifetime.TotalSeconds)),
             provider.GetRequiredService<TimeProvider>()));
         builder.Services.AddHttpClient<GoogleIdTokenValidator>(client => client.Timeout = TimeSpan.FromSeconds(10));
+        builder.Services.AddSingleton<GoogleKeySetCache>();
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
