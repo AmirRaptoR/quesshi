@@ -30,7 +30,7 @@ public sealed class StreamingEndpointTests
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var notifications = new Notifications();
         var hub = new StreamHub(null!, null!, null!, null!, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
@@ -73,7 +73,7 @@ public sealed class StreamingEndpointTests
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var notifications = new Notifications();
         var hub = new StreamHub(null!, null!, null!, null!, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
@@ -116,7 +116,7 @@ public sealed class StreamingEndpointTests
         var loader = new TenantBoundSnapshotLoader(first.Id, State(session, 1, viewer));
         var notifications = new Notifications();
         var hub = new StreamHub(loader, new NormalRenderer(), new FormatRegistry([new TestFormat()]), null!, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
         builder.Services.AddSingleton<ITenants>(new MultipleTenants(first, second));
@@ -168,7 +168,7 @@ public sealed class StreamingEndpointTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, null, cancellation.Token);
 
@@ -187,7 +187,7 @@ public sealed class StreamingEndpointTests
         var body = new TrackingResponseBodyFeature();
         context.Features.Set<IHttpResponseBodyFeature>(body);
         var hub = new StreamHub(new MissingSnapshotLoader(), null!, null!, null!, new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, Guid.NewGuid(), CancellationToken.None);
 
@@ -210,7 +210,7 @@ public sealed class StreamingEndpointTests
         var state = SessionState.Create(new SessionRow(session.ToString(), null, null, new Position(0, 0), Format: "test", Version: 1),
             Json("{}"), [new Seat(player.ToString(), "player")], []);
         var hub = new StreamHub(new StaticSnapshotLoader(state), new OversizedRenderer(), new FormatRegistry([new TestFormat()]), null!,
-            new Notifications(), new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new Notifications(), new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, session, CancellationToken.None);
 
@@ -248,7 +248,7 @@ public sealed class StreamingEndpointTests
         var state = SessionState.Create(new SessionRow(session.ToString(), null, null, new Position(0, 0), Format: "test", Version: 1),
             Json("{}"), [new Seat(player.ToString(), "player")], []);
         var hub = new StreamHub(new StaticSnapshotLoader(state), new NormalRenderer(), new FormatRegistry([new TestFormat()]), null!,
-            new Notifications(), new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new Notifications(), new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, session, CancellationToken.None);
 
@@ -263,7 +263,7 @@ public sealed class StreamingEndpointTests
         var context = new DefaultHttpContext();
         context.Items[typeof(Tenant)] = tenant;
         var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, null, CancellationToken.None);
 
@@ -282,6 +282,15 @@ public sealed class StreamingEndpointTests
         context.Items[typeof(PlayerIdentity)] = new PlayerIdentity(tenant.Id, player ?? Guid.NewGuid(), null, false);
 #endif
         return context;
+    }
+
+    private sealed class TestSessionLiveness : IStreamSessionLiveness
+    {
+        public static TestSessionLiveness Instance { get; } = new();
+
+        public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
     }
 
     private sealed class Notifications : IStreamNotificationSource

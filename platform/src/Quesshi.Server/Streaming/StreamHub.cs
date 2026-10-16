@@ -5,6 +5,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Accounts;
+using Quesshi.Server.Security;
 
 namespace Quesshi.Server.Streaming;
 
@@ -13,7 +14,7 @@ internal enum StreamMessageKind { View, Config, Gone }
 internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null);
 
 /// <summary>One bounded local stream subscription. Delivery is always convergence-oriented.</summary>
-internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId)
+internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null)
 {
     private readonly object _gate = new();
     private readonly Channel<StreamMessage> _messages = Channel.CreateBounded<StreamMessage>(new BoundedChannelOptions(1)
@@ -27,6 +28,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public Guid TenantId { get; } = tenantId;
     public string PlayerId { get; } = playerId;
     public Guid? SessionId { get; } = sessionId;
+    public string? AuthenticationSessionKey { get; } = authenticationSessionKey;
     public ChannelReader<StreamMessage> Messages => _messages.Reader;
     public long LastSentVersion { get; private set; } = -1;
     public long LastQueuedVersion { get; private set; } = -1;
@@ -102,7 +104,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 /// Per-silo stream coordinator. It performs one snapshot/shared render for each watched session
 /// and only keeps the newest personal view per client.
 /// </summary>
-internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
+internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, IPlayerAccessRevocationNotifier
 {
     private static readonly TimeSpan ScoreCoalesceWindow = TimeSpan.FromMilliseconds(250);
     private readonly ISessionSnapshotLoader snapshots;
@@ -112,6 +114,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
     private readonly IStreamNotificationSource notifications;
     private readonly IClock clock;
     private readonly ILogger<StreamHub> logger;
+    private readonly IStreamSessionLiveness sessionLiveness;
     private readonly TimeSpan scoreCoalesceWindow;
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
@@ -121,13 +124,14 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
     private int _disposed;
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
-        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger)
-        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow)
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness sessionLiveness)
+        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness)
     {
     }
 
     internal StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
-        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow)
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow,
+        IStreamSessionLiveness sessionLiveness)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
@@ -137,12 +141,13 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
         this.clock = clock;
         this.logger = logger;
         this.scoreCoalesceWindow = scoreCoalesceWindow;
+        this.sessionLiveness = sessionLiveness;
         notifications.Received += OnNotification;
     }
 
-    public StreamSubscription Subscribe(Guid tenantId, string playerId, Guid? sessionId)
+    public StreamSubscription Subscribe(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null)
     {
-        var subscription = new StreamSubscription(tenantId, playerId, sessionId);
+        var subscription = new StreamSubscription(tenantId, playerId, sessionId, authenticationSessionKey);
         _subscriptions.TryAdd(Guid.NewGuid(), subscription);
         return subscription;
     }
@@ -209,6 +214,8 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                 .Select(subscription => subscription.SessionId!.Value).Distinct().ToArray();
             var players = tenant.Select(subscription => Guid.TryParse(subscription.PlayerId, out var playerId) ? playerId : (Guid?)null)
                 .Where(playerId => playerId is not null).Select(playerId => playerId!.Value).Distinct().ToArray();
+            var sessionKeys = tenant.Where(subscription => subscription.AuthenticationSessionKey is not null)
+                .Select(subscription => subscription.AuthenticationSessionKey!).Distinct(StringComparer.Ordinal).ToArray();
             var state = await database.InTenantAsync(tenant.Key, async transaction =>
             {
                 var sessionVersions = watched.Length == 0
@@ -223,7 +230,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                     : await transaction.QueryAsync<Guid>("""
                         select id
                         from players
-                        where id = any(@playerIds) and deleted_at is null
+                        where id = any(@playerIds) and deleted_at is null and banned_at is null
                         """, new { playerIds = players }, cancellationToken);
                 var configVersion = await transaction.QuerySingleOrDefaultAsync<long?>(
                     "select config_version from tenants where id = @tenantId", new { tenantId = tenant.Key }, cancellationToken);
@@ -232,8 +239,10 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
 
             var versions = state.SessionVersions.ToDictionary(version => version.SessionId);
             var livePlayerIds = state.LivePlayers.ToHashSet();
+            var liveSessionKeys = await sessionLiveness.LiveAsync(tenant.Key, sessionKeys, cancellationToken);
             foreach (var subscription in tenant.Where(subscription =>
-                         Guid.TryParse(subscription.PlayerId, out var playerId) && !livePlayerIds.Contains(playerId)))
+                         (Guid.TryParse(subscription.PlayerId, out var playerId) && !livePlayerIds.Contains(playerId))
+                         || (subscription.AuthenticationSessionKey is { } key && !liveSessionKeys.Contains(key))))
             {
                 subscription.QueueGone("revoked");
             }
@@ -273,6 +282,8 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                 break;
         }
     }
+
+    public void RevokePlayer(Guid tenantId, Guid playerId) => Deleted([new AccountDeletionPlayer(tenantId, playerId)]);
 
     private async Task CoalescedRenderAsync(Guid tenantId, Guid sessionId, SessionRenderSchedule schedule)
     {

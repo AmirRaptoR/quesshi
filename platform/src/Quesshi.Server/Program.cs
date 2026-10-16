@@ -211,6 +211,7 @@ public static class Program
         builder.Services.AddSingleton<PostgresStreamNotificationListener>();
         builder.Services.AddSingleton<IStreamNotificationSource>(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
         builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
+        builder.Services.AddSingleton<IStreamSessionLiveness, StreamSessionLiveness>();
         builder.Services.AddSingleton<StreamHub>();
         builder.Services.AddSingleton<IAccountDeletionNotifier>(provider => provider.GetRequiredService<StreamHub>());
         builder.Services.AddHostedService(provider => provider.GetRequiredService<StreamHub>());

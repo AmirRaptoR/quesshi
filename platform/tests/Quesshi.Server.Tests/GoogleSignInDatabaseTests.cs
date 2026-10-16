@@ -32,12 +32,12 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var unentitled = await SeedAsync(entitled: false, enabled: true);
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11154, 30154);
-        app.Urls.Add("http://127.0.0.1:50154");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50154") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var token = CreateToken("policy-subject", "policy@example.test", true);
 
             using (var missingAntiforgery = await PostAsync(client, enabled, token, null, TenantOrigin(enabled)))

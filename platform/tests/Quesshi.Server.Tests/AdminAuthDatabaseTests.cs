@@ -161,7 +161,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
 
         Assert.Equal(admin, (await sessions.ResolveAsync(TenantA, token))?.AdminId);
         Assert.Null(await sessions.ResolveAsync(TenantB, token));
-        var players = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UtcNow));
+        var players = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UtcNow), new TenantLocks());
         Assert.Null(await players.ResolveAsync(TenantA, token));
         var playerToken = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
         var account = Guid.NewGuid();

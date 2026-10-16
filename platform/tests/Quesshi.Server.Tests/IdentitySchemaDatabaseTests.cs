@@ -192,6 +192,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             grant execute on function enqueue_job(text, text, jsonb, text, timestamptz) to quesshi_app, quesshi_system;
             drop function account_players(uuid);
             drop function claim_account(uuid);
+            drop function revoke_player_sessions(uuid);
             drop table account_identities;
             drop table login_codes;
             drop table auth_sessions;
@@ -210,6 +211,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             delete from schema_migrations where name = '20261014T0204_core_deadlines.sql';
             delete from schema_migrations where name = '20261015T0301_core_subject_only_external_identities.sql';
             delete from schema_migrations where name = '20261016T0100_core_categories.sql';
+            delete from schema_migrations where name = '20261016T0100_core_player_bans.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p
                             where p.account_id = accounts.id

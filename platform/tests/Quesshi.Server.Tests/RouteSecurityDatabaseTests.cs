@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Builder;
@@ -104,6 +105,267 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
                 """, new { tenantId = seeded.TenantId });
             using var disabled = await SendAsync(client, HttpMethod.Post, "/api/x/security/open/json", guestCookie, guestToken, origin: TenantOrigin);
             Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Moderator_ban_and_unban_are_authorized_audited_and_tenant_scoped()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        await using var app = Program.CreateApplication(sources, 11174, 30174);
+        app.Urls.Add("http://127.0.0.1:50174");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50174") };
+            var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var moderatorCookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.ModeratorAdminId);
+            var editorCookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.EditorAdminId);
+            var forcedCookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.ForcedAdminId, mustChangePassword: true);
+
+            using (var anonymous = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", null, null, null))
+                Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using (var editor = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", editorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, editorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, editor.StatusCode);
+            using (var forced = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", forcedCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, forcedCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.Forbidden, forced.StatusCode);
+            using (var foreignPlayer = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.OtherPlayerId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NotFound, foreignPlayer.StatusCode);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            Assert.True(await owner.ExecuteScalarAsync<bool>("select banned_at is not null from players where tenant_id = @tenantId and id = @playerId", new { tenantId = seeded.TenantId, playerId = seeded.PlayerId }));
+
+            using (var unbanned = await SendAdminAsync(client, TenantHost, HttpMethod.Delete, $"/api/admin/players/{seeded.PlayerId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, unbanned.StatusCode);
+
+            Assert.False(await owner.ExecuteScalarAsync<bool>("select banned_at is not null from players where tenant_id = @tenantId and id = @playerId", new { tenantId = seeded.TenantId, playerId = seeded.PlayerId }));
+            Assert.False(await owner.ExecuteScalarAsync<bool>("select banned_at is not null from players where tenant_id = @tenantId and id = @playerId", new { tenantId = seeded.OtherTenantId, playerId = seeded.OtherPlayerId }));
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId and actor_id = @actorId and action = 'admin.player.ban' and target_type = 'player' and target_id = @playerId", new { tenantId = seeded.TenantId, actorId = seeded.EditorAdminId, playerId = seeded.PlayerId }));
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId and actor_id = @actorId and action = 'admin.player.unban' and target_type = 'player' and target_id = @playerId", new { tenantId = seeded.TenantId, actorId = seeded.ModeratorAdminId, playerId = seeded.PlayerId }));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Banning_an_account_player_revokes_its_tenant_session_and_rejects_core_and_plugin_routes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11175, 30175, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50175");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50175") };
+            var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var accountContext = new DefaultHttpContext();
+            await playerSessions.IssueAccountAsync(accountContext, seeded.TenantId, seeded.AccountId);
+            var accountCookie = CookieValue(accountContext);
+            var accountToken = await AntiforgeryAsync(client, accountCookie);
+            var otherAccountContext = new DefaultHttpContext();
+            await playerSessions.IssueAccountAsync(otherAccountContext, seeded.OtherTenantId, seeded.AccountId);
+            var otherAccountCookie = CookieValue(otherAccountContext);
+            var otherAccountToken = await AntiforgeryAsync(client, otherAccountCookie, OtherTenantHost);
+            var moderatorCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.ModeratorAdminId);
+
+            using (var ban = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, ban.StatusCode);
+            using (var core = await SendAsync(client, HttpMethod.Get, "/api/me", accountCookie, null))
+                await AssertBannedAsync(core);
+            using (var plugin = await SendAsync(client, HttpMethod.Post, "/api/x/security/player/json", accountCookie, accountToken, TenantOrigin))
+                await AssertBannedAsync(plugin);
+            using (var otherTenant = await SendAsync(client, HttpMethod.Post, "/api/x/security/player/json", otherAccountCookie, otherAccountToken, OtherTenantOrigin, host: OtherTenantHost))
+                Assert.Equal(HttpStatusCode.OK, otherTenant.StatusCode);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from auth_sessions where tenant_id = @tenantId and account_id = @accountId and revoked_at is not null", new { tenantId = seeded.TenantId, accountId = seeded.AccountId }));
+            Assert.Equal(0L, await owner.ExecuteScalarAsync<long>("select count(*) from auth_sessions where tenant_id = @tenantId and account_id = @accountId and revoked_at is not null", new { tenantId = seeded.OtherTenantId, accountId = seeded.AccountId }));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Banning_a_guest_player_revokes_only_its_current_tenant_session()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        await using var app = Program.CreateApplication(sources, 11176, 30176);
+        app.Urls.Add("http://127.0.0.1:50176");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50176") };
+            var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var guestContext = new DefaultHttpContext();
+            await playerSessions.IssueGuestAsync(guestContext, seeded.TenantId, seeded.GuestId);
+            var guestCookie = CookieValue(guestContext);
+            var otherGuestContext = new DefaultHttpContext();
+            await playerSessions.IssueGuestAsync(otherGuestContext, seeded.OtherTenantId, seeded.OtherGuestId);
+            var otherGuestCookie = CookieValue(otherGuestContext);
+            var moderatorCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.ModeratorAdminId);
+
+            using (var ban = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.GuestId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, ban.StatusCode);
+            using (var revoked = await SendAsync(client, HttpMethod.Get, "/api/me", guestCookie, null))
+                await AssertBannedAsync(revoked);
+            using (var otherTenant = await SendAsync(client, HttpMethod.Get, "/api/me", otherGuestCookie, null, host: OtherTenantHost))
+                Assert.Equal(HttpStatusCode.OK, otherTenant.StatusCode);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from auth_sessions where tenant_id = @tenantId and guest_id = @playerId and revoked_at is not null", new { tenantId = seeded.TenantId, playerId = seeded.GuestId }));
+            Assert.Equal(0L, await owner.ExecuteScalarAsync<long>("select count(*) from auth_sessions where tenant_id = @tenantId and guest_id = @playerId and revoked_at is not null", new { tenantId = seeded.OtherTenantId, playerId = seeded.OtherGuestId }));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task A_deleted_player_session_is_refused_on_core_and_plugin_routes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11178, 30178, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50178");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50178") };
+            var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var context = new DefaultHttpContext();
+            await sessions.IssueAccountAsync(context, seeded.TenantId, seeded.AccountId);
+            var cookie = CookieValue(context);
+            var token = await AntiforgeryAsync(client, cookie);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            await owner.ExecuteAsync("update players set deleted_at = now() where tenant_id = @tenantId and id = @playerId",
+                new { tenantId = seeded.TenantId, playerId = seeded.PlayerId });
+
+            using (var core = await SendAsync(client, HttpMethod.Get, "/api/me", cookie, null))
+                await AssertDeletedIdentityAsync(core);
+            using (var plugin = await SendAsync(client, HttpMethod.Post, "/api/x/security/player/json", cookie, token, TenantOrigin))
+                await AssertDeletedIdentityAsync(plugin);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task A_deleted_account_session_is_refused_on_core_and_plugin_routes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11179, 30179, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50179");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50179") };
+            var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
+            var context = new DefaultHttpContext();
+            await sessions.IssueAccountAsync(context, seeded.TenantId, seeded.AccountId);
+            var cookie = CookieValue(context);
+            var token = await AntiforgeryAsync(client, cookie);
+
+            await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+            await owner.OpenAsync();
+            await owner.ExecuteAsync("update accounts set deleted_at = now(), email = null where id = @accountId",
+                new { accountId = seeded.AccountId });
+
+            using (var core = await SendAsync(client, HttpMethod.Get, "/api/me", cookie, null))
+                await AssertDeletedIdentityAsync(core);
+            using (var plugin = await SendAsync(client, HttpMethod.Post, "/api/x/security/player/json", cookie, token, TenantOrigin))
+                await AssertDeletedIdentityAsync(plugin);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Banned_email_verification_is_indistinguishable_from_a_wrong_code_and_unban_allows_sign_in()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        await using var app = Program.CreateApplication(sources, 11177, 30177);
+        app.Urls.Add("http://127.0.0.1:50177");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50177") };
+            var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var moderatorCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.ModeratorAdminId);
+            using (var ban = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, ban.StatusCode);
+
+            await InsertLoginCodeAsync(seeded.Email, "123456");
+            using var banned = await SendAsync(client, HttpMethod.Post, "/api/auth/verify", null, await AntiforgeryAsync(client, null), TenantOrigin,
+                JsonContent.Create(new { email = seeded.Email, code = "123456" }));
+            using var wrong = await SendAsync(client, HttpMethod.Post, "/api/auth/verify", null, await AntiforgeryAsync(client, null), TenantOrigin,
+                JsonContent.Create(new { email = seeded.Email, code = "000000" }));
+            Assert.Equal(HttpStatusCode.Unauthorized, banned.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+            Assert.Equal(await wrong.Content.ReadAsStringAsync(), await banned.Content.ReadAsStringAsync());
+
+            using (var unban = await SendAdminAsync(client, TenantHost, HttpMethod.Delete, $"/api/admin/players/{seeded.PlayerId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, unban.StatusCode);
+            await InsertLoginCodeAsync(seeded.Email, "234567");
+            using var signedIn = await SendAsync(client, HttpMethod.Post, "/api/auth/verify", null, await AntiforgeryAsync(client, null), TenantOrigin,
+                JsonContent.Create(new { email = seeded.Email, code = "234567" }));
+            Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
+            Assert.Contains(signedIn.Headers.GetValues("Set-Cookie"), value => value.Contains("__Host-qp=", StringComparison.Ordinal));
         }
         finally
         {
@@ -363,14 +625,16 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     private static string TenantOrigin => $"http://{TenantHost}";
     private static string OtherTenantOrigin => $"http://{OtherTenantHost}";
 
-    private async Task<(Guid TenantId, Guid OtherTenantId, Guid AccountId, Guid GuestId, Guid OwnerAdminId, Guid EditorAdminId, Guid ModeratorAdminId, Guid PlatformAdminId, Guid OtherPlatformAdminId, Guid ForcedAdminId)> SeedAsync()
+    private async Task<(Guid TenantId, Guid OtherTenantId, Guid AccountId, Guid PlayerId, Guid OtherPlayerId, Guid GuestId, Guid OtherGuestId, string Email, Guid OwnerAdminId, Guid EditorAdminId, Guid ModeratorAdminId, Guid PlatformAdminId, Guid OtherPlatformAdminId, Guid ForcedAdminId)> SeedAsync()
     {
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
         var playerId = Guid.NewGuid();
+        var otherPlayerId = Guid.NewGuid();
         var guestId = Guid.NewGuid();
+        var otherGuestId = Guid.NewGuid();
         var ownerAdminId = Guid.NewGuid();
         var editorAdminId = Guid.NewGuid();
         var moderatorAdminId = Guid.NewGuid();
@@ -389,7 +653,9 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             insert into accounts(id, email) values (@accountId, @email);
             insert into players(tenant_id, id, account_id, display_name, avatar_seed, lang)
             values (@tenantId, @playerId, @accountId, 'Account player', 'account', 'en'),
-                   (@tenantId, @guestId, null, 'Guest player', 'guest', 'en');
+                   (@tenantId, @guestId, null, 'Guest player', 'guest', 'en'),
+                   (@otherTenantId, @otherPlayerId, @accountId, 'Other account player', 'other-account', 'en'),
+                   (@otherTenantId, @otherGuestId, null, 'Other guest player', 'other-guest', 'en');
             insert into tenant_capabilities(tenant_id, type, key, entitled, enabled)
             values (@tenantId, 'feature', 'security', true, true);
             insert into tenant_capabilities(tenant_id, type, key, entitled, enabled)
@@ -409,7 +675,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             """, new
         {
             tenantId, otherTenantId, slug = $"security-{tenantId:N}", otherSlug = $"security-other-{otherTenantId:N}", host = TenantHost, otherHost = OtherTenantHost,
-            accountId, email = $"security-{accountId:N}@example.test", playerId, guestId,
+            accountId, email = $"security-{accountId:N}@example.test", playerId, otherPlayerId, guestId, otherGuestId,
             ownerAdminId, editorAdminId, moderatorAdminId, platformAdminId, otherPlatformAdminId, forcedAdminId,
             ownerUsername = $"owner-{ownerAdminId:N}", ownerEmail = $"owner-{ownerAdminId:N}@example.test",
             editorUsername = $"editor-{editorAdminId:N}", editorEmail = $"editor-{editorAdminId:N}@example.test",
@@ -418,12 +684,37 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             otherPlatformUsername = $"platform-other-{otherPlatformAdminId:N}", otherPlatformEmail = $"platform-other-{otherPlatformAdminId:N}@example.test",
             forcedUsername = $"forced-{forcedAdminId:N}", forcedEmail = $"forced-{forcedAdminId:N}@example.test",
         });
-        return (tenantId, otherTenantId, accountId, guestId, ownerAdminId, editorAdminId, moderatorAdminId, platformAdminId, otherPlatformAdminId, forcedAdminId);
+        return (tenantId, otherTenantId, accountId, playerId, otherPlayerId, guestId, otherGuestId, $"security-{accountId:N}@example.test", ownerAdminId, editorAdminId, moderatorAdminId, platformAdminId, otherPlatformAdminId, forcedAdminId);
     }
 
-    private static async Task<string> AntiforgeryAsync(HttpClient client, string? cookie)
+    private static async Task AssertBannedAsync(HttpResponseMessage response)
     {
-        using var response = await SendAsync(client, HttpMethod.Get, "/api/antiforgery", cookie, null);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<BannedError>();
+        Assert.Equal("banned", error?.Error);
+    }
+
+    private static async Task AssertDeletedIdentityAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.DoesNotContain("banned", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    private async Task InsertLoginCodeAsync(string email, string code)
+    {
+        var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes("platform-test-email-auth-secret"), Encoding.UTF8.GetBytes(code));
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        await owner.ExecuteAsync("""
+            insert into login_codes (email, code_hash, expires_at)
+            values (@email, @hash, now() + interval '10 minutes')
+            on conflict (email) do update set code_hash = excluded.code_hash, attempts = 0, expires_at = excluded.expires_at
+            """, new { email, hash });
+    }
+
+    private static async Task<string> AntiforgeryAsync(HttpClient client, string? cookie, string host = TenantHost)
+    {
+        using var response = await SendAsync(client, HttpMethod.Get, "/api/antiforgery", cookie, null, host: host);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store, no-cache, max-age=0", response.Headers.CacheControl?.ToString());
         return (await response.Content.ReadFromJsonAsync<AntiforgeryResponse>())!.Token;
@@ -451,10 +742,11 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         string? cookie,
         string? csrf,
         string? origin = null,
-        HttpContent? content = null)
+        HttpContent? content = null,
+        string host = TenantHost)
     {
         using var request = new HttpRequestMessage(method, path) { Content = content };
-        request.Headers.Host = TenantHost;
+        request.Headers.Host = host;
         if (cookie is not null) request.Headers.TryAddWithoutValidation("Cookie", $"__Host-qp={cookie}");
         if (csrf is not null) request.Headers.TryAddWithoutValidation("X-CSRF", csrf);
         if (origin is not null) request.Headers.TryAddWithoutValidation("Origin", origin);
@@ -490,6 +782,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     }
 
     private sealed record AntiforgeryResponse(string Token);
+    private sealed record BannedError(string Error);
     private sealed record AuditPage(IReadOnlyList<AuditItem> Items, long? Next);
     private sealed record AuditItem(long Id, Guid? ActorId);
     private sealed record AuditRow(Guid? ActorId, string Action, string TargetType, string Data);

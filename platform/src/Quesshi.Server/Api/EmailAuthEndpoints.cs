@@ -68,7 +68,7 @@ public sealed class EmailAuthEndpoints : ICoreRouteModule
         var player = await service.GetTenantPlayerAsync(tenant.Id, accountId.Value, cancellationToken);
         if (player.State == TenantPlayerState.Unavailable)
         {
-            return Results.Forbid();
+            return Results.Unauthorized();
         }
         if (player.State == TenantPlayerState.Live)
         {

@@ -101,7 +101,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static async Task ResetNewContractAsync(NpgsqlConnection owner)
     {
-        await ExecuteAsync(owner, $"delete from schema_migrations where name in ('{MigrationName}', '{LaterMigrationName}', '{CategoryMigrationName}'); drop table categories; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
+        await ExecuteAsync(owner, $"delete from schema_migrations where name in ('{MigrationName}', '{LaterMigrationName}', '{CategoryMigrationName}', '20261016T0100_core_player_bans.sql'); drop table categories; drop function revoke_player_sessions(uuid); alter table auth_sessions drop column revoked_at; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
         await ExecuteAsync(owner, "delete from tenants where id in (@a, @b)", ("a", TenantA), ("b", TenantB));
     }
 

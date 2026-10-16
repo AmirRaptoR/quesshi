@@ -8,6 +8,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Accounts;
+using Quesshi.Server.Security;
 using Quesshi.Server.Streaming;
 
 namespace Quesshi.Server.Tests;
@@ -85,7 +86,7 @@ public sealed class StreamingSubscriptionTests
         var otherTenant = Guid.NewGuid();
         var notifications = new Notifications();
         var hub = new StreamHub(null!, null!, null!, null!, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var first = hub.Subscribe(tenant, "first", null);
         var second = hub.Subscribe(tenant, "second", null);
         var other = hub.Subscribe(otherTenant, "other", null);
@@ -107,7 +108,7 @@ public sealed class StreamingSubscriptionTests
         var loader = new RecordingSnapshotLoader(State(session, 4, 1));
         var hub = new StreamHub(loader, new RecordingRenderer(), new FormatRegistry([new TestFormat()]),
             new ReconciliationDatabase(session, 4), notifications, new TestClock(DateTimeOffset.UnixEpoch),
-            NullLogger<StreamHub>.Instance);
+            NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var subscription = hub.Subscribe(tenant, "player-0", session);
 
         notifications.Publish(new StreamNotification.Reconnected());
@@ -121,7 +122,7 @@ public sealed class StreamingSubscriptionTests
     public async Task Reconciliation_failure_is_logged_and_does_not_escape()
     {
         var hub = new StreamHub(null!, null!, null!, new FailingTenantDb(), new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         hub.Subscribe(Guid.NewGuid(), "player", null);
 
         await hub.ReconcileAsync();
@@ -135,7 +136,7 @@ public sealed class StreamingSubscriptionTests
         var tenant = Guid.NewGuid();
         var player = Guid.NewGuid();
         var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var deleted = hub.Subscribe(tenant, player.ToString(), null);
         var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
 
@@ -148,17 +149,17 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public async Task Player_notification_closes_only_the_matching_deleted_players_stream()
+    public async Task Player_ban_revocation_hook_closes_only_the_matching_stream()
     {
         var tenant = Guid.NewGuid();
         var player = Guid.NewGuid();
         var notifications = new Notifications();
         var hub = new StreamHub(null!, null!, null!, null!, notifications,
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var deleted = hub.Subscribe(tenant, player.ToString(), null);
         var other = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
 
-        notifications.Publish(new StreamNotification.Player(tenant, player));
+        ((IPlayerAccessRevocationNotifier)hub).RevokePlayer(tenant, player);
 
         var message = await ReadAsync(deleted);
         Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
@@ -167,26 +168,10 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public async Task Reconciliation_revokes_a_deleted_player()
-    {
-        var tenant = Guid.NewGuid();
-        var player = Guid.NewGuid();
-        var hub = new StreamHub(null!, null!, null!, new ReconciliationDatabase(Guid.NewGuid(), 0), new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
-        var subscription = hub.Subscribe(tenant, player.ToString(), null);
-
-        await hub.ReconcileAsync();
-
-        var message = await ReadAsync(subscription);
-        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
-        hub.Dispose();
-    }
-
-    [Fact]
     public async Task Unsubscribing_the_last_watcher_releases_its_idle_render_gate()
     {
         var hub = new StreamHub(new MissingSnapshotLoader(), null!, null!, null!, new Notifications(),
-            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance);
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var subscription = hub.Subscribe(Guid.NewGuid(), "player", Guid.NewGuid());
 
         await hub.RenderInitialAsync(subscription, CancellationToken.None);
@@ -320,6 +305,15 @@ public sealed class StreamingSubscriptionTests
         hub.Dispose();
     }
 
+    private sealed class TestSessionLiveness : IStreamSessionLiveness
+    {
+        public static TestSessionLiveness Instance { get; } = new();
+
+        public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
+    }
+
     private sealed class Notifications : IStreamNotificationSource
     {
         public event Action<StreamNotification>? Received;
@@ -371,7 +365,7 @@ public sealed class StreamingSubscriptionTests
         TimeSpan? scoreCoalesceWindow = null) =>
         new(loader, renderer, new FormatRegistry([new TestFormat()]), null!, notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance,
-            scoreCoalesceWindow ?? TimeSpan.FromMilliseconds(250));
+            scoreCoalesceWindow ?? TimeSpan.FromMilliseconds(250), TestSessionLiveness.Instance);
 
     private static async Task<StreamMessage> ReadAsync(StreamSubscription subscription) =>
         await subscription.Messages.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));

@@ -27,7 +27,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = Sources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch), new TenantLocks());
         var first = new DefaultHttpContext();
         var second = new DefaultHttpContext();
         await sessions.IssueAccountAsync(first, seeded.FirstTenant, seeded.Account);
@@ -61,7 +61,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = Sources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch), new TenantLocks());
         await sessions.IssueAccountAsync(new DefaultHttpContext(), seeded.FirstTenant, seeded.Account);
         var notifier = new RecordingNotifier();
         var deletion = new AccountDeletionService(new FailingJobInsertSystemDb(new SystemDb(sources)), notifier);
@@ -83,7 +83,7 @@ public sealed class AccountDeletionDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await using var sources = Sources();
-        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch));
+        var sessions = new PlayerSessionService(sources, new TenantDb(sources), new TestClock(DateTimeOffset.UnixEpoch), new TenantLocks());
         var deletion = new AccountDeletionService(new SystemDb(sources), new RecordingNotifier());
         await using var owner = await OpenAsync();
         await using var accountLock = await owner.BeginTransactionAsync();
