@@ -204,10 +204,10 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             drop table auth_rate_limits;
             drop table rate_limits;
             drop table data_protection_keys;
-            alter table session_items drop constraint session_items_question_fk;
-            alter table session_items drop constraint session_items_category_fk;
-            drop table questions;
-            drop table categories;
+            alter table session_items drop constraint if exists session_items_question_fk;
+            alter table session_items drop constraint if exists session_items_category_fk;
+            drop table if exists questions;
+            drop table if exists categories;
             delete from schema_migrations where name = '20261015T0204_core_admin_identity_audit.sql';
             delete from schema_migrations where name = '20261013T0203_core_effects.sql';
             delete from schema_migrations where name = '20261013T0202_core_identity_security.sql';
