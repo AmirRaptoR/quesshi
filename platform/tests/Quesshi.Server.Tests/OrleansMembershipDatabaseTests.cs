@@ -139,8 +139,8 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
 
         await using var first = Program.CreateApplication(CreateSources(), 11123, 30123);
         await using var second = Program.CreateApplication(CreateSources(), 11124, 30124);
-        first.Urls.Add("http://127.0.0.1:50123");
-        second.Urls.Add("http://127.0.0.1:50124");
+        first.Urls.Add("http://127.0.0.1:0");
+        second.Urls.Add("http://127.0.0.1:0");
         await first.StartAsync();
         await second.StartAsync();
 
