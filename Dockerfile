@@ -3,6 +3,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+ARG QUESSHI_VERSION
+ARG QUESSHI_COMMIT
+ARG QUESSHI_BUILT_AT
+
 # Project files first, so a change to source does not re-download every package.
 COPY src/Quesshi.Domain/*.csproj                 src/Quesshi.Domain/
 COPY src/Quesshi.Application/*.csproj            src/Quesshi.Application/
@@ -15,7 +19,10 @@ COPY src/Quesshi.Server/*.csproj                 src/Quesshi.Server/
 RUN dotnet restore src/Quesshi.Server/Quesshi.Server.csproj
 
 COPY src/ src/
-RUN dotnet publish src/Quesshi.Server/Quesshi.Server.csproj -c Release -o /app --no-restore
+RUN dotnet publish src/Quesshi.Server/Quesshi.Server.csproj -c Release -o /app --no-restore \
+    -p:QuesshiVersion="$QUESSHI_VERSION" \
+    -p:QuesshiCommit="$QUESSHI_COMMIT" \
+    -p:QuesshiBuiltAt="$QUESSHI_BUILT_AT"
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app

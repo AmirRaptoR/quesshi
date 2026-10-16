@@ -8,7 +8,12 @@ name: quesshi
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        QUESSHI_VERSION: ${QUESSHI_VERSION:-}
+        QUESSHI_COMMIT: ${QUESSHI_COMMIT:-}
+        QUESSHI_BUILT_AT: ${QUESSHI_BUILT_AT:-}
     image: quesshi:${TAG:-local}
     container_name: quesshi-app
     depends_on: [mongo, redis]

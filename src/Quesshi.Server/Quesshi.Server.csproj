@@ -22,7 +22,18 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <QuesshiService Condition="'$(QuesshiService)' == ''">quesshi</QuesshiService>
+    <QuesshiVersion Condition="'$(QuesshiVersion)' == ''">development</QuesshiVersion>
+    <QuesshiCommit Condition="'$(QuesshiCommit)' == ''">development</QuesshiCommit>
+    <QuesshiBuiltAt Condition="'$(QuesshiBuiltAt)' == ''">development</QuesshiBuiltAt>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="QuesshiService" Value="$(QuesshiService)" />
+    <AssemblyMetadata Include="QuesshiVersion" Value="$(QuesshiVersion)" />
+    <AssemblyMetadata Include="QuesshiCommit" Value="$(QuesshiCommit)" />
+    <AssemblyMetadata Include="QuesshiBuiltAt" Value="$(QuesshiBuiltAt)" />
+  </ItemGroup>
 
   <!-- Seed data and server-side translations are read from disk at runtime. -->
   <ItemGroup>

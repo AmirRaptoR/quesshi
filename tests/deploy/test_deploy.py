@@ -10,6 +10,8 @@ import unittest
 REPOSITORY = Path(__file__).resolve().parents[2]
 SCRIPT = REPOSITORY / "deploy" / "deploy.sh"
 COMMIT = "a" * 40
+VERSION = "0.1.0+12.aaaaaaaa"
+BUILT_AT = "2026-10-15T17:32:00Z"
 
 
 class DeploymentTests(unittest.TestCase):
@@ -60,12 +62,13 @@ class DeploymentTests(unittest.TestCase):
         docker.write_text(
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
-            "printf '%s TAG=%s\\n' \"$*\" \"${TAG:-}\" >> \"$FAKE_DOCKER_LOG\"\n"
+            "printf '%s TAG=%s VERSION=%s COMMIT=%s BUILT_AT=%s\\n' \"$*\" \"${TAG:-}\" \"${QUESSHI_VERSION:-}\" \"${QUESSHI_COMMIT:-}\" \"${QUESSHI_BUILT_AT:-}\" >> \"$FAKE_DOCKER_LOG\"\n"
             "case \"$*\" in\n"
             "  *'config --format json'*) cat \"$FAKE_COMPOSE_CONFIG\" ;;\n"
             "  'volume inspect '*) [[ \"${FAKE_MISSING_VOLUME:-}\" != \"${*:3}\" ]] ;;\n"
             "  'inspect --format {{.Image}} quesshi-app') echo sha256:previous ;;\n"
             "  'inspect --format {{.State.Health.Status}} quesshi-app') if [[ \"${TAG:-}\" == rollback-* ]]; then echo healthy; else echo \"${FAKE_HEALTH_STATUS:-healthy}\"; fi ;;\n"
+            "  'exec quesshi-app curl -sf http://127.0.0.1:8080/version') printf '{\\\"commit\\\":\\\"%s\\\"}\\n' \"${FAKE_SERVED_COMMIT:-" + COMMIT + "}\" ;;\n"
             "  'image ls quesshi --format {{.Tag}}') [[ -z \"${FAKE_IMAGE_TAGS:-}\" ]] || printf '%s\\n' ${FAKE_IMAGE_TAGS} ;;\n"
             "  *' build app') [[ \"${FAKE_BUILD_FAILURE:-0}\" != 1 ]] ;;\n"
             "  *' up -d --no-deps app'*) [[ \"${TAG:-}\" == rollback-* || \"${FAKE_SWITCH_FAILURE:-0}\" != 1 ]] ;;\n"
@@ -97,7 +100,7 @@ class DeploymentTests(unittest.TestCase):
             }
         )
         return subprocess.run(
-            ["bash", str(self.release / "deploy" / "deploy.sh"), COMMIT, run_number, run_attempt],
+            ["bash", str(self.release / "deploy" / "deploy.sh"), COMMIT, run_number, run_attempt, VERSION, BUILT_AT],
             text=True,
             capture_output=True,
             env=env,
@@ -118,13 +121,31 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue(any("volume inspect quesshi-existing-mongo" in call for call in calls))
         self.assertTrue(any("volume inspect quesshi-existing-redis" in call for call in calls))
         self.assertTrue(any(f"TAG={COMMIT}" in call and "build app" in call for call in calls))
+        self.assertTrue(any(f"VERSION={VERSION} COMMIT={COMMIT} BUILT_AT={BUILT_AT}" in call and "build app" in call for call in calls))
         self.assertTrue(any(f"TAG={COMMIT}" in call and "up -d --no-deps app" in call for call in calls))
+        self.assertTrue(any("curl -sf http://127.0.0.1:8080/version" in call for call in calls))
         self.assertFalse(any(" up -d " in call and "mongo" in call for call in calls))
         self.assertFalse(any(" down " in call or "volume rm" in call for call in calls))
         self.assertEqual("uploaded", (self.uploads / "keep.jpg").read_text())
         self.assertEqual("sourced", (self.sourced / "keep.jpg").read_text())
         self.assertTrue((self.root / ".env").is_file())
         self.assertTrue((self.root / "appsettings.Production.json").is_file())
+
+    def test_commit_mismatch_restores_previous_image_and_keeps_state(self):
+        previous_state = {"commit": "b" * 40, "run_number": 9, "run_attempt": 1}
+        (self.root / ".deployment-state").write_text(json.dumps(previous_state))
+        previous_release = self.install_previous_release(previous_state["commit"])
+
+        result = self.run_deploy(FAKE_SERVED_COMMIT="c" * 40)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("did not report the shipped commit", result.stderr)
+        state = json.loads((self.root / ".deployment-state").read_text())
+        self.assertEqual(previous_state["commit"], state["commit"])
+        switches = [call for call in self.calls() if "up -d --no-deps app" in call]
+        self.assertEqual(2, len(switches))
+        self.assertIn(f"TAG=rollback-{COMMIT}", switches[-1])
+        self.assertIn(f"-f {previous_release}/compose.yaml", switches[-1])
 
     def test_missing_persistent_path_fails_before_build(self):
         for path, message in (

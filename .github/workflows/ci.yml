@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -44,6 +46,9 @@ jobs:
       - name: Test deployment script
         run: python3 -m unittest discover --start-directory tests/deploy --verbose
 
+      - name: Test release version calculation
+        run: python3 -m unittest discover --start-directory tests/version --verbose
+
       - name: Build
         run: dotnet build Quesshi.slnx --no-restore --configuration Release
 
@@ -53,6 +58,14 @@ jobs:
         env:
           QUESSHI_TEST_MONGO: mongodb://127.0.0.1:27017
         run: dotnet test Quesshi.slnx --no-build --configuration Release --logger "trx;LogFileName=test-results.trx"
+
+      - name: Verify baked metadata response
+        run: >-
+          dotnet test tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --configuration Release
+          --filter "FullyQualifiedName~Server_assembly_metadata_is_served_by_the_version_route"
+          -p:QuesshiVersion=0.1.0+1.0123456
+          -p:QuesshiCommit=0123456789abcdef0123456789abcdef01234567
+          -p:QuesshiBuiltAt=2026-10-15T17:32:00Z
 
       - name: Upload test results
         if: always()
@@ -76,6 +89,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Calculate build metadata
+        run: |
+          set -euo pipefail
+          eval "$(scripts/version-info.sh "$GITHUB_SHA")"
+          printf 'QUESSHI_BUILT_AT=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+          printf 'QUESSHI_VERSION=%s\n' "$QUESSHI_VERSION" >> "$GITHUB_ENV"
+          printf 'QUESSHI_COMMIT=%s\n' "$QUESSHI_COMMIT" >> "$GITHUB_ENV"
 
       - name: Configure verified SSH access
         env:
@@ -103,4 +125,4 @@ jobs:
             | ssh "${ssh_options[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
                 "rm -rf -- '$incoming' && install -d -m 700 '$incoming' && tar -xf - -C '$incoming' && rm -rf -- '$release' && mv -- '$incoming' '$release'"
           ssh "${ssh_options[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash '$release/deploy/deploy.sh' '$GITHUB_SHA' '$GITHUB_RUN_NUMBER' '$GITHUB_RUN_ATTEMPT'"
+            "bash '$release/deploy/deploy.sh' '$QUESSHI_COMMIT' '$GITHUB_RUN_NUMBER' '$GITHUB_RUN_ATTEMPT' '$QUESSHI_VERSION' '$QUESSHI_BUILT_AT'"

@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <QuesshiService Condition="'$(QuesshiService)' == ''">quesshi</QuesshiService>
+    <QuesshiVersion Condition="'$(QuesshiVersion)' == ''">development</QuesshiVersion>
+    <QuesshiCommit Condition="'$(QuesshiCommit)' == ''">development</QuesshiCommit>
+    <QuesshiBuiltAt Condition="'$(QuesshiBuiltAt)' == ''">development</QuesshiBuiltAt>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +24,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="ExpectedQuesshiService" Value="$(QuesshiService)" />
+    <AssemblyMetadata Include="ExpectedQuesshiVersion" Value="$(QuesshiVersion)" />
+    <AssemblyMetadata Include="ExpectedQuesshiCommit" Value="$(QuesshiCommit)" />
+    <AssemblyMetadata Include="ExpectedQuesshiBuiltAt" Value="$(QuesshiBuiltAt)" />
   </ItemGroup>
 
   <ItemGroup>
