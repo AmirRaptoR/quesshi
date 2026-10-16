@@ -32,8 +32,11 @@ public interface IPlayerSessionIssuer
 internal interface IPlayerSessionResolver
 {
     Task<PlayerIdentity?> ResolveAsync(Guid tenantId, string token, CancellationToken cancellationToken = default);
+    Task<PlayerSessionResolution> ResolveWithStatusAsync(Guid tenantId, string token, CancellationToken cancellationToken = default);
     Task RevokeAsync(string token, CancellationToken cancellationToken = default);
 }
+
+internal sealed record PlayerSessionResolution(PlayerIdentity? Player, bool IsBanned);
 
 internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb tenantDb, IClock clock) : IPlayerSessionIssuer, IPlayerSessionResolver
 {
@@ -78,7 +81,7 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
             // path. A purge tombstone is the only unavailable state.
             var player = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
                 select id from players
-                where id = @playerId and deleted_at is null
+                where id = @playerId and deleted_at is null and banned_at is null
                 for key share
                 """, new { playerId }, cancellationToken);
             if (player is null) throw new InvalidOperationException("The guest player is not available.");
@@ -95,28 +98,35 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
     }
 
     public async Task<PlayerIdentity?> ResolveAsync(Guid tenantId, string token, CancellationToken cancellationToken = default)
+        => (await ResolveWithStatusAsync(tenantId, token, cancellationToken)).Player;
+
+    public async Task<PlayerSessionResolution> ResolveWithStatusAsync(Guid tenantId, string token, CancellationToken cancellationToken = default)
     {
-        if (!TryTokenHash(token, out var hash)) return null;
+        if (!TryTokenHash(token, out var hash)) return new(null, false);
         await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
         var session = await connection.QuerySingleOrDefaultAsync<SessionRow>(new CommandDefinition("""
-            select tenant_id as TenantId, account_id as AccountId, guest_id as GuestId
+            select tenant_id as TenantId, account_id as AccountId, guest_id as GuestId, revoked_at as RevokedAt
             from auth_sessions
             where token_hash = @hash and tenant_id = @tenantId and expires_at > now()
             """, new { hash, tenantId }, cancellationToken: cancellationToken));
-        if (session is null) return null;
+        if (session is null) return new(null, false);
 
         if (session.GuestId is { } guestId)
         {
-            var livePlayerId = await LivePlayerAsync(tenantId, guestId, cancellationToken);
-            return livePlayerId is null ? null : new PlayerIdentity(tenantId, livePlayerId.Value, null, true);
+            var player = await PlayerAsync(tenantId, guestId, cancellationToken);
+            if (player is null) return new(null, false);
+            if (player.BannedAt is not null) return new(null, true);
+            return new(session.RevokedAt is null ? new PlayerIdentity(tenantId, player.Id, null, true) : null, false);
         }
-        if (session.AccountId is not { } accountId) return null;
-        var playerId = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
-            select player_id from account_players(@accountId) where tenant_id = @tenantId
-            and exists (select 1 from accounts where id = @accountId and deleted_at is null)
-            """, new { accountId, tenantId }, cancellationToken: cancellationToken));
-        return playerId is null ? null : new PlayerIdentity(tenantId, playerId.Value, accountId, false);
+        if (session.AccountId is not { } accountId) return new(null, false);
+        var account = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+            "select id from accounts where id = @accountId and deleted_at is null", new { accountId }, cancellationToken: cancellationToken));
+        if (account is null) return new(null, false);
+        var accountPlayer = await AccountPlayerAsync(tenantId, accountId, cancellationToken);
+        if (accountPlayer is null) return new(null, false);
+        if (accountPlayer.BannedAt is not null) return new(null, true);
+        return new(session.RevokedAt is null ? new PlayerIdentity(tenantId, accountPlayer.Id, accountId, false) : null, false);
     }
 
     public async Task RevokeAsync(string token, CancellationToken cancellationToken = default)
@@ -127,10 +137,15 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
         await connection.ExecuteAsync(new CommandDefinition("delete from auth_sessions where token_hash = @hash", new { hash }, cancellationToken: cancellationToken));
     }
 
-    private Task<Guid?> LivePlayerAsync(Guid tenantId, Guid playerId, CancellationToken cancellationToken) =>
-        tenantDb.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<Guid?>("""
-            select id from players where id = @playerId and deleted_at is null
-            """, new { playerId }, cancellationToken), cancellationToken: cancellationToken);
+    private Task<PlayerRow?> PlayerAsync(Guid tenantId, Guid playerId, CancellationToken cancellationToken) =>
+        tenantDb.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<PlayerRow>("""
+            select id as Id, banned_at as BannedAt from players where id = @playerId and deleted_at is null
+            """, new { playerId }, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
+
+    private Task<PlayerRow?> AccountPlayerAsync(Guid tenantId, Guid accountId, CancellationToken cancellationToken) =>
+        tenantDb.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<PlayerRow>("""
+            select id as Id, banned_at as BannedAt from players where account_id = @accountId and deleted_at is null
+            """, new { accountId }, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
 
     private static bool TryTokenHash(string token, out byte[] hash)
     {
@@ -155,7 +170,8 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
         Expires = clock.Now.Add(Lifetime)
     });
 
-    private sealed record SessionRow(Guid TenantId, Guid? AccountId, Guid? GuestId);
+    private sealed record SessionRow(Guid TenantId, Guid? AccountId, Guid? GuestId, DateTimeOffset? RevokedAt);
+    private sealed record PlayerRow(Guid Id, DateTimeOffset? BannedAt);
 }
 
 internal sealed class PlayerSessionMiddleware(RequestDelegate next)
@@ -165,8 +181,9 @@ internal sealed class PlayerSessionMiddleware(RequestDelegate next)
         var tenant = TenantResolutionMiddleware.GetTenant(context);
         if (tenant is not null && context.Request.Cookies.TryGetValue(PlayerSessionService.CookieName, out var token))
         {
-            var player = await sessions.ResolveAsync(tenant.Id, token, context.RequestAborted);
-            if (player is not null)
+            var resolution = await sessions.ResolveWithStatusAsync(tenant.Id, token, context.RequestAborted);
+            if (resolution.IsBanned) context.Items[typeof(BannedPlayer)] = BannedPlayer.Value;
+            if (resolution.Player is { } player)
             {
                 context.Items[typeof(PlayerIdentity)] = player;
                 context.User = new ClaimsPrincipal(new ClaimsIdentity(
@@ -258,4 +275,11 @@ internal static class PlayerSecurityApplicationBuilderExtensions
     public static IApplicationBuilder UsePlayerSessionAuthentication(this IApplicationBuilder app) => app.UseMiddleware<PlayerSessionMiddleware>();
 
     internal static PlayerIdentity? Player(this HttpContext context) => context.Items.TryGetValue(typeof(PlayerIdentity), out var value) ? value as PlayerIdentity : null;
+
+    internal static bool IsBannedPlayer(this HttpContext context) => context.Items.ContainsKey(typeof(BannedPlayer));
+}
+
+internal sealed class BannedPlayer
+{
+    public static BannedPlayer Value { get; } = new();
 }

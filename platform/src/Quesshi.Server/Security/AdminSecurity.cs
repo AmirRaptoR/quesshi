@@ -9,6 +9,7 @@ using Quesshi.Infrastructure.Identity;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Security;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Streaming;
 using Quesshi.Server.Tenants;
 
 namespace Quesshi.Server.Security;
@@ -163,6 +164,8 @@ public static class AdminServices
         services.AddSingleton<IAdminPasswordResetMailer, SmtpAdminMailer>();
         services.AddSingleton<AdminAuthService>();
         services.AddSingleton<IAdminAccountManager, AdminAccountManager>();
+        services.AddSingleton<IPlayerBanManager, PlayerBanManager>();
+        services.AddSingleton<IPlayerAccessRevocationNotifier>(provider => provider.GetRequiredService<StreamHub>());
         services.AddSingleton<AdminSessionService>();
         services.AddSingleton<IAdminSessionIssuer>(provider => provider.GetRequiredService<AdminSessionService>());
         services.AddSingleton<IAdminSessionResolver>(provider => provider.GetRequiredService<AdminSessionService>());

@@ -206,6 +206,7 @@ create table auth_sessions (
   created_at   timestamptz not null default now(),
   last_used_at timestamptz not null default now(),
   expires_at   timestamptz not null,
+  revoked_at   timestamptz,
   foreign key (tenant_id, guest_id) references players on delete cascade,
   check (num_nonnulls(account_id, guest_id, admin_id) = 1)
 );
@@ -213,6 +214,7 @@ create index auth_sessions_account on auth_sessions (account_id) where account_i
 create index auth_sessions_guest on auth_sessions (tenant_id, guest_id) where guest_id is not null;
 create index auth_sessions_admin on auth_sessions (admin_id) where admin_id is not null;
 create index auth_sessions_expiry on auth_sessions (expires_at);
+create index auth_sessions_revoked on auth_sessions (tenant_id, revoked_at) where revoked_at is null;
 
 -- plugin: friends. Friendship is mutual, as today: adding or removing writes or deletes both
 -- directions in one transaction, under both players' locks.
@@ -916,10 +918,32 @@ begin
   end if;
 end $$;
 
+-- Revokes the current tenant's sessions for a player. The row remains so the request boundary can
+-- report a ban without exposing that state to unauthenticated code verification.
+create function revoke_player_sessions(for_player uuid) returns void
+  language plpgsql security definer set search_path = public as $$
+declare
+  current_tenant uuid := app_tenant();
+  player_account uuid;
+begin
+  select account_id into player_account
+  from players
+  where tenant_id = current_tenant and id = for_player and deleted_at is null
+  for key share;
+  if not found then return; end if;
+
+  update auth_sessions
+  set revoked_at = now()
+  where tenant_id = current_tenant and revoked_at is null
+    and (guest_id = for_player or (player_account is not null and account_id = player_account));
+end $$;
+
 revoke all on function due_sessions(timestamptz, int, uuid[]) from public, quesshi_app;
 grant execute on function due_sessions(timestamptz, int, uuid[]) to quesshi_system;
 grant execute on function account_players(uuid) to quesshi_system;
 grant execute on function claim_account(uuid) to quesshi_app;
+revoke all on function revoke_player_sessions(uuid) from public, quesshi_system;
+grant execute on function revoke_player_sessions(uuid) to quesshi_app;
 
 -- ───────────────────────── Orleans ─────────────────────────
 -- Orleans keeps only its cluster membership in PostgreSQL, in its own schema. It holds silo

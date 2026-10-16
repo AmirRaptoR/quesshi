@@ -195,6 +195,7 @@ internal static class RouteSecurity
 
     private static async ValueTask<object?> RequirePlayerAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
+        if (context.HttpContext.IsBannedPlayer()) return Results.Json(new { error = "banned" }, statusCode: StatusCodes.Status403Forbidden);
         var player = context.HttpContext.Player();
         if (player is null) return Results.Unauthorized();
         if (player.IsGuest && context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<AllowGuestsMetadata>() is null)

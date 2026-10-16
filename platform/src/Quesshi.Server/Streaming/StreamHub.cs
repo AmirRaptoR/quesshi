@@ -5,6 +5,7 @@ using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Accounts;
+using Quesshi.Server.Security;
 
 namespace Quesshi.Server.Streaming;
 
@@ -102,7 +103,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 /// Per-silo stream coordinator. It performs one snapshot/shared render for each watched session
 /// and only keeps the newest personal view per client.
 /// </summary>
-internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
+internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, IPlayerAccessRevocationNotifier
 {
     private static readonly TimeSpan ScoreCoalesceWindow = TimeSpan.FromMilliseconds(250);
     private readonly ISessionSnapshotLoader snapshots;
@@ -223,7 +224,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                     : await transaction.QueryAsync<Guid>("""
                         select id
                         from players
-                        where id = any(@playerIds) and deleted_at is null
+                        where id = any(@playerIds) and deleted_at is null and banned_at is null
                         """, new { playerIds = players }, cancellationToken);
                 var configVersion = await transaction.QuerySingleOrDefaultAsync<long?>(
                     "select config_version from tenants where id = @tenantId", new { tenantId = tenant.Key }, cancellationToken);
@@ -273,6 +274,8 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier
                 break;
         }
     }
+
+    public void RevokePlayer(Guid tenantId, Guid playerId) => Deleted([new AccountDeletionPlayer(tenantId, playerId)]);
 
     private async Task CoalescedRenderAsync(Guid tenantId, Guid sessionId, SessionRenderSchedule schedule)
     {
