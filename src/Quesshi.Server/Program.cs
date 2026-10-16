@@ -12,6 +12,7 @@ using Quesshi.Infrastructure.Security;
 using Quesshi.Infrastructure.Mongo;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Redis;
+using Quesshi.Server;
 using Quesshi.Server.Api;
 using Quesshi.Server.Auth;
 using Quesshi.Server.Hubs;
@@ -250,7 +251,7 @@ app.UseAuthorization();
 
 app.MapStaticAssets();
 
-app.MapGet("/health", () => Results.Ok(new { ok = true }));
+app.MapVersionEndpoints(BuildMetadata.FromAssembly());
 app.MapTenantSettings();
 app.MapHub<Quesshi.Server.Live.LobbyHub>("/hub/lobby");
 app.MapAuth();

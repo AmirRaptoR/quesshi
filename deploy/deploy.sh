@@ -4,6 +4,8 @@ set -euo pipefail
 readonly commit="${1:-}"
 readonly run_number="${2:-}"
 readonly run_attempt="${3:-}"
+readonly version="${4:-}"
+readonly built_at="${5:-}"
 readonly deploy_root="${QUESSHI_DEPLOY_ROOT:-/opt/quesshi}"
 readonly release_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly state_file="$deploy_root/.deployment-state"
@@ -19,6 +21,10 @@ fail() {
 [[ "$commit" =~ ^[0-9a-f]{40,64}$ ]] || fail 'expected a full commit SHA'
 [[ "$run_number" =~ ^[1-9][0-9]*$ ]] || fail 'expected a positive GitHub run number'
 [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || fail 'expected a positive GitHub run attempt'
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[1-9][0-9]*\.[0-9a-f]+)?$ ]] \
+    || fail 'expected a release-tag-derived semantic version'
+[[ "$built_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
+    || fail 'expected a UTC ISO 8601 build timestamp'
 [[ "$health_timeout" =~ ^[0-9]+$ && "$health_poll" =~ ^[1-9][0-9]*$ ]] \
     || fail 'health timeout and poll interval must be integer seconds'
 
@@ -92,7 +98,8 @@ if docker inspect --format '{{.Image}}' quesshi-app >/dev/null 2>&1; then
 fi
 
 printf 'Building tested commit %s.\n' "$commit"
-TAG="$commit" compose build app || fail 'image build failed; the running app was left untouched'
+TAG="$commit" QUESSHI_VERSION="$version" QUESSHI_COMMIT="$commit" QUESSHI_BUILT_AT="$built_at" \
+    compose build app || fail 'image build failed; the running app was left untouched'
 
 rollback_image="quesshi:rollback-$commit"
 rollback() {
@@ -129,6 +136,18 @@ wait_for_healthy() {
     return 1
 }
 
+verify_deployed_commit() {
+    local served_commit=''
+    if ! served_commit="$(docker exec quesshi-app curl -sf http://127.0.0.1:8080/version | jq -er '.commit | strings')"; then
+        printf 'Could not read the running application version response.\n' >&2
+        return 1
+    fi
+    if [[ "$served_commit" != "$commit" ]]; then
+        printf 'Running application reports commit %s, expected %s.\n' "$served_commit" "$commit" >&2
+        return 1
+    fi
+}
+
 if ! TAG="$commit" compose up -d --no-deps app; then
     printf 'Application switch failed.\n' >&2
     rollback
@@ -136,6 +155,11 @@ if ! TAG="$commit" compose up -d --no-deps app; then
 fi
 if ! wait_for_healthy; then
     printf 'New application did not pass its /health container check.\n' >&2
+    rollback
+    exit 1
+fi
+if ! verify_deployed_commit; then
+    printf 'New application did not report the shipped commit.\n' >&2
     rollback
     exit 1
 fi
