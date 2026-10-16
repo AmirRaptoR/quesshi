@@ -216,7 +216,8 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertTenantAsync(owner, otherTenant);
         await InsertPlayersAsync(owner, tenant, 2);
 
-        await using var app = Program.CreateApplication(Sources(), 11131, 30131);
+        await using var sources = Sources();
+        await using var app = Program.CreateApplication(sources, 11131, 30131);
         app.Urls.Add("http://127.0.0.1:50131");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -260,7 +261,8 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertParticipantsAsync(owner, tenant, session, 2);
         await InsertPollChoiceItemAsync(owner, tenant, session);
 
-        await using var app = Program.CreateApplication(Sources(), 11132, 30132);
+        await using var sources = Sources();
+        await using var app = Program.CreateApplication(sources, 11132, 30132);
         app.Urls.Add("http://127.0.0.1:50132");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();

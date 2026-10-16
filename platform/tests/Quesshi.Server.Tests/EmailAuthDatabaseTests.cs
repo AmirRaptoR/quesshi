@@ -12,10 +12,11 @@ using Quesshi.Testing;
 namespace Quesshi.Server.Tests;
 
 [Collection("PostgreSQL")]
-public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
+public sealed class EmailAuthDatabaseTests(PostgresFixture fixture) : IAsyncLifetime
 {
     private static readonly Guid TenantA = Guid.Parse("5c17c8d3-a33c-4a82-a10f-b216262a0449");
     private static readonly Guid TenantB = Guid.Parse("1d0fa565-2d0c-4949-a4b5-1370d5d78e45");
+    private DatabaseSources? serviceSources;
 
     [SkippableFact]
     public async Task Codes_are_hashed_rate_limited_and_consumed_once()
@@ -202,11 +203,18 @@ public sealed class EmailAuthDatabaseTests(PostgresFixture fixture)
     }
 
     private EmailAuthService CreateService(CapturingSender sender, int emailLimit = 5, int addressLimit = 20) => new(
-        new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system")),
-        new TenantDb(new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"))),
+        ServiceSources,
+        new TenantDb(ServiceSources),
         Encoding.UTF8.GetBytes("email-auth-test-secret"),
         new EmailAuthOptions(emailLimit, addressLimit, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10)),
         sender);
+
+    private DatabaseSources ServiceSources => serviceSources ??= new DatabaseSources(
+        fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public Task DisposeAsync() => serviceSources?.DisposeAsync().AsTask() ?? Task.CompletedTask;
 
     private DatabaseSources CreateSources() => new(
         fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));

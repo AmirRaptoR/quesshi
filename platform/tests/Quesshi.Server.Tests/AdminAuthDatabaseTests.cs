@@ -20,6 +20,7 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLifetime
 {
+    private readonly List<DatabaseSources> applicationSources = [];
     private static readonly Guid TenantA = Guid.Parse("5c17c8d3-a33c-4a82-a10f-b216262a0449");
     private static readonly Guid TenantB = Guid.Parse("1d0fa565-2d0c-4949-a4b5-1370d5d78e45");
 
@@ -260,6 +261,11 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
 
     public async Task DisposeAsync()
     {
+        foreach (var sources in applicationSources)
+        {
+            await sources.DisposeAsync();
+        }
+
         if (fixture.ConnectionString is null) return;
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
@@ -301,7 +307,9 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
 
     private async Task<WebApplication> StartAsync()
     {
-        var app = Program.CreateApplication(Sources(), 11149, 30149);
+        var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        applicationSources.Add(sources);
+        var app = Program.CreateApplication(sources, 11149, 30149);
         app.Urls.Add("http://127.0.0.1:50149");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();

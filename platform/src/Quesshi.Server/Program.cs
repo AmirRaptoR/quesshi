@@ -180,7 +180,7 @@ public static class Program
         builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
         configureLogging?.Invoke(builder.Logging);
 
-        var sources = configuredSources ?? DatabaseSources.FromEnvironment();
+        var sources = configuredSources?.CreateLease() ?? DatabaseSources.FromEnvironment();
         builder.Services.AddSingleton(sources);
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         builder.Services.AddSingleton<IDatabaseClock, PostgresDatabaseClock>();

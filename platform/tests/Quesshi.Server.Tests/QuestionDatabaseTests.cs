@@ -13,6 +13,7 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class QuestionDatabaseTests(PostgresFixture fixture) : IAsyncLifetime
 {
+    private readonly List<DatabaseSources> applicationSources = [];
     private static readonly Guid TenantA = Guid.Parse("03d19c24-9139-4b31-a609-7d9a5af25364");
     private static readonly Guid TenantB = Guid.Parse("af7320b8-d2c4-46ee-b6d6-5d917be55fcf");
     private static readonly Guid CategoryA = Guid.Parse("e2b8cb9c-3cff-47d8-ab70-b3498bc52002");
@@ -376,6 +377,11 @@ public sealed class QuestionDatabaseTests(PostgresFixture fixture) : IAsyncLifet
 
     public async Task DisposeAsync()
     {
+        foreach (var sources in applicationSources)
+        {
+            await sources.DisposeAsync();
+        }
+
         if (fixture.ConnectionString is null) return;
         await using var owner = await OpenAsync("quesshi_owner");
         await ResetAsync(owner);
@@ -391,7 +397,12 @@ public sealed class QuestionDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         return owner;
     }
 
-    private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+    private DatabaseSources Sources()
+    {
+        var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        applicationSources.Add(sources);
+        return sources;
+    }
 
     private static QuestionWrite ValidQuestion(string prompt, string payload = "{\"options\":[\"Paris\",\"Lyon\",\"Nice\",\"Brest\"],\"correctIndex\":0}", string? topic = null) =>
         new("choice", 1, "trivia", "en", null, 2, prompt, JsonDocument.Parse(payload).RootElement.Clone(), null, topic, QuestionStatus.Pending, QuestionSource.Admin, null);

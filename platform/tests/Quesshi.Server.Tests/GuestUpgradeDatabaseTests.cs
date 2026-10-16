@@ -15,8 +15,9 @@ using Quesshi.Testing;
 namespace Quesshi.Server.Tests;
 
 [Collection("PostgreSQL")]
-public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
+public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture) : IAsyncLifetime
 {
+    private DatabaseSources? serviceSources;
     [SkippableFact]
     public async Task Valid_code_attaches_the_existing_guest_and_emits_an_upgrade_event()
     {
@@ -67,7 +68,7 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
             values (@tenant, @session, @upgraded, 0), (@tenant, @session, @guest, 1);
             """, new { tenant = TenantA, session = laterSession, code = $"upgrade-{laterSession:N}", owner = guest, upgraded = guest, guest = unupgradedGuest });
 
-        var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
         var snapshot = Assert.IsType<SessionState>(await new SessionSnapshotLoader(new TenantDb(sources)).LoadAsync(TenantA, laterSession));
         Assert.False(snapshot.Seats[guest.ToString()].IsGuest);
         Assert.True(snapshot.Seats[unupgradedGuest.ToString()].IsGuest);
@@ -153,7 +154,8 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
 
     private GuestUpgradeService CreateService(CapturingSender sender, RecordingEvents events)
     {
-        var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        var sources = serviceSources ??= new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
         return new GuestUpgradeService(new EmailAuthService(
             sources,
             new TenantDb(sources),
@@ -164,6 +166,10 @@ public sealed class GuestUpgradeDatabaseTests(PostgresFixture fixture)
             new TenantDb(sources),
             events);
     }
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public Task DisposeAsync() => serviceSources?.DisposeAsync().AsTask() ?? Task.CompletedTask;
 
     private async Task<NpgsqlConnection> PrepareAsync()
     {

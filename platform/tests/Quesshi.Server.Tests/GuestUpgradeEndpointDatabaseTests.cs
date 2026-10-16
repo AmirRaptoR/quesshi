@@ -16,8 +16,9 @@ using Quesshi.Testing;
 namespace Quesshi.Server.Tests;
 
 [Collection("PostgreSQL")]
-public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
+public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture) : IAsyncLifetime
 {
+    private readonly List<DatabaseSources> applicationSources = [];
     // 11161-11164 / 30161-30164 / 50161-50164 are reserved for this class.
     private static int nextHttpPort = 50160;
 
@@ -234,6 +235,7 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
     private async Task<WebApplication> StartAsync(int httpPort)
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        applicationSources.Add(sources);
         var app = Program.CreateApplication(sources, httpPort - 40000, httpPort - 20000);
         app.Urls.Add(LocalAddress(httpPort).ToString());
         try
@@ -246,6 +248,16 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         {
             await app.DisposeAsync();
             throw;
+        }
+    }
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
+    {
+        foreach (var sources in applicationSources)
+        {
+            await sources.DisposeAsync();
         }
     }
 

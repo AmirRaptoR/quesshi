@@ -16,8 +16,9 @@ using Quesshi.Testing;
 namespace Quesshi.Server.Tests;
 
 [Collection("PostgreSQL")]
-public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
+public sealed class GuestProfileDatabaseTests(PostgresFixture fixture) : IAsyncLifetime
 {
+    private readonly List<DatabaseSources> applicationSources = [];
     [SkippableFact]
     public async Task Guest_entry_honors_capability_antiforgery_and_issues_a_tenant_session()
     {
@@ -185,11 +186,22 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
     private async Task<WebApplication> StartAsync()
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+        applicationSources.Add(sources);
         var app = Program.CreateApplication(sources, 11147, 30147);
         app.Urls.Add("http://127.0.0.1:50147");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         return app;
+    }
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
+    {
+        foreach (var sources in applicationSources)
+        {
+            await sources.DisposeAsync();
+        }
     }
 
     private async Task<SeededTenant> SeedAsync(bool guestsEnabled)

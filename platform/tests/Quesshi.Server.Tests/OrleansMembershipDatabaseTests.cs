@@ -115,7 +115,8 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         await owner.ExecuteAsync("delete from public.schema_migrations where name = any(@names)", new { names = pending.Select(migration => migration.Name).ToArray() });
         try
         {
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => Program.ServeAsync(CreateSources()));
+            await using var sources = CreateSources();
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => Program.ServeAsync(sources));
             Assert.Contains("pending migration '20261013T0200_core_orleans.sql'", exception.Message);
             Assert.Contains("ConnectionStrings__Owner", exception.Message);
             Assert.Equal(membershipRowsBefore, await owner.ExecuteScalarAsync<long>("select count(*) from orleans.orleansmembershiptable where deploymentid = 'quesshi'"));
@@ -137,8 +138,10 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
 
-        await using var first = Program.CreateApplication(CreateSources(), 11123, 30123);
-        await using var second = Program.CreateApplication(CreateSources(), 11124, 30124);
+        await using var firstSources = CreateSources();
+        await using var secondSources = CreateSources();
+        await using var first = Program.CreateApplication(firstSources, 11123, 30123);
+        await using var second = Program.CreateApplication(secondSources, 11124, 30124);
         first.Urls.Add("http://127.0.0.1:0");
         second.Urls.Add("http://127.0.0.1:0");
         await first.StartAsync();
@@ -171,7 +174,8 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
 
-        await using var app = Program.CreateApplication(CreateSources(), 11125, 30125);
+        await using var sources = CreateSources();
+        await using var app = Program.CreateApplication(sources, 11125, 30125);
         app.Urls.Add("http://127.0.0.1:50125");
         await app.StartAsync();
         try

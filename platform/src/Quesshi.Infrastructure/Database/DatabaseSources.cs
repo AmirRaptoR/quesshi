@@ -11,6 +11,7 @@ public sealed class DatabaseSources : IAsyncDisposable
         RequiredConnectionString("ConnectionStrings__System"));
 
     private readonly IDatabasePoolObserver _poolObserver;
+    private readonly bool _ownsPools;
 
     public DatabaseSources(
         string appConnectionString,
@@ -27,6 +28,7 @@ public sealed class DatabaseSources : IAsyncDisposable
             Username = "quesshi_system",
             MaxPoolSize = 10
         }.ConnectionString;
+        _ownsPools = true;
     }
 
     internal NpgsqlDataSource App { get; }
@@ -34,6 +36,9 @@ public sealed class DatabaseSources : IAsyncDisposable
     internal NpgsqlDataSource System { get; }
 
     public string SystemConnectionString { get; }
+
+    /// <summary>Creates a non-owning view for a host that must not dispose caller-owned pools.</summary>
+    public DatabaseSources CreateLease() => new(App, System, SystemConnectionString, _poolObserver);
 
     internal async Task<NpgsqlConnection> OpenApplicationConnectionAsync(CancellationToken cancellationToken = default)
     {
@@ -50,8 +55,21 @@ public sealed class DatabaseSources : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (!_ownsPools) return;
         await App.DisposeAsync();
         await System.DisposeAsync();
+    }
+
+    private DatabaseSources(
+        NpgsqlDataSource application,
+        NpgsqlDataSource system,
+        string systemConnectionString,
+        IDatabasePoolObserver poolObserver)
+    {
+        App = application;
+        System = system;
+        SystemConnectionString = systemConnectionString;
+        _poolObserver = poolObserver;
     }
 
     private static NpgsqlDataSource Build(string connectionString, string role, int maximumPoolSize)
