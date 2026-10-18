@@ -57,6 +57,24 @@ public sealed class PlayerClientTests
     }
 
     [Fact]
+    public async Task Google_credential_submission_retries_once_with_a_refreshed_antiforgery_token()
+    {
+        var handler = new PlayerHandler(
+            Response(HttpStatusCode.OK, """{"token":"old"}"""),
+            Response(HttpStatusCode.BadRequest, """{"error":"invalid_antiforgery"}"""),
+            Response(HttpStatusCode.OK, """{"token":"fresh"}"""),
+            Response(HttpStatusCode.OK, """{"status":"signed_in"}"""));
+        var api = Api(handler);
+
+        var result = await api.SignInWithGoogleAsync("google-id-token");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("/api/auth/x/google", handler.Requests[1].Path);
+        Assert.Equal("{\"idToken\":\"google-id-token\"}", handler.Requests[1].Body);
+        Assert.Equal("fresh", handler.Requests[3].Csrf);
+    }
+
+    [Fact]
     public async Task Validation_failure_does_not_refresh_or_retry_a_mutation()
     {
         var handler = new PlayerHandler(
@@ -137,22 +155,24 @@ public sealed class PlayerClientTests
         private readonly Queue<object> responses = new(responses);
         public List<CapturedRequest> Requests { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             Requests.Add(new CapturedRequest(
                 request.RequestUri?.PathAndQuery ?? string.Empty,
                 request.Headers.TryGetValues("X-CSRF", out var csrf) ? csrf.Single() : null,
-                request.Headers.TryGetValues("X-Client-Build", out var build) ? build.Single() : null));
+                request.Headers.TryGetValues("X-Client-Build", out var build) ? build.Single() : null,
+                body));
             return responses.Dequeue() switch
             {
-                HttpResponseMessage response => Task.FromResult(response),
-                Exception exception => Task.FromException<HttpResponseMessage>(exception),
+                HttpResponseMessage response => response,
+                Exception exception => throw exception,
                 _ => throw new InvalidOperationException(),
             };
         }
     }
 
-    private sealed record CapturedRequest(string Path, string? Csrf, string? Build);
+    private sealed record CapturedRequest(string Path, string? Csrf, string? Build, string? Body);
 
     private sealed class NullReloader : IClientReloader
     {

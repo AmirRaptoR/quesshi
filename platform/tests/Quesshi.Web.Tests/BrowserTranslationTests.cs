@@ -10,6 +10,7 @@ namespace Quesshi.Web.Tests;
 /// </summary>
 public class BrowserTranslationTests
 {
+    private const string TranslationKeyPattern = "Translator\\[\\\"(?<key>[a-z]+(?:\\.[a-z][A-Za-z]*)+)\\\"";
     private static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "i18n");
     private static readonly string[] Languages = ["en", "fa", "nl"];
     private static readonly string[] BrowserSourceFolders =
@@ -65,7 +66,7 @@ public class BrowserTranslationTests
     {
         var keys = BrowserSourceFolders
             .SelectMany(folder => Directory.EnumerateFiles(folder, "*.razor"))
-            .SelectMany(path => Regex.Matches(File.ReadAllText(path), "\\\"(?<key>[a-z]+(?:\\.[a-z][A-Za-z]*)+)\\\"")
+            .SelectMany(path => Regex.Matches(File.ReadAllText(path), TranslationKeyPattern)
                 .Select(match => match.Groups["key"].Value))
             .ToHashSet(StringComparer.Ordinal);
 

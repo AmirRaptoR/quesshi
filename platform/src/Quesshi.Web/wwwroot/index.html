@@ -74,6 +74,38 @@
             loss: () => { note(440, 0, .14, 'sine', .15); note(330, .12, .2, 'sine', .15); }
           };
           return { armed: () => armed, play: name => { if (armed && cues[name]) cues[name](); } };
+        })(),
+        google: (() => {
+          let source;
+          const load = () => {
+            if (window.google?.accounts?.id) return Promise.resolve();
+            if (source) return source;
+            source = new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = 'https://accounts.google.com/gsi/client';
+              script.async = true;
+              script.onload = resolve;
+              script.onerror = () => reject(new Error('Google Identity Services could not load.'));
+              document.head.appendChild(script);
+            }).then(() => {
+              if (!window.google?.accounts?.id) throw new Error('Google Identity Services is unavailable.');
+            });
+            return source;
+          };
+          return {
+            render: async (element, clientId, receiver) => {
+              await load();
+              if (!element.isConnected) return;
+              element.replaceChildren();
+              window.google.accounts.id.initialize({
+                client_id: clientId,
+                callback: credential => {
+                  void receiver.invokeMethodAsync('GoogleCredentialAsync', credential?.credential ?? null);
+                }
+              });
+              window.google.accounts.id.renderButton(element, { theme: 'outline', size: 'large' });
+            }
+          };
         })()
       };
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');

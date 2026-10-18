@@ -25,6 +25,197 @@ public sealed class PlayerIdentityPageTests : BunitContext
     }
 
     [Fact]
+    public void Enabled_google_sign_in_method_renders_the_google_identity_button()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]"""));
+
+        var cut = Render<SignIn>();
+
+        Assert.Single(cut.FindAll("#google-sign-in"));
+    }
+
+    [Fact]
+    public void Missing_google_sign_in_method_does_not_render_the_google_identity_button()
+    {
+        UseServices(new PageHandler("[]"));
+
+        var cut = Render<SignIn>();
+
+        Assert.Empty(cut.FindAll("#google-sign-in"));
+    }
+
+    [Fact]
+    public async Task Google_identity_button_disappears_when_a_config_refresh_removes_the_method()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(new PageHandler([
+            """[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]""",
+            "[]"]));
+        var cut = Render<SignIn>();
+
+        await Services.GetRequiredService<AppConfig>().ConfigChanged(2);
+
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("#google-sign-in")));
+    }
+
+    [Fact]
+    public void Google_sign_in_method_without_a_usable_client_id_does_not_render_the_google_identity_button()
+    {
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"   "}}]"""));
+
+        var cut = Render<SignIn>();
+
+        Assert.Empty(cut.FindAll("#google-sign-in"));
+    }
+
+    [Fact]
+    public async Task Google_signed_in_response_updates_client_authentication_state()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        var handler = GoogleSignedInHandler();
+        var auth = UseServices(handler);
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("google-id-token");
+
+        Assert.Equal(PlayerIdentityStatus.SignedIn, auth.Status);
+    }
+
+    [Fact]
+    public async Task Google_signed_in_response_navigates_home()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(GoogleSignedInHandler());
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/sign-in");
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("google-id-token");
+
+        Assert.EndsWith("/", navigation.Uri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Google_profile_needed_response_opens_confirmation()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        var handler = GoogleProfileNeededHandler();
+        UseServices(handler);
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("google-id-token");
+
+        Assert.Equal("North player", cut.Find("#confirmation-name").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task Google_profile_needed_response_does_not_create_a_player()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        var handler = GoogleProfileNeededHandler();
+        UseServices(handler);
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("google-id-token");
+
+        Assert.DoesNotContain(handler.Requests, request => request.Path == "/api/auth/profile");
+    }
+
+    [Fact]
+    public async Task Invalid_google_credential_uses_the_existing_sign_in_error()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(InvalidGoogleCredentialHandler());
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("invalid-token");
+
+        Assert.Contains("That did not work.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Invalid_google_credential_keeps_emailed_code_sign_in_available()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(InvalidGoogleCredentialHandler());
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("invalid-token");
+
+        Assert.NotNull(cut.Find("#email"));
+    }
+
+    [Fact]
+    public async Task Invalid_google_credential_keeps_guest_sign_in_available()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(InvalidGoogleCredentialHandler());
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("invalid-token");
+
+        Assert.NotNull(cut.Find("#guest-name"));
+    }
+
+    [Fact]
+    public async Task Declined_google_credential_keeps_emailed_code_sign_in_available()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]"""));
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync(null);
+
+        Assert.NotNull(cut.Find("#email"));
+    }
+
+    [Fact]
+    public async Task Declined_google_credential_keeps_guest_sign_in_available()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true);
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]"""));
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync(null);
+
+        Assert.NotNull(cut.Find("#guest-name"));
+    }
+
+    [Fact]
+    public void Unavailable_google_identity_services_uses_the_existing_sign_in_error()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true).SetException(new JSException("unavailable"));
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]"""));
+
+        var cut = Render<SignIn>();
+
+        Assert.Contains("That did not work.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unavailable_google_identity_services_keeps_emailed_code_sign_in_available()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true).SetException(new JSException("unavailable"));
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]"""));
+
+        var cut = Render<SignIn>();
+
+        Assert.NotNull(cut.Find("#email"));
+    }
+
+    [Fact]
+    public void Unavailable_google_identity_services_keeps_guest_sign_in_available()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true).SetException(new JSException("unavailable"));
+        UseServices(new PageHandler("""[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]"""));
+
+        var cut = Render<SignIn>();
+
+        Assert.NotNull(cut.Find("#guest-name"));
+    }
+
+    [Fact]
     public void Cancelling_profile_confirmation_returns_to_sign_in_without_creating_a_player()
     {
         var handler = new PageHandler(
@@ -256,6 +447,23 @@ public sealed class PlayerIdentityPageTests : BunitContext
         Assert.Equal(PlayerIdentityStatus.SignedOut, auth.Status);
     }
 
+    private static PageHandler GoogleSignedInHandler() => new(
+        """[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]""",
+        Response(HttpStatusCode.OK, """{"token":"before"}"""),
+        Response(HttpStatusCode.OK, """{"status":"signed_in"}"""),
+        Response(HttpStatusCode.OK, """{"token":"after"}"""),
+        Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"North player","avatarSeed":"avatar-7","lang":"fa"}"""));
+
+    private static PageHandler GoogleProfileNeededHandler() => new(
+        """[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]""",
+        Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+        Response(HttpStatusCode.OK, """{"status":"profile_needed","token":"proof","displayName":"North player","avatarSeed":"avatar-7","lang":"fa"}"""));
+
+    private static PageHandler InvalidGoogleCredentialHandler() => new(
+        """[{"id":"google","settings":{"clientId":"123.apps.googleusercontent.com"}}]""",
+        Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+        Response(HttpStatusCode.Unauthorized, """{"error":"invalid_credential"}"""));
+
     private AuthState UseServices(PageHandler handler)
     {
         var http = new ClientHttp(new HttpClient(handler) { BaseAddress = new Uri("https://tenant.example/") }, new NullReloader());
@@ -279,19 +487,37 @@ public sealed class PlayerIdentityPageTests : BunitContext
     private sealed class PageHandler : HttpMessageHandler
     {
         private readonly Queue<HttpResponseMessage> responses;
+        private readonly Queue<string> signInMethodConfigurations;
         private readonly bool guests;
+        private long configVersion;
         public List<CapturedRequest> Requests { get; } = [];
 
         public PageHandler(params HttpResponseMessage[] responses)
         {
             this.responses = new Queue<HttpResponseMessage>(responses);
             guests = true;
+            signInMethodConfigurations = new Queue<string>(["[]"]);
+        }
+
+        public PageHandler(string signInMethods, params HttpResponseMessage[] responses)
+        {
+            this.responses = new Queue<HttpResponseMessage>(responses);
+            guests = true;
+            signInMethodConfigurations = new Queue<string>([signInMethods]);
+        }
+
+        public PageHandler(IEnumerable<string> signInMethods)
+        {
+            responses = new Queue<HttpResponseMessage>();
+            guests = true;
+            signInMethodConfigurations = new Queue<string>(signInMethods);
         }
 
         public PageHandler(bool guests)
         {
             responses = new Queue<HttpResponseMessage>();
             this.guests = guests;
+            signInMethodConfigurations = new Queue<string>(["[]"]);
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -301,7 +527,10 @@ public sealed class PlayerIdentityPageTests : BunitContext
             if (request.RequestUri?.AbsolutePath == "/api/config")
             {
                 var switches = guests ? "[\"guests\"]" : "[]";
-                return Response(HttpStatusCode.OK, $$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"},{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"en","capabilities":{"switch":{{switches}}},"configVersion":1,"serverBuildId":"test"}""");
+                var signInMethods = signInMethodConfigurations.Count > 1
+                    ? signInMethodConfigurations.Dequeue()
+                    : signInMethodConfigurations.Peek();
+                return Response(HttpStatusCode.OK, $$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"},{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"en","capabilities":{"switch":{{switches}}},"signInMethods":{{signInMethods}},"configVersion":{{++configVersion}},"serverBuildId":"test"}""");
             }
 
             if (request.RequestUri?.AbsolutePath.StartsWith("/i18n/", StringComparison.Ordinal) == true)
