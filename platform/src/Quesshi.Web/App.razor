@@ -7,13 +7,21 @@
 @inject Translator Translator
 @inject NavigationManager Navigation
 
-@if (Navigation.Uri.Contains("map-pick-smoke=1", StringComparison.Ordinal))
+@if (!languageInitialized)
+{
+    <main class="shell" aria-busy="true"></main>
+}
+else if (Navigation.Uri.Contains("map-pick-smoke=1", StringComparison.Ordinal))
 {
     <MapPickBrowserSmoke />
 }
 else if (Navigation.Uri.Contains("eager-kind-smoke=1", StringComparison.Ordinal))
 {
     <EagerKindBrowserSmoke />
+}
+else if (IsAdminRoute)
+{
+    <AdminRouteHost />
 }
 else
 {
@@ -49,7 +57,7 @@ else
         }
         else
         {
-            <Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="new[] { AdminRouteAssembly.Assembly }">
+            <Router AppAssembly="@typeof(App).Assembly">
                 <Found Context="routeData">
                     <RouteView RouteData="@routeData" />
                 </Found>
@@ -62,20 +70,34 @@ else
 }
 
 @code {
+    private bool authInitialized;
+    private bool languageInitialized;
+
     protected override void OnInitialized()
     {
         Config.Changed += StateHasChanged;
         Auth.Changed += StateHasChanged;
+        Navigation.LocationChanged += NavigationChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        var changed = false;
         if (firstRender)
         {
             await Languages.InitializeAsync();
-            await Auth.InitializeAsync();
-            StateHasChanged();
+            languageInitialized = true;
+            changed = true;
         }
+
+        if (!authInitialized && !IsAdminRoute)
+        {
+            authInitialized = true;
+            await Auth.InitializeAsync();
+            changed = true;
+        }
+
+        if (changed) StateHasChanged();
     }
 
     private async Task ChangeLanguageAsync(ChangeEventArgs args)
@@ -85,9 +107,14 @@ else
 
     private async Task RetryIdentityAsync() => await Auth.RetryAsync();
 
+    private bool IsAdminRoute => new Uri(Navigation.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+
+    private void NavigationChanged(object? sender, LocationChangedEventArgs args) => StateHasChanged();
+
     public void Dispose()
     {
         Config.Changed -= StateHasChanged;
         Auth.Changed -= StateHasChanged;
+        Navigation.LocationChanged -= NavigationChanged;
     }
 }

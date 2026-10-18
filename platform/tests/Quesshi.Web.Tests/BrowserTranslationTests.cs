@@ -12,10 +12,11 @@ public class BrowserTranslationTests
 {
     private static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "i18n");
     private static readonly string[] Languages = ["en", "fa", "nl"];
-    private static readonly string[] PlayerSourceFolders =
+    private static readonly string[] BrowserSourceFolders =
     [
         Path.Combine(AppContext.BaseDirectory, "PlayerShell"),
-        Path.Combine(AppContext.BaseDirectory, "PlayerPages")
+        Path.Combine(AppContext.BaseDirectory, "PlayerPages"),
+        Path.Combine(AppContext.BaseDirectory, "AdminPages")
     ];
 
     private static Dictionary<string, string> Read(string lang)
@@ -60,9 +61,9 @@ public class BrowserTranslationTests
     }
 
     [Fact]
-    public void Every_player_screen_translation_key_is_in_every_language()
+    public void Every_browser_screen_translation_key_is_in_every_language()
     {
-        var keys = PlayerSourceFolders
+        var keys = BrowserSourceFolders
             .SelectMany(folder => Directory.EnumerateFiles(folder, "*.razor"))
             .SelectMany(path => Regex.Matches(File.ReadAllText(path), "\\\"(?<key>[a-z]+(?:\\.[a-z][A-Za-z]*)+)\\\"")
                 .Select(match => match.Groups["key"].Value))

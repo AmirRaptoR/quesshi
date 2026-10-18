@@ -93,6 +93,7 @@ public sealed class ClientShellTests
         Assert.Contains("response.status === 304 && cached", worker);
         Assert.Contains("return cached || Response.error()", worker);
         Assert.Contains("!dynamicPaths.has", worker);
+        Assert.Contains("!asset.url.includes('Quesshi.Web.Admin')", worker);
     }
 
     [Fact]

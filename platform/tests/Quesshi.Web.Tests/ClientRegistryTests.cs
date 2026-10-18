@@ -1,5 +1,6 @@
 using System.Reflection;
 using Quesshi.Kinds.MapPick.Client;
+using Quesshi.Web.Admin;
 using Quesshi.Web.Plugins;
 
 namespace Quesshi.Web.Tests;
@@ -85,6 +86,29 @@ public sealed class ClientRegistryTests
         Assert.Null(client.Reveal(3));
     }
 
+    [Fact]
+    public async Task Admin_client_loads_once_and_registers_each_explicit_page()
+    {
+        var loader = new RecordingLoader(typeof(AdminClientEntry).Assembly);
+        var registry = new AdminClientRegistry(loader);
+
+        await registry.LoadAsync();
+        await registry.LoadAsync();
+
+        Assert.Equal(["Quesshi.Web.Admin.dll"], loader.AssemblyNames);
+        Assert.Same(typeof(AdminApp), registry.Root);
+    }
+
+    [Fact]
+    public void Admin_client_entry_registers_explicit_page_components()
+    {
+        var registry = new RecordingAdminRegistry();
+
+        new AdminClientEntry().Register(registry);
+
+        Assert.Equal([typeof(AdminHome), typeof(AdminLogin), typeof(AdminForgot), typeof(AdminReset), typeof(AdminPassword), typeof(AdminAccounts)], registry.Pages);
+    }
+
     private sealed class RecordingLoader(params Assembly[] assemblies) : IClientAssemblyLoader
     {
         public List<string> AssemblyNames { get; } = [];
@@ -94,6 +118,15 @@ public sealed class ClientRegistryTests
             AssemblyNames.Add(assemblyName);
             return Task.FromResult<IReadOnlyList<Assembly>>(assemblies);
         }
+    }
+
+    private sealed class RecordingAdminRegistry : IAdminClientRegistry
+    {
+        public Type? Root { get; private set; }
+        public List<Type> Pages { get; } = [];
+        public Task LoadAsync() => Task.CompletedTask;
+        public void RegisterRoot(Type component) => Root = component;
+        public void RegisterPage(Type component) => Pages.Add(component);
     }
 
     public sealed class LazyEntry : IKindClientAssemblyEntry

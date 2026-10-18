@@ -1,0 +1,39 @@
+@page "/admin/login"
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+<section class="card stack admin-auth" aria-labelledby="admin-login-title">
+    <h1 id="admin-login-title">@Text["admin.login.title"]</h1>
+    @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+    <EditForm Model="model" OnValidSubmit="SubmitAsync">
+        <DataAnnotationsValidator />
+        <div class="stack">
+            <label>@Text["admin.field.username"] <InputText @bind-Value="model.Username" /></label>
+            <label>@Text["admin.field.password"] <InputText type="password" @bind-Value="model.Password" /></label>
+            <button class="btn" type="submit">@Text["admin.login.submit"]</button>
+        </div>
+    </EditForm>
+    <a href="/admin/forgot">@Text["admin.login.forgot"]</a>
+</section>
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    private readonly LoginModel model = new();
+    private string? error;
+
+    protected override void OnParametersSet()
+    {
+        if (State?.Session?.MustChangePassword == true) Navigation.NavigateTo("/admin/password");
+        else if (State?.Status == AdminSessionStatus.SignedIn) Navigation.NavigateTo("/admin");
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (State is null) return;
+        var result = await State.LoginAsync(model.Username, model.Password);
+        if (!result.Success) { error = result.Error; return; }
+        Navigation.NavigateTo(State.Session?.MustChangePassword == true ? "/admin/password" : "/admin");
+    }
+
+    private sealed class LoginModel { public string Username { get; set; } = string.Empty; public string Password { get; set; } = string.Empty; }
+}

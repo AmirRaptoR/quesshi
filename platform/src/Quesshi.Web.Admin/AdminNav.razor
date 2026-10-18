@@ -1,0 +1,26 @@
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.SignedIn)
+{
+    <nav class="admin-nav" aria-label="@Text["admin.nav.label"]">
+        <NavLink href="/admin">@Text["admin.nav.home"]</NavLink>
+        @if (State.Session is { MustChangePassword: false, CanManageAccounts: true })
+        {
+            <NavLink href="/admin/accounts">@Text["admin.nav.accounts"]</NavLink>
+        }
+        <NavLink href="/admin/password">@Text["admin.nav.password"]</NavLink>
+        <button class="btn btn--quiet" @onclick="SignOutAsync">@Text["admin.nav.signOut"]</button>
+    </nav>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private async Task SignOutAsync()
+    {
+        if (State is null) return;
+        var result = await State.SignOutAsync();
+        if (result.Success) Navigation.NavigateTo("/admin/login");
+    }
+}

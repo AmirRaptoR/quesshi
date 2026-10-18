@@ -3,6 +3,11 @@ using System.Reflection;
 
 namespace Quesshi.Web.Plugins;
 
+public interface IClientTranslator
+{
+    string this[string key] { get; }
+}
+
 /// <summary>Describes the client components for one kind.</summary>
 public interface IKindClient
 {
@@ -30,6 +35,64 @@ public interface IKindClientAssemblyEntry
 public interface IClientAssemblyLoader
 {
     Task<IReadOnlyList<Assembly>> LoadAsync(string assemblyName);
+}
+
+/// <summary>Registers the root and route components from the lazy administration client.</summary>
+public interface IAdminClientAssemblyEntry
+{
+    void Register(IAdminClientRegistry registry);
+}
+
+public interface IAdminClientRegistry
+{
+    Type? Root { get; }
+    Task LoadAsync();
+    void RegisterRoot(Type component);
+    void RegisterPage(Type component);
+}
+
+public sealed class AdminClientRegistry : IAdminClientRegistry
+{
+    private readonly IClientAssemblyLoader loader;
+    private readonly Lazy<Task> load;
+    private readonly List<Type> pages = [];
+
+    public AdminClientRegistry(IClientAssemblyLoader loader)
+    {
+        this.loader = loader;
+        load = new Lazy<Task>(LoadCoreAsync);
+    }
+
+    public Type? Root { get; private set; }
+
+    public Task LoadAsync() => load.Value;
+
+    public void RegisterRoot(Type component)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+        if (Root is not null) throw new InvalidOperationException("The admin client root is already registered.");
+        Root = component;
+    }
+
+    public void RegisterPage(Type component)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+        pages.Add(component);
+    }
+
+    private async Task LoadCoreAsync()
+    {
+        var entries = (await loader.LoadAsync("Quesshi.Web.Admin.dll"))
+            .SelectMany(assembly => assembly.DefinedTypes)
+            .Where(type => !type.IsAbstract && typeof(IAdminClientAssemblyEntry).IsAssignableFrom(type))
+            .Select(type => (IAdminClientAssemblyEntry?)Activator.CreateInstance(type.AsType()))
+            .Where(entry => entry is not null)
+            .Cast<IAdminClientAssemblyEntry>()
+            .ToArray();
+        if (entries.Length != 1) throw new InvalidOperationException("The admin client must contain exactly one entry point.");
+        entries[0].Register(this);
+        if (Root is null) throw new InvalidOperationException("The admin client did not register its root component.");
+    }
 }
 
 public sealed class ClientRegistry(IClientAssemblyLoader loader) : IClientRegistry

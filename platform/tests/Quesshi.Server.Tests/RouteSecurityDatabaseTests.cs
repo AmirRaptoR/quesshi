@@ -113,6 +113,35 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Stale_admin_antiforgery_returns_the_client_retry_error()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11180, 30180, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:50180");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50180") };
+            var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var cookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.ModeratorAdminId);
+            using var response = await SendAdminAsync(client, TenantHost, HttpMethod.Post, "/api/admin/x/security/moderator", cookie, "stale", TenantOrigin);
+            var actual = new StaleAntiforgeryResponse(response.StatusCode, (await response.Content.ReadFromJsonAsync<BannedError>())?.Error);
+
+            Assert.Equal(new StaleAntiforgeryResponse(HttpStatusCode.BadRequest, "invalid_antiforgery"), actual);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
     public async Task Moderator_ban_and_unban_are_authorized_audited_and_tenant_scoped()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -785,6 +814,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
 
     private sealed record AntiforgeryResponse(string Token);
     private sealed record BannedError(string Error);
+    private sealed record StaleAntiforgeryResponse(HttpStatusCode StatusCode, string? Error);
     private sealed record AuditPage(IReadOnlyList<AuditItem> Items, long? Next);
     private sealed record AuditItem(long Id, Guid? ActorId);
     private sealed record AuditRow(Guid? ActorId, string Action, string TargetType, string Data);

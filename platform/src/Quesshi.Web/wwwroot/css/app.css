@@ -12,6 +12,14 @@
   font-display: swap;
 }
 
+.admin-shell { min-inline-size: 0; }
+.admin-main { margin: 1rem auto; max-inline-size: 68rem; }
+.admin-nav { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; }
+.admin-nav a { padding: .35rem .5rem; }
+.admin-auth { margin: 2rem auto; max-inline-size: 28rem; }
+.admin-create { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+.admin-account { align-items: center; display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; min-inline-size: 0; }
+
 :root {
   --shab:        #090E22;   /* night — the page ground */
   --lajevard:    #16225C;   /* lapis — cards */
