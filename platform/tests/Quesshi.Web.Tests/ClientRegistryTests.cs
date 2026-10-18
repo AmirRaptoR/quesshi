@@ -1,5 +1,7 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Components;
 using Quesshi.Kinds.MapPick.Client;
+using Quesshi.Web.Admin;
 using Quesshi.Web.Plugins;
 
 namespace Quesshi.Web.Tests;
@@ -83,6 +85,26 @@ public sealed class ClientRegistryTests
         Assert.Same(typeof(TestKindEditor), client.Editor);
         Assert.Null(client.Play(3));
         Assert.Null(client.Reveal(3));
+    }
+
+    [Fact]
+    public async Task Admin_client_loads_once_and_registers_every_routable_component()
+    {
+        var loader = new RecordingLoader(typeof(AdminClientEntry).Assembly);
+        var registry = new AdminClientRegistry(loader);
+
+        await registry.LoadAsync();
+        await registry.LoadAsync();
+
+        Assert.Equal(["Quesshi.Web.Admin.dll"], loader.AssemblyNames);
+        Assert.Same(typeof(AdminApp), registry.Root);
+        Assert.Equal(
+            typeof(AdminClientEntry).Assembly.DefinedTypes
+                .Where(type => !type.IsAbstract && typeof(IComponent).IsAssignableFrom(type))
+                .Where(type => type.GetCustomAttributes(typeof(RouteAttribute), inherit: false).Length != 0)
+                .Select(type => type.AsType())
+                .OrderBy(type => type.FullName),
+            registry.Pages.OrderBy(type => type.FullName));
     }
 
     private sealed class RecordingLoader(params Assembly[] assemblies) : IClientAssemblyLoader

@@ -1,0 +1,7 @@
+@inherits LayoutComponentBase
+@inject IClientTranslator Text
+
+<main class="shell admin-shell">
+    <header class="topbar"><strong>@Text["admin.shell.title"]</strong><span class="topbar__spacer"></span><AdminNav /></header>
+    <section class="admin-main">@Body</section>
+</main>

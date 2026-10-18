@@ -12,6 +12,14 @@
   font-display: swap;
 }
 
+.admin-shell { min-inline-size: 0; }
+.admin-main { margin: 1rem auto; max-inline-size: 68rem; }
+.admin-nav { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; }
+.admin-nav a { padding: .35rem .5rem; }
+.admin-auth { margin: 2rem auto; max-inline-size: 28rem; }
+.admin-create { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+.admin-account { align-items: center; display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; min-inline-size: 0; }
+
 :root {
   --shab:        #090E22;   /* night — the page ground */
   --lajevard:    #16225C;   /* lapis — cards */
@@ -2192,7 +2200,7 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .admin-nav__pages { display:flex; align-items:center; gap:.15rem; overflow-x:auto; scrollbar-width:thin; }
 .admin-nav__link { flex:none; padding:.8rem .75rem; border-bottom:2px solid transparent; color:var(--sadaf-2); font-size:var(--step--1); font-weight:700; }
 .admin-nav__link.is-active { color:var(--sadaf); border-bottom-color:var(--firouzeh); }
-.admin-account { position:relative; margin-inline-start:auto; flex:none; }
+.admin-nav__account { position:relative; margin-inline-start:auto; flex:none; }
 .admin-account__summary { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.3rem .5rem; cursor:pointer; list-style:none; font-size:var(--step--1); font-weight:700; }
 .admin-account__summary::-webkit-details-marker { display:none; }
 .admin-account__avatar { display:grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; color:var(--shab); background:var(--zaferan); }

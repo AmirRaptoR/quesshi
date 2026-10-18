@@ -1,0 +1,34 @@
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Session is { MustChangePassword: false } && State.Status == AdminSessionStatus.SignedIn)
+{
+    <nav class="admin-nav" aria-label="@Text["admin.nav.label"]">
+        <div class="admin-nav__pages">
+            <NavLink class="admin-nav__link" ActiveClass="is-active" href="/admin" Match="NavLinkMatch.All">@Text["admin.nav.home"]</NavLink>
+            @if (State.Session.CanManageAccounts)
+            {
+                <NavLink class="admin-nav__link" ActiveClass="is-active" href="/admin/accounts">@Text["admin.nav.accounts"]</NavLink>
+            }
+            @* Later admin screens add their page links here. *@
+        </div>
+        <details class="admin-nav__account">
+            <summary class="admin-account__summary"><span class="admin-account__avatar" aria-hidden="true">A</span><span>@Text["admin.shell.title"]</span></summary>
+            <div class="admin-account__menu">
+                <NavLink class="admin-account__item" href="/admin/password">@Text["admin.nav.password"]</NavLink>
+                <button class="admin-account__item admin-account__item--danger" @onclick="SignOutAsync">@Text["admin.nav.signOut"]</button>
+            </div>
+        </details>
+    </nav>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private async Task SignOutAsync()
+    {
+        if (State is null) return;
+        var result = await State.SignOutAsync();
+        if (result.Success) Navigation.NavigateTo("/admin/login");
+    }
+}

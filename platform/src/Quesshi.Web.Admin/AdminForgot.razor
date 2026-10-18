@@ -1,0 +1,15 @@
+@page "/admin/forgot"
+@inject IClientTranslator Text
+
+<section class="card stack admin-auth" aria-labelledby="admin-forgot-title">
+    <h1 id="admin-forgot-title">@Text["admin.forgot.title"]</h1>
+    @if (sent) { <p role="status">@Text["admin.forgot.sent"]</p> }
+    else { <EditForm Model="model" OnValidSubmit="SubmitAsync"><div class="stack"><label>@Text["admin.field.usernameOrEmail"] <InputText @bind-Value="model.Value" /></label><button class="btn" type="submit">@Text["admin.forgot.submit"]</button>@if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }</div></EditForm> }
+</section>
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    private readonly ForgotModel model = new(); private bool sent; private string? error;
+    private async Task SubmitAsync() { if (State is not null) { var result = await State.ForgotAsync(model.Value); sent = result.Success; error = result.Error; } }
+    private sealed class ForgotModel { public string Value { get; set; } = string.Empty; }
+}

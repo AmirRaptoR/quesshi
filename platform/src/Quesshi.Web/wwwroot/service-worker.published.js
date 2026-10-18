@@ -7,6 +7,8 @@ const assetPatterns = [/\.dll$/, /\.wasm$/, /\.html$/, /\.js$/, /\.json$/, /\.cs
 const base = new URL('/', self.location.origin);
 const assetUrls = self.assetsManifest.assets
   .filter(asset => !dynamicPaths.has(new URL(asset.url, base).pathname))
+  .filter(asset => !asset.url.includes('Quesshi.Web.Admin'))
+  .filter(asset => !asset.url.includes('Quesshi.Kinds.MapPick.Client'))
   .filter(asset => assetPatterns.some(pattern => pattern.test(asset.url)))
   .map(asset => new Request(asset.url, { integrity: asset.hash, cache: 'no-cache' }));
 

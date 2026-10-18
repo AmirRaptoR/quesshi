@@ -16,9 +16,11 @@ builder.Services.AddScoped<AuthState>();
 builder.Services.AddScoped<AppConfig>();
 builder.Services.AddScoped<LanguageSelection>();
 builder.Services.AddScoped<Translator>();
+builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<Sounds>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddScoped<IClientAssemblyLoader, LazyAssemblyClientLoader>();
+builder.Services.AddScoped<IAdminClientRegistry, AdminClientRegistry>();
 builder.Services.AddScoped<IClientRegistry>(services =>
 {
     var registry = new ClientRegistry(services.GetRequiredService<IClientAssemblyLoader>());

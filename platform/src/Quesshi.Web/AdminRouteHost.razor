@@ -1,0 +1,32 @@
+@using Quesshi.Web.Plugins
+@inject IAdminClientRegistry Registry
+@inject IClientTranslator Text
+
+@if (error is not null)
+{
+    <main class="shell"><p class="muted">@Text["admin.error"]</p></main>
+}
+else if (Registry.Root is null)
+{
+    <main class="shell"><p class="muted">@Text["common.loading"]</p></main>
+}
+else
+{
+    <DynamicComponent Type="@Registry.Root" />
+}
+
+@code {
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Registry.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+}
