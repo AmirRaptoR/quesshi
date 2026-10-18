@@ -331,17 +331,124 @@ public sealed class AdminPageTests : BunitContext
     }
 
     [Fact]
-    public async Task Signing_out_clears_the_admin_session_and_refreshes_its_antiforgery_token()
+    public async Task Forgot_password_submission_shows_the_sent_state()
     {
         var state = await StateAsync(
+            Response(HttpStatusCode.Unauthorized),
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.NoContent));
+        var cut = Render<AdminForgot>(parameters => parameters.AddCascadingValue(state));
+
+        cut.Find("input").Change("ada@example.test");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => Assert.Contains("If the account exists, a reset link has been sent.", cut.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Forgot_password_failure_shows_the_localized_server_error()
+    {
+        var state = await StateAsync(
+            Response(HttpStatusCode.Unauthorized),
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.BadRequest, """{"code":"admin.error"}"""));
+        var cut = Render<AdminForgot>(parameters => parameters.AddCascadingValue(state));
+
+        cut.Find("input").Change("ada@example.test");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => Assert.Contains("The request could not be completed.", cut.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Reset_password_submission_posts_the_query_token_and_shows_completion()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.Unauthorized),
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.NoContent));
+        var state = await StateAsync(handler);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/admin/reset?token=single-use");
+        var cut = Render<AdminReset>(parameters => parameters.AddCascadingValue(state));
+
+        cut.Find("input").Change("A strong password 2026!");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => Assert.Contains("Your password has been reset.", cut.Markup, StringComparison.Ordinal));
+        Assert.Contains("\"token\":\"single-use\"", handler.Bodies[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Changing_password_posts_the_new_password_and_returns_to_the_admin_home()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, SessionJson()),
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.NoContent),
+            Response(HttpStatusCode.OK, SessionJson()));
+        var state = await StateAsync(handler);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/admin/password");
+        var cut = Render<AdminPassword>(parameters => parameters.AddCascadingValue(state));
+
+        cut.FindAll("input")[0].Change("current-password");
+        cut.FindAll("input")[1].Change("A strong password 2026!");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => Assert.EndsWith("/admin", navigation.Uri, StringComparison.Ordinal));
+        Assert.Equal("/api/admin/auth/password", handler.Paths[2]);
+    }
+
+    [Fact]
+    public async Task Changing_password_failure_shows_the_localized_error_without_navigating()
+    {
+        var state = await StateAsync(
+            Response(HttpStatusCode.OK, SessionJson()),
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.BadRequest, """{"code":"admin.error"}"""));
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/admin/password");
+        var cut = Render<AdminPassword>(parameters => parameters.AddCascadingValue(state));
+
+        cut.FindAll("input")[0].Change("current-password");
+        cut.FindAll("input")[1].Change("A strong password 2026!");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => Assert.Contains("The request could not be completed.", cut.Markup, StringComparison.Ordinal));
+        Assert.EndsWith("/admin/password", navigation.Uri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Signed_out_admins_are_redirected_from_the_password_page()
+    {
+        var state = await StateAsync(Response(HttpStatusCode.Unauthorized));
+        var navigation = Services.GetRequiredService<NavigationManager>();
+
+        Render<AdminPassword>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.EndsWith("/admin/login", navigation.Uri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Signing_out_refreshes_its_antiforgery_token_after_the_sign_out_request()
+    {
+        var handler = new Handler(
             Response(HttpStatusCode.OK, SessionJson()),
             Response(HttpStatusCode.OK, """{"token":"before"}"""),
             Response(HttpStatusCode.NoContent),
             Response(HttpStatusCode.OK, """{"token":"after"}"""));
+        var state = await StateAsync(handler);
 
         await state.SignOutAsync();
 
-        Assert.Equal(AdminSessionStatus.SignedOut, state.Status);
+        Assert.Equal(
+            [
+                (HttpMethod.Get, "/api/admin/auth/me"),
+                (HttpMethod.Get, "/api/admin/antiforgery"),
+                (HttpMethod.Post, "/api/admin/auth/sign-out"),
+                (HttpMethod.Get, "/api/admin/antiforgery")
+            ],
+            handler.Requests.Select(request => (request.Method, request.Path)));
     }
 
     [Fact]
@@ -409,10 +516,13 @@ public sealed class AdminPageTests : BunitContext
         public List<(HttpMethod Method, string Path)> Requests { get; } = [];
         public List<string> Paths => Requests.Select(request => request.Path).ToList();
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public List<string> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add((request.Method, request.RequestUri!.PathAndQuery));
-            return Task.FromResult(responses.Dequeue());
+            Bodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
+            return responses.Dequeue();
         }
     }
 
@@ -437,6 +547,13 @@ public sealed class AdminPageTests : BunitContext
             ["admin.auth.locked"] = "This account is temporarily locked.",
             ["admin.reset.title"] = "Set a new password",
             ["admin.reset.submit"] = "Set password",
+            ["admin.reset.complete"] = "Your password has been reset.",
+            ["admin.forgot.title"] = "Reset your password",
+            ["admin.forgot.submit"] = "Send reset link",
+            ["admin.forgot.sent"] = "If the account exists, a reset link has been sent.",
+            ["admin.field.usernameOrEmail"] = "Username or email",
+            ["admin.password.title"] = "Change password",
+            ["admin.password.submit"] = "Save password",
             ["admin.auth.linkExpired"] = "This reset link has expired.",
             ["admin.auth.linkUsed"] = "This reset link has already been used.",
             ["admin.auth.linkInvalid"] = "This reset link is not valid.",
