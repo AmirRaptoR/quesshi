@@ -1,0 +1,18 @@
+@inject ClientHttp Http
+
+<CascadingValue Value="state">
+    <Router AppAssembly="@typeof(AdminApp).Assembly">
+        <Found Context="routeData"><RouteView RouteData="@routeData" /></Found>
+        <NotFound><AdminHome /></NotFound>
+    </Router>
+</CascadingValue>
+
+@code {
+    private AdminState state = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        state = new AdminState(new AdminApi(Http));
+        await state.InitializeAsync();
+    }
+}

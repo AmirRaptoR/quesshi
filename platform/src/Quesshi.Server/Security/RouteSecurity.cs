@@ -77,7 +77,7 @@ internal sealed class AdminRouteSecurityMiddleware(RequestDelegate next)
             if (!context.Request.Headers.TryGetValue("X-CSRF-Admin", out var token)
                 || !antiforgery.IsValid(context, token.ToString()))
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await Results.BadRequest(new { error = "invalid_antiforgery" }).ExecuteAsync(context);
                 return;
             }
         }
@@ -238,7 +238,7 @@ internal static class RouteSecurity
         if (!request.Headers.TryGetValue("X-CSRF-Admin", out var token)
             || !context.HttpContext.RequestServices.GetRequiredService<AdminAntiforgery>().IsValid(context.HttpContext, token.ToString()))
         {
-            return Results.BadRequest();
+            return Results.BadRequest(new { error = "invalid_antiforgery" });
         }
         return await next(context);
     }

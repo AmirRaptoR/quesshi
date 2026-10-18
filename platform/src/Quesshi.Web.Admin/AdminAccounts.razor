@@ -1,0 +1,42 @@
+@page "/admin/accounts"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading) { <p class="muted">@Text["common.loading"]</p> }
+else if (State?.Session?.CanManageAccounts != true) { <section class="card"><p>@Text["admin.accounts.denied"]</p></section> }
+else
+{
+    <section class="stack" aria-labelledby="admin-accounts-title">
+        <h1 id="admin-accounts-title">@Text["admin.accounts.title"]</h1>
+        <EditForm Model="create" OnValidSubmit="CreateAsync"><div class="admin-create stack">
+            <label>@Text["admin.field.username"] <InputText @bind-Value="create.Username" /></label>
+            <label>@Text["admin.field.email"] <InputText @bind-Value="create.Email" /></label>
+            <label>@Text["admin.field.password"] <InputText type="password" @bind-Value="create.Password" /></label>
+            <button class="btn" type="submit">@Text["admin.accounts.create"]</button>
+        </div></EditForm>
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+        @foreach (var account in accounts)
+        {
+            <article class="card admin-account"><div><strong>@account.Username</strong><span class="muted"> @Text[account.IsMembershipActive ? "admin.accounts.active" : "admin.accounts.inactive"]</span></div>
+            @if (CanChange(account)) { <button class="btn btn--quiet" @onclick="() => SetActiveAsync(account)">@Text[account.IsMembershipActive ? "admin.accounts.deactivate" : "admin.accounts.reactivate"]</button> }
+            </article>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    private readonly CreateModel create = new(); private IReadOnlyList<AdminAccount> accounts = []; private string? error;
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (State?.Session?.CanManageAccounts == true) await LoadAsync();
+    }
+    private async Task LoadAsync() { if (State is not null) { var result = await State.AccountsAsync(); accounts = result.Value ?? []; error = result.Error; } }
+    private async Task CreateAsync() { if (State is not null) { var result = await State.CreateAsync(create.Username, create.Email, create.Password); if (result.Success) await LoadAsync(); else error = result.Error; } }
+    private async Task SetActiveAsync(AdminAccount account) { if (State is not null) { var result = await State.SetMembershipActiveAsync(account.Id, !account.IsMembershipActive); if (result.Success) await LoadAsync(); else error = result.Error; } }
+    private bool CanChange(AdminAccount account) => State?.Session is { } session && account.Id != session.Id && !account.IsPlatform && !string.Equals(account.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+    private sealed class CreateModel { public string Username { get; set; } = string.Empty; public string Email { get; set; } = string.Empty; public string Password { get; set; } = string.Empty; }
+}

@@ -1,3 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup><RazorLangVersion>Latest</RazorLangVersion></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.11" />
+    <ProjectReference Include="../Quesshi.Web.Plugins/Quesshi.Web.Plugins.csproj" />
+  </ItemGroup>
 </Project>

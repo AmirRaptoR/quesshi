@@ -1,9 +1,10 @@
 using System.Net.Http.Json;
+using Quesshi.Web.Plugins;
 
 namespace Quesshi.Web.Services;
 
 /// <summary>Loads the tenant's selected i18n table without assuming a fixed language enum.</summary>
-public sealed class Translator(ClientHttp http)
+public sealed class Translator(ClientHttp http) : IClientTranslator
 {
     private readonly Dictionary<string, Dictionary<string, string>> tables = new(StringComparer.OrdinalIgnoreCase);
     public string Lang { get; private set; } = string.Empty;

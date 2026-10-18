@@ -1,0 +1,21 @@
+@page "/admin/reset"
+@inject IClientTranslator Text
+
+<section class="card stack admin-auth" aria-labelledby="admin-reset-title">
+    <h1 id="admin-reset-title">@Text["admin.reset.title"]</h1>
+    @if (complete) { <p role="status">@Text["admin.reset.complete"]</p> }
+    else { <EditForm Model="model" OnValidSubmit="SubmitAsync"><div class="stack"><label>@Text["admin.field.password"] <InputText type="password" @bind-Value="model.Password" /></label><button class="btn" type="submit">@Text["admin.reset.submit"]</button>@if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }</div></EditForm> }
+</section>
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    [SupplyParameterFromQuery(Name = "token")] public string? Token { get; set; }
+    private readonly PasswordModel model = new(); private bool complete; private string? error;
+    private async Task SubmitAsync()
+    {
+        if (State is null) return;
+        var result = await State.ResetAsync(Token ?? string.Empty, model.Password);
+        complete = result.Success; error = result.Error;
+    }
+    private sealed class PasswordModel { public string Password { get; set; } = string.Empty; }
+}

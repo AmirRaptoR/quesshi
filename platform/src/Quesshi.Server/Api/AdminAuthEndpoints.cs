@@ -14,6 +14,7 @@ internal static class AdminAuthEndpoints
         openRoutes.MapPost("/reset", ResetAsync);
         authenticatedRoutes.MapPost("/password", ChangePasswordAsync);
         authenticatedRoutes.MapPost("/sign-out", SignOutAsync);
+        authenticatedRoutes.MapGet("/me", CurrentAsync);
     }
 
     private static async Task<IResult> LoginAsync(HttpContext context, AdminLoginRequest body, AdminAuthService authentication, IAdminSessionIssuer sessions)
@@ -46,6 +47,14 @@ internal static class AdminAuthEndpoints
         var admin = context.Admin();
         if (admin is null) return Results.Unauthorized();
         return Answer(await authentication.ChangePasswordAsync(admin.AdminId, body.CurrentPassword ?? string.Empty, body.NewPassword ?? string.Empty, context.RequestAborted));
+    }
+
+    private static IResult CurrentAsync(HttpContext context)
+    {
+        var admin = context.Admin();
+        return admin is null
+            ? Results.Unauthorized()
+            : Results.Ok(new { id = admin.AdminId, role = admin.Role?.ToString(), isPlatform = admin.IsPlatform, mustChangePassword = admin.MustChangePassword });
     }
 
     private static async Task<IResult> SignOutAsync(HttpContext context, IAdminSessionResolver sessions)

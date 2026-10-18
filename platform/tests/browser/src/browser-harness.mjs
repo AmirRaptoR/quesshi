@@ -24,7 +24,12 @@ function fileForRequest(directory, requestUrl) {
 
 async function serveFile(directory, request, response) {
   try {
-    const path = fileForRequest(directory, request.url);
+    const requestedPath = fileForRequest(directory, request.url);
+    const path = (await stat(requestedPath).catch(() => null))?.isFile()
+      ? requestedPath
+      : extname(new URL(request.url, 'http://localhost').pathname) === ''
+        ? resolve(directory, 'index.html')
+        : requestedPath;
     if (!(await stat(path)).isFile()) throw new Error('Not a file');
     response.writeHead(200, { 'content-type': contentType(path), 'cache-control': 'no-store' });
     response.end(await readFile(path));
