@@ -162,7 +162,8 @@ public static class Program
         IKindRegistry? configuredKinds = null,
         ISessionTurnObserver? turnObserver = null,
         string? environmentName = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool ownsSources = true)
     {
         var options = new WebApplicationOptions
         {
@@ -179,7 +180,14 @@ public static class Program
         configureLogging?.Invoke(builder.Logging);
 
         var sources = configuredSources ?? DatabaseSources.FromEnvironment();
-        builder.Services.AddSingleton(sources);
+        if (ownsSources)
+        {
+            builder.Services.AddSingleton<DatabaseSources>(_ => sources);
+        }
+        else
+        {
+            builder.Services.AddSingleton(sources);
+        }
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         builder.Services.AddSingleton<IDatabaseClock, PostgresDatabaseClock>();
         builder.Services.AddSingleton<PostgresClock>();
@@ -381,7 +389,7 @@ public static class Program
 
         await BootstrapTenantAdminsAsync(sources, bootstrapOutput ?? Console.Out, cancellationToken);
 
-        await using var app = CreateApplication(sources);
+        await using var app = CreateApplication(sources, ownsSources: false);
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         await (run ?? (application => application.RunAsync(cancellationToken)))(app);
     }

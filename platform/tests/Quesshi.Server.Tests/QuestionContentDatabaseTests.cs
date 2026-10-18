@@ -37,7 +37,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
 
@@ -68,7 +69,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var createPayload = ChoicePayload(1);
@@ -95,7 +97,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources, new KindRegistry([new VersionTwoChoiceKind()]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var original = VersionOneChoicePayload(1);
@@ -115,7 +118,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources, new KindRegistry([new VersionTwoChoiceKind()]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var created = await CreateAsync(content, database, TenantA, ValidWrite(payload: ChoicePayload(1), kindVersion: 2));
@@ -135,7 +139,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources, new KindRegistry([new VersionTwoChoiceKind()]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
 
@@ -152,7 +157,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources, new KindRegistry([new VersionTwoChoiceKind()]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var created = await CreateAsync(content, database, TenantA, ValidWrite(payload: ChoicePayload(1), kindVersion: 2));
@@ -171,7 +177,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var created = await CreateAsync(content, database, TenantA, ValidWrite());
@@ -186,7 +193,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var created = await CreateAsync(content, database, TenantA, ValidWrite());
@@ -201,7 +209,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var created = await CreateAsync(content, database, TenantA, ValidWrite());
@@ -223,7 +232,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         await using var owner = await PrepareAsync();
         var atLimit = new SnapshotSizedChoiceKind(16_384);
         var overLimit = new SnapshotSizedChoiceKind(16_385);
-        using var app = CreateApplication(new KindRegistry([atLimit, overLimit]));
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources, new KindRegistry([atLimit, overLimit]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var acceptable = await CreateAsync(content, database, TenantA, ValidWrite(kind: atLimit.Id, prompt: "اندازهٔ کارت"));
@@ -245,7 +255,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
         var player = await InsertPlayerAsync(owner, TenantA);
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var bank = ValidWrite(prompt: "Who painted Guernica?", topic: "france|capital");
@@ -296,7 +307,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
 
@@ -321,7 +333,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         await using var owner = await PrepareAsync();
         var firstCategory = await InsertCategoryAsync(owner, TenantA, "fingerprints-one");
         var secondCategory = await InsertCategoryAsync(owner, TenantA, "fingerprints-two");
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var write = ValidWrite(prompt: "Who painted Guernica?", category: firstCategory);
@@ -377,7 +390,8 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         var dutchPending = await InsertRawQuestionAsync(owner, TenantA, categories[1], 3, "nl", "order", "De échte hoofdstad van België is Brussel.", "pending", "ai", "poll");
         var draftLiteralPercent = await InsertRawQuestionAsync(owner, TenantA, categories[1], 4, "en", "choice", "This is 100% certain.", "draft", "admin");
         var rejectedLiteralUnderscore = await InsertRawQuestionAsync(owner, TenantA, categories[2], 5, "nl", "order", "Dit_onderwerp is afgewezen.", "rejected", "import", "poll");
-        using var app = CreateApplication();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
         var byLanguage = await ListIdsAsync(content, database, new(Language: "fa"));
@@ -438,7 +452,7 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     }
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-    private WebApplication CreateApplication(IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(Sources(), 11298, 30298, configuredKinds: kinds);
+    private static WebApplication CreateApplication(DatabaseSources sources, IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(sources, 11298, 30298, configuredKinds: kinds);
     private static Task ResetDatabaseAsync(NpgsqlConnection owner) => ExecuteAsync(owner, "delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from players; delete from tenant_languages; delete from tenants");
     private async Task<NpgsqlConnection> OpenAsync(string role) { var connection = new NpgsqlConnection(fixture.ConnectionStringForRole(role)); await connection.OpenAsync(); return connection; }
     private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null, int kindVersion = 1) => new(kind, kindVersion, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null);
