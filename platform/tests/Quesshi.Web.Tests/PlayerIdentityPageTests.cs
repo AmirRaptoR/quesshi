@@ -13,7 +13,7 @@ namespace Quesshi.Web.Tests;
 public sealed class PlayerIdentityPageTests : BunitContext
 {
     [Fact]
-    public void Profile_confirmation_prefills_the_tenant_verification_response()
+    public void Profile_confirmation_prefills_every_tenant_verification_seed()
     {
         UseServices(new PageHandler());
 
@@ -21,21 +21,26 @@ public sealed class PlayerIdentityPageTests : BunitContext
             new VerificationResult("profile_needed", "proof", "North player", "avatar-7", "fa")));
 
         Assert.Equal("North player", cut.Find("#confirmation-name").GetAttribute("value"));
+        Assert.Equal("avatar-7", cut.Find("#confirmation-avatar").GetAttribute("value"));
     }
 
     [Fact]
-    public void Cancelling_profile_confirmation_does_not_create_a_player()
+    public void Cancelling_profile_confirmation_returns_to_sign_in_without_creating_a_player()
     {
-        var handler = new PageHandler();
+        var handler = new PageHandler(
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.Accepted, """{"status":"accepted"}"""),
+            Response(HttpStatusCode.OK, """{"status":"profile_needed","token":"proof","displayName":"North player","avatarSeed":"avatar-7","lang":"fa"}"""));
         UseServices(handler);
-        var cancelled = false;
-        var cut = Render<ProfileConfirmation>(parameters => parameters
-            .Add(component => component.Confirmation, new VerificationResult("profile_needed", "proof", "North player", "avatar-7", "fa"))
-            .Add(component => component.OnCancelled, EventCallback.Factory.Create(this, () => cancelled = true)));
+        var cut = Render<SignIn>();
 
+        cut.Find("#email").Change("ada@example.test");
+        cut.Find("form").Submit();
+        cut.Find("#code").Change("123456");
+        cut.Find("form").Submit();
         cut.Find("button[type='button']").Click();
 
-        Assert.True(cancelled);
+        Assert.NotNull(cut.Find("#email"));
         Assert.DoesNotContain(handler.Requests, request => request.Path == "/api/auth/profile");
     }
 
@@ -76,20 +81,29 @@ public sealed class PlayerIdentityPageTests : BunitContext
     }
 
     [Fact]
-    public void Confirming_a_profile_creates_it_only_after_the_form_is_submitted()
+    public void Confirming_a_profile_posts_the_tenant_seed_and_reaches_home()
     {
         var handler = new PageHandler(
             Response(HttpStatusCode.OK, """{"token":"before"}"""),
+            Response(HttpStatusCode.Accepted, """{"status":"accepted"}"""),
+            Response(HttpStatusCode.OK, """{"status":"profile_needed","token":"proof","displayName":"North player","avatarSeed":"avatar-7","lang":"fa"}"""),
             Response(HttpStatusCode.OK, """{"status":"signed_in"}"""),
             Response(HttpStatusCode.OK, """{"token":"after"}"""),
             Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"North player","avatarSeed":"avatar-7","lang":"fa"}"""));
-        UseServices(handler);
-        var cut = Render<ProfileConfirmation>(parameters => parameters.Add(component => component.Confirmation,
-            new VerificationResult("profile_needed", "proof", "North player", "avatar-7", "fa")));
+        var auth = UseServices(handler);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/sign-in");
+        var cut = Render<SignIn>();
 
+        cut.Find("#email").Change("ada@example.test");
+        cut.Find("form").Submit();
+        cut.Find("#code").Change("123456");
+        cut.Find("form").Submit();
         cut.Find("form").Submit();
 
-        Assert.Contains(handler.Requests, request => request.Path == "/api/auth/profile");
+        Assert.Equal("{\"token\":\"proof\",\"displayName\":\"North player\",\"avatarSeed\":\"avatar-7\",\"lang\":\"fa\"}", handler.Requests.Single(request => request.Path == "/api/auth/profile").Body);
+        Assert.Equal(PlayerIdentityStatus.SignedIn, auth.Status);
+        Assert.EndsWith("/", navigation.Uri, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -121,6 +135,9 @@ public sealed class PlayerIdentityPageTests : BunitContext
         cut.Find("#upgrade-code").Change("123456");
         cut.Find("form").Submit();
 
+        Assert.Contains("That email already belongs to another player in this tenant.", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal(PlayerIdentityStatus.SignedIn, auth.Status);
+        Assert.True(auth.Player!.IsGuest);
         Assert.Equal(expectedPlayerId, auth.Player?.Id);
     }
 
@@ -160,8 +177,6 @@ public sealed class PlayerIdentityPageTests : BunitContext
         var handler = new PageHandler(
             Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"Ada","avatarSeed":"avatar-1","lang":"en"}"""),
             Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
-            Response(HttpStatusCode.BadRequest),
-            Response(HttpStatusCode.OK, """{"token":"fresh"}"""),
             Response(HttpStatusCode.BadRequest, """{"error":"invalid_profile"}"""));
         var auth = UseServices(handler);
         await auth.InitializeAsync();
@@ -256,25 +271,26 @@ public sealed class PlayerIdentityPageTests : BunitContext
             this.guests = guests;
         }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Requests.Add(new CapturedRequest(request.RequestUri?.PathAndQuery ?? string.Empty));
+            var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            Requests.Add(new CapturedRequest(request.RequestUri?.PathAndQuery ?? string.Empty, body));
             if (request.RequestUri?.AbsolutePath == "/api/config")
             {
                 var switches = guests ? "[\"guests\"]" : "[]";
-                return Task.FromResult(Response(HttpStatusCode.OK, $$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"},{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"en","capabilities":{"switch":{{switches}}},"configVersion":1,"serverBuildId":"test"}"""));
+                return Response(HttpStatusCode.OK, $$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"},{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"en","capabilities":{"switch":{{switches}}},"configVersion":1,"serverBuildId":"test"}""");
             }
 
             if (request.RequestUri?.AbsolutePath.StartsWith("/i18n/", StringComparison.Ordinal) == true)
             {
-                return Task.FromResult(Response(HttpStatusCode.OK, """{"auth.title":"Sign in","auth.blurb":"No passwords.","auth.email":"Email","auth.send":"Send code","auth.code":"Six-digit code","auth.verify":"Continue","auth.back":"Use another email","auth.badCode":"That code is wrong or expired.","auth.badEmail":"That email doesn't look right.","auth.confirmTitle":"Confirm your profile","auth.confirmBody":"Check details.","auth.confirm":"Confirm profile","auth.cancel":"Cancel","profile.name":"Display name","profile.avatar":"Avatar","profile.language":"Language","profile.save":"Save","profile.saved":"Saved","profile.invalid":"Choose a valid name, avatar, and language.","profile.signOut":"Sign out","auth.guestName":"Guest name","auth.guest":"Continue as guest","auth.upgradeTitle":"Keep this guest profile","auth.upgradeBody":"Add an email.","auth.upgrade":"Upgrade guest account","auth.addressTaken":"That email already belongs to another player in this tenant.","settings.title":"Settings","account.delete":"Delete account","account.deleteBody":"This permanently removes your profile.","account.deletePrompt":"Type DELETE to continue","account.deleteTitle":"Delete account","common.error":"That did not work."}"""));
+                return Response(HttpStatusCode.OK, """{"auth.title":"Sign in","auth.blurb":"No passwords.","auth.email":"Email","auth.send":"Send code","auth.code":"Six-digit code","auth.verify":"Continue","auth.back":"Use another email","auth.badCode":"That code is wrong or expired.","auth.badEmail":"That email doesn't look right.","auth.confirmTitle":"Confirm your profile","auth.confirmBody":"Check details.","auth.confirm":"Confirm profile","auth.cancel":"Cancel","profile.name":"Display name","profile.avatar":"Avatar","profile.language":"Language","profile.save":"Save","profile.saved":"Saved","profile.invalid":"Choose a valid name, avatar, and language.","profile.signOut":"Sign out","auth.guestName":"Guest name","auth.guest":"Continue as guest","auth.upgradeTitle":"Keep this guest profile","auth.upgradeBody":"Add an email.","auth.upgrade":"Upgrade guest account","auth.addressTaken":"That email already belongs to another player in this tenant.","settings.title":"Settings","account.delete":"Delete account","account.deleteBody":"This permanently removes your profile.","account.deletePrompt":"Type DELETE to continue","account.deleteTitle":"Delete account","common.error":"That did not work."}""");
             }
 
-            return Task.FromResult(responses.Dequeue());
+            return responses.Dequeue();
         }
     }
 
-    private sealed record CapturedRequest(string Path);
+    private sealed record CapturedRequest(string Path, string? Body);
 
     private sealed class NullReloader : IClientReloader
     {

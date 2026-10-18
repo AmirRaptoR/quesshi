@@ -1,5 +1,6 @@
 @using Quesshi.Web.Models
 @using Quesshi.Web.Services
+@using Quesshi.Shared
 @inject AuthState Auth
 @inject Translator Translator
 
@@ -13,26 +14,24 @@
     <form class="stack" @onsubmit="ConfirmAsync">
         <div class="field">
             <label for="confirmation-name">@Translator["profile.name"]</label>
-            <input id="confirmation-name" class="input" @bind="displayName" required />
+            <input id="confirmation-name" class="input" @bind="profile.DisplayName" required />
         </div>
         <div class="field">
             <label for="confirmation-avatar">@Translator["profile.avatar"]</label>
-            <select id="confirmation-avatar" class="select" @bind="avatarSeed">
-                @foreach (var avatar in AvatarSeeds)
+            <select id="confirmation-avatar" class="select" @bind="profile.AvatarSeed">
+                @foreach (var avatar in PlayerAvatarPalette.Seeds)
                 {
                     <option value="@avatar">@avatar</option>
                 }
             </select>
         </div>
-        <button class="btn btn--block" type="submit" disabled="@busy">@Translator["auth.confirm"]</button>
+        <button class="btn btn--block" type="submit" disabled="@(busy || !profile.IsValid)">@Translator["auth.confirm"]</button>
         <button class="btn btn--ghost btn--block" type="button" @onclick="OnCancelled" disabled="@busy">@Translator["auth.cancel"]</button>
     </form>
 </section>
 
 @code {
-    private static readonly string[] AvatarSeeds = [.. Enumerable.Range(0, 12).Select(index => $"avatar-{index}")];
-    private string displayName = string.Empty;
-    private string avatarSeed = string.Empty;
+    private readonly PlayerProfileForm profile = new();
     private string? error;
     private bool busy;
 
@@ -42,15 +41,22 @@
 
     protected override void OnParametersSet()
     {
-        displayName = Confirmation.DisplayName ?? string.Empty;
-        avatarSeed = Confirmation.AvatarSeed ?? "avatar-0";
+        profile.DisplayName = Confirmation.DisplayName ?? string.Empty;
+        profile.AvatarSeed = Confirmation.AvatarSeed ?? PlayerAvatarPalette.Default;
+        profile.Lang = Confirmation.Lang ?? string.Empty;
     }
 
     private async Task ConfirmAsync()
     {
+        if (!profile.IsValid)
+        {
+            error = "profile.invalid";
+            return;
+        }
+
         busy = true;
         error = null;
-        var result = await Auth.ConfirmProfileAsync(Confirmation.Token ?? string.Empty, displayName, avatarSeed, Confirmation.Lang ?? string.Empty);
+        var result = await Auth.ConfirmProfileAsync(Confirmation.Token ?? string.Empty, profile.DisplayName, profile.AvatarSeed, profile.Lang);
         busy = false;
         if (result.IsSuccess)
         {

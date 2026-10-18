@@ -1,5 +1,6 @@
 @page "/settings"
 @using Quesshi.Web.Services
+@using Quesshi.Shared
 @inject AppConfig Config
 @inject AuthState Auth
 @inject LanguageSelection Languages
@@ -19,26 +20,26 @@
             <p class="form-error" role="alert">@Translator[error]</p>
         }
         <form class="stack" @onsubmit="SaveAsync">
-            <div class="field"><label for="settings-name">@Translator["profile.name"]</label><input id="settings-name" class="input" @bind="displayName" required /></div>
+            <div class="field"><label for="settings-name">@Translator["profile.name"]</label><input id="settings-name" class="input" @bind="profile.DisplayName" required /></div>
             <div class="field">
                 <label for="settings-avatar">@Translator["profile.avatar"]</label>
-                <select id="settings-avatar" class="select" @bind="avatarSeed">
-                    @for (var avatar = 0; avatar < 12; avatar++)
+                <select id="settings-avatar" class="select" @bind="profile.AvatarSeed">
+                    @foreach (var avatar in PlayerAvatarPalette.Seeds)
                     {
-                        <option value="@($"avatar-{avatar}")">@($"avatar-{avatar}")</option>
+                        <option value="@avatar">@avatar</option>
                     }
                 </select>
             </div>
             <div class="field">
                 <label for="settings-language">@Translator["profile.language"]</label>
-                <select id="settings-language" class="select" @bind="lang">
+                <select id="settings-language" class="select" @bind="profile.Lang">
                     @foreach (var language in Config.Current.Languages)
                     {
                         <option value="@language.Code">@language.DisplayName</option>
                     }
                 </select>
             </div>
-            <button class="btn btn--block" type="submit" disabled="@busy">@Translator["profile.save"]</button>
+            <button class="btn btn--block" type="submit" disabled="@(busy || !profile.IsValid)">@Translator["profile.save"]</button>
         </form>
         @if (Auth.Player.IsGuest)
         {
@@ -55,9 +56,7 @@
 }
 
 @code {
-    private string displayName = string.Empty;
-    private string avatarSeed = string.Empty;
-    private string lang = string.Empty;
+    private readonly PlayerProfileForm profile = new();
     private string deleteConfirmation = string.Empty;
     private string? error;
     private string? message;
@@ -69,18 +68,24 @@
     {
         if (Auth.Player is not null)
         {
-            displayName = Auth.Player.DisplayName;
-            avatarSeed = Auth.Player.AvatarSeed;
-            lang = Auth.Player.Lang;
+            profile.DisplayName = Auth.Player.DisplayName;
+            profile.AvatarSeed = Auth.Player.AvatarSeed;
+            profile.Lang = Auth.Player.Lang;
         }
     }
 
     private async Task SaveAsync()
     {
+        if (!profile.IsValid)
+        {
+            error = "profile.invalid";
+            return;
+        }
+
         busy = true;
         error = null;
         message = null;
-        var result = await Auth.SaveProfileAsync(displayName, avatarSeed, lang);
+        var result = await Auth.SaveProfileAsync(profile.DisplayName, profile.AvatarSeed, profile.Lang);
         busy = false;
         if (!result.IsSuccess)
         {
@@ -88,7 +93,7 @@
             return;
         }
 
-        await Languages.UseAsync(lang);
+        await Languages.UseAsync(profile.Lang);
         message = "profile.saved";
     }
 

@@ -57,6 +57,20 @@ public sealed class PlayerClientTests
     }
 
     [Fact]
+    public async Task Validation_failure_does_not_refresh_or_retry_a_mutation()
+    {
+        var handler = new PlayerHandler(
+            Response(HttpStatusCode.OK, """{"token":"current"}"""),
+            Response(HttpStatusCode.BadRequest, """{"error":"invalid_profile"}"""));
+        var api = Api(handler);
+
+        var result = await api.SaveProfileAsync("Ada", "avatar-1", "en");
+
+        Assert.Equal("invalid_profile", result.Error);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
     public async Task Sign_in_refreshes_the_antiforgery_token_before_reloading_identity()
     {
         var handler = new PlayerHandler(

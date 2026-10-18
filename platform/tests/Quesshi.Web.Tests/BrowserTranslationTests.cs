@@ -64,7 +64,7 @@ public class BrowserTranslationTests
     {
         var keys = PlayerSourceFolders
             .SelectMany(folder => Directory.EnumerateFiles(folder, "*.razor"))
-            .SelectMany(path => Regex.Matches(File.ReadAllText(path), "\\\"(?<key>[a-z]+(?:\\.[A-Za-z]+)+)\\\"")
+            .SelectMany(path => Regex.Matches(File.ReadAllText(path), "\\\"(?<key>[a-z]+(?:\\.[a-z][A-Za-z]*)+)\\\"")
                 .Select(match => match.Groups["key"].Value))
             .ToHashSet(StringComparer.Ordinal);
 

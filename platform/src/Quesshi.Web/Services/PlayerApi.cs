@@ -59,8 +59,14 @@ public sealed class PlayerApi(ClientHttp client)
             using var response = await client.SendAsync(request, cancellationToken);
             if (response.StatusCode == HttpStatusCode.BadRequest && attempt == 0)
             {
-                await RefreshAntiforgeryAsync(cancellationToken);
-                continue;
+                var error = await ReadErrorAsync(response, cancellationToken);
+                if (string.Equals(error, "invalid_antiforgery", StringComparison.Ordinal))
+                {
+                    await RefreshAntiforgeryAsync(cancellationToken);
+                    continue;
+                }
+
+                return new ApiResponse<T>(response.StatusCode, default, error);
             }
 
             return await ReadAsync<T>(response, cancellationToken);
