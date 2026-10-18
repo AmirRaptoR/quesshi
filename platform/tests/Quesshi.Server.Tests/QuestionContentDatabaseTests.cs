@@ -98,10 +98,72 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
+        var original = VersionOneChoicePayload(1);
+        var expected = ChoicePayload(1);
 
-        var result = await CreateAsync(content, database, TenantA, ValidWrite());
+        var result = await CreateAsync(content, database, TenantA, ValidWrite(payload: original));
+        var fetched = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, result.Question!.Id));
 
         Assert.Equal(2, result.Question!.KindVersion);
+        Assert.True(JsonElement.DeepEquals(expected, result.Question.Payload));
+        Assert.Equal(2, fetched!.KindVersion);
+        Assert.True(JsonElement.DeepEquals(expected, fetched.Payload));
+    }
+
+    [SkippableFact]
+    public async Task Edit_upgrades_an_older_supported_kind_payload_before_storing_it()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var created = await CreateAsync(content, database, TenantA, ValidWrite(payload: ChoicePayload(1), kindVersion: 2));
+        var expected = ChoicePayload(2);
+
+        var result = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, created.Question!.Id, ValidWrite(payload: VersionOneChoicePayload(2))));
+        var fetched = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, created.Question!.Id));
+
+        Assert.Equal(2, result.Question!.KindVersion);
+        Assert.True(JsonElement.DeepEquals(expected, result.Question.Payload));
+        Assert.Equal(2, fetched!.KindVersion);
+        Assert.True(JsonElement.DeepEquals(expected, fetched.Payload));
+    }
+
+    [SkippableFact]
+    public async Task Unsupported_kind_version_does_not_create_a_question()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var result = await CreateAsync(content, database, TenantA, ValidWrite(kindVersion: 0));
+        var questions = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction));
+
+        Assert.Equal(QuestionWriteStatus.Invalid, result.Status);
+        Assert.Contains(result.Problems!, problem => problem.Code == "payload.malformed");
+        Assert.Empty(questions);
+    }
+
+    [SkippableFact]
+    public async Task Unsupported_kind_version_does_not_change_a_question()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        using var app = CreateApplication(new KindRegistry([new VersionTwoChoiceKind()]));
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var created = await CreateAsync(content, database, TenantA, ValidWrite(payload: ChoicePayload(1), kindVersion: 2));
+
+        var result = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, created.Question!.Id, ValidWrite(prompt: "A changed prompt", payload: ChoicePayload(2), kindVersion: 3)));
+        var fetched = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, created.Question!.Id));
+
+        Assert.Equal(QuestionWriteStatus.Invalid, result.Status);
+        Assert.Contains(result.Problems!, problem => problem.Code == "payload.malformed");
+        Assert.Equal(created.Question!.Prompt, fetched!.Prompt);
+        Assert.True(JsonElement.DeepEquals(created.Question.Payload, fetched.Payload));
     }
 
     [SkippableFact]
@@ -379,8 +441,9 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     private WebApplication CreateApplication(IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(Sources(), 11298, 30298, configuredKinds: kinds);
     private static Task ResetDatabaseAsync(NpgsqlConnection owner) => ExecuteAsync(owner, "delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from players; delete from tenant_languages; delete from tenants");
     private async Task<NpgsqlConnection> OpenAsync(string role) { var connection = new NpgsqlConnection(fixture.ConnectionStringForRole(role)); await connection.OpenAsync(); return connection; }
-    private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null) => new(kind, 1, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null);
+    private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null, int kindVersion = 1) => new(kind, kindVersion, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null);
     private static JsonElement ChoicePayload(int firstLength) => JsonSerializer.SerializeToElement(new { options = new[] { new string('a', firstLength), "bravo", "charlie", "delta" }, correctIndex = 0 });
+    private static JsonElement VersionOneChoicePayload(int firstLength) => JsonSerializer.SerializeToElement(new { choices = new[] { new string('a', firstLength), "bravo", "charlie", "delta" }, correctIndex = 0 });
     private static Task<QuestionWriteResult> CreateAsync(IContent content, ITenantDb database, Guid tenant, QuestionWrite write) => database.InTenantAsync(tenant, transaction => content.CreateAsync(transaction, write));
     private static async Task<IReadOnlyList<Guid>> ListIdsAsync(IContent content, ITenantDb database, QuestionFilter filters) => (await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, filters))).Select(question => question.Id).ToArray();
     private static async Task<Guid> InsertCategoryAsync(NpgsqlConnection owner, Guid tenant, string slug) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into categories (tenant_id, id, slug, names) values (@tenant, @id, @slug, '{\"en\":\"Category\"}'::jsonb)", ("tenant", tenant), ("id", id), ("slug", slug)); return id; }
@@ -396,7 +459,14 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
 
         public override ChoicePayload Upgrade(int from, JsonElement payload)
         {
-            if (from is not 1 and not 2) throw new NotSupportedException($"choice v{from} cannot be upgraded by choice v2.");
+            if (from == 1)
+            {
+                if (!payload.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array
+                    || !payload.TryGetProperty("correctIndex", out var correctIndex) || !correctIndex.TryGetInt32(out var index))
+                    throw new JsonException("Choice v1 payload is invalid.");
+                return new ChoicePayload(choices.EnumerateArray().Select(option => option.GetString() ?? throw new JsonException("Choice options are invalid.")).ToArray(), index);
+            }
+            if (from != 2) throw new NotSupportedException($"choice v{from} cannot be upgraded by choice v2.");
             return JsonSerializer.Deserialize(payload, ChoiceJsonContext.Default.ChoicePayload)
                 ?? throw new JsonException("Choice payload is invalid.");
         }
