@@ -189,7 +189,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
         Assert.Null(await sessions.ResolveAsync(TenantA, token));
 
         await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50149") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var host = "admin-auth-a.example.test";
         try
         {
@@ -213,7 +213,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
         var admin = await InsertAdminAsync(owner, hasher, "api-admin", "api-admin@example.test", "A strong password 2026!", mustChangePassword: true);
         await ExecuteAsync(owner, "insert into admin_memberships (tenant_id, admin_id) values (@tenant, @admin)", ("tenant", TenantA), ("admin", admin));
         await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50149") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var host = "admin-auth-a.example.test";
         var origin = $"http://{host}";
         try
@@ -249,6 +249,78 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
             Assert.True(clearedCookie.Contains("expires=", StringComparison.OrdinalIgnoreCase) || clearedCookie.Contains("max-age=0", StringComparison.OrdinalIgnoreCase));
             Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from auth_sessions where admin_id = @admin", ("admin", admin)));
             Assert.Equal(admin, (await sessions.ResolveAsync(TenantA, otherToken))?.AdminId);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Current_admin_session_requires_an_admin_cookie()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        try
+        {
+            using var response = await SendAsync(client, "admin-auth-a.example.test", HttpMethod.Get, "/api/admin/auth/me", null, null, null);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Current_admin_session_reports_the_authenticated_membership()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var hasher = new IdentityPasswordHasher();
+        var admin = await InsertAdminAsync(owner, hasher, "session-admin", "session-admin@example.test", "A strong password 2026!");
+        await ExecuteAsync(owner, "insert into admin_memberships (tenant_id, admin_id) values (@tenant, @admin)", ("tenant", TenantA), ("admin", admin));
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        const string host = "admin-auth-a.example.test";
+        try
+        {
+            var cookie = await LoginAsync(client, host, "session-admin", "A strong password 2026!");
+            using var response = await SendAsync(client, host, HttpMethod.Get, "/api/admin/auth/me", cookie, null, null);
+            var actual = await response.Content.ReadFromJsonAsync<CurrentAdminResponse>();
+
+            Assert.Equal(new CurrentAdminResponse(admin, "Owner", false, false), actual);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Current_admin_session_reports_a_mandatory_password_change()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var hasher = new IdentityPasswordHasher();
+        var admin = await InsertAdminAsync(owner, hasher, "temporary-session-admin", "temporary-session-admin@example.test", "A strong password 2026!", mustChangePassword: true);
+        await ExecuteAsync(owner, "insert into admin_memberships (tenant_id, admin_id) values (@tenant, @admin)", ("tenant", TenantA), ("admin", admin));
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        const string host = "admin-auth-a.example.test";
+        try
+        {
+            var cookie = await LoginAsync(client, host, "temporary-session-admin", "A strong password 2026!");
+            using var response = await SendAsync(client, host, HttpMethod.Get, "/api/admin/auth/me", cookie, null, null);
+            var actual = await response.Content.ReadFromJsonAsync<CurrentAdminResponse>();
+
+            Assert.True(actual!.MustChangePassword);
         }
         finally
         {
@@ -302,7 +374,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
     private async Task<WebApplication> StartAsync()
     {
         var app = Program.CreateApplication(Sources(), 11149, 30149);
-        app.Urls.Add("http://127.0.0.1:50149");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         return app;
@@ -313,6 +385,15 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
         using var response = await SendAsync(client, host, HttpMethod.Get, "/api/admin/antiforgery", cookie, null, null);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<AntiforgeryResponse>())!.Token;
+    }
+
+    private static async Task<string> LoginAsync(HttpClient client, string host, string username, string password)
+    {
+        var antiforgery = await AdminAntiforgeryAsync(client, host, null);
+        using var response = await SendAsync(client, host, HttpMethod.Post, "/api/admin/auth/login", null, antiforgery, $"http://{host}",
+            JsonContent.Create(new { username, password }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return CookieValue(response, "__Host-qa");
     }
 
     private static async Task<HttpResponseMessage> SendAsync(HttpClient client, string host, HttpMethod method, string path, string? cookie, string? csrf, string? origin, HttpContent? content = null, string cookieName = "__Host-qa")
@@ -355,6 +436,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
 
     private sealed record AntiforgeryResponse(string Token);
     private sealed record LoginResponse(bool MustChangePassword);
+    private sealed record CurrentAdminResponse(Guid Id, string? Role, bool IsPlatform, bool MustChangePassword);
 
     private sealed class CapturingMailer : IAdminPasswordResetMailer
     {

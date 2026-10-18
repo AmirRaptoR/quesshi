@@ -41,7 +41,15 @@ const tenants = {
     theme: ':root { --shab: #5d1f50; }',
     resources: {
       '/api/admin/auth/me': { body: '{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","role":"Owner","isPlatform":false,"mustChangePassword":false}', type: 'application/json', tag: 'owner' },
-      '/api/admin/accounts': { body: '[]', type: 'application/json', tag: 'accounts' }
+      '/api/admin/accounts': {
+        body: JSON.stringify([
+          { id: '21ac7193-52fd-4d4b-9194-5cd547448072', username: 'مالک', email: 'owner@example.test', isActive: true, isMembershipActive: true, isPlatform: false, mustChangePassword: false, role: 'Owner' },
+          { id: '77bc7193-52fd-4d4b-9194-5cd547448072', username: 'مدیر-با-نام-بسیار-طولانی-برای-بررسی-چیدمان', email: 'active@example.test', isActive: true, isMembershipActive: true, isPlatform: false, mustChangePassword: false, role: 'Admin' },
+          { id: '88bc7193-52fd-4d4b-9194-5cd547448072', username: 'مدیر-غیرفعال-با-نام-بسیار-طولانی-برای-بررسی-چیدمان', email: 'inactive@example.test', isActive: true, isMembershipActive: false, isPlatform: false, mustChangePassword: false, role: 'Admin' }
+        ]),
+        type: 'application/json',
+        tag: 'accounts'
+      }
     }
   }
 };
@@ -59,8 +67,8 @@ after(async () => {
 async function assertRtlActionsFit(page) {
   assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-  assert.equal(await page.locator('button').evaluateAll(buttons => buttons.every(button => {
-    const bounds = button.getBoundingClientRect();
+  assert.equal(await page.locator('button, input, a').evaluateAll(controls => controls.length > 0 && controls.every(control => {
+    const bounds = control.getBoundingClientRect();
     return bounds.left >= 0 && bounds.right <= window.innerWidth;
   })), true);
 }
@@ -128,6 +136,8 @@ test('published right-to-left admin login password and account pages fit their c
 
     await owner.page.goto(host.tenantUrl('admin-fa-owner.localhost', '/admin/accounts'));
     await owner.page.locator('#admin-accounts-title').waitFor();
+    await owner.page.locator('.admin-account').nth(2).waitFor();
+    assert.equal(await owner.page.locator('.admin-account button').count(), 2);
     await assertRtlActionsFit(owner.page);
     assertLoginErrors();
     assertOwnerErrors();

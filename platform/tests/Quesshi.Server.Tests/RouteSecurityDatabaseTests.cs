@@ -122,15 +122,50 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var app = Program.CreateApplication(sources, 11180, 30180, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:50180");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50180") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var cookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.ModeratorAdminId);
             using var response = await SendAdminAsync(client, TenantHost, HttpMethod.Post, "/api/admin/x/security/moderator", cookie, "stale", TenantOrigin);
+            var actual = new StaleAntiforgeryResponse(response.StatusCode, (await response.Content.ReadFromJsonAsync<BannedError>())?.Error);
+
+            Assert.Equal(new StaleAntiforgeryResponse(HttpStatusCode.BadRequest, "invalid_antiforgery"), actual);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Stale_admin_auth_antiforgery_returns_the_client_retry_error()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await SeedAsync();
+        await using var sources = new DatabaseSources(
+            fixture.ConnectionStringForRole("quesshi_app"),
+            fixture.ConnectionStringForRole("quesshi_system"));
+        var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
+        await using var app = Program.CreateApplication(sources, 11181, 30181, configuredFeatures: registry);
+        app.Urls.Add("http://127.0.0.1:0");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var response = await SendAdminAsync(
+                client,
+                TenantHost,
+                HttpMethod.Post,
+                "/api/admin/auth/login",
+                null,
+                "stale",
+                TenantOrigin,
+                JsonContent.Create(new { username = "missing", password = "A strong password 2026!" }));
             var actual = new StaleAntiforgeryResponse(response.StatusCode, (await response.Content.ReadFromJsonAsync<BannedError>())?.Error);
 
             Assert.Equal(new StaleAntiforgeryResponse(HttpStatusCode.BadRequest, "invalid_antiforgery"), actual);

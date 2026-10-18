@@ -46,6 +46,7 @@ public interface IAdminClientAssemblyEntry
 public interface IAdminClientRegistry
 {
     Type? Root { get; }
+    IReadOnlyList<Type> Pages { get; }
     Task LoadAsync();
     void RegisterRoot(Type component);
     void RegisterPage(Type component);
@@ -64,6 +65,7 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
     }
 
     public Type? Root { get; private set; }
+    public IReadOnlyList<Type> Pages => pages;
 
     public Task LoadAsync() => load.Value;
 

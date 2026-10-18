@@ -2200,7 +2200,7 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .admin-nav__pages { display:flex; align-items:center; gap:.15rem; overflow-x:auto; scrollbar-width:thin; }
 .admin-nav__link { flex:none; padding:.8rem .75rem; border-bottom:2px solid transparent; color:var(--sadaf-2); font-size:var(--step--1); font-weight:700; }
 .admin-nav__link.is-active { color:var(--sadaf); border-bottom-color:var(--firouzeh); }
-.admin-account { position:relative; margin-inline-start:auto; flex:none; }
+.admin-nav__account { position:relative; margin-inline-start:auto; flex:none; }
 .admin-account__summary { display:flex; align-items:center; gap:.5rem; min-height:44px; padding:.3rem .5rem; cursor:pointer; list-style:none; font-size:var(--step--1); font-weight:700; }
 .admin-account__summary::-webkit-details-marker { display:none; }
 .admin-account__avatar { display:grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; color:var(--shab); background:var(--zaferan); }

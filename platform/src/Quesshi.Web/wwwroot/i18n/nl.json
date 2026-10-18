@@ -599,6 +599,7 @@
   "admin.accounts.deactivate": "Lidmaatschap uitschakelen",
   "admin.accounts.reactivate": "Lidmaatschap opnieuw inschakelen",
   "last_owner": "De laatste eigenaar kan niet worden gewijzigd.",
+  "admin.accounts.lastOwner": "De laatste eigenaar kan niet worden gewijzigd.",
   "admin.error": "De aanvraag kon niet worden uitgevoerd.",
   "admin.auth.signedOut": "Je beheersessie is beëindigd."
 }

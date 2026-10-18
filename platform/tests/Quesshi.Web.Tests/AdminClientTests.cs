@@ -22,6 +22,53 @@ public sealed class AdminClientTests
     }
 
     [Fact]
+    public async Task A_second_stale_admin_antiforgery_refusal_is_not_retried()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, """{"token":"old"}"""),
+            Response(HttpStatusCode.BadRequest, """{"error":"invalid_antiforgery"}"""),
+            Response(HttpStatusCode.OK, """{"token":"fresh"}"""),
+            Response(HttpStatusCode.BadRequest, """{"error":"invalid_antiforgery"}"""));
+
+        var result = await Api(handler).SetMembershipActiveAsync(Guid.Empty, true);
+
+        Assert.Equal(new AdminResult<object>(false, null, "admin.error"), result);
+        Assert.Equal(["", "old", "", "fresh"], handler.Tokens);
+    }
+
+    [Fact]
+    public async Task Signing_in_refreshes_the_admin_antiforgery_for_the_next_mutation()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, """{"token":"before-login"}"""),
+            Response(HttpStatusCode.OK, """{"mustChangePassword":false}"""),
+            Response(HttpStatusCode.OK, """{"token":"after-login"}"""),
+            Response(HttpStatusCode.NoContent));
+        var api = Api(handler);
+
+        await api.LoginAsync("admin", "A strong password 2026!");
+        await api.SetMembershipActiveAsync(Guid.Empty, true);
+
+        Assert.Equal(["", "before-login", "", "after-login"], handler.Tokens);
+    }
+
+    [Fact]
+    public async Task Signing_out_refreshes_the_admin_antiforgery_for_the_next_mutation()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, """{"token":"before-sign-out"}"""),
+            Response(HttpStatusCode.NoContent),
+            Response(HttpStatusCode.OK, """{"token":"after-sign-out"}"""),
+            Response(HttpStatusCode.NoContent));
+        var api = Api(handler);
+
+        await api.SignOutAsync();
+        await api.SetMembershipActiveAsync(Guid.Empty, true);
+
+        Assert.Equal(["", "before-sign-out", "", "after-sign-out"], handler.Tokens);
+    }
+
+    [Fact]
     public async Task Admin_requests_use_the_admin_antiforgery_header_and_client_build()
     {
         var handler = new Handler(Response(HttpStatusCode.OK, """{"token":"token"}"""), Response(HttpStatusCode.NoContent));

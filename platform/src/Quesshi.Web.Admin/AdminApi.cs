@@ -118,8 +118,18 @@ public sealed class AdminApi(ClientHttp client)
             try { error = await response.Content.ReadFromJsonAsync<ErrorResponse>(cancellationToken: cancellationToken); }
             catch (System.Text.Json.JsonException) { }
         }
-        return new(false, default, error?.Code ?? error?.Error ?? (response.StatusCode == HttpStatusCode.Unauthorized ? "admin.auth.signedOut" : "admin.error"));
+        return new(false, default, LocalizedError(error?.Code ?? error?.Error, response.StatusCode));
     }
+
+    private static string LocalizedError(string? error, HttpStatusCode statusCode) => error switch
+    {
+        null when statusCode == HttpStatusCode.Unauthorized => "admin.auth.signedOut",
+        null => "admin.error",
+        "last_owner" => "admin.accounts.lastOwner",
+        "invalid_role" or "last_platform_admin" or "account_change_failed" or "invalid_antiforgery" => "admin.error",
+        _ when error.StartsWith("admin.", StringComparison.Ordinal) => error,
+        _ => "admin.error",
+    };
 
     private sealed record AntiforgeryToken(string? Token);
     private sealed record ErrorResponse(string? Code, string? Error);

@@ -599,6 +599,7 @@
   "admin.accounts.deactivate": "Deactivate membership",
   "admin.accounts.reactivate": "Reactivate membership",
   "last_owner": "The last owner cannot be changed.",
+  "admin.accounts.lastOwner": "The last owner cannot be changed.",
   "admin.error": "The request could not be completed.",
   "admin.auth.signedOut": "Your administration session has ended."
 }
