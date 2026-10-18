@@ -183,6 +183,7 @@ create table admin_memberships (
   tenant_id uuid not null references tenants on delete cascade,
   admin_id  uuid not null references admins on delete cascade,
   role      text not null default 'owner' check (role in ('owner', 'editor', 'moderator')),
+  is_active boolean not null default true,               -- tenant-only admin access; global admin activation stays on admins
   primary key (tenant_id, admin_id)
 );
 create index admin_memberships_admin on admin_memberships (admin_id);

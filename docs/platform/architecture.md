@@ -1443,8 +1443,10 @@ raise an alert while they are failing. They are idempotent.
 Player rows stay so other people's histories remain intact. The same email later creates a new
 account. Purging an abandoned guest runs the same per-tenant steps.
 
-Admins are a separate identity, also global: one admin login with a role per tenant
-(`admin_memberships`), and a platform flag for whoever creates tenants and sets entitlements.
+Admins are a separate identity, also global: one admin login with a role and active state per
+tenant (`admin_memberships`), and a platform flag for whoever creates tenants and sets
+entitlements. An owner may deactivate an administrator's membership only in their tenant; it
+does not change the global login, any other tenant membership, or platform authority.
 
 Today a player is one Mongo document per tenant holding email, stats, per-category accuracy,
 friends, abandonments and the settled-match dedup list. That document is split: identity into
@@ -1466,12 +1468,15 @@ friends, abandonments and the settled-match dedup list. That document is split: 
   outcome with the usual confirmation token and no player is created before confirmation. Its
   routes are filled into a core-built group under `/api/auth/x/{method}`. Google is the first.
 - **Admins** keep today's username and password sign-in with ASP.NET Identity's hasher, the
-  lock-out rule, single-use reset tokens, activation and deactivation, a unique email for resets,
-  and last sign-in time. The last active platform admin cannot be deactivated or removed, nor the
-  last owner of a tenant. Those two checks are made under a lock shared by everyone changing the
-  same thing (one advisory lock per tenant for owners, one global one for platform admins), so two
-  requests cannot each remove "the other" owner. Deactivating an admin or removing a membership
-  revokes their sessions in the same transaction.
+  lock-out rule, single-use reset tokens, global activation and deactivation, a unique email for
+  resets, and last sign-in time. An owner may separately activate or deactivate a membership in
+  their own tenant; it revokes only that tenant's sessions and does not affect global activation,
+  other tenants, or a platform administrator's platform authority. The last active platform admin
+  cannot be globally deactivated or removed, nor the last active owner membership of a tenant.
+  Those checks are made under a lock shared by everyone changing the same thing (one advisory lock
+  per tenant for owners, one global one for platform admins), so two requests cannot each remove
+  "the other" owner. Deactivating an admin or removing a membership revokes the affected sessions
+  in the same transaction.
 - **Sessions are server-side rows, carried in a cookie.** Sign-in sets a `__Host-` cookie,
   `HttpOnly`, `Secure`, `SameSite=Lax`, holding an opaque token whose hash is a row in
   `auth_sessions`. A session row is bound to one tenant and to exactly one of an account, a guest
@@ -1742,7 +1747,7 @@ content; `moderator` may handle reports and players.
 | Players: list, search, ban | core identity | moderator |
 | Live sessions: list active, end one | core sessions (the `admin` ending, 7.5) | moderator |
 | Live on/off; lobby capacity limit | capability screen: the `live` format's enabled switch; a core setting | owner |
-| Admin accounts: create, activate, deactivate, reset, change password | core identity | owner |
+| Admin accounts: create, activate or deactivate this tenant's membership, reset, change password | core identity; global identity activation remains platform-admin-only | owner |
 | New: capabilities, branding, audit log, dead jobs | core | owner |
 
 ## 16. Web serving and the Blazor client

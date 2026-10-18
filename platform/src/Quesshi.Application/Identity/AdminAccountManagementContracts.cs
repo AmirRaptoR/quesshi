@@ -7,6 +7,7 @@ internal sealed record ManagedAdminAccount(
     string Username,
     string Email,
     bool IsActive,
+    bool IsMembershipActive,
     bool IsPlatform,
     bool MustChangePassword,
     DateTimeOffset? LockedUntil,
@@ -40,6 +41,7 @@ internal interface IAdminAccountManager
     Task<AdminAccountChangeResult> CreateAsync(Guid tenantId, CreateManagedAdmin request, CancellationToken cancellationToken = default);
     Task<AdminAccountChangeResult> ChangeRoleAsync(Guid tenantId, Guid adminId, AdminRole role, CancellationToken cancellationToken = default);
     Task<AdminAccountChangeResult> RemoveMembershipAsync(Guid tenantId, Guid adminId, CancellationToken cancellationToken = default);
+    Task<AdminAccountChangeResult> SetMembershipActiveAsync(Guid tenantId, Guid actorId, Guid adminId, bool isActive, CancellationToken cancellationToken = default);
     Task<AdminAccountChangeResult> SetActiveAsync(Guid actorId, Guid adminId, bool isActive, CancellationToken cancellationToken = default);
     Task<AdminAccountChangeResult> RemoveGlobalAsync(Guid actorId, Guid adminId, CancellationToken cancellationToken = default);
 }

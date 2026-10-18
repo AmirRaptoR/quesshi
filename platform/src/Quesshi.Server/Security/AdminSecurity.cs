@@ -48,7 +48,7 @@ internal sealed class AdminSessionService(DatabaseSources sources, IClock clock)
             with eligible as (
                 select a.id from admins a where a.id = @adminId and a.is_active
                   and (a.is_platform or exists (
-                    select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId
+                    select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId and m.is_active
                   ))
             ), created as (
                 insert into auth_sessions (token_hash, tenant_id, admin_id, expires_at)
@@ -73,7 +73,7 @@ internal sealed class AdminSessionService(DatabaseSources sources, IClock clock)
               left join admin_memberships m on m.admin_id = a.id and m.tenant_id = s.tenant_id
             where s.token_hash = @hash and s.tenant_id = @tenantId and s.expires_at > now() and a.is_active
               and (a.is_platform or exists (
-                select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId
+                select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId and m.is_active
               ))
             """, new { hash, tenantId }, cancellationToken: cancellationToken));
         return session is null ? null : new AdminIdentity(session.TenantId, session.AdminId, session.MustChangePassword, session.IsPlatform,

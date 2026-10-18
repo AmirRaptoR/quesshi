@@ -31,7 +31,7 @@ internal sealed class AdminAuthService(DatabaseSources sources, IAdminPasswordHa
             select a.id as Id, a.password_hash as PasswordHash, a.is_active as IsActive,
                    a.must_change_password as MustChangePassword, a.locked_until as LockedUntil,
                    (a.is_platform or exists (
-                       select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId
+                       select 1 from admin_memberships m where m.admin_id = a.id and m.tenant_id = @tenantId and m.is_active
                    )) as HasTenantAccess
             from admins a where a.username = @username for update
             """, new { tenantId, username = username?.Trim() ?? string.Empty }, transaction, cancellationToken: cancellationToken));
