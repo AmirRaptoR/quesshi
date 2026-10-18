@@ -601,8 +601,8 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         var secondRegistry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var first = Program.CreateApplication(firstSources, 11150, 30150, configuredFeatures: firstRegistry);
         await using var second = Program.CreateApplication(secondSources, 11151, 30151, configuredFeatures: secondRegistry);
-        first.Urls.Add("http://127.0.0.1:50150");
-        second.Urls.Add("http://127.0.0.1:50151");
+        first.Urls.Add("http://127.0.0.1:0");
+        second.Urls.Add("http://127.0.0.1:0");
         await first.StartAsync();
         await first.Services.GetRequiredService<PostgresClock>().StartAsync();
         await second.StartAsync();
@@ -611,9 +611,9 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         {
             var cookie = await IssueAdminCookieAsync(
                 first.Services.GetRequiredService<IAdminSessionIssuer>(), seeded.TenantId, seeded.ModeratorAdminId);
-            using var firstClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50150") };
+            using var firstClient = new HttpClient { BaseAddress = new Uri(first.Urls.Single()) };
             var token = await AdminAntiforgeryAsync(firstClient, TenantHost, cookie);
-            using var secondClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50151") };
+            using var secondClient = new HttpClient { BaseAddress = new Uri(second.Urls.Single()) };
             using var response = await SendAdminAsync(secondClient, TenantHost, HttpMethod.Post, "/api/admin/x/security/moderator", cookie, token, TenantOrigin);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
