@@ -15,6 +15,7 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
     public async Task<IReadOnlyList<ManagedAdminAccount>> ListAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
         await database.QueryAsync<ManagedAdminAccount>("""
             select a.id as Id, a.username as Username, a.email as Email, a.is_active as IsActive,
+                   m.is_active as IsMembershipActive,
                    a.is_platform as IsPlatform, a.must_change_password as MustChangePassword,
                    a.locked_until as LockedUntil, a.created_at as CreatedAt,
                    a.last_login_at as LastLoginAt, m.role as Role
@@ -49,7 +50,7 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
                     insert into admin_memberships (tenant_id, admin_id, role) values (@tenantId, @id, 'owner')
                     """, new { id, username, email, passwordHash = passwords.Hash(request.Password), isPlatform = request.IsPlatform, tenantId }, cancellationToken);
                 return new AdminAccountChangeResult(AdminAccountChangeStatus.Success,
-                    new ManagedAdminAccount(id, username, email, true, request.IsPlatform, true, null, clock.Now, null, AdminRole.Owner));
+                    new ManagedAdminAccount(id, username, email, true, true, request.IsPlatform, true, null, clock.Now, null, AdminRole.Owner));
             }, cancellationToken);
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
@@ -69,7 +70,7 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
             await LockTenantOwnersAsync(transaction, tenantId, cancellationToken);
             var membership = await MembershipAsync(transaction, tenantId, adminId, cancellationToken);
             if (membership is null) return new AdminAccountChangeResult(AdminAccountChangeStatus.NotFound);
-            if (membership.Role == AdminRole.Owner && role != AdminRole.Owner && membership.IsActive
+            if (membership.Role == AdminRole.Owner && role != AdminRole.Owner && membership.IsGloballyActive && membership.IsMembershipActive
                 && !await HasAnotherActiveOwnerAsync(transaction, tenantId, adminId, cancellationToken))
                 return new AdminAccountChangeResult(AdminAccountChangeStatus.LastOwner);
             await transaction.ExecuteAsync("update admin_memberships set role = @role where tenant_id = @tenantId and admin_id = @adminId", new { tenantId, adminId, role = RoleName(role) }, cancellationToken);
@@ -84,10 +85,24 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
             await LockTenantOwnersAsync(transaction, tenantId, cancellationToken);
             var membership = await MembershipAsync(transaction, tenantId, adminId, cancellationToken);
             if (membership is null) return new AdminAccountChangeResult(AdminAccountChangeStatus.NotFound);
-            if (membership.Role == AdminRole.Owner && membership.IsActive
+            if (membership.Role == AdminRole.Owner && membership.IsGloballyActive && membership.IsMembershipActive
                 && !await HasAnotherActiveOwnerAsync(transaction, tenantId, adminId, cancellationToken))
                 return new AdminAccountChangeResult(AdminAccountChangeStatus.LastOwner);
             await transaction.ExecuteAsync("delete from auth_sessions where tenant_id = @tenantId and admin_id = @adminId; delete from admin_memberships where tenant_id = @tenantId and admin_id = @adminId", new { tenantId, adminId }, cancellationToken);
+            return new AdminAccountChangeResult(AdminAccountChangeStatus.Success);
+        }, cancellationToken);
+
+    public Task<AdminAccountChangeResult> SetMembershipActiveAsync(Guid tenantId, Guid actorId, Guid adminId, bool isActive, CancellationToken cancellationToken = default) =>
+        database.InTransactionAsync(async transaction =>
+        {
+            if (actorId == adminId) return new AdminAccountChangeResult(AdminAccountChangeStatus.CannotChangeSelf);
+            await LockTenantOwnersAsync(transaction, tenantId, cancellationToken);
+            var membership = await MembershipAsync(transaction, tenantId, adminId, cancellationToken);
+            if (membership is null) return new AdminAccountChangeResult(AdminAccountChangeStatus.NotFound);
+            if (!isActive && membership.Role == AdminRole.Owner && membership.IsGloballyActive && membership.IsMembershipActive
+                && !await HasAnotherActiveOwnerAsync(transaction, tenantId, adminId, cancellationToken))
+                return new AdminAccountChangeResult(AdminAccountChangeStatus.LastOwner);
+            await transaction.ExecuteAsync("update admin_memberships set is_active = @isActive where tenant_id = @tenantId and admin_id = @adminId; delete from auth_sessions where tenant_id = @tenantId and admin_id = @adminId and not @isActive", new { tenantId, adminId, isActive }, cancellationToken);
             return new AdminAccountChangeResult(AdminAccountChangeStatus.Success);
         }, cancellationToken);
 
@@ -109,7 +124,7 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
                 """, new { adminId }, cancellationToken);
             if (admin is null) return new AdminAccountChangeResult(AdminAccountChangeStatus.NotFound);
             var ownerTenants = await transaction.QueryAsync<Guid>("""
-                select m.tenant_id from admin_memberships m where m.admin_id = @adminId and m.role = 'owner' order by m.tenant_id
+                select m.tenant_id from admin_memberships m where m.admin_id = @adminId and m.role = 'owner' and m.is_active order by m.tenant_id
                 """, new { adminId }, cancellationToken);
             foreach (var tenantId in ownerTenants) await LockTenantOwnersAsync(transaction, tenantId, cancellationToken);
             if (admin.IsPlatform && admin.IsActive && (!isActive || remove)
@@ -144,14 +159,14 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
 
     private static Task<MembershipRow?> MembershipAsync(ISystemTx transaction, Guid tenantId, Guid adminId, CancellationToken cancellationToken) =>
         transaction.QuerySingleOrDefaultAsync<MembershipRow>("""
-            select m.role as Role, a.is_active as IsActive from admin_memberships m join admins a on a.id = m.admin_id
+            select m.role as Role, a.is_active as IsGloballyActive, m.is_active as IsMembershipActive from admin_memberships m join admins a on a.id = m.admin_id
             where m.tenant_id = @tenantId and m.admin_id = @adminId for update
             """, new { tenantId, adminId }, cancellationToken);
 
     private static Task<bool> HasAnotherActiveOwnerAsync(ISystemTx transaction, Guid tenantId, Guid adminId, CancellationToken cancellationToken) =>
         transaction.QuerySingleOrDefaultAsync<bool>("""
             select exists(select 1 from admin_memberships m join admins a on a.id = m.admin_id
-                          where m.tenant_id = @tenantId and m.role = 'owner' and m.admin_id <> @adminId and a.is_active)
+                          where m.tenant_id = @tenantId and m.role = 'owner' and m.admin_id <> @adminId and a.is_active and m.is_active)
             """, new { tenantId, adminId }, cancellationToken);
 
     private static Task<bool> HasAnotherPlatformAdminAsync(ISystemTx transaction, Guid adminId, CancellationToken cancellationToken) =>
@@ -159,6 +174,6 @@ internal sealed class AdminAccountManager(DatabaseSources sources, IAdminPasswor
 
     private static string RoleName(AdminRole role) => role.ToString().ToLowerInvariant();
 
-    private sealed record MembershipRow(AdminRole Role, bool IsActive);
+    private sealed record MembershipRow(AdminRole Role, bool IsGloballyActive, bool IsMembershipActive);
     private sealed record AdminRow(Guid Id, string Username, string Email, bool IsActive, bool IsPlatform, bool MustChangePassword, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt);
 }

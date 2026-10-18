@@ -15,6 +15,7 @@ public sealed class AdminAccountEndpoints : ICoreRouteModule
         accounts.MapPost("", CreateAsync).WithMetadata(new AdminAuditMetadata("admin.account.create", "admin"));
         accounts.MapPut("/{id:guid}/role", ChangeRoleAsync).WithMetadata(new AdminAuditMetadata("admin.membership.role", "admin"));
         accounts.MapDelete("/{id:guid}", RemoveMembershipAsync).WithMetadata(new AdminAuditMetadata("admin.membership.remove", "admin"));
+        accounts.MapPost("/{id:guid}/membership/active", SetMembershipActiveAsync).WithMetadata(new AdminAuditMetadata("admin.membership.active", "admin"));
         accounts.MapPost("/{id:guid}/active", SetActiveAsync).WithMetadata(new AdminAuditMetadata("admin.account.active", "admin"));
         accounts.MapDelete("/{id:guid}/global", RemoveGlobalAsync).WithMetadata(new AdminAuditMetadata("admin.account.remove", "admin"));
     }
@@ -50,6 +51,15 @@ public sealed class AdminAccountEndpoints : ICoreRouteModule
         var tenant = TenantResolutionMiddleware.GetTenant(context);
         if (tenant is null) return Results.NotFound();
         return Answer(await accounts.RemoveMembershipAsync(tenant.Id, id, cancellationToken));
+    }
+
+    private static async Task<IResult> SetMembershipActiveAsync(HttpContext context, Guid id, bool value, IAdminAccountManager accounts, CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        var actor = context.Admin();
+        if (tenant is null) return Results.NotFound();
+        if (actor is null) return Results.StatusCode(StatusCodes.Status401Unauthorized);
+        return Answer(await accounts.SetMembershipActiveAsync(tenant.Id, actor.AdminId, id, value, cancellationToken));
     }
 
     private static async Task<IResult> SetActiveAsync(HttpContext context, Guid id, bool value, IAdminAccountManager accounts, CancellationToken cancellationToken)

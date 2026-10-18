@@ -19,9 +19,11 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
         Assert.Contains("20261013T0202_core_identity_security.sql", names);
         Assert.Contains("20261015T0301_core_subject_only_external_identities.sql", names);
+        Assert.Contains("20261018T0000_core_admin_membership_activity.sql", names);
         Assert.True(Array.IndexOf(names, "20261013T0201_core_job_schedule_windows.sql") < Array.IndexOf(names, "20261013T0202_core_identity_security.sql"));
         Assert.True(Array.IndexOf(names, "20261014T0204_core_deadlines.sql") < Array.IndexOf(names, "20261015T0301_core_subject_only_external_identities.sql"));
         Assert.True(Array.IndexOf(names, "20261015T0204_core_admin_identity_audit.sql") < Array.IndexOf(names, "20261015T0301_core_subject_only_external_identities.sql"));
+        Assert.True(Array.IndexOf(names, "20261015T0204_core_admin_identity_audit.sql") < Array.IndexOf(names, "20261018T0000_core_admin_membership_activity.sql"));
     }
 
     [SkippableFact]
@@ -44,6 +46,35 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         Assert.True(await ScalarAsync<bool>(owner, "select exists (select 1 from players where tenant_id = @tenant and id = @player)", ("tenant", TenantA), ("player", player)));
 
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+    }
+
+    [SkippableFact]
+    public async Task Admin_membership_activity_migration_activates_existing_memberships()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+        await using var owner = await OpenAsync("quesshi_owner");
+        var tenant = Guid.NewGuid();
+        var admin = Guid.NewGuid();
+        try
+        {
+            await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
+            await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
+            await ExecuteAsync(owner, "alter table admin_memberships drop column if exists is_active; delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql'; insert into admin_memberships (tenant_id, admin_id, role) values (@tenant, @admin, 'editor')", ("tenant", tenant), ("admin", admin));
+
+            await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+
+            Assert.True(await ScalarAsync<bool>(owner, "select is_active from admin_memberships where tenant_id = @tenant and admin_id = @admin", ("tenant", tenant), ("admin", admin)));
+        }
+        finally
+        {
+            if (!await ScalarAsync<bool>(owner, "select exists (select 1 from information_schema.columns where table_name = 'admin_memberships' and column_name = 'is_active')"))
+            {
+                await ExecuteAsync(owner, "delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql'");
+                await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+            }
+            await ExecuteAsync(owner, "delete from admin_memberships where tenant_id = @tenant; delete from admins where id = @admin; delete from tenants where id = @tenant", ("tenant", tenant), ("admin", admin));
+        }
     }
 
     [SkippableFact]
@@ -212,6 +243,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             delete from schema_migrations where name = '20261015T0301_core_subject_only_external_identities.sql';
             delete from schema_migrations where name = '20261016T0100_core_categories.sql';
             delete from schema_migrations where name = '20261016T0100_core_player_bans.sql';
+            delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql';
             alter policy members_only on accounts
               using (exists (select 1 from players p
                             where p.account_id = accounts.id

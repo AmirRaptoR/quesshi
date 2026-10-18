@@ -369,6 +369,195 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Api_changes_membership_activity_without_changing_global_or_other_tenant_access()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var actor = await InsertAdminAsync(owner, "activity-owner", "activity-owner@example.test");
+        var target = await InsertAdminAsync(owner, "activity-target", "activity-target@example.test");
+        await MembershipAsync(owner, TenantA, actor, "owner");
+        await MembershipAsync(owner, TenantA, target, "editor");
+        await MembershipAsync(owner, TenantB, target, "owner");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
+        app.Urls.Add("http://127.0.0.1:50157");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var actorCookie = await IssueCookieAsync(sessions, TenantA, actor);
+            var targetTenantACookie = await IssueCookieAsync(sessions, TenantA, target);
+            var targetTenantBCookie = await IssueCookieAsync(sessions, TenantB, target);
+            var actorToken = await AdminAntiforgeryAsync(client, actorCookie);
+            using var deactivate = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=false", actorCookie, actorToken, "http://accounts-a.example.test");
+            using var revoked = await SendAsync(client, HttpMethod.Get, "/api/admin/accounts", targetTenantACookie);
+            using var retained = await SendAsync(client, HttpMethod.Get, "/api/admin/accounts", targetTenantBCookie, host: "accounts-b.example.test");
+            using var listAfterDeactivation = await SendAsync(client, HttpMethod.Get, "/api/admin/accounts", actorCookie);
+            var anonymousToken = await AdminAntiforgeryAsync(client, null);
+            using var deniedLogin = await SendAsync(client, HttpMethod.Post, "/api/admin/auth/login", null, anonymousToken, "http://accounts-a.example.test", JsonContent.Create(new { username = "activity-target", password = "Strong password 2026!" }));
+            using var reactivate = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=true", actorCookie, actorToken, "http://accounts-a.example.test");
+            var reactivatedToken = await AdminAntiforgeryAsync(client, null);
+            using var restoredLogin = await SendAsync(client, HttpMethod.Post, "/api/admin/auth/login", null, reactivatedToken, "http://accounts-a.example.test", JsonContent.Create(new { username = "activity-target", password = "Strong password 2026!" }));
+            var listedAccounts = await listAfterDeactivation.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.NoContent, deactivate.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, retained.StatusCode);
+            Assert.Contains("\"isActive\":true", listedAccounts, StringComparison.Ordinal);
+            Assert.Contains("\"isMembershipActive\":false", listedAccounts, StringComparison.Ordinal);
+            Assert.Equal(HttpStatusCode.Unauthorized, deniedLogin.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, reactivate.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, restoredLogin.StatusCode);
+            Assert.Equal((true, true, true), (
+                await ScalarAsync<bool>(owner, "select is_active from admins where id = @admin", ("admin", target)),
+                await ScalarAsync<bool>(owner, "select is_active from admin_memberships where tenant_id = @tenant and admin_id = @admin", ("tenant", TenantA), ("admin", target)),
+                await ScalarAsync<bool>(owner, "select is_active from admin_memberships where tenant_id = @tenant and admin_id = @admin", ("tenant", TenantB), ("admin", target))));
+            Assert.Equal("editor", await ScalarAsync<string>(owner, "select role from admin_memberships where tenant_id = @tenant and admin_id = @admin", ("tenant", TenantA), ("admin", target)));
+            Assert.Equal("owner", await ScalarAsync<string>(owner, "select role from admin_memberships where tenant_id = @tenant and admin_id = @admin", ("tenant", TenantB), ("admin", target)));
+            Assert.Equal(1, await ScalarAsync<int>(owner, "select count(*) from auth_sessions where tenant_id = @tenant and admin_id = @admin", ("tenant", TenantB), ("admin", target)));
+            Assert.Equal(2, await ScalarAsync<int>(owner, "select count(*) from audit_log where tenant_id = @tenant and actor_id = @actor and action = 'admin.membership.active' and target_id = @target", ("tenant", TenantA), ("actor", actor), ("target", target)));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Api_membership_activity_requires_an_owner_or_platform_admin_and_keeps_platform_global_authority()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var tenantOwner = await InsertAdminAsync(owner, "activity-permission-owner", "activity-permission-owner@example.test");
+        var editor = await InsertAdminAsync(owner, "activity-permission-editor", "activity-permission-editor@example.test");
+        var moderator = await InsertAdminAsync(owner, "activity-permission-moderator", "activity-permission-moderator@example.test");
+        var platform = await InsertAdminAsync(owner, "activity-permission-platform", "activity-permission-platform@example.test", isPlatform: true);
+        var target = await InsertAdminAsync(owner, "activity-permission-target", "activity-permission-target@example.test");
+        var foreign = await InsertAdminAsync(owner, "activity-permission-foreign", "activity-permission-foreign@example.test");
+        await MembershipAsync(owner, TenantA, tenantOwner, "owner");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await MembershipAsync(owner, TenantA, moderator, "moderator");
+        await MembershipAsync(owner, TenantA, target, "editor");
+        await MembershipAsync(owner, TenantA, platform, "owner");
+        await MembershipAsync(owner, TenantB, foreign, "editor");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
+        app.Urls.Add("http://127.0.0.1:50157");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var editorCookie = await IssueCookieAsync(sessions, TenantA, editor);
+            var moderatorCookie = await IssueCookieAsync(sessions, TenantA, moderator);
+            var ownerCookie = await IssueCookieAsync(sessions, TenantA, tenantOwner);
+            var editorToken = await AdminAntiforgeryAsync(client, editorCookie);
+            var moderatorToken = await AdminAntiforgeryAsync(client, moderatorCookie);
+            var ownerToken = await AdminAntiforgeryAsync(client, ownerCookie);
+            using var editorResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=false", editorCookie, editorToken, "http://accounts-a.example.test");
+            using var moderatorResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=false", moderatorCookie, moderatorToken, "http://accounts-a.example.test");
+            using var foreignResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{foreign}/membership/active?value=false", ownerCookie, ownerToken, "http://accounts-a.example.test");
+            using var platformResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{platform}/membership/active?value=false", ownerCookie, ownerToken, "http://accounts-a.example.test");
+            using var globalResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/active?value=false", ownerCookie, ownerToken, "http://accounts-a.example.test");
+            var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
+            var platformToken = await AdminAntiforgeryAsync(client, platformCookie);
+            using var platformMembershipResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=false", platformCookie, platformToken, "http://accounts-a.example.test");
+            using var platformGlobalResponse = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/active?value=false", platformCookie, platformToken, "http://accounts-a.example.test");
+
+            Assert.Equal(HttpStatusCode.Forbidden, editorResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, moderatorResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, foreignResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, platformResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, globalResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, platformMembershipResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, platformGlobalResponse.StatusCode);
+            Assert.True(await ScalarAsync<bool>(owner, "select is_active and is_platform from admins where id = @admin", ("admin", platform)));
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Membership_deactivation_refuses_self_and_the_last_active_owner_without_revoking_sessions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var platform = await InsertAdminAsync(owner, "activity-guard-platform", "activity-guard-platform@example.test", isPlatform: true);
+        var target = await InsertAdminAsync(owner, "activity-guard-owner", "activity-guard-owner@example.test");
+        await MembershipAsync(owner, TenantA, target, "owner");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
+        app.Urls.Add("http://127.0.0.1:50157");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var targetCookie = await IssueCookieAsync(sessions, TenantA, target);
+            var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
+            var targetToken = await AdminAntiforgeryAsync(client, targetCookie);
+            var platformToken = await AdminAntiforgeryAsync(client, platformCookie);
+            using var self = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=false", targetCookie, targetToken, "http://accounts-a.example.test");
+            using var lastOwner = await SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{target}/membership/active?value=false", platformCookie, platformToken, "http://accounts-a.example.test");
+            using var retainedSession = await SendAsync(client, HttpMethod.Get, "/api/admin/accounts", targetCookie);
+
+            Assert.Equal(HttpStatusCode.BadRequest, self.StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, lastOwner.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, retainedSession.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+        Assert.Equal(1, await ScalarAsync<int>(owner, "select count(*) from admin_memberships where tenant_id = @tenant and is_active", ("tenant", TenantA)));
+        Assert.Equal(2, await ScalarAsync<int>(owner, "select count(*) from auth_sessions where tenant_id = @tenant", ("tenant", TenantA)));
+    }
+
+    [SkippableFact]
+    public async Task Concurrent_owner_membership_deactivations_leave_an_active_owner()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var first = await InsertAdminAsync(owner, "activity-concurrent-first", "activity-concurrent-first@example.test");
+        var second = await InsertAdminAsync(owner, "activity-concurrent-second", "activity-concurrent-second@example.test");
+        await MembershipAsync(owner, TenantA, first, "owner");
+        await MembershipAsync(owner, TenantA, second, "owner");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
+        app.Urls.Add("http://127.0.0.1:50157");
+        await app.StartAsync();
+        await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+            var firstCookie = await IssueCookieAsync(sessions, TenantA, first);
+            var secondCookie = await IssueCookieAsync(sessions, TenantA, second);
+            var firstToken = await AdminAntiforgeryAsync(client, firstCookie);
+            var secondToken = await AdminAntiforgeryAsync(client, secondCookie);
+            var results = await Task.WhenAll(
+                SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{second}/membership/active?value=false", firstCookie, firstToken, "http://accounts-a.example.test"),
+                SendAsync(client, HttpMethod.Post, $"/api/admin/accounts/{first}/membership/active?value=false", secondCookie, secondToken, "http://accounts-a.example.test"));
+            using var firstResult = results[0];
+            using var secondResult = results[1];
+
+            Assert.Contains(HttpStatusCode.NoContent, new[] { firstResult.StatusCode, secondResult.StatusCode });
+            Assert.Contains(HttpStatusCode.Conflict, new[] { firstResult.StatusCode, secondResult.StatusCode });
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+        Assert.Equal(1, await ScalarAsync<int>(owner, "select count(*) from admin_memberships m join admins a on a.id = m.admin_id where m.tenant_id = @tenant and m.role = 'owner' and m.is_active and a.is_active", ("tenant", TenantA)));
+    }
+
+    [SkippableFact]
     public async Task Concurrent_owner_role_downgrades_leave_an_active_owner()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -793,7 +982,7 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         return Uri.UnescapeDataString(value[..value.IndexOf(';')]);
     }
 
-    private static async Task<string> AdminAntiforgeryAsync(HttpClient client, string cookie)
+    private static async Task<string> AdminAntiforgeryAsync(HttpClient client, string? cookie)
     {
         using var response = await SendAsync(client, HttpMethod.Get, "/api/admin/antiforgery", cookie);
         return (await response.Content.ReadFromJsonAsync<AntiforgeryResponse>())!.Token;
