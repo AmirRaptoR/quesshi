@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Text.Json;
 
 namespace Quesshi.Web.Tests;
@@ -11,6 +12,11 @@ public class BrowserTranslationTests
 {
     private static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "i18n");
     private static readonly string[] Languages = ["en", "fa", "nl"];
+    private static readonly string[] PlayerSourceFolders =
+    [
+        Path.Combine(AppContext.BaseDirectory, "PlayerShell"),
+        Path.Combine(AppContext.BaseDirectory, "PlayerPages")
+    ];
 
     private static Dictionary<string, string> Read(string lang)
         => JsonSerializer.Deserialize<Dictionary<string, string>>(
@@ -51,5 +57,26 @@ public class BrowserTranslationTests
 
         Assert.All(table, entry => Assert.False(string.IsNullOrWhiteSpace(entry.Value),
             $"{lang}.json has an empty value for {entry.Key}"));
+    }
+
+    [Fact]
+    public void Every_player_screen_translation_key_is_in_every_language()
+    {
+        var keys = PlayerSourceFolders
+            .SelectMany(folder => Directory.EnumerateFiles(folder, "*.razor"))
+            .SelectMany(path => Regex.Matches(File.ReadAllText(path), "\\\"(?<key>[a-z]+(?:\\.[A-Za-z]+)+)\\\"")
+                .Select(match => match.Groups["key"].Value))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var language in Languages)
+        {
+            var translations = Read(language);
+            var missing = keys
+                .Where(key => !translations.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                .ToList();
+
+            Assert.True(missing.Count == 0,
+                $"{language}.json is missing player screen keys: {string.Join(", ", missing)}");
+        }
     }
 }

@@ -43,6 +43,7 @@ function dynamicResource(request, response, tenant) {
   if (!tenant) return false;
   const resources = {
     '/api/config': { body: JSON.stringify(tenant.config), type: 'application/json', tag: `config-${tenant.config.configVersion}` },
+    '/api/me': { body: '', type: 'application/json', status: 401, tag: `identity-${tenant.config.configVersion}` },
     '/theme.css': { body: tenant.theme, type: 'text/css', tag: `theme-${tenant.config.configVersion}` },
     '/manifest.webmanifest': { body: JSON.stringify({ name: tenant.config.name, short_name: tenant.config.name, theme_color: tenant.themeColor }), type: 'application/manifest+json', tag: `manifest-${tenant.config.configVersion}` }
   };
@@ -53,7 +54,7 @@ function dynamicResource(request, response, tenant) {
     response.writeHead(304, { etag, 'cache-control': 'no-cache' }).end();
     return true;
   }
-  response.writeHead(200, { 'content-type': resource.type, etag, 'cache-control': 'no-cache' }).end(resource.body);
+  response.writeHead(resource.status ?? 200, { 'content-type': resource.type, etag, 'cache-control': 'no-cache' }).end(resource.body);
   return true;
 }
 

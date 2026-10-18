@@ -1,0 +1,55 @@
+@using Quesshi.Web.Services
+@inject AuthState Auth
+@inject Translator Translator
+
+<section class="stack" aria-labelledby="upgrade-title">
+    <h2 id="upgrade-title">@Translator["auth.upgradeTitle"]</h2>
+    <p class="muted">@Translator["auth.upgradeBody"]</p>
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <p class="form-error" role="alert">@Translator[error]</p>
+    }
+    @if (!codeRequested)
+    {
+        <form class="stack" @onsubmit="RequestCodeAsync">
+            <div class="field"><label for="upgrade-email">@Translator["auth.email"]</label><input id="upgrade-email" class="input" type="email" autocomplete="email" @bind="email" required /></div>
+            <button class="btn" type="submit" disabled="@busy">@Translator["auth.send"]</button>
+        </form>
+    }
+    else
+    {
+        <form class="stack" @onsubmit="UpgradeAsync">
+            <div class="field"><label for="upgrade-code">@Translator["auth.code"]</label><input id="upgrade-code" class="input code-input" inputmode="numeric" autocomplete="one-time-code" @bind="code" required /></div>
+            <button class="btn" type="submit" disabled="@busy">@Translator["auth.upgrade"]</button>
+        </form>
+    }
+</section>
+
+@code {
+    private string email = string.Empty;
+    private string code = string.Empty;
+    private string? error;
+    private bool busy;
+    private bool codeRequested;
+
+    private async Task RequestCodeAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.RequestCodeAsync(email);
+        busy = false;
+        if (result.IsSuccess) codeRequested = true;
+        else error = result.Error == "invalid_email" ? "auth.badEmail" : "common.error";
+    }
+
+    private async Task UpgradeAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.UpgradeGuestAsync(email, code);
+        busy = false;
+        if (result.IsSuccess) return;
+
+        error = result.Error == "address_taken" ? "auth.addressTaken" : "auth.badCode";
+    }
+}

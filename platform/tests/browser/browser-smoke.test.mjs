@@ -74,7 +74,7 @@ test('published client uses each tenant configuration online and after an offlin
   try {
     await page.goto(host.tenantUrl('northwind.localhost'));
     await page.locator('h1').waitFor();
-    assert.equal(await page.locator('h1').textContent(), 'Northwind');
+    assert.equal(await page.locator('h1').textContent(), 'Sign in');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'ltr');
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--shab').trim()), '#114477');
 
@@ -91,7 +91,7 @@ test('published client uses each tenant configuration online and after an offlin
     await page.locator('h1').waitFor();
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
     await page.waitForFunction(() => document.documentElement.dir === 'rtl');
-    assert.equal(await page.locator('h1').textContent(), 'کویشی کنتوسو');
+    assert.equal(await page.locator('h1').textContent(), 'وارد شو');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
     await page.reload();
     await page.locator('h1').waitFor();
@@ -99,9 +99,14 @@ test('published client uses each tenant configuration online and after an offlin
     await context.setOffline(true);
     await page.goto(host.tenantUrl('contoso.localhost'));
     await page.locator('h1').waitFor();
-    assert.equal(await page.locator('h1').textContent(), 'کویشی کنتوسو');
+    assert.equal(await page.locator('h1').textContent(), 'نشست تأیید نشد');
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--shab').trim()), '#5d1f50');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    assert.equal(await page.locator('button').evaluateAll(buttons => buttons.every(button => {
+      const bounds = button.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= window.innerWidth;
+    })), true);
     assertNoPageErrors();
   } finally {
     await context.close();

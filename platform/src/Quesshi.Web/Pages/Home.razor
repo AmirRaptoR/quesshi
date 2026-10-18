@@ -1,0 +1,15 @@
+@page "/"
+@using Quesshi.Web.Services
+@inject AuthState Auth
+@inject Translator Translator
+@inject NavigationManager Navigation
+
+<section class="card" aria-labelledby="home-title">
+    <h1 id="home-title">@Translator["home.title"]</h1>
+    <p class="muted">@Auth.Player?.DisplayName</p>
+    <button class="btn" type="button" @onclick="OpenProfile">@Translator["nav.profile"]</button>
+</section>
+
+@code {
+    private void OpenProfile() => Navigation.NavigateTo("/profile");
+}

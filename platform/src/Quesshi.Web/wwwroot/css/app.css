@@ -238,6 +238,14 @@ a  { color: var(--firouzeh); text-decoration: none; }
 .input:focus, .select:focus, .textarea:focus { border-color: var(--firouzeh); }
 .input::placeholder { color: var(--sadaf-3); }
 
+.form-error { color: #ffb4b4; }
+.form-success { color: var(--firouzeh); }
+.danger-zone { padding-top: 1rem; border-top: 1px solid var(--line); }
+.identity-summary { display: grid; gap: 0.75rem; margin: 0; }
+.identity-summary > div { display: grid; gap: 0.15rem; }
+.identity-summary dt { color: var(--sadaf-2); font-size: var(--step--1); }
+.identity-summary dd { margin: 0; overflow-wrap: anywhere; }
+
 .code-input {
   font-size: var(--step-2);
   font-weight: 800;

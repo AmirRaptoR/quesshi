@@ -374,7 +374,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Account_deletion_requires_an_account_session_and_clears_its_cookie()
+    public async Task Account_deletion_requires_an_account_session_clears_its_cookie_and_rejects_it_afterward()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
@@ -410,6 +410,8 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
                 Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
                 Assert.Contains(deleted.Headers.GetValues("Set-Cookie"), value => value.Contains("__Host-qp=", StringComparison.Ordinal) && value.Contains("expires=", StringComparison.OrdinalIgnoreCase));
             }
+            using var oldCookie = await SendAsync(client, HttpMethod.Get, "/api/me", accountCookie, null, null);
+            Assert.Equal(HttpStatusCode.Unauthorized, oldCookie.StatusCode);
         }
         finally
         {
