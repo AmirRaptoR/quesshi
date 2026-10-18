@@ -21,6 +21,7 @@ using Orleans.Hosting;
 using Quesshi.Engine.Contracts;
 using Quesshi.Application.Sessions;
 using Quesshi.Formats;
+using Quesshi.Kinds.Choice;
 using Quesshi.Kinds.PollChoice;
 using Quesshi.Kinds.PollRoster;
 using Quesshi.Server.Sessions;
@@ -161,7 +162,8 @@ public static class Program
         IKindRegistry? configuredKinds = null,
         ISessionTurnObserver? turnObserver = null,
         string? environmentName = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool ownsSources = true)
     {
         var options = new WebApplicationOptions
         {
@@ -178,7 +180,14 @@ public static class Program
         configureLogging?.Invoke(builder.Logging);
 
         var sources = configuredSources ?? DatabaseSources.FromEnvironment();
-        builder.Services.AddSingleton(sources);
+        if (ownsSources)
+        {
+            builder.Services.AddSingleton<DatabaseSources>(_ => sources);
+        }
+        else
+        {
+            builder.Services.AddSingleton(sources);
+        }
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         builder.Services.AddSingleton<IDatabaseClock, PostgresDatabaseClock>();
         builder.Services.AddSingleton<PostgresClock>();
@@ -193,6 +202,7 @@ public static class Program
         builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
         builder.Services.AddSingleton<ICategoryService, CategoryService>();
+        builder.Services.AddSingleton<IContent, ContentService>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
         builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
         builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
@@ -222,7 +232,7 @@ public static class Program
         builder.Services.AddSingleton<DeadlineSweep>();
         builder.Services.AddHostedService<DeadlineSweepService>();
         builder.Services.AddSingleton<IFormatRegistry>(_ => configuredFormats ?? PlatformFormats.CreateRegistry());
-        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new PollChoiceKind(), new PollRosterKind()]));
+        builder.Services.AddSingleton<IKindRegistry>(_ => configuredKinds ?? new KindRegistry([new ChoiceKind(), new PollChoiceKind(), new PollRosterKind()]));
         builder.Services.AddSingleton(provider =>
         {
             var registry = configuredFeatures ?? FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
@@ -379,7 +389,7 @@ public static class Program
 
         await BootstrapTenantAdminsAsync(sources, bootstrapOutput ?? Console.Out, cancellationToken);
 
-        await using var app = CreateApplication(sources);
+        await using var app = CreateApplication(sources, ownsSources: false);
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         await (run ?? (application => application.RunAsync(cancellationToken)))(app);
     }
