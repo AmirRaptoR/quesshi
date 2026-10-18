@@ -458,12 +458,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var app = Program.CreateApplication(sources, 11152, 30152, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:50152");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50152") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var ownerCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.OwnerAdminId);

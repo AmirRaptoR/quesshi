@@ -261,7 +261,7 @@ public sealed class SessionCommandDatabaseTests(PostgresFixture fixture)
         await InsertPollChoiceItemAsync(owner, tenant, session);
 
         await using var app = Program.CreateApplication(Sources(), 11132, 30132);
-        app.Urls.Add("http://127.0.0.1:50132");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
