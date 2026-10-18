@@ -9,6 +9,7 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 {
+    private const string QuestionsMigrationName = "20261018T0100_core_questions.sql";
     private static readonly Guid TenantA = Guid.Parse("c66dbf5d-a7e8-42a0-9215-7c87b00bc13e");
     private static readonly Guid TenantB = Guid.Parse("b2461b37-f799-4a3b-96b3-ff5446c64d95");
 
@@ -60,6 +61,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
             await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
+            await RewindQuestionsMigrationAsync(owner);
             await ExecuteAsync(owner, "alter table admin_memberships drop column if exists is_active; delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql'; insert into admin_memberships (tenant_id, admin_id, role) values (@tenant, @admin, 'editor')", ("tenant", tenant), ("admin", admin));
 
             await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
@@ -205,6 +207,8 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
+        await RewindQuestionsMigrationAsync(owner);
+
         await ExecuteAsync(owner, """
             drop function session_ended_effect_jobs(uuid);
             drop function due_sessions(timestamptz, int, uuid[]);
@@ -251,6 +255,11 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             """);
         await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'identity-a', 'Identity A', 'en'), (@b, 'identity-b', 'Identity B', 'en')", ("a", TenantA), ("b", TenantB));
         return owner;
+    }
+
+    private static Task RewindQuestionsMigrationAsync(NpgsqlConnection owner)
+    {
+        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; delete from schema_migrations where name = '{QuestionsMigrationName}'");
     }
 
     private async Task<NpgsqlConnection> OpenAsync(string role)
