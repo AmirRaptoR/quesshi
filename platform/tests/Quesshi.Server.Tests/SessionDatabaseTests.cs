@@ -59,7 +59,7 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Session_migration_creates_the_catalogue_and_defers_only_content_foreign_keys()
+    public async Task Session_migration_creates_the_catalogue_and_defers_media_foreign_keys()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
@@ -78,8 +78,8 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
             Assert.True(await ScalarAsync<bool>(owner, "select exists (select 1 from pg_indexes where schemaname = 'public' and indexname = @index)", ("index", index)));
         }
 
-        Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from pg_constraint where conrelid = 'session_items'::regclass and contype = 'f'"));
-        Assert.Equal(0L, await ScalarAsync<long>(owner, """
+        Assert.Equal(3L, await ScalarAsync<long>(owner, "select count(*) from pg_constraint where conrelid = 'session_items'::regclass and contype = 'f'"));
+        Assert.Equal(2L, await ScalarAsync<long>(owner, """
             select count(*)
             from pg_constraint fk
             join pg_class referenced on referenced.oid = fk.confrelid

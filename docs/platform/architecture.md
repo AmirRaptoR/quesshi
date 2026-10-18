@@ -409,7 +409,8 @@ holds if a plugin has a bug; nothing stops a plugin from writing bad data inside
 A question is a common envelope plus a kind-specific JSON payload (table `questions`).
 
 - **Envelope:** what every kind shares and what the database filters on: kind, family, language,
-  category, level, prompt, media, explanation, topic, status, source, owner.
+  category, level, prompt, explanation, topic, status, source, owner. Media joins the envelope
+  with the later media migration.
 - **Payload:** everything else. Only the kind's own code reads it. It is always a JSON object.
 - **`kind_version`:** the version of the kind that wrote the row.
 
