@@ -41,11 +41,18 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
                        JsonContent.Create(new { displayName = "New guest" })))
             {
                 Assert.Equal(HttpStatusCode.BadRequest, missingToken.StatusCode);
+                Assert.Equal("invalid_antiforgery", (await missingToken.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
             }
             using (var foreignOrigin = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/auth/guest", null, anonymousToken, "https://foreign.example.test",
                        JsonContent.Create(new { displayName = "New guest" })))
             {
                 Assert.Equal(HttpStatusCode.Forbidden, foreignOrigin.StatusCode);
+            }
+            using (var invalidName = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/auth/guest", null, anonymousToken, seeded.Origin,
+                       JsonContent.Create(new { displayName = "x" })))
+            {
+                Assert.Equal(HttpStatusCode.BadRequest, invalidName.StatusCode);
+                Assert.Equal("invalid_profile", (await invalidName.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
             }
 
             using var created = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/auth/guest", null, anonymousToken, seeded.Origin,
@@ -116,6 +123,7 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
                        JsonContent.Create(new { displayName = "Changed account", avatarSeed = "avatar-11", lang = "nl" })))
             {
                 Assert.Equal(HttpStatusCode.BadRequest, staleIdentity.StatusCode);
+                Assert.Equal("invalid_antiforgery", (await staleIdentity.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
             }
             using (var foreignOrigin = await SendAsync(client, seeded.Host, HttpMethod.Put, "/api/me", accountCookie, accountToken, "https://foreign.example.test",
                        JsonContent.Create(new { displayName = "Changed account", avatarSeed = "avatar-11", lang = "nl" })))
@@ -126,6 +134,7 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
                        JsonContent.Create(new { displayName = "x", avatarSeed = "avatar-11", lang = "nl" })))
             {
                 Assert.Equal(HttpStatusCode.BadRequest, invalidName.StatusCode);
+                Assert.Equal("invalid_profile", (await invalidName.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
             }
             using (var invalidAvatar = await SendAsync(client, seeded.Host, HttpMethod.Put, "/api/me", accountCookie, accountToken, seeded.Origin,
                        JsonContent.Create(new { displayName = "Changed account", avatarSeed = "unknown", lang = "nl" })))
@@ -325,5 +334,6 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
     }
 
     private sealed record AntiforgeryResponse(string Token);
+    private sealed record ErrorResponse(string Error);
     private sealed record ProfileResponse(Guid Id, string DisplayName, string AvatarSeed, string Lang);
 }

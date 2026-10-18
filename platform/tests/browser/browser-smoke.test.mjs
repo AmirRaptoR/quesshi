@@ -11,6 +11,22 @@ const publishedDirectory = process.env.PLATFORM_BROWSER_HOST_DIRECTORY
   ?? resolve(testDirectory, 'test-fixtures/published-platform');
 const runsPublishedClient = process.env.PLATFORM_BROWSER_HOST_DIRECTORY !== undefined;
 
+function rtlTenant(resources = {}) {
+  return {
+    config: {
+      name: 'Persian tenant',
+      languages: [{ code: 'fa', displayName: 'فارسی', direction: 'rtl' }],
+      defaultLanguage: 'fa',
+      capabilities: {},
+      configVersion: 19,
+      serverBuildId: 'test'
+    },
+    themeColor: '#5d1f50',
+    theme: ':root { --shab: #5d1f50; --lajevard: #762860; --lajevard-up: #923674; --firouzeh: #f0ae58; }',
+    resources
+  };
+}
+
 const tenants = {
   'northwind.localhost': {
     config: {
@@ -38,7 +54,16 @@ const tenants = {
     },
     themeColor: '#5d1f50',
     theme: ':root { --shab: #5d1f50; --lajevard: #762860; --lajevard-up: #923674; --firouzeh: #f0ae58; }'
-  }
+  },
+  'rtl-sign-in.localhost': rtlTenant(),
+  'rtl-confirmation.localhost': rtlTenant({
+    '/api/antiforgery': { body: '{"token":"csrf"}', type: 'application/json', tag: 'csrf' },
+    '/api/auth/code': { body: '{"status":"accepted"}', type: 'application/json', tag: 'code-requested' },
+    '/api/auth/verify': { body: '{"status":"profile_needed","token":"proof","displayName":"بازیکن","avatarSeed":"avatar-7","lang":"fa"}', type: 'application/json', tag: 'profile-needed' }
+  }),
+  'rtl-player.localhost': rtlTenant({
+    '/api/me': { body: '{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"بازیکن","avatarSeed":"avatar-7","lang":"fa"}', type: 'application/json', tag: 'player' }
+  })
 };
 
 let browser;
@@ -50,6 +75,15 @@ before(async () => {
 after(async () => {
   await browser.close();
 });
+
+async function assertRtlActionsFit(page) {
+  assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  assert.equal(await page.locator('button').evaluateAll(buttons => buttons.every(button => {
+    const bounds = button.getBoundingClientRect();
+    return bounds.left >= 0 && bounds.right <= window.innerWidth;
+  })), true);
+}
 
 test('published platform shell is byte-identical across tenant hosts', async () => {
   const host = await startPublishedPlatformHost({ directory: publishedDirectory, tenants });
@@ -74,7 +108,7 @@ test('published client uses each tenant configuration online and after an offlin
   try {
     await page.goto(host.tenantUrl('northwind.localhost'));
     await page.locator('h1').waitFor();
-    assert.equal(await page.locator('h1').textContent(), 'Northwind');
+    assert.equal(await page.locator('h1').textContent(), 'Sign in');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'ltr');
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--shab').trim()), '#114477');
 
@@ -91,7 +125,7 @@ test('published client uses each tenant configuration online and after an offlin
     await page.locator('h1').waitFor();
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
     await page.waitForFunction(() => document.documentElement.dir === 'rtl');
-    assert.equal(await page.locator('h1').textContent(), 'کویشی کنتوسو');
+    assert.equal(await page.locator('h1').textContent(), 'وارد شو');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
     await page.reload();
     await page.locator('h1').waitFor();
@@ -99,9 +133,47 @@ test('published client uses each tenant configuration online and after an offlin
     await context.setOffline(true);
     await page.goto(host.tenantUrl('contoso.localhost'));
     await page.locator('h1').waitFor();
-    assert.equal(await page.locator('h1').textContent(), 'کویشی کنتوسو');
+    assert.equal(await page.locator('h1').textContent(), 'نشست تأیید نشد');
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--shab').trim()), '#5d1f50');
     assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    assert.equal(await page.locator('button').evaluateAll(buttons => buttons.every(button => {
+      const bounds = button.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= window.innerWidth;
+    })), true);
+    assertNoPageErrors();
+  } finally {
+    await context.close();
+    await host.close();
+  }
+});
+
+test('published player entry, confirmation, profile, and settings fit their actions in RTL', { skip: !runsPublishedClient }, async () => {
+  const host = await startPublishedPlatformHost({ directory: publishedDirectory, tenants });
+  const context = await browser.newContext({ locale: 'fa-IR' });
+  const page = await context.newPage();
+  const assertNoPageErrors = capturePageErrors(page);
+  try {
+    await page.goto(host.tenantUrl('rtl-sign-in.localhost'));
+    await page.locator('#sign-in-title').waitFor();
+    await assertRtlActionsFit(page);
+
+    await page.goto(host.tenantUrl('rtl-confirmation.localhost'));
+    await page.locator('#email').fill('ada@example.test');
+    await page.locator('button[type="submit"]').click();
+    await page.locator('#code').fill('123456');
+    await page.locator('button[type="submit"]').click();
+    await page.locator('#confirm-profile-title').waitFor();
+    await assertRtlActionsFit(page);
+
+    await page.goto(host.tenantUrl('rtl-player.localhost'));
+    await page.locator('#home-title').waitFor();
+    await page.locator('main section button').click();
+    await page.locator('#profile-title').waitFor();
+    await assertRtlActionsFit(page);
+    await page.locator('main section button').click();
+    await page.locator('#settings-title').waitFor();
+    await assertRtlActionsFit(page);
     assertNoPageErrors();
   } finally {
     await context.close();

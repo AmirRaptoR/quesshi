@@ -1,0 +1,38 @@
+@using Quesshi.Web.Services
+@inject AuthState Auth
+@inject Translator Translator
+
+<form class="stack guest-entry" @onsubmit="CreateAsync">
+    <div class="field">
+        <label for="guest-name">@Translator["auth.guestName"]</label>
+        <input id="guest-name" class="input" @bind="displayName" required />
+    </div>
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <p class="form-error" role="alert">@Translator[error]</p>
+    }
+    <button class="btn btn--ghost btn--block" type="submit" disabled="@busy">@Translator["auth.guest"]</button>
+</form>
+
+@code {
+    private string displayName = string.Empty;
+    private string? error;
+    private bool busy;
+
+    [Parameter] public EventCallback OnCreated { get; set; }
+
+    private async Task CreateAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.CreateGuestAsync(displayName);
+        busy = false;
+        if (result.IsSuccess)
+        {
+            await OnCreated.InvokeAsync();
+            return;
+        }
+
+        error = "common.error";
+    }
+}

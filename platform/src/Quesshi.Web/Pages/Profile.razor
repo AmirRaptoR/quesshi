@@ -1,0 +1,22 @@
+@page "/profile"
+@using Quesshi.Web.Services
+@inject AuthState Auth
+@inject Translator Translator
+@inject NavigationManager Navigation
+
+@if (Auth.Player is not null)
+{
+    <section class="card stack" aria-labelledby="profile-title">
+        <h1 id="profile-title">@Translator["nav.profile"]</h1>
+        <dl class="identity-summary">
+            <div><dt>@Translator["profile.name"]</dt><dd>@Auth.Player.DisplayName</dd></div>
+            <div><dt>@Translator["profile.avatar"]</dt><dd>@Auth.Player.AvatarSeed</dd></div>
+            <div><dt>@Translator["profile.language"]</dt><dd>@Auth.Player.Lang</dd></div>
+        </dl>
+        <button class="btn" type="button" @onclick="OpenSettings">@Translator["settings.title"]</button>
+    </section>
+}
+
+@code {
+    private void OpenSettings() => Navigation.NavigateTo("/settings");
+}

@@ -2,6 +2,7 @@
 @using Quesshi.Web.Plugins
 @implements IDisposable
 @inject AppConfig Config
+@inject AuthState Auth
 @inject LanguageSelection Languages
 @inject Translator Translator
 @inject NavigationManager Navigation
@@ -17,30 +18,62 @@ else if (Navigation.Uri.Contains("eager-kind-smoke=1", StringComparison.Ordinal)
 else
 {
     <main class="shell" aria-live="polite">
-        <section class="empty">
-            <h1>@Config.NameFor(Languages.CurrentCode)</h1>
-            <p class="muted">@Translator["app.tagline"]</p>
+        <header class="topbar">
+            <span class="topbar__title">@Config.NameFor(Languages.CurrentCode)</span>
+            <span class="topbar__spacer"></span>
             <label>
                 <span class="sr-only">Language</span>
-                <select value="@Languages.CurrentCode" @onchange="ChangeLanguageAsync">
+                <select class="select" value="@Languages.CurrentCode" @onchange="ChangeLanguageAsync">
                     @foreach (var language in Config.Current.Languages)
                     {
                         <option value="@language.Code">@language.DisplayName</option>
                     }
                 </select>
             </label>
-        </section>
+        </header>
+        @if (Auth.Status == PlayerIdentityStatus.Loading)
+        {
+            <p class="muted">@Translator["common.loading"]</p>
+        }
+        else if (Auth.Status == PlayerIdentityStatus.Unconfirmed)
+        {
+            <section class="card stack" aria-labelledby="session-unconfirmed">
+                <h1 id="session-unconfirmed">@Translator["session.unconfirmed.title"]</h1>
+                <p>@Translator["session.unconfirmed.body"]</p>
+                <button class="btn" @onclick="RetryIdentityAsync">@Translator["common.retry"]</button>
+            </section>
+        }
+        else if (Auth.Status == PlayerIdentityStatus.SignedOut)
+        {
+            <SignIn />
+        }
+        else
+        {
+            <Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="new[] { AdminRouteAssembly.Assembly }">
+                <Found Context="routeData">
+                    <RouteView RouteData="@routeData" />
+                </Found>
+                <NotFound>
+                    <Home />
+                </NotFound>
+            </Router>
+        }
     </main>
 }
 
 @code {
-    protected override void OnInitialized() => Config.Changed += StateHasChanged;
+    protected override void OnInitialized()
+    {
+        Config.Changed += StateHasChanged;
+        Auth.Changed += StateHasChanged;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await Languages.InitializeAsync();
+            await Auth.InitializeAsync();
             StateHasChanged();
         }
     }
@@ -50,5 +83,11 @@ else
         if (args.Value is string code) await Languages.UseAsync(code);
     }
 
-    public void Dispose() => Config.Changed -= StateHasChanged;
+    private async Task RetryIdentityAsync() => await Auth.RetryAsync();
+
+    public void Dispose()
+    {
+        Config.Changed -= StateHasChanged;
+        Auth.Changed -= StateHasChanged;
+    }
 }

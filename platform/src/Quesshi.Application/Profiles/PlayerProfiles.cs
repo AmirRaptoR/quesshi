@@ -1,4 +1,5 @@
 using Quesshi.Plugin.Api;
+using Quesshi.Shared;
 
 namespace Quesshi.Application.Profiles;
 
@@ -93,13 +94,4 @@ internal sealed record ProfileUpdateResult(ProfileUpdateStatus Status, PlayerPro
     public static readonly ProfileUpdateResult Invalid = new(ProfileUpdateStatus.Invalid, null);
     public static readonly ProfileUpdateResult Missing = new(ProfileUpdateStatus.Missing, null);
     public ProfileUpdateResult(PlayerProfile profile) : this(ProfileUpdateStatus.Updated, profile) { }
-}
-
-/// <summary>The platform counterpart of the established twelve-seed avatar palette.</summary>
-internal static class PlayerAvatarPalette
-{
-    public const string Default = "avatar-0";
-    private static readonly string[] Seeds = [.. Enumerable.Range(0, 12).Select(index => $"avatar-{index}")];
-
-    public static bool IsValid(string? seed) => seed is not null && Seeds.Contains(seed, StringComparer.Ordinal);
 }

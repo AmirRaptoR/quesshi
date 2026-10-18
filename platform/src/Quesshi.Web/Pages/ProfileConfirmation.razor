@@ -1,0 +1,69 @@
+@using Quesshi.Web.Models
+@using Quesshi.Web.Services
+@using Quesshi.Shared
+@inject AuthState Auth
+@inject Translator Translator
+
+<section class="card card--taq stack" aria-labelledby="confirm-profile-title">
+    <h1 id="confirm-profile-title">@Translator["auth.confirmTitle"]</h1>
+    <p class="muted">@Translator["auth.confirmBody"]</p>
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <p class="form-error" role="alert">@Translator[error]</p>
+    }
+    <form class="stack" @onsubmit="ConfirmAsync">
+        <div class="field">
+            <label for="confirmation-name">@Translator["profile.name"]</label>
+            <input id="confirmation-name" class="input" @bind="profile.DisplayName" required />
+        </div>
+        <div class="field">
+            <label for="confirmation-avatar">@Translator["profile.avatar"]</label>
+            <select id="confirmation-avatar" class="select" @bind="profile.AvatarSeed">
+                @foreach (var avatar in PlayerAvatarPalette.Seeds)
+                {
+                    <option value="@avatar">@avatar</option>
+                }
+            </select>
+        </div>
+        <button class="btn btn--block" type="submit" disabled="@(busy || !profile.IsValid)">@Translator["auth.confirm"]</button>
+        <button class="btn btn--ghost btn--block" type="button" @onclick="OnCancelled" disabled="@busy">@Translator["auth.cancel"]</button>
+    </form>
+</section>
+
+@code {
+    private readonly PlayerProfileForm profile = new();
+    private string? error;
+    private bool busy;
+
+    [Parameter, EditorRequired] public VerificationResult Confirmation { get; set; } = default!;
+    [Parameter] public EventCallback OnCancelled { get; set; }
+    [Parameter] public EventCallback OnConfirmed { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        profile.DisplayName = Confirmation.DisplayName ?? string.Empty;
+        profile.AvatarSeed = Confirmation.AvatarSeed ?? PlayerAvatarPalette.Default;
+        profile.Lang = Confirmation.Lang ?? string.Empty;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (!profile.IsValid)
+        {
+            error = "profile.invalid";
+            return;
+        }
+
+        busy = true;
+        error = null;
+        var result = await Auth.ConfirmProfileAsync(Confirmation.Token ?? string.Empty, profile.DisplayName, profile.AvatarSeed, profile.Lang);
+        busy = false;
+        if (result.IsSuccess)
+        {
+            await OnConfirmed.InvokeAsync();
+            return;
+        }
+
+        error = "common.error";
+    }
+}

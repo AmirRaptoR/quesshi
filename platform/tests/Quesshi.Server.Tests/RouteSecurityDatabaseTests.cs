@@ -374,7 +374,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Account_deletion_requires_an_account_session_and_clears_its_cookie()
+    public async Task Account_deletion_requires_an_account_session_clears_its_cookie_and_rejects_it_afterward()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
@@ -410,6 +410,8 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
                 Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
                 Assert.Contains(deleted.Headers.GetValues("Set-Cookie"), value => value.Contains("__Host-qp=", StringComparison.Ordinal) && value.Contains("expires=", StringComparison.OrdinalIgnoreCase));
             }
+            using var oldCookie = await SendAsync(client, HttpMethod.Get, "/api/me", accountCookie, null, null);
+            Assert.Equal(HttpStatusCode.Unauthorized, oldCookie.StatusCode);
         }
         finally
         {
@@ -599,8 +601,8 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         var secondRegistry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var first = Program.CreateApplication(firstSources, 11150, 30150, configuredFeatures: firstRegistry);
         await using var second = Program.CreateApplication(secondSources, 11151, 30151, configuredFeatures: secondRegistry);
-        first.Urls.Add("http://127.0.0.1:50150");
-        second.Urls.Add("http://127.0.0.1:50151");
+        first.Urls.Add("http://127.0.0.1:0");
+        second.Urls.Add("http://127.0.0.1:0");
         await first.StartAsync();
         await first.Services.GetRequiredService<PostgresClock>().StartAsync();
         await second.StartAsync();
@@ -609,9 +611,9 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         {
             var cookie = await IssueAdminCookieAsync(
                 first.Services.GetRequiredService<IAdminSessionIssuer>(), seeded.TenantId, seeded.ModeratorAdminId);
-            using var firstClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50150") };
+            using var firstClient = new HttpClient { BaseAddress = new Uri(first.Urls.Single()) };
             var token = await AdminAntiforgeryAsync(firstClient, TenantHost, cookie);
-            using var secondClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50151") };
+            using var secondClient = new HttpClient { BaseAddress = new Uri(second.Urls.Single()) };
             using var response = await SendAdminAsync(secondClient, TenantHost, HttpMethod.Post, "/api/admin/x/security/moderator", cookie, token, TenantOrigin);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }

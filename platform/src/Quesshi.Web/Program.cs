@@ -11,6 +11,8 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddScoped<IClientReloader, JsClientReloader>();
 builder.Services.AddScoped<ClientHttp>();
+builder.Services.AddScoped<PlayerApi>();
+builder.Services.AddScoped<AuthState>();
 builder.Services.AddScoped<AppConfig>();
 builder.Services.AddScoped<LanguageSelection>();
 builder.Services.AddScoped<Translator>();

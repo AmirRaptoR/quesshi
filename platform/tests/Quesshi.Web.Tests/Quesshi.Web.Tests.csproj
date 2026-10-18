@@ -8,6 +8,8 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="../../src/Quesshi.Web/wwwroot/i18n/*.json" Link="i18n/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/Quesshi.Web/App.razor" Link="PlayerShell/App.razor" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/Quesshi.Web/Pages/*.razor" Link="PlayerPages/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../src/Quesshi.Web/wwwroot/service-worker.published.js" Link="service-worker.published.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="../TestProject.props" />

@@ -18,8 +18,8 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 {
-    // 11161-11164 / 30161-30164 / 50161-50164 are reserved for this class.
-    private static int nextHttpPort = 50160;
+    // 10161-10164 and 30161-30164 are reserved for this class.
+    private static int nextSiloPort = 10160;
 
     [SkippableFact]
     public async Task Upgrade_rotates_every_guest_session_and_keeps_the_same_player()
@@ -27,9 +27,8 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
         await InsertCodeAsync("upgrade-route@example.test", "123456");
-        var httpPort = NextHttpPort();
-        await using var app = await StartAsync(httpPort);
-        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = LocalAddress(app) };
         try
         {
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
@@ -76,9 +75,8 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         await CreateTenantAccountAsync(seeded.TenantId, "failed-route@example.test");
         await CreateTenantAccountAsync(seeded.TenantId, "expired-route@example.test");
         await InsertCodeAsync("failed-route@example.test", "123456");
-        var httpPort = NextHttpPort();
-        await using var app = await StartAsync(httpPort);
-        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = LocalAddress(app) };
         try
         {
             var context = new DefaultHttpContext();
@@ -119,9 +117,8 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         var seeded = await SeedAsync();
         var account = await CreateTenantAccountAsync(seeded.TenantId, "taken-route@example.test");
         await InsertCodeAsync("taken-route@example.test", "123456");
-        var httpPort = NextHttpPort();
-        await using var app = await StartAsync(httpPort);
-        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = LocalAddress(app) };
         try
         {
             var context = new DefaultHttpContext();
@@ -160,9 +157,8 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         var accountId = Guid.NewGuid();
         await using var owner = await OwnerAsync();
         await owner.ExecuteAsync("insert into accounts (id, email) values (@accountId, 'recovery@example.test'); update players set account_id = @accountId where tenant_id = @tenantId and id = @guestId", new { accountId, tenantId = seeded.TenantId, guestId = seeded.GuestId });
-        var httpPort = NextHttpPort();
-        await using var app = await StartAsync(httpPort);
-        using var client = new HttpClient { BaseAddress = LocalAddress(httpPort) };
+        await using var app = await StartAsync();
+        using var client = new HttpClient { BaseAddress = LocalAddress(app) };
         try
         {
             var firstContext = new DefaultHttpContext();
@@ -227,15 +223,16 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         return account;
     }
 
-    private static int NextHttpPort() => Interlocked.Increment(ref nextHttpPort);
+    private static int NextSiloPort() => Interlocked.Increment(ref nextSiloPort);
 
-    private static Uri LocalAddress(int httpPort) => new($"http://127.0.0.1:{httpPort}");
+    private static Uri LocalAddress(WebApplication app) => new(app.Urls.Single());
 
-    private async Task<WebApplication> StartAsync(int httpPort)
+    private async Task<WebApplication> StartAsync()
     {
+        var siloPort = NextSiloPort();
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        var app = Program.CreateApplication(sources, httpPort - 40000, httpPort - 20000);
-        app.Urls.Add(LocalAddress(httpPort).ToString());
+        var app = Program.CreateApplication(sources, siloPort, siloPort + 20000);
+        app.Urls.Add("http://127.0.0.1:0");
         try
         {
             await app.StartAsync();

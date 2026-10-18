@@ -27,7 +27,7 @@ public sealed class GuestProfileEndpoints : ICoreRouteModule
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("Guest entry requires tenant resolution.");
         if (!await capabilities.IsOnAsync(tenant.Id, CapabilityType.Switch, "guests", cancellationToken)) return Results.NotFound();
-        if (!PlayerProfiles.TryNormalizeDisplayName(request?.DisplayName, out var displayName)) return Results.BadRequest();
+        if (!PlayerProfiles.TryNormalizeDisplayName(request?.DisplayName, out var displayName)) return Results.BadRequest(new { error = "invalid_profile" });
 
         var profile = await PlayerProfiles.CreateGuestAsync(tenantDb, tenant.Id, displayName, cancellationToken);
         await sessions.IssueGuestAsync(context, tenant.Id, profile.Id, cancellationToken);
@@ -62,7 +62,7 @@ public sealed class GuestProfileEndpoints : ICoreRouteModule
         {
             ProfileUpdateStatus.Updated => Results.Ok(result.Profile),
             ProfileUpdateStatus.Missing => Results.NotFound(),
-            _ => Results.BadRequest()
+            _ => Results.BadRequest(new { error = "invalid_profile" })
         };
     }
 

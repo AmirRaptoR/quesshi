@@ -1,0 +1,129 @@
+@page "/settings"
+@using Quesshi.Web.Services
+@using Quesshi.Shared
+@inject AppConfig Config
+@inject AuthState Auth
+@inject LanguageSelection Languages
+@inject NavigationManager Navigation
+@inject Translator Translator
+
+@if (Auth.Player is not null)
+{
+    <section class="card stack" aria-labelledby="settings-title">
+        <h1 id="settings-title">@Translator["settings.title"]</h1>
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <p class="form-success" role="status">@Translator[message]</p>
+        }
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <p class="form-error" role="alert">@Translator[error]</p>
+        }
+        <form class="stack" @onsubmit="SaveAsync">
+            <div class="field"><label for="settings-name">@Translator["profile.name"]</label><input id="settings-name" class="input" @bind="profile.DisplayName" required /></div>
+            <div class="field">
+                <label for="settings-avatar">@Translator["profile.avatar"]</label>
+                <select id="settings-avatar" class="select" @bind="profile.AvatarSeed">
+                    @foreach (var avatar in PlayerAvatarPalette.Seeds)
+                    {
+                        <option value="@avatar">@avatar</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label for="settings-language">@Translator["profile.language"]</label>
+                <select id="settings-language" class="select" @bind="profile.Lang">
+                    @foreach (var language in Config.Current.Languages)
+                    {
+                        <option value="@language.Code">@language.DisplayName</option>
+                    }
+                </select>
+            </div>
+            <button class="btn btn--block" type="submit" disabled="@(busy || !profile.IsValid)">@Translator["profile.save"]</button>
+        </form>
+        @if (Auth.Player.IsGuest)
+        {
+            <UpgradeGuest />
+        }
+        <button id="sign-out" class="btn btn--ghost btn--block" type="button" @onclick="SignOutAsync" disabled="@busy">@Translator["profile.signOut"]</button>
+        <section class="danger-zone stack" aria-labelledby="delete-title">
+            <h2 id="delete-title">@Translator["account.deleteTitle"]</h2>
+            <p class="muted">@Translator["account.deleteBody"]</p>
+            <div class="field"><label for="delete-confirmation">@Translator["account.deletePrompt"]</label><input id="delete-confirmation" class="input" @bind="deleteConfirmation" autocomplete="off" /></div>
+            <button id="delete-account" class="btn btn--danger btn--block" type="button" @onclick="DeleteAccountAsync" disabled="@(busy || !CanDelete)">@Translator["account.delete"]</button>
+        </section>
+    </section>
+}
+
+@code {
+    private readonly PlayerProfileForm profile = new();
+    private string deleteConfirmation = string.Empty;
+    private string? error;
+    private string? message;
+    private bool busy;
+
+    private bool CanDelete => string.Equals(deleteConfirmation, "DELETE", StringComparison.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        if (Auth.Player is not null)
+        {
+            profile.DisplayName = Auth.Player.DisplayName;
+            profile.AvatarSeed = Auth.Player.AvatarSeed;
+            profile.Lang = Auth.Player.Lang;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!profile.IsValid)
+        {
+            error = "profile.invalid";
+            return;
+        }
+
+        busy = true;
+        error = null;
+        message = null;
+        var result = await Auth.SaveProfileAsync(profile.DisplayName, profile.AvatarSeed, profile.Lang);
+        busy = false;
+        if (!result.IsSuccess)
+        {
+            error = result.Error == "invalid_profile" ? "profile.invalid" : "common.error";
+            return;
+        }
+
+        await Languages.UseAsync(profile.Lang);
+        message = "profile.saved";
+    }
+
+    private async Task SignOutAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.SignOutAsync();
+        busy = false;
+        if (!result.IsSuccess)
+        {
+            error = "common.error";
+            return;
+        }
+
+        Navigation.NavigateTo("/", replace: true);
+    }
+
+    private async Task DeleteAccountAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.DeleteAccountAsync();
+        busy = false;
+        if (!result.IsSuccess)
+        {
+            error = "common.error";
+            return;
+        }
+
+        Navigation.NavigateTo("/", replace: true);
+    }
+}

@@ -43,17 +43,26 @@ function dynamicResource(request, response, tenant) {
   if (!tenant) return false;
   const resources = {
     '/api/config': { body: JSON.stringify(tenant.config), type: 'application/json', tag: `config-${tenant.config.configVersion}` },
+    '/api/me': { body: '', type: 'application/json', status: 401, tag: `identity-${tenant.config.configVersion}` },
     '/theme.css': { body: tenant.theme, type: 'text/css', tag: `theme-${tenant.config.configVersion}` },
-    '/manifest.webmanifest': { body: JSON.stringify({ name: tenant.config.name, short_name: tenant.config.name, theme_color: tenant.themeColor }), type: 'application/manifest+json', tag: `manifest-${tenant.config.configVersion}` }
+    '/manifest.webmanifest': { body: JSON.stringify({ name: tenant.config.name, short_name: tenant.config.name, theme_color: tenant.themeColor }), type: 'application/manifest+json', tag: `manifest-${tenant.config.configVersion}` },
+    ...tenant.resources
   };
-  const resource = resources[pathname];
-  if (!resource) return false;
+  const configuredResource = resources[pathname];
+  if (!configuredResource) return false;
+  const resource = Array.isArray(configuredResource)
+    ? configuredResource[Math.min((tenant.requestCounts?.[pathname] ?? 0), configuredResource.length - 1)]
+    : configuredResource;
+  if (Array.isArray(configuredResource)) {
+    tenant.requestCounts ??= {};
+    tenant.requestCounts[pathname] = (tenant.requestCounts[pathname] ?? 0) + 1;
+  }
   const etag = `"${resource.tag}"`;
   if (request.headers['if-none-match'] === etag) {
     response.writeHead(304, { etag, 'cache-control': 'no-cache' }).end();
     return true;
   }
-  response.writeHead(200, { 'content-type': resource.type, etag, 'cache-control': 'no-cache' }).end(resource.body);
+  response.writeHead(resource.status ?? 200, { 'content-type': resource.type, etag, 'cache-control': 'no-cache' }).end(resource.body);
   return true;
 }
 

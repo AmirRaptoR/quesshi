@@ -224,7 +224,7 @@ internal static class RouteSecurity
         if (!request.Headers.TryGetValue("X-CSRF", out var token)
             || !context.HttpContext.RequestServices.GetRequiredService<PlayerAntiforgery>().IsValid(context.HttpContext, token.ToString()))
         {
-            return Results.BadRequest();
+            return Results.BadRequest(new { error = "invalid_antiforgery" });
         }
 
         return await next(context);

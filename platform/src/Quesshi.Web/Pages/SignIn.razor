@@ -1,0 +1,131 @@
+@using Quesshi.Web.Models
+@using Quesshi.Web.Services
+@inject AppConfig Config
+@inject AuthState Auth
+@inject Translator Translator
+@inject NavigationManager Navigation
+
+@if (confirmation is not null)
+{
+    <ProfileConfirmation Confirmation="confirmation" OnCancelled="CancelConfirmationAsync" OnConfirmed="CompleteConfirmationAsync" />
+}
+else
+{
+    <section class="card card--taq stack" aria-labelledby="sign-in-title">
+        <h1 id="sign-in-title">@Translator["auth.title"]</h1>
+        <p class="muted">@Translator["auth.blurb"]</p>
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <p class="form-error" role="alert">@Translator[error]</p>
+        }
+        @if (!codeRequested)
+        {
+            <form class="stack" @onsubmit="RequestCodeAsync">
+                <div class="field">
+                    <label for="email">@Translator["auth.email"]</label>
+                    <input id="email" class="input" type="email" autocomplete="email" @bind="email" required />
+                </div>
+                <button class="btn btn--block" type="submit" disabled="@busy">@Translator["auth.send"]</button>
+            </form>
+        }
+        else
+        {
+            <form class="stack" @onsubmit="VerifyCodeAsync">
+                <div class="field">
+                    <label for="code">@Translator["auth.code"]</label>
+                    <input id="code" class="input code-input" inputmode="numeric" autocomplete="one-time-code" @bind="code" required />
+                </div>
+                <button class="btn btn--block" type="submit" disabled="@busy">@Translator["auth.verify"]</button>
+                <button class="btn btn--ghost btn--block" type="button" @onclick="ResetCode">@Translator["auth.back"]</button>
+            </form>
+        }
+        @if (GuestsEnabled)
+        {
+            <GuestEntry OnCreated="GuestCreatedAsync" />
+        }
+    </section>
+}
+
+@code {
+    private string email = string.Empty;
+    private string code = string.Empty;
+    private string? error;
+    private bool busy;
+    private bool codeRequested;
+    private VerificationResult? confirmation;
+
+    private bool GuestsEnabled => Config.Current.Capabilities.TryGetValue("switch", out var switches)
+        && switches.Contains("guests", StringComparer.Ordinal);
+
+    private async Task RequestCodeAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.RequestCodeAsync(email);
+        busy = false;
+        if (result.IsSuccess)
+        {
+            codeRequested = true;
+            return;
+        }
+
+        error = result.Error == "invalid_email" ? "auth.badEmail" : "common.error";
+    }
+
+    private async Task VerifyCodeAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Auth.VerifyCodeAsync(email, code);
+        busy = false;
+        if (!result.IsSuccess || result.Value is null)
+        {
+            error = "auth.badCode";
+            return;
+        }
+
+        if (string.Equals(result.Value.Status, "signed_in", StringComparison.Ordinal))
+        {
+            Navigation.NavigateTo("/", replace: true);
+            return;
+        }
+
+        if (string.Equals(result.Value.Status, "profile_needed", StringComparison.Ordinal)
+            && result.Value.Token is not null
+            && result.Value.DisplayName is not null
+            && result.Value.AvatarSeed is not null
+            && result.Value.Lang is not null)
+        {
+            confirmation = result.Value;
+            return;
+        }
+
+        error = "auth.badCode";
+    }
+
+    private void ResetCode()
+    {
+        codeRequested = false;
+        code = string.Empty;
+        error = null;
+    }
+
+    private Task CancelConfirmationAsync()
+    {
+        confirmation = null;
+        ResetCode();
+        return Task.CompletedTask;
+    }
+
+    private Task CompleteConfirmationAsync()
+    {
+        Navigation.NavigateTo("/", replace: true);
+        return Task.CompletedTask;
+    }
+
+    private Task GuestCreatedAsync()
+    {
+        Navigation.NavigateTo("/", replace: true);
+        return Task.CompletedTask;
+    }
+}
