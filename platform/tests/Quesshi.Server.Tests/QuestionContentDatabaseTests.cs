@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,15 +71,22 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         using var app = CreateApplication();
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
-        var created = await CreateAsync(content, database, TenantA, ValidWrite(prompt: "Which city is the capital of France?"));
+        var createPayload = ChoicePayload(1);
+        var editPayload = ChoicePayload(2);
+        var created = await CreateAsync(content, database, TenantA, ValidWrite(prompt: "Which city is the capital of France?", payload: createPayload));
         var id = created.Question!.Id;
-        var edited = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, id, ValidWrite(prompt: "Which city is the capital of France now?", status: QuestionStatus.Approved)));
+        var edited = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, id, ValidWrite(prompt: "Which city is the capital of France now?", payload: editPayload, status: QuestionStatus.Approved)));
         var fetched = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, id));
 
         Assert.Equal(QuestionWriteStatus.Success, created.Status);
+        Assert.True(JsonElement.DeepEquals(createPayload, created.Question.Payload));
         Assert.Equal("trivia", edited.Question!.Family);
         Assert.Equal(1, edited.Question.KindVersion);
         Assert.Equal("Which city is the capital of France now?", fetched!.Prompt);
+        Assert.Equal("choice", fetched.Kind);
+        Assert.Equal("trivia", fetched.Family);
+        Assert.Equal(1, fetched.KindVersion);
+        Assert.True(JsonElement.DeepEquals(editPayload, fetched.Payload));
         Assert.Equal(QuestionStatus.Approved, fetched.Status);
     }
 
@@ -138,10 +146,12 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         var malformed = await CreateAsync(content, database, TenantA, ValidWrite(payload: JsonSerializer.SerializeToElement(Array.Empty<string>())));
         var invalid = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, created.Question!.Id, ValidWrite(payload: JsonSerializer.SerializeToElement(new { options = new[] { "", "", "one" }, correctIndex = 9 }))));
         var unchanged = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, created.Question!.Id));
+        var stored = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction));
 
         Assert.Equal(QuestionWriteStatus.Invalid, malformed.Status);
-        Assert.True(invalid.Problems!.Count >= 3);
+        Assert.Equal(["options.tooFew", "options.blank", "correctIndex.outOfRange"], invalid.Problems!.Select(problem => problem.Code));
         Assert.Equal("What is the capital of France?", unchanged!.Prompt);
+        Assert.Single(stored);
     }
 
     [SkippableFact]
@@ -149,14 +159,21 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
-        using var app = CreateApplication();
+        var atLimit = new SnapshotSizedChoiceKind(16_384);
+        var overLimit = new SnapshotSizedChoiceKind(16_385);
+        using var app = CreateApplication(new KindRegistry([atLimit, overLimit]));
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
-        var acceptable = await CreateAsync(content, database, TenantA, ValidWrite(payload: ChoicePayload(8_100)));
-        var rejected = await CreateAsync(content, database, TenantA, ValidWrite(prompt: "Which very long option is correct?", payload: ChoicePayload(8_300)));
+        var acceptable = await CreateAsync(content, database, TenantA, ValidWrite(kind: atLimit.Id, prompt: "اندازهٔ کارت"));
+        var rejected = await CreateAsync(content, database, TenantA, ValidWrite(kind: overLimit.Id, prompt: "Which very long option is correct?"));
+        var rejectedEdit = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, acceptable.Question!.Id, ValidWrite(kind: overLimit.Id, prompt: "This edit must remain unchanged.")));
+        var unchanged = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, acceptable.Question!.Id));
 
         Assert.Equal(QuestionWriteStatus.Success, acceptable.Status);
         Assert.Equal(QuestionWriteStatus.Oversize, rejected.Status);
+        Assert.Contains(rejected.Problems!, problem => problem.Code == "content.tooLarge");
+        Assert.Equal(QuestionWriteStatus.Oversize, rejectedEdit.Status);
+        Assert.Equal("اندازهٔ کارت", unchanged!.Prompt);
         Assert.Single(await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction)));
     }
 
@@ -169,12 +186,15 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         using var app = CreateApplication();
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
-        var bank = ValidWrite(topic: "france|capital");
-        var results = await Task.WhenAll(CreateAsync(content, database, TenantA, bank), CreateAsync(content, database, TenantA, bank with { Prompt = "What city serves as France capital?" }));
-        var playerWrite = bank with { Source = QuestionSource.Player, OwnerId = player, Prompt = "What city is France's capital for a player?" };
+        var bank = ValidWrite(prompt: "Who painted Guernica?", topic: "france|capital");
+        var competitor = bank with { Prompt = "Which planet has the largest rings?" };
+        var results = await Task.WhenAll(CreateAsync(content, database, TenantA, bank), CreateAsync(content, database, TenantA, competitor));
+        var storedBank = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction));
+        var playerWrite = bank with { Source = QuestionSource.Player, OwnerId = player, Prompt = "Which river crosses Paris for a player?" };
 
         Assert.Equal(1, results.Count(result => result.Status == QuestionWriteStatus.Success));
         Assert.Equal(1, results.Count(result => result.Status == QuestionWriteStatus.Duplicate));
+        Assert.Single(storedBank);
         Assert.Equal(QuestionWriteStatus.Success, (await CreateAsync(content, database, TenantA, playerWrite)).Status);
     }
 
@@ -191,6 +211,68 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         var otherFamily = await InsertRawQuestionAsync(owner, TenantA, category, 1, "en", "choice", "Poll topic", family: "poll", topic: topic);
 
         Assert.NotEqual(dutch, otherFamily);
+    }
+
+    [SkippableFact]
+    public async Task The_topic_index_rejects_distinct_bank_prompts_and_allows_null_topics()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "topic-index");
+
+        _ = await InsertRawQuestionAsync(owner, TenantA, category, 1, "en", "choice", "Who painted Guernica?", topic: "art|painting");
+        var collision = await Assert.ThrowsAsync<PostgresException>(() => InsertRawQuestionAsync(owner, TenantA, category, 1, "en", "choice", "Which planet has the largest rings?", topic: "art|painting"));
+        var firstWithoutTopic = await InsertRawQuestionAsync(owner, TenantA, category, 1, "en", "choice", "A question without a topic");
+        var secondWithoutTopic = await InsertRawQuestionAsync(owner, TenantA, category, 1, "en", "choice", "Another question without a topic");
+
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, collision.SqlState);
+        Assert.NotEqual(firstWithoutTopic, secondWithoutTopic);
+    }
+
+    [SkippableFact]
+    public async Task A_duplicate_result_does_not_abort_the_callers_transaction()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        using var app = CreateApplication();
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var outcomes = await database.InTenantAsync(TenantA, async transaction =>
+        {
+            var first = await content.CreateAsync(transaction, ValidWrite(prompt: "Who painted Guernica?", topic: "art|painting"));
+            var duplicate = await content.CreateAsync(transaction, ValidWrite(prompt: "Which planet has the largest rings?", topic: "art|painting"));
+            var afterDuplicate = await content.CreateAsync(transaction, ValidWrite(prompt: "What is the deepest ocean?", topic: "ocean|depth"));
+            return (first, duplicate, afterDuplicate, await content.ListAsync(transaction));
+        });
+
+        Assert.Equal(QuestionWriteStatus.Success, outcomes.first.Status);
+        Assert.Equal(QuestionWriteStatus.Duplicate, outcomes.duplicate.Status);
+        Assert.Equal(QuestionWriteStatus.Success, outcomes.afterDuplicate.Status);
+        Assert.Equal(2, outcomes.Item4.Count);
+    }
+
+    [SkippableFact]
+    public async Task Prompt_fingerprints_are_compared_within_the_same_language_and_category()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var firstCategory = await InsertCategoryAsync(owner, TenantA, "fingerprints-one");
+        var secondCategory = await InsertCategoryAsync(owner, TenantA, "fingerprints-two");
+        using var app = CreateApplication();
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var write = ValidWrite(prompt: "Who painted Guernica?", category: firstCategory);
+
+        var first = await CreateAsync(content, database, TenantA, write);
+        var duplicate = await CreateAsync(content, database, TenantA, write with { Prompt = "Who painted the Guernica?" });
+        var otherCategory = await CreateAsync(content, database, TenantA, write with { CategoryId = secondCategory });
+        var stored = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, otherCategory.Question!.Id));
+
+        Assert.Equal(QuestionWriteStatus.Success, first.Status);
+        Assert.Equal(QuestionWriteStatus.Duplicate, duplicate.Status);
+        Assert.Equal(QuestionWriteStatus.Success, otherCategory.Status);
+        Assert.Equal(PromptFingerprint.Normalise(write.Prompt), stored!.Fingerprint);
     }
 
     [SkippableFact]
@@ -227,26 +309,51 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
             await InsertCategoryAsync(owner, TenantA, "second"),
             await InsertCategoryAsync(owner, TenantA, "third"),
         };
-        for (var level = 1; level <= 5; level++)
-        {
-            await InsertRawQuestionAsync(owner, TenantA, categories[(level - 1) % categories.Length], level, level % 2 == 0 ? "nl" : "fa", level % 2 == 0 ? "order" : "choice", $"Persian English Dutch search-{level}", level % 2 == 0 ? "approved" : "pending", level % 2 == 0 ? "import" : "admin");
-        }
-        await InsertRawQuestionAsync(owner, TenantA, categories[2], 1, "en", "choice", "Persian English Dutch search-english", "approved", "import");
+        var persianPending = await InsertRawQuestionAsync(owner, TenantA, categories[0], 1, "fa", "choice", "پایتخت فرانسه کدام شهر است؟", "pending", "admin");
+        var persianApproved = await InsertRawQuestionAsync(owner, TenantA, categories[0], 1, "fa", "choice", "فرانسه در کدام قاره است؟", "approved", "admin");
+        var englishApproved = await InsertRawQuestionAsync(owner, TenantA, categories[0], 2, "en", "choice", "The Capital of France is Paris.", "approved", "import");
+        var dutchPending = await InsertRawQuestionAsync(owner, TenantA, categories[1], 3, "nl", "order", "De échte hoofdstad van België is Brussel.", "pending", "ai", "poll");
+        var draftLiteralPercent = await InsertRawQuestionAsync(owner, TenantA, categories[1], 4, "en", "choice", "This is 100% certain.", "draft", "admin");
+        var rejectedLiteralUnderscore = await InsertRawQuestionAsync(owner, TenantA, categories[2], 5, "nl", "order", "Dit_onderwerp is afgewezen.", "rejected", "import", "poll");
         using var app = CreateApplication();
         var content = app.Services.GetRequiredService<IContent>();
         var database = app.Services.GetRequiredService<ITenantDb>();
-        var filtered = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, new(Language: "fa", Family: "trivia", Kind: "choice", CategoryId: categories[0], Level: 1, Status: QuestionStatus.Pending, Source: QuestionSource.Admin, Prompt: "persian")));
+        var byLanguage = await ListIdsAsync(content, database, new(Language: "fa"));
+        var byFamily = await ListIdsAsync(content, database, new(Family: "poll"));
+        var byKind = await ListIdsAsync(content, database, new(Kind: "order"));
+        var byCategory = await ListIdsAsync(content, database, new(CategoryId: categories[1]));
+        var byLevel = await ListIdsAsync(content, database, new(Level: 4));
+        var byStatus = await ListIdsAsync(content, database, new(Status: QuestionStatus.Pending));
+        var bySource = await ListIdsAsync(content, database, new(Source: QuestionSource.Import));
+        var persian = await ListIdsAsync(content, database, new(Prompt: "فرانسه"));
+        var english = await ListIdsAsync(content, database, new(Prompt: "cApItAl"));
+        var dutch = await ListIdsAsync(content, database, new(Prompt: "ÉCHTE"));
+        var literalPercent = await ListIdsAsync(content, database, new(Prompt: "100%"));
+        var literalUnderscore = await ListIdsAsync(content, database, new(Prompt: "_"));
         var buckets = await database.InTenantAsync(TenantA, transaction => content.BucketCountsAsync(transaction));
-        var persian = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, new(Prompt: "PERSIAN")));
-        var english = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, new(Prompt: "English")));
-        var dutch = await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, new(Prompt: "dutch")));
 
-        Assert.Single(filtered);
-        Assert.Equal(6, buckets.Count);
-        Assert.Equal(1, buckets.Single(bucket => bucket.Language == "fa" && bucket.Level == 1).Pending);
-        Assert.Equal(6, persian.Count);
-        Assert.Equal(6, english.Count);
-        Assert.Equal(6, dutch.Count);
+        Assert.Equivalent(new[] { persianPending, persianApproved }, byLanguage);
+        Assert.Equivalent(new[] { dutchPending, rejectedLiteralUnderscore }, byFamily);
+        Assert.Equivalent(new[] { dutchPending, rejectedLiteralUnderscore }, byKind);
+        Assert.Equivalent(new[] { dutchPending, draftLiteralPercent }, byCategory);
+        Assert.Equivalent(new[] { draftLiteralPercent }, byLevel);
+        Assert.Equivalent(new[] { persianPending, dutchPending }, byStatus);
+        Assert.Equivalent(new[] { englishApproved, rejectedLiteralUnderscore }, bySource);
+        Assert.Equivalent(new[] { persianPending, persianApproved }, persian);
+        Assert.Equivalent(new[] { englishApproved }, english);
+        Assert.Equivalent(new[] { dutchPending }, dutch);
+        Assert.Equivalent(new[] { draftLiteralPercent }, literalPercent);
+        Assert.Equivalent(new[] { rejectedLiteralUnderscore }, literalUnderscore);
+        Assert.Equivalent(
+            new[]
+            {
+                new QuestionBucketCount("fa", categories[0], 1, "choice", 1, 1),
+                new QuestionBucketCount("en", categories[0], 2, "choice", 1, 0),
+                new QuestionBucketCount("nl", categories[1], 3, "order", 0, 1),
+                new QuestionBucketCount("en", categories[1], 4, "choice", 0, 0),
+                new QuestionBucketCount("nl", categories[2], 5, "order", 0, 0),
+            },
+            buckets);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -272,9 +379,10 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     private WebApplication CreateApplication(IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(Sources(), 11298, 30298, configuredKinds: kinds);
     private static Task ResetDatabaseAsync(NpgsqlConnection owner) => ExecuteAsync(owner, "delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from players; delete from tenant_languages; delete from tenants");
     private async Task<NpgsqlConnection> OpenAsync(string role) { var connection = new NpgsqlConnection(fixture.ConnectionStringForRole(role)); await connection.OpenAsync(); return connection; }
-    private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null) => new("choice", 1, "trivia", "en", null, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null);
+    private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null) => new(kind, 1, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null);
     private static JsonElement ChoicePayload(int firstLength) => JsonSerializer.SerializeToElement(new { options = new[] { new string('a', firstLength), "bravo", "charlie", "delta" }, correctIndex = 0 });
     private static Task<QuestionWriteResult> CreateAsync(IContent content, ITenantDb database, Guid tenant, QuestionWrite write) => database.InTenantAsync(tenant, transaction => content.CreateAsync(transaction, write));
+    private static async Task<IReadOnlyList<Guid>> ListIdsAsync(IContent content, ITenantDb database, QuestionFilter filters) => (await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, filters))).Select(question => question.Id).ToArray();
     private static async Task<Guid> InsertCategoryAsync(NpgsqlConnection owner, Guid tenant, string slug) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into categories (tenant_id, id, slug, names) values (@tenant, @id, @slug, '{\"en\":\"Category\"}'::jsonb)", ("tenant", tenant), ("id", id), ("slug", slug)); return id; }
     private static async Task<Guid> InsertPlayerAsync(NpgsqlConnection owner, Guid tenant) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into players (tenant_id, id, display_name, avatar_seed, lang) values (@tenant, @id, 'Player', 'seed', 'en')", ("tenant", tenant), ("id", id)); return id; }
     private static async Task<Guid> InsertRawQuestionAsync(NpgsqlConnection owner, Guid tenant, Guid? category, int level, string language, string kind, string prompt, string status = "pending", string source = "admin", string family = "trivia", string? topic = null, Guid? ownerId = null) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into questions (tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, topic, fingerprint, status, source, owner_id) values (@tenant, @id, @kind, 1, @family, @language, @category, @level, @prompt, '{\"options\":[\"a\",\"b\",\"c\",\"d\"],\"correctIndex\":0}'::jsonb, @topic, @prompt, @status, @source, @owner)", ("tenant", tenant), ("id", id), ("kind", kind), ("family", family), ("language", language), ("category", (object?)category ?? DBNull.Value), ("level", level), ("prompt", prompt), ("topic", (object?)topic ?? DBNull.Value), ("status", status), ("source", source), ("owner", (object?)ownerId ?? DBNull.Value)); return id; }
@@ -291,6 +399,56 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
             if (from is not 1 and not 2) throw new NotSupportedException($"choice v{from} cannot be upgraded by choice v2.");
             return JsonSerializer.Deserialize(payload, ChoiceJsonContext.Default.ChoicePayload)
                 ?? throw new JsonException("Choice payload is invalid.");
+        }
+    }
+
+    private sealed class SnapshotSizedChoiceKind : ChoiceKind
+    {
+        private readonly string _cardText;
+        private readonly string _revealText;
+
+        public SnapshotSizedChoiceKind(int snapshotBytes)
+        {
+            Id = $"sized-choice-{snapshotBytes}";
+            (_cardText, _revealText) = TextsForSnapshotBytes(snapshotBytes);
+        }
+
+        public override string Id { get; }
+
+        public override ChoiceCard Card(Item<ChoicePayload, ChoiceResolved> item) => new([_cardText]);
+
+        public override ChoiceReveal Reveal(Item<ChoicePayload, ChoiceResolved> item) => new(0, _revealText);
+
+        private static (string Card, string Reveal) TextsForSnapshotBytes(int target)
+        {
+            for (var cardLength = 1; cardLength <= target; cardLength++)
+            {
+                var card = new string('é', cardLength);
+                var revealLength = target - SnapshotBytes(card, string.Empty);
+                if (revealLength < 0) break;
+                var reveal = new string('a', revealLength);
+                if (SnapshotBytes(card, reveal) == target) return (card, reveal);
+            }
+
+            throw new InvalidOperationException($"No Choice snapshot has exactly {target} bytes.");
+        }
+
+        private static int SnapshotBytes(string card, string reveal)
+        {
+            var runtime = (IKindRuntime)new SnapshotSizedChoiceKindProbe(card, reveal);
+            var payload = ChoicePayload(1);
+            var resolved = runtime.Resolve(payload, new ResolveContext("size", 0, []));
+            return Encoding.UTF8.GetByteCount(runtime.Card(payload, resolved).GetRawText()) + Encoding.UTF8.GetByteCount(runtime.Reveal(payload, resolved).GetRawText());
+        }
+
+        private sealed class SnapshotSizedChoiceKindProbe : ChoiceKind
+        {
+            public SnapshotSizedChoiceKindProbe(string cardText, string revealText) => (CardText, RevealText) = (cardText, revealText);
+
+            public override ChoiceCard Card(Item<ChoicePayload, ChoiceResolved> item) => new([CardText]);
+            public override ChoiceReveal Reveal(Item<ChoicePayload, ChoiceResolved> item) => new(0, RevealText);
+            public string CardText { get; }
+            public string RevealText { get; }
         }
     }
 }

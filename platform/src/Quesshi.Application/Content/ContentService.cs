@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Npgsql;
 using Quesshi.Plugin.Api;
 using Quesshi.Shared;
 
@@ -26,7 +25,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
               and (@level is null or level = @level)
               and (@status is null or status = @status)
               and (@source is null or source = @source)
-              and (@prompt is null or prompt ilike '%' || @prompt || '%')
+              and (@prompt is null or strpos(lower(prompt), lower(@prompt)) > 0)
             order by created_at, id
             """, FilterParameters(filter), cancellationToken);
         return rows.Select(question => ToEnvelope(question)!).ToArray();
@@ -39,24 +38,20 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (!await IsSupportedLanguageAsync(transaction, prepared.Write!.Language, cancellationToken))
             return QuestionWriteResult.Invalid([new("language.unsupported", "The question language is not enabled for this tenant.")]);
 
-        try
-        {
-            if (await CollidesAsync(transaction, prepared.Write!, null, cancellationToken)) return QuestionWriteResult.Duplicate;
-            var persisted = await transaction.QuerySingleOrDefaultAsync<PersistedQuestion>($"""
+        if (await CollidesAsync(transaction, prepared.Write!, null, cancellationToken)) return QuestionWriteResult.Duplicate;
+        if (await TopicCollidesAsync(transaction, prepared.Write!, null, cancellationToken)) return QuestionWriteResult.Duplicate;
+        var persisted = await transaction.QuerySingleOrDefaultAsync<PersistedQuestion>($"""
                 insert into questions (
                     tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload,
                     explanation, topic, fingerprint, status, source, owner_id)
                 values (
                     current_setting('app.tenant_id')::uuid, @id, @kind, @kindVersion, @family, @language, @categoryId, @level, @prompt, @payload,
                     @explanation, @topic, @fingerprint, @status, @source, @ownerId)
+                on conflict (tenant_id, lang, family, topic)
+                    where topic is not null and owner_id is null do nothing
                 returning {QuestionColumns}
                 """, Parameters(prepared.Write!, Guid.NewGuid()), cancellationToken);
-            return new(QuestionWriteStatus.Success, ToEnvelope(persisted));
-        }
-        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
-        {
-            return QuestionWriteResult.Duplicate;
-        }
+        return persisted is null ? QuestionWriteResult.Duplicate : new(QuestionWriteStatus.Success, ToEnvelope(persisted));
     }
 
     public async Task<QuestionWriteResult> EditAsync(ITenantTx transaction, Guid id, QuestionWrite request, CancellationToken cancellationToken = default)
@@ -66,10 +61,9 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (!await IsSupportedLanguageAsync(transaction, prepared.Write!.Language, cancellationToken))
             return QuestionWriteResult.Invalid([new("language.unsupported", "The question language is not enabled for this tenant.")]);
 
-        try
-        {
-            if (await CollidesAsync(transaction, prepared.Write!, id, cancellationToken)) return QuestionWriteResult.Duplicate;
-            var persisted = await transaction.QuerySingleOrDefaultAsync<PersistedQuestion>($"""
+        if (await CollidesAsync(transaction, prepared.Write!, id, cancellationToken)) return QuestionWriteResult.Duplicate;
+        if (await TopicCollidesAsync(transaction, prepared.Write!, id, cancellationToken)) return QuestionWriteResult.Duplicate;
+        var persisted = await transaction.QuerySingleOrDefaultAsync<PersistedQuestion>($"""
                 update questions
                 set kind = @kind, kind_version = @kindVersion, family = @family, lang = @language,
                     category_id = @categoryId, level = @level, prompt = @prompt, payload = @payload,
@@ -78,12 +72,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
                 where id = @id
                 returning {QuestionColumns}
                 """, Parameters(prepared.Write!, id), cancellationToken);
-            return persisted is null ? QuestionWriteResult.Missing : new(QuestionWriteStatus.Success, ToEnvelope(persisted));
-        }
-        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
-        {
-            return QuestionWriteResult.Duplicate;
-        }
+        return persisted is null ? QuestionWriteResult.Missing : new(QuestionWriteStatus.Success, ToEnvelope(persisted));
     }
 
     public async Task<bool> DeleteAsync(ITenantTx transaction, Guid id, CancellationToken cancellationToken = default) =>
@@ -106,7 +95,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
               and (@level is null or level = @level)
               and (@status is null or status = @status)
               and (@source is null or source = @source)
-              and (@prompt is null or prompt ilike '%' || @prompt || '%')
+              and (@prompt is null or strpos(lower(prompt), lower(@prompt)) > 0)
             group by lang, category_id, level, kind
             order by lang, category_id, level, kind
             """, FilterParameters(filter), cancellationToken);
@@ -166,9 +155,28 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (write.OwnerId.HasValue) return false;
         var existing = await transaction.QueryAsync<string>("""
             select prompt from questions
-            where owner_id is null and lang = @language and family = @family and (@exceptId is null or id <> @exceptId)
-            """, new { write.Language, write.Family, exceptId }, cancellationToken);
+            where owner_id is null and lang = @language
+              and category_id is not distinct from @categoryId
+              and (@exceptId is null or id <> @exceptId)
+            """, new { write.Language, write.CategoryId, exceptId }, cancellationToken);
         return PromptFingerprint.CollidesWith(write.Prompt, existing);
+    }
+
+    private static async Task<bool> TopicCollidesAsync(ITenantTx transaction, NormalizedWrite write, Guid? exceptId, CancellationToken cancellationToken)
+    {
+        if (write.OwnerId.HasValue || write.Topic is null) return false;
+
+        await transaction.ExecuteAsync("""
+            select pg_advisory_xact_lock(hashtextextended(
+                'quesshi:question-topic:' || current_setting('app.tenant_id') || ':' || @language || ':' || @family || ':' || @topic,
+                0))
+            """, new { write.Language, write.Family, write.Topic }, cancellationToken);
+        return await transaction.QuerySingleOrDefaultAsync<int?>("""
+            select 1 from questions
+            where owner_id is null and lang = @language and family = @family and topic = @topic
+              and (@exceptId is null or id <> @exceptId)
+            limit 1
+            """, new { write.Language, write.Family, write.Topic, exceptId }, cancellationToken) is not null;
     }
 
     private static async Task<bool> IsSupportedLanguageAsync(ITenantTx transaction, string language, CancellationToken cancellationToken) =>
