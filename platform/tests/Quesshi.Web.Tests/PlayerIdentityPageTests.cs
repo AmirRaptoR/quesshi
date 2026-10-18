@@ -81,6 +81,29 @@ public sealed class PlayerIdentityPageTests : BunitContext
     }
 
     [Fact]
+    public void Existing_tenant_player_reaches_home_after_verification()
+    {
+        var handler = new PageHandler(
+            Response(HttpStatusCode.OK, """{"token":"before"}"""),
+            Response(HttpStatusCode.Accepted, """{"status":"accepted"}"""),
+            Response(HttpStatusCode.OK, """{"status":"signed_in"}"""),
+            Response(HttpStatusCode.OK, """{"token":"after"}"""),
+            Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"North player","avatarSeed":"avatar-7","lang":"fa"}"""));
+        var auth = UseServices(handler);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/sign-in");
+        var cut = Render<SignIn>();
+
+        cut.Find("#email").Change("ada@example.test");
+        cut.Find("form").Submit();
+        cut.Find("#code").Change("123456");
+        cut.Find("form").Submit();
+
+        Assert.Equal(PlayerIdentityStatus.SignedIn, auth.Status);
+        Assert.EndsWith("/", navigation.Uri, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Confirming_a_profile_posts_the_tenant_seed_and_reaches_home()
     {
         var handler = new PageHandler(
