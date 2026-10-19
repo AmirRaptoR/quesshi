@@ -46,7 +46,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
         if (!TryKind(requestedKind, kinds, out var kind, out var mapping)) return Error("unknown_kind", StatusCodes.Status400BadRequest);
         var requestedFormat = Value(form, "format") ?? context.Request.Query["format"].ToString();
         var format = string.IsNullOrWhiteSpace(requestedFormat) ? FileFormat(file?.FileName) : requestedFormat;
-        var required = new[] { "prompt" }.Concat(mapping!.CsvColumns).ToArray();
+        var required = RequiredCsvColumns(kind!);
         await using var input = file?.OpenReadStream();
         var parsed = await ImportParsing.ParseAsync(format, input, file?.Length ?? 0, required, cancellationToken);
         if (parsed.Error is not null) return Error(parsed.Error, StatusCodes.Status400BadRequest);
@@ -137,11 +137,16 @@ public sealed class ImportEndpoints : ICoreRouteModule
             cancellationToken: cancellationToken,
             readOnly: true);
         if (category is null) return Error("no_category", StatusCodes.Status409Conflict);
+        var language = await database.InTenantAsync(tenant.Id,
+            transaction => transaction.QuerySingleOrDefaultAsync<string?>("select code from tenant_languages order by code limit 1", cancellationToken: cancellationToken),
+            cancellationToken: cancellationToken,
+            readOnly: true);
+        if (language is null) return Error("no_language", StatusCodes.Status409Conflict);
 
         var example = Example(mapping!, format == "csv");
         var fields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["language"] = "en",
+            ["language"] = language,
             ["category"] = category.Value.ToString(),
             ["level"] = "2",
             ["prompt"] = "Example question",
@@ -215,7 +220,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
             await using var input = bundle.OpenReadStream();
             using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: false);
             var entry = archive.Entries.SingleOrDefault(item => string.Equals(item.FullName, reference.Value, StringComparison.Ordinal));
-            if (entry is null || string.IsNullOrEmpty(entry.Name) || !IsBundlePath(entry.FullName) || entry.Length > 25 * 1024 * 1024) return new("media_bundle_invalid");
+            if (entry is null || !IsRegularBundleFile(entry) || !IsBundlePath(entry.FullName) || entry.Length > 25 * 1024 * 1024) return new("media_bundle_invalid");
             await using var entryStream = entry.Open();
             await using var output = new MemoryStream();
             await entryStream.CopyToAsync(output, cancellationToken);
@@ -320,8 +325,25 @@ public sealed class ImportEndpoints : ICoreRouteModule
     private static string? Field(ImportRow row, string primary, string legacy) => row.Field(primary) ?? row.Field(legacy);
     private static string? FileFormat(string? fileName) => Path.GetExtension(fileName ?? "").TrimStart('.').ToLowerInvariant() is var extension && extension is "csv" or "json" ? extension : null;
     private static string? LegacyKind(string id) => id switch { "choice" => "choice", "order" => "sort", "map_pick" => "map", _ => null };
+    private static IReadOnlyList<string> RequiredCsvColumns(IKindRuntime kind) => kind.Id switch
+    {
+        "choice" => ["prompt", "choice1", "choice2", "choice3", "choice4", "correctIndex"],
+        "order" => ["prompt", "item1", "item2", "item3", "item4"],
+        "map_pick" => ["prompt", "targetShape", "baseLayer"],
+        "poll_choice" => ["prompt", "answerSource", "choice1", "choice2"],
+        "poll_roster" => ["prompt", "answerSource"],
+        _ => ["prompt"],
+    };
     private static bool IsBundlePath(string value) => !Path.IsPathRooted(value) && !value.Contains('\\')
         && value.Split('/', StringSplitOptions.None).All(part => part.Length > 0 && part != "." && part != "..");
+    private static bool IsRegularBundleFile(ZipArchiveEntry entry)
+    {
+        if (string.IsNullOrEmpty(entry.Name)) return false;
+        const int fileTypeMask = 0xf000;
+        const int regularFile = 0x8000;
+        var fileType = (entry.ExternalAttributes >> 16) & fileTypeMask;
+        return fileType is 0 or regularFile;
+    }
     private static bool TryMediaKind(string value, out MediaKind kind) => Enum.TryParse(value, true, out kind) && Enum.IsDefined(kind);
     private static bool TryBoolean(string? value, bool fallback, out bool result) => string.IsNullOrWhiteSpace(value) ? (result = fallback) == fallback : bool.TryParse(value, out result);
     private static bool TryStatus(string? value, QuestionStatus fallback, out QuestionStatus result) => string.IsNullOrWhiteSpace(value) ? (result = fallback) == fallback : Enum.TryParse(value, true, out result) && Enum.IsDefined(result);
