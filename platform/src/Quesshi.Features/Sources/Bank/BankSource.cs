@@ -94,10 +94,15 @@ public sealed class BankSource : ISource
         var requestedIds = requested?.Distinct().ToArray() ?? [];
         if (requestedIds.Length > 3) throw new SourceParameterException("At most three categories may be selected.");
         var rows = await transaction.QueryAsync<Guid>("""
-            select id from categories
-            where is_active and id = any(@allowed)
-              and (cardinality(@requested) = 0 or id = any(@requested))
-            order by case when cardinality(@requested) = 0 then hashtextextended(id::text, @seed) else 0 end, id
+            select categories.id
+            from categories
+            left join unnest(@requested) with ordinality as requested(id, ordinal)
+                on categories.id = requested.id
+            where categories.is_active and categories.id = any(@allowed)
+              and (cardinality(@requested) = 0 or categories.id = any(@requested))
+            order by case when cardinality(@requested) = 0 then hashtextextended(categories.id::text, @seed) else 0 end,
+                     requested.ordinal,
+                     categories.id
             limit 3
             """, new { allowed, requested = requestedIds, seed }, cancellationToken);
         if (requestedIds.Length > 0 && rows.Count != requestedIds.Length)

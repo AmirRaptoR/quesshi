@@ -90,6 +90,17 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Bank_refuses_an_inactive_category_even_when_it_is_on_the_family_allow_list()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var inactive = await InsertCategoryAsync(owner, TenantA, "inactive", false);
+        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [inactive] }));
+
+        await Assert.ThrowsAsync<SourceParameterException>(() => DrawAsync(new BankParams([inactive]), new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia")], [1], 9)));
+    }
+
+    [SkippableFact]
     public async Task Bank_without_requested_categories_selects_at_most_three_eligible_categories()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -106,6 +117,20 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         var exception = await Assert.ThrowsAsync<NotEnoughQuestionsException>(() => DrawAsync(new(), new SourceDrawPlan(4, "en", [new SourceKind("choice", "trivia")], [1], 9)));
 
         Assert.Equal((3, 4), (exception.Found, exception.Needed));
+    }
+
+    [SkippableFact]
+    public async Task Bank_reports_no_questions_when_no_allowed_category_is_eligible()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "unallowed", true);
+        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [] }));
+        _ = await InsertQuestionAsync(owner, TenantA, category, 1, "en", "approved", null, "unallowed");
+
+        var exception = await Assert.ThrowsAsync<NotEnoughQuestionsException>(() => DrawAsync(new(), new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia")], [1], 9)));
+
+        Assert.Equal((0, 1), (exception.Found, exception.Needed));
     }
 
     [Theory]
@@ -146,10 +171,10 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
             for (var level = 1; level <= 5; level++)
                 _ = await InsertQuestionAsync(owner, TenantA, category, level, "en", "approved", null, $"{category}-{level}");
 
-        var result = await DrawAsync(new BankParams(categories), new SourceDrawPlan(6, "en", [new SourceKind("choice", "trivia")], [1, 2, 3, 4, 5], 9));
+        var requested = categories.OrderDescending().ToArray();
+        var result = await DrawAsync(new BankParams(requested), new SourceDrawPlan(6, "en", [new SourceKind("choice", "trivia")], [1, 2, 3, 4, 5], 9));
 
-        var cycle = categories.Order().ToArray();
-        Assert.Equal([cycle[0], cycle[1], cycle[2], cycle[0], cycle[1], cycle[2]], await ReadCategoriesAsync(owner, result.Ids));
+        Assert.Equal([requested[0], requested[1], requested[2], requested[0], requested[1], requested[2]], await ReadCategoriesAsync(owner, result.Ids));
     }
 
     [SkippableFact]
@@ -191,13 +216,15 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         await using var owner = await PrepareAsync();
         var first = await InsertCategoryAsync(owner, TenantA, "first", true);
         var second = await InsertCategoryAsync(owner, TenantA, "second", true);
-        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [first, second] }));
+        var unselected = await InsertCategoryAsync(owner, TenantA, "unselected", true);
+        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [first, second, unselected] }));
         _ = await InsertQuestionAsync(owner, TenantA, second, 2, "en", "approved", null, "fallback-one");
         _ = await InsertQuestionAsync(owner, TenantA, second, 2, "en", "approved", null, "fallback-two");
+        _ = await InsertQuestionAsync(owner, TenantA, unselected, 1, "en", "approved", null, "outside-selection");
 
         var result = await DrawAsync(new BankParams([first, second]), new SourceDrawPlan(2, "en", [new SourceKind("choice", "trivia")], [1, 2], 9));
 
-        Assert.Equal([2, 2], await ReadLevelsAsync(owner, result.Ids));
+        Assert.Equal([second, second], await ReadCategoriesAsync(owner, result.Ids));
     }
 
     [Theory]
@@ -231,6 +258,21 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         var result = await DrawAsync(new(), new SourceDrawPlan(1, "en", [new SourceKind("order", "trivia")], [1], 9));
 
         Assert.Equal([included], result.Ids);
+    }
+
+    [SkippableFact]
+    public async Task Bank_draws_only_the_requested_kind_when_the_plan_accepts_multiple_kinds()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "allowed", true);
+        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [category] }));
+        _ = await InsertQuestionAsync(owner, TenantA, category, 1, "en", "approved", null, "choice");
+        var requested = await InsertQuestionAsync(owner, TenantA, category, 1, "en", "approved", null, "order", "order", "trivia");
+
+        var result = await DrawAsync(new BankParams(Kinds: ["order"]), new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia"), new SourceKind("order", "trivia")], [1], 9));
+
+        Assert.Equal([requested], result.Ids);
     }
 
     [SkippableFact]
