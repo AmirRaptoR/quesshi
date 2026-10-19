@@ -1,5 +1,7 @@
 using Npgsql;
 using Quesshi.Application;
+using Quesshi.Application.Content;
+using Quesshi.Features.Sources.Bank;
 using Quesshi.Infrastructure.Capabilities;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Server;
@@ -13,6 +15,30 @@ public sealed class CapabilitiesDatabaseTests(PostgresFixture fixture)
 {
     private static readonly Guid TenantA = Guid.Parse("bf89df6d-5719-4e6d-8c21-0bd7dcb90102");
     private static readonly Guid TenantB = Guid.Parse("c0f4a3e5-0b63-48e7-8914-1f83b4d7cb03");
+
+    [SkippableFact]
+    public async Task Bank_source_capability_is_synced_validated_and_tenant_scoped()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+        await using var owner = await OpenAsync("quesshi_owner");
+        await ExecuteAsync(owner, "delete from sessions; delete from tenant_capabilities; delete from tenant_hosts; delete from tenant_languages; delete from tenants");
+        await SeedAsync(owner, TenantA, "tenant-a");
+        await SeedAsync(owner, TenantB, "tenant-b");
+        await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
+
+        _ = await Program.SyncAsync(sources);
+        var registry = new CapabilityRegistry();
+        var sourceRegistry = SourceRegistry.Create(registry, [new BankSource()]);
+        var categories = new[] { Guid.NewGuid() };
+        var capabilities = new TenantCapabilities(registry, new TenantDb(sources));
+        await capabilities.SetAsync(TenantA, CapabilityType.Source, "bank", true, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = categories }));
+
+        Assert.Same(sourceRegistry.Get("bank"), sourceRegistry.Get(BankSource.SourceId));
+        Assert.Equal(categories, (await capabilities.GetSettingsAsync<BankSettings>(TenantA, CapabilityType.Source, "bank")).CategoriesByFamily["trivia"]);
+        Assert.Empty((await capabilities.GetSettingsAsync<BankSettings>(TenantB, CapabilityType.Source, "bank")).CategoriesByFamily);
+        await Assert.ThrowsAsync<CapabilityValidationException>(() => capabilities.SetAsync(TenantA, CapabilityType.Source, "bank", true, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [categories[0], categories[0]] })));
+    }
 
     [SkippableFact]
     public async Task Settings_updates_are_validated_tenant_scoped_and_versioned()
