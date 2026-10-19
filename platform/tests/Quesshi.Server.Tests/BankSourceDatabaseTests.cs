@@ -38,9 +38,12 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         _ = await InsertQuestionAsync(owner, TenantA, allowed, 1, "en", "approved", await InsertPlayerAsync(owner, TenantA), "player");
         _ = await InsertQuestionAsync(owner, TenantB, null, 1, "en", "approved", null, "other-tenant");
 
-        var result = await DrawAsync(new(), new SourceDrawPlan(10, "en", [new SourceKind("choice", "trivia")], [1], 9));
+        var plan = new SourceDrawPlan(10, "en", [new SourceKind("choice", "trivia")], [1], 9);
+        var result = await DrawAsync(new(), plan);
+        var repeated = await DrawAsync(new(), plan);
 
         Assert.Equal(eligible.Order(), result.Ids.Order());
+        Assert.Equal(result.Ids, repeated.Ids);
     }
 
     [SkippableFact]
