@@ -4,14 +4,49 @@ using Quesshi.Shared;
 
 namespace Quesshi.Kinds.MapPick;
 
-public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickCard, MapPickAnswer, MapPickStored, MapPickReveal>
+public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickCard, MapPickAnswer, MapPickStored, MapPickReveal>, IImports<MapPickPayload>
 {
     private const double RadiusComparisonEpsilonKm = 1e-9;
+    private static readonly string[] ImportFields = ["targetShape", "countryCode", "latitude", "longitude", "radiusKm", "baseLayer"];
+    private static readonly ImportExample CsvImportExample = new(new Dictionary<string, string?>
+    {
+        ["targetShape"] = "country",
+        ["countryCode"] = "NL",
+        ["baseLayer"] = "borders"
+    });
+    private static readonly ImportExample JsonImportExample = new(new Dictionary<string, string?>
+    {
+        ["targetShape"] = "city",
+        ["latitude"] = "52.37",
+        ["longitude"] = "4.90",
+        ["radiusKm"] = "25",
+        ["baseLayer"] = "blank"
+    });
+
     public override string Id => "map_pick";
     public override int Version => 1;
     public override string Family => "trivia";
     public override bool Gradable => true;
     protected override JsonSerializerContext SerializerContext => MapPickJsonContext.Default;
+    public IReadOnlyList<string> CsvColumns => ImportFields;
+    public IReadOnlyList<string> JsonFields => ImportFields;
+    public ImportExample CsvExample => CsvImportExample;
+    public ImportExample JsonExample => JsonImportExample;
+
+    public bool Matches(string? legacyKind, ImportRow row) => string.Equals(legacyKind, "map", StringComparison.OrdinalIgnoreCase);
+
+    public MapPickPayload Convert(ImportRow row)
+    {
+        MapBaseLayer? baseLayer = Enum.TryParse<MapBaseLayer>(row.Field("baseLayer"), true, out var parsedBaseLayer)
+            && parsedBaseLayer is MapBaseLayer.Blank or MapBaseLayer.Borders ? parsedBaseLayer : null;
+        var target = row.Field("targetShape")?.ToLowerInvariant() switch
+        {
+            "country" => new MapTarget(MapTargetKind.Country, row.Field("countryCode")),
+            "city" => new MapTarget(MapTargetKind.Point, null, ImportValues.Number(row, "latitude"), ImportValues.Number(row, "longitude"), ImportValues.Number(row, "radiusKm")),
+            _ => new MapTarget(null)
+        };
+        return new(baseLayer, target);
+    }
 
     public override MapPickPayload Upgrade(int from, JsonElement payload)
     {
