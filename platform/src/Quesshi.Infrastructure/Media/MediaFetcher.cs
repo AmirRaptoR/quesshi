@@ -164,7 +164,9 @@ public sealed class MediaFetcher : IMediaFetcher
 
                 if (!response.IsSuccessStatusCode) return new(MediaFetchStatus.Failed);
                 var mime = NormalizeMime(response.Content.Headers.ContentType?.MediaType);
-                return TryKindFor(mime, out _) ? new(MediaFetchStatus.Success) : new(MediaFetchStatus.UnsupportedMedia);
+                return TryKindFor(mime, out var kind)
+                    ? new(MediaFetchStatus.Success, Kind: kind)
+                    : new(MediaFetchStatus.UnsupportedMedia);
             }
             return new(MediaFetchStatus.RedirectLimit);
         }
