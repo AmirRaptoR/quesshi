@@ -123,6 +123,20 @@ public sealed class PlayerIdentityPageTests : BunitContext
     }
 
     [Fact]
+    public async Task Google_button_renders_again_after_cancelling_a_profile_confirmation()
+    {
+        JSInterop.SetupVoid("quesshi.google.render", _ => true).SetVoidResult();
+        UseServices(GoogleProfileNeededHandler());
+        var cut = Render<SignIn>();
+
+        await cut.Instance.GoogleCredentialAsync("google-id-token");
+        cut.Find("button[type='button']").Click();
+
+        cut.WaitForAssertion(() => Assert.Equal(2,
+            JSInterop.Invocations.Count(invocation => invocation.Identifier == "quesshi.google.render")));
+    }
+
+    [Fact]
     public async Task Invalid_google_credential_uses_the_existing_sign_in_error()
     {
         JSInterop.SetupVoid("quesshi.google.render", _ => true);

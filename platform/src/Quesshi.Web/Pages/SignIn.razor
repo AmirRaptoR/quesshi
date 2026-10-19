@@ -85,6 +85,12 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (confirmation is not null)
+        {
+            renderedGoogleClientId = null;
+            return;
+        }
+
         var clientId = GoogleClientId;
         if (clientId is null)
         {
