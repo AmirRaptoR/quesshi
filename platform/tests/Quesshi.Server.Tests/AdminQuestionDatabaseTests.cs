@@ -23,6 +23,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 {
     private static readonly Guid TenantA = Guid.Parse("8ab4e15b-45e9-4d67-a32b-b80cbe902c3a");
     private static readonly Guid TenantB = Guid.Parse("54e5eb40-2d22-48a2-9f36-e967f67a1c44");
+    private static Uri? clientBaseAddress;
 
     [SkippableFact]
     public async Task Api_editor_can_create_a_choice_question_and_read_its_payload()
@@ -329,7 +330,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         using var client = Client();
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
         var token = await AdminAntiforgeryAsync(client, cookie);
-        var csv = "LANGUAGE,CATEGORY,LEVEL,PROMPT,ITEM1,ITEM2,ITEM3,ITEM4\nEN," + category + ",1,\"Legacy, order\",one,two,three,four\n";
+        var csv = "LANGUAGE,CATEGORY,LEVEL,PROMPT,ITEM1,ITEM2,ITEM3,ITEM4\nen," + category + ",1,\"Legacy, order\",one,two,three,four\n";
         using var sortBody = ImportBody("sort", System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv)).ToArray(), "questions.csv", dryRun: false);
         using var sort = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, sortBody);
         using var sortReport = await ReportAsync(sort);
@@ -384,6 +385,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var originalBody = ImportBody("choice", ChoiceCsv(category, ("Existing prompt", 1, null, null, null, "Europe", "capital")), "questions.csv", dryRun: false);
         using var original = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, originalBody);
+        using var originalReport = await ReportAsync(original);
         using var body = ImportBody("choice", ChoiceCsv(category,
             ("Existing prompt", 1, null, null, null, "Other", "topic"),
             ("Not reserved", 9, null, null, null, "Other", "invalid"),
@@ -395,8 +397,11 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         await using var count = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
         count.Parameters.AddWithValue("tenant", TenantA);
 
+        Assert.Equal(["imported"], Outcomes(originalReport));
         Assert.Equal(["duplicate", "invalid", "imported", "imported", "imported"], Outcomes(report));
-        Assert.NotNull(report.RootElement.GetProperty("rows")[0].GetProperty("questionId").GetString());
+        Assert.Equal(
+            originalReport.RootElement.GetProperty("rows")[0].GetProperty("questionId").GetString(),
+            report.RootElement.GetProperty("rows")[0].GetProperty("existingQuestionId").GetString());
         Assert.Equal(4L, (long)(await count.ExecuteScalarAsync())!);
     }
 
@@ -1099,13 +1104,14 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     private static async Task<WebApplication> StartAsync(DatabaseSources sources, Action<IServiceCollection>? configureServices = null)
     {
         var app = Quesshi.Server.Program.CreateApplication(sources, 11299, 30299, configureServices: configureServices);
-        app.Urls.Add("http://127.0.0.1:50299");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
+        clientBaseAddress = new Uri(app.Urls.Single());
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         return app;
     }
 
-    private static HttpClient Client() => new() { BaseAddress = new Uri("http://127.0.0.1:50299") };
+    private static HttpClient Client() => new() { BaseAddress = clientBaseAddress ?? throw new InvalidOperationException("The test application has not started.") };
 
     private static object ChoiceRequest(string prompt, Guid category, string status = "pending", string? topic = null, string kind = "choice", string language = "en", object? payload = null, string source = "admin", Guid? ownerId = null, Guid? mediaId = null) => new
     {
