@@ -124,6 +124,20 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
             return changed == 0 ? CategoryChangeResult.Missing : CategoryChangeResult.Success;
         }, cancellationToken: cancellationToken);
 
+    public Task<CategoryChangeResult> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default) =>
+        database.InTenantAsync(tenantId, async transaction =>
+        {
+            var category = await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from categories where id = @id for update", new { id }, cancellationToken);
+            if (category is null) return CategoryChangeResult.Missing;
+
+            var inUse = await transaction.QuerySingleOrDefaultAsync<int?>("select 1 from questions where category_id = @id limit 1", new { id }, cancellationToken);
+            if (inUse is not null) return CategoryChangeResult.InUse;
+
+            return await transaction.ExecuteAsync("delete from categories where id = @id", new { id }, cancellationToken) == 1
+                ? CategoryChangeResult.Success
+                : CategoryChangeResult.Failed;
+        }, cancellationToken: cancellationToken);
+
     public Task<CategoryChangeResult> ReorderAsync(
         Guid tenantId,
         IReadOnlyList<Guid>? ids,
@@ -223,6 +237,7 @@ internal interface ICategoryService
     Task<CategoryChangeResult> CreateAsync(Guid tenantId, CategoryWrite request, CancellationToken cancellationToken = default);
     Task<CategoryChangeResult> UpdateAsync(Guid tenantId, Guid id, CategoryWrite request, CancellationToken cancellationToken = default);
     Task<CategoryChangeResult> DeactivateAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+    Task<CategoryChangeResult> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
     Task<CategoryChangeResult> ReorderAsync(Guid tenantId, IReadOnlyList<Guid>? ids, CancellationToken cancellationToken = default);
 }
 
@@ -254,6 +269,7 @@ internal enum CategoryChangeStatus
     Success,
     Invalid,
     DuplicateSlug,
+    InUse,
     Missing,
     Failed,
 }
@@ -263,6 +279,7 @@ internal sealed record CategoryChangeResult(CategoryChangeStatus Status, Categor
     public static readonly CategoryChangeResult Success = new(CategoryChangeStatus.Success);
     public static readonly CategoryChangeResult Invalid = new(CategoryChangeStatus.Invalid);
     public static readonly CategoryChangeResult DuplicateSlug = new(CategoryChangeStatus.DuplicateSlug);
+    public static readonly CategoryChangeResult InUse = new(CategoryChangeStatus.InUse);
     public static readonly CategoryChangeResult Missing = new(CategoryChangeStatus.Missing);
     public static readonly CategoryChangeResult Failed = new(CategoryChangeStatus.Failed);
     public CategoryChangeResult(CategoryDefinition category) : this(CategoryChangeStatus.Success, category) { }

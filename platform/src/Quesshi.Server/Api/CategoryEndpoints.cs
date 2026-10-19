@@ -19,6 +19,7 @@ public sealed class CategoryEndpoints : ICoreRouteModule
         categories.MapPut("/{id:guid}", UpdateAsync).WithMetadata(new AdminAuditMetadata("admin.category.update", "category"));
         categories.MapPut("/reorder", ReorderAsync).WithMetadata(new AdminAuditMetadata("admin.category.reorder", "category"));
         categories.MapPost("/{id:guid}/deactivate", DeactivateAsync).WithMetadata(new AdminAuditMetadata("admin.category.deactivate", "category"));
+        categories.MapDelete("/{id:guid}", DeleteAsync).WithMetadata(new AdminAuditMetadata("admin.category.delete", "category"));
     }
 
     private static async Task<IResult> ListActiveAsync(
@@ -68,6 +69,13 @@ public sealed class CategoryEndpoints : ICoreRouteModule
         return Answer(await categories.DeactivateAsync(tenant.Id, id, cancellationToken));
     }
 
+    private static async Task<IResult> DeleteAsync(HttpContext context, Guid id, [FromServices] ICategoryService categories, CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Results.NotFound();
+        return Answer(await categories.DeleteAsync(tenant.Id, id, cancellationToken));
+    }
+
     private static IResult Answer(CategoryChangeResult result, bool created = false) => result.Status switch
     {
         CategoryChangeStatus.Success when created => Results.Created($"/api/admin/categories/{result.Category!.Id}", result.Category),
@@ -75,6 +83,7 @@ public sealed class CategoryEndpoints : ICoreRouteModule
         CategoryChangeStatus.Success => Results.NoContent(),
         CategoryChangeStatus.Invalid => Error("invalid_category", StatusCodes.Status400BadRequest),
         CategoryChangeStatus.DuplicateSlug => Error("slug_taken", StatusCodes.Status409Conflict),
+        CategoryChangeStatus.InUse => Error("category_in_use", StatusCodes.Status400BadRequest),
         CategoryChangeStatus.Missing => Results.NotFound(),
         _ => Error("category_change_failed", StatusCodes.Status400BadRequest),
     };

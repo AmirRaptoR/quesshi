@@ -37,6 +37,8 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (prepared.Result is not null) return prepared.Result;
         if (!await IsSupportedLanguageAsync(transaction, prepared.Write!.Language, cancellationToken))
             return QuestionWriteResult.Invalid([new("language.unsupported", "The question language is not enabled for this tenant.")]);
+        if (await ValidateReferencesAsync(transaction, prepared.Write!, cancellationToken) is { } referenceError)
+            return referenceError;
 
         if (await CollidesAsync(transaction, prepared.Write!, null, cancellationToken)) return QuestionWriteResult.Duplicate;
         if (await TopicCollidesAsync(transaction, prepared.Write!, null, cancellationToken)) return QuestionWriteResult.Duplicate;
@@ -60,6 +62,8 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (prepared.Result is not null) return prepared.Result;
         if (!await IsSupportedLanguageAsync(transaction, prepared.Write!.Language, cancellationToken))
             return QuestionWriteResult.Invalid([new("language.unsupported", "The question language is not enabled for this tenant.")]);
+        if (await ValidateReferencesAsync(transaction, prepared.Write!, cancellationToken) is { } referenceError)
+            return referenceError;
 
         if (await CollidesAsync(transaction, prepared.Write!, id, cancellationToken)) return QuestionWriteResult.Duplicate;
         if (await TopicCollidesAsync(transaction, prepared.Write!, id, cancellationToken)) return QuestionWriteResult.Duplicate;
@@ -181,6 +185,17 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
 
     private static async Task<bool> IsSupportedLanguageAsync(ITenantTx transaction, string language, CancellationToken cancellationToken) =>
         await transaction.QuerySingleOrDefaultAsync<string>("select code from tenant_languages where code = @language", new { language }, cancellationToken) is not null;
+
+    private static async Task<QuestionWriteResult?> ValidateReferencesAsync(ITenantTx transaction, NormalizedWrite write, CancellationToken cancellationToken)
+    {
+        if (write.CategoryId.HasValue && await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from categories where id = @id", new { id = write.CategoryId }, cancellationToken) is null)
+            return QuestionWriteResult.Invalid([new("category.unknown", "The question category is not available in this tenant.")]);
+
+        if (write.OwnerId.HasValue && await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from players where id = @id", new { id = write.OwnerId }, cancellationToken) is null)
+            return QuestionWriteResult.Invalid([new("owner.unknown", "The question owner is not available in this tenant.")]);
+
+        return null;
+    }
 
     private static object Parameters(NormalizedWrite write, Guid id) => new
     {
