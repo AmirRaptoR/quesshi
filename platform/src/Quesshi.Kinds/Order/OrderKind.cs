@@ -4,13 +4,31 @@ using Quesshi.Shared;
 
 namespace Quesshi.Kinds.Order;
 
-public sealed class OrderKind : Kind<OrderPayload, OrderResolved, OrderCard, OrderAnswer, OrderStored, OrderReveal>
+public sealed class OrderKind : Kind<OrderPayload, OrderResolved, OrderCard, OrderAnswer, OrderStored, OrderReveal>, IImports<OrderPayload>
 {
+    private static readonly string[] ImportFields = ["item1", "item2", "item3", "item4"];
+    private static readonly ImportExample Example = new(new Dictionary<string, string?>
+    {
+        ["item1"] = "First",
+        ["item2"] = "Second",
+        ["item3"] = "Third",
+        ["item4"] = "Fourth"
+    });
+
     public override string Id => "order";
     public override int Version => 1;
     public override string Family => "trivia";
     public override bool Gradable => true;
     protected override JsonSerializerContext SerializerContext => OrderJsonContext.Default;
+    public IReadOnlyList<string> CsvColumns => ImportFields;
+    public IReadOnlyList<string> JsonFields => ImportFields;
+    public ImportExample CsvExample => Example;
+    public ImportExample JsonExample => Example;
+
+    public bool Matches(string? legacyKind, ImportRow row) => string.Equals(legacyKind, "sort", StringComparison.OrdinalIgnoreCase);
+
+    public OrderPayload Convert(ImportRow row) => new(
+        [new("item1", row.Field("item1")), new("item2", row.Field("item2")), new("item3", row.Field("item3")), new("item4", row.Field("item4"))]);
 
     public override OrderPayload Upgrade(int from, JsonElement payload)
     {

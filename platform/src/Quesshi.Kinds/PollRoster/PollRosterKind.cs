@@ -4,13 +4,35 @@ using Quesshi.Shared;
 
 namespace Quesshi.Kinds.PollRoster;
 
-public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved, PollRosterCard, PollRosterAnswer, PollRosterStored, PollRosterReveal>
+public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved, PollRosterCard, PollRosterAnswer, PollRosterStored, PollRosterReveal>, IImports<PollRosterPayload>
 {
+    private const int MaxLegacyChoices = 8;
+    private static readonly string[] ImportFields = ["answerSource", "choice1", "choice2", "choice3", "choice4", "choice5", "choice6", "choice7", "choice8"];
+    private static readonly ImportExample Example = new(new Dictionary<string, string?>
+    {
+        ["answerSource"] = "participants"
+    });
+
     public override string Id => "poll_roster";
     public override int Version => 1;
     public override string Family => "poll";
     public override bool Gradable => false;
     protected override JsonSerializerContext SerializerContext => PollRosterJsonContext.Default;
+    public IReadOnlyList<string> CsvColumns => ImportFields;
+    public IReadOnlyList<string> JsonFields => ImportFields;
+    public ImportExample CsvExample => Example;
+    public ImportExample JsonExample => Example;
+
+    public bool Matches(string? legacyKind, ImportRow row) => string.Equals(row.Field("answerSource"), "participants", StringComparison.OrdinalIgnoreCase);
+
+    public PollRosterPayload Convert(ImportRow row)
+    {
+        var unexpected = Enumerable.Range(1, MaxLegacyChoices)
+            .Select(number => (Name: $"choice{number}", Value: row.Field($"choice{number}")))
+            .Where(field => field.Value is not null)
+            .ToDictionary(field => field.Name, field => JsonSerializer.SerializeToElement(field.Value));
+        return new() { Extra = unexpected.Count == 0 ? null : unexpected };
+    }
 
     public override PollRosterPayload Upgrade(int from, JsonElement payload)
     {

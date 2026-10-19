@@ -4,13 +4,34 @@ using Quesshi.Shared;
 
 namespace Quesshi.Kinds.PollChoice;
 
-public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved, PollChoiceCard, PollChoiceAnswer, PollChoiceStored, PollChoiceReveal>
+public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved, PollChoiceCard, PollChoiceAnswer, PollChoiceStored, PollChoiceReveal>, IImports<PollChoicePayload>
 {
+    private static readonly string[] ImportFields = ["answerSource", "choice1", "choice2", "choice3", "choice4", "choice5", "choice6", "choice7", "choice8"];
+    private static readonly ImportExample Example = new(new Dictionary<string, string?>
+    {
+        ["answerSource"] = "fixed",
+        ["choice1"] = "Yes",
+        ["choice2"] = "No"
+    });
+
     public override string Id => "poll_choice";
     public override int Version => 1;
     public override string Family => "poll";
     public override bool Gradable => false;
     protected override JsonSerializerContext SerializerContext => PollChoiceJsonContext.Default;
+    public IReadOnlyList<string> CsvColumns => ImportFields;
+    public IReadOnlyList<string> JsonFields => ImportFields;
+    public ImportExample CsvExample => Example;
+    public ImportExample JsonExample => Example;
+
+    public bool Matches(string? legacyKind, ImportRow row) => string.Equals(row.Field("answerSource"), "fixed", StringComparison.OrdinalIgnoreCase);
+
+    public PollChoicePayload Convert(ImportRow row) => new(
+        Enumerable.Range(1, VotingRules.MaxFixedChoices)
+            .Select(number => (Number: number, Text: row.Field($"choice{number}")))
+            .Where(choice => choice.Text is not null)
+            .Select(choice => new PollChoiceOption($"choice{choice.Number}", choice.Text))
+            .ToArray());
 
     public override PollChoicePayload Upgrade(int from, JsonElement payload)
     {
