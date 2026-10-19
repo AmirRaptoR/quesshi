@@ -31,6 +31,9 @@ using Quesshi.Infrastructure.Streaming;
 using Quesshi.Infrastructure.Identity;
 using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Security;
+using Quesshi.Infrastructure.Media;
+using Quesshi.Application.Media;
+using Quesshi.Server.Media;
 using Quesshi.Server.Streaming;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -201,6 +204,13 @@ public static class Program
         builder.Services.AddPlayerSecurity();
         builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+        builder.Services.AddSingleton<IMediaStore, LocalMediaStore>();
+        builder.Services.AddSingleton<IHostAddressResolver, DnsHostAddressResolver>();
+        builder.Services.AddSingleton<IMediaFetcher, MediaFetcher>();
+        builder.Services.AddSingleton<MediaCleanup>();
+        builder.Services.Configure<WikipediaImageOptions>(builder.Configuration.GetSection("WikipediaImage"));
+        builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<ILeadImageProvider, WikipediaImageProvider>();
         builder.Services.AddSingleton<ICategoryService, CategoryService>();
         builder.Services.AddSingleton<IContent, ContentService>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
@@ -250,7 +260,10 @@ public static class Program
                 provider.GetRequiredService<GuestPurge>().HandleAsync(context, cancellationToken));
             registry.Jobs.Register("core", "guest-remove-player", (context, cancellationToken) =>
                 provider.GetRequiredService<GuestPlayerRemoval>().HandleAsync(context, cancellationToken));
+            registry.Jobs.Register("core", "media-cleanup", (context, cancellationToken) =>
+                provider.GetRequiredService<MediaCleanup>().HandleAsync(context, cancellationToken));
             registry.Schedules.Every("core", TimeSpan.FromDays(1), "guest-purge");
+            registry.Schedules.Every("core", TimeSpan.FromDays(7), "media-cleanup");
             return registry;
         });
         builder.Services.AddSingleton<SignInRegistry>(provider => SignInRegistry.Create(

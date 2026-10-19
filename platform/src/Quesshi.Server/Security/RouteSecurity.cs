@@ -90,6 +90,7 @@ internal static class RouteSecurity
 {
     public static void MapRoutes(this WebApplication app)
     {
+        MediaEndpoints.MapPublic(app);
         var api = app.MapGroup("/api");
         var playerRoutes = SecurePlayerRoutes(api.MapGroup(string.Empty));
         var openRoutes = SecureOpenRoutes(api.MapGroup(string.Empty));

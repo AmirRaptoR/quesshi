@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Application.Media;
 using Quesshi.Infrastructure.Security;
 using Quesshi.Server.Security;
 using Quesshi.Testing;
@@ -40,6 +42,127 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.True(JsonElement.DeepEquals(question.Payload, reread!.Payload));
+    }
+
+    [SkippableFact]
+    public async Task Api_editor_uploads_tenant_media_with_attribution_and_public_delivery_is_isolated()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var editor = await InsertAdminAsync(owner, "media-editor", "media-editor@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        MediaResponse? asset = null;
+
+        try
+        {
+            using var uploadBody = UploadBody(Png(), "image", "image/png", "Photo credit");
+            using var uploaded = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, uploadBody);
+            asset = await uploaded.Content.ReadFromJsonAsync<MediaResponse>();
+            using var delivered = await SendAsync(client, HttpMethod.Get, $"/media/{asset!.Hash}");
+            using var foreign = await SendAsync(client, HttpMethod.Get, $"/media/{asset.Hash}", host: "questions-b.example.test");
+
+            Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
+            Assert.Equal("Photo credit", asset.Attribution);
+            Assert.Equal("image/png", delivered.Content.Headers.ContentType!.MediaType);
+            Assert.Equal("public, max-age=31536000, immutable", delivered.Headers.CacheControl!.ToString());
+            Assert.Equal(Png(), await delivered.Content.ReadAsByteArrayAsync());
+            Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        }
+        finally
+        {
+            if (asset is not null)
+                Assert.True(await app.Services.GetRequiredService<IMediaStore>().DeleteAsync(TenantA, asset.Id));
+        }
+    }
+
+    [SkippableFact]
+    public async Task Api_media_upload_requires_editor_and_antiforgery_and_audio_supports_ranges()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var editor = await InsertAdminAsync(owner, "range-editor", "range-editor@example.test");
+        var moderator = await InsertAdminAsync(owner, "range-moderator", "range-moderator@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await MembershipAsync(owner, TenantA, moderator, "moderator");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var editorCookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var moderatorCookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, moderator);
+        var editorToken = await AdminAntiforgeryAsync(client, editorCookie);
+        var moderatorToken = await AdminAntiforgeryAsync(client, moderatorCookie);
+        MediaResponse? asset = null;
+
+        try
+        {
+            using var moderatorBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var moderatorResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", moderatorCookie, moderatorToken, moderatorBody);
+            using var anonymousBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var anonymousResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", content: anonymousBody);
+            using var missingTokenBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var missingTokenResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", editorCookie, content: missingTokenBody);
+            using var validBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var uploaded = await SendAsync(client, HttpMethod.Post, "/api/admin/media", editorCookie, editorToken, validBody);
+            asset = await uploaded.Content.ReadFromJsonAsync<MediaResponse>();
+
+            using var rangeRequest = new HttpRequestMessage(HttpMethod.Get, $"/media/{asset!.Hash}");
+            rangeRequest.Headers.Host = "questions-a.example.test";
+            rangeRequest.Headers.Range = new RangeHeaderValue(0, 7);
+            using var range = await client.SendAsync(rangeRequest);
+            using var unsatisfiableRequest = new HttpRequestMessage(HttpMethod.Get, $"/media/{asset.Hash}");
+            unsatisfiableRequest.Headers.Host = "questions-a.example.test";
+            unsatisfiableRequest.Headers.Range = new RangeHeaderValue(10_000, null);
+            using var unsatisfiable = await client.SendAsync(unsatisfiableRequest);
+
+            Assert.Equal(HttpStatusCode.Forbidden, moderatorResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, missingTokenResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
+            Assert.Equal(HttpStatusCode.PartialContent, range.StatusCode);
+            Assert.Equal("bytes 0-7/48", range.Content.Headers.ContentRange!.ToString());
+            Assert.Equal(HttpStatusCode.RequestedRangeNotSatisfiable, unsatisfiable.StatusCode);
+        }
+        finally
+        {
+            if (asset is not null)
+                Assert.True(await app.Services.GetRequiredService<IMediaStore>().DeleteAsync(TenantA, asset.Id));
+        }
+    }
+
+    [SkippableFact]
+    public async Task Api_media_upload_rejects_size_limits_and_type_mismatches_without_assets()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var editor = await InsertAdminAsync(owner, "limits-editor", "limits-editor@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+
+        using var imageOverLimit = UploadBody(new byte[5 * 1024 * 1024 + 1], "image", "image/png");
+        using var imageResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, imageOverLimit);
+        using var audioOverLimit = UploadBody(new byte[10 * 1024 * 1024 + 1], "audio", "audio/wav");
+        using var audioResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, audioOverLimit);
+        using var videoOverLimit = UploadBody(new byte[25 * 1024 * 1024 + 1], "video", "video/mp4");
+        using var videoResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, videoOverLimit);
+        using var mismatch = UploadBody(Png(), "image", "image/jpeg");
+        using var mismatchResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, mismatch);
+        await using var count = new NpgsqlCommand("select count(*) from media_assets where tenant_id = @tenant", owner);
+        count.Parameters.AddWithValue("tenant", TenantA);
+
+        Assert.Equal(HttpStatusCode.BadRequest, imageResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, audioResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, videoResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, mismatchResponse.StatusCode);
+        Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
     }
 
     [SkippableFact]
@@ -330,6 +453,35 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         topic, status, source, ownerId,
     };
 
+    private static MultipartFormDataContent UploadBody(byte[] bytes, string kind, string mime, string? attribution = null)
+    {
+        var body = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(mime);
+        body.Add(file, "file", "sample");
+        body.Add(new StringContent(kind), "kind");
+        if (attribution is not null) body.Add(new StringContent(attribution), "attribution");
+        return body;
+    }
+
+    private static byte[] Png() =>
+    [
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00,
+    ];
+
+    private static byte[] Wav() =>
+    [
+        0x52, 0x49, 0x46, 0x46, 0x28, 0x00, 0x00, 0x00,
+        0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20,
+        0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+        0x40, 0x1f, 0x00, 0x00, 0x80, 0x3e, 0x00, 0x00,
+        0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61,
+        0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
     private static async Task<Guid> InsertCategoryAsync(NpgsqlConnection owner, Guid tenant, string slug)
     {
         var id = Guid.NewGuid();
@@ -398,6 +550,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     }
 
     private sealed record AntiforgeryResponse(string Token);
+    private sealed record MediaResponse(Guid Id, string Hash, string Kind, string Mime, long Bytes, JsonElement Meta, string? Attribution);
     private sealed record QuestionResponse(Guid Id, JsonElement Payload, string Status, string Prompt);
     private sealed record QuestionListResponse(IReadOnlyList<QuestionResponse> Items, int Total, IReadOnlyList<QuestionBucketResponse> Buckets);
     private sealed record QuestionBucketResponse(int Approved, int Pending);

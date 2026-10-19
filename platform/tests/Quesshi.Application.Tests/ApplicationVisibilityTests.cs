@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using Quesshi.Application;
+using Quesshi.Application.Media;
 using Quesshi.Application.Sessions;
 using Quesshi.Application.Tenancy;
 
@@ -18,6 +19,16 @@ public sealed class ApplicationVisibilityTests
 
         Assert.Equal(
             [
+                typeof(IHostAddressResolver),
+                typeof(ILeadImageProvider),
+                typeof(IMediaFetcher),
+                typeof(IMediaStore),
+                typeof(MediaAsset),
+                typeof(MediaFetchResult),
+                typeof(MediaFetchStatus),
+                typeof(MediaInput),
+                typeof(MediaKind),
+                typeof(MediaSniffer),
                 typeof(AnswerKey),
                 typeof(ChangeSet),
                 typeof(ISessionDeadlineReconciler),

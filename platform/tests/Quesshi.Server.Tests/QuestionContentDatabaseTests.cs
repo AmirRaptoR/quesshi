@@ -2,13 +2,18 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Quesshi.Application.Media;
+using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Infrastructure.Media;
 using Quesshi.Kinds.Choice;
 using Quesshi.Plugin.Api;
 using Quesshi.Shared;
 using Quesshi.Testing;
+using Quesshi.Server.Media;
 using Xunit.Sdk;
 
 namespace Quesshi.Server.Tests;
@@ -20,16 +25,22 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     private static readonly Guid TenantB = Guid.Parse("bd3a10df-1379-4e9f-8c99-a83a006cb7f2");
 
     [SkippableFact]
-    public async Task Questions_migration_registers_the_envelope_without_media_or_seed_data()
+    public async Task Media_migration_registers_assets_and_tenant_matched_question_references()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
 
         var mediaColumn = await ScalarAsync<long>(owner, "select count(*) from information_schema.columns where table_name = 'questions' and column_name = 'media_id'");
 
-        Assert.Equal(0L, mediaColumn);
+        Assert.Equal(1L, mediaColumn);
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select count(*) from questions"));
         Assert.Equal("owner:core", await ScalarAsync<string>(owner, "select obj_description('questions'::regclass)"));
+        Assert.Equal("owner:core", await ScalarAsync<string>(owner, "select obj_description('media_assets'::regclass)"));
+
+        var foreignAsset = await InsertMediaAsync(owner, TenantB);
+        var error = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(owner, "insert into questions (tenant_id, id, kind, kind_version, family, lang, level, prompt, payload, status, source, media_id) values (@tenant, @id, 'choice', 1, 'trivia', 'en', 1, 'foreign media', '{\"options\":[\"a\",\"b\",\"c\",\"d\"],\"correctIndex\":0}'::jsonb, 'pending', 'admin', @media)", ("tenant", TenantA), ("id", Guid.NewGuid()), ("media", foreignAsset)));
+
+        Assert.Equal("23503", error.SqlState);
     }
 
     [SkippableFact]
@@ -45,6 +56,108 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
         _ = await CreateAsync(content, database, TenantA, ValidWrite());
 
         Assert.Empty(await database.InTenantAsync(TenantB, transaction => content.ListAsync(transaction)));
+    }
+
+    [SkippableFact]
+    public async Task Questions_accept_only_media_owned_by_the_resolved_tenant_and_return_it()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
+        var content = app.Services.GetRequiredService<IContent>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var ownMedia = await InsertMediaAsync(owner, TenantA);
+        var foreignMedia = await InsertMediaAsync(owner, TenantB);
+
+        var created = await CreateAsync(content, database, TenantA, ValidWrite(mediaId: ownMedia));
+        var foreign = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, created.Question!.Id, ValidWrite(mediaId: foreignMedia)));
+        var unknown = await database.InTenantAsync(TenantA, transaction => content.EditAsync(transaction, created.Question!.Id, ValidWrite(mediaId: Guid.NewGuid())));
+        var stored = await database.InTenantAsync(TenantA, transaction => content.GetAsync(transaction, created.Question!.Id));
+
+        Assert.Equal(QuestionWriteStatus.Success, created.Status);
+        Assert.Equal(ownMedia, created.Question!.MediaId);
+        Assert.Equal(QuestionWriteStatus.Invalid, foreign.Status);
+        Assert.Equal(QuestionWriteStatus.Invalid, unknown.Status);
+        Assert.Equal(ownMedia, stored!.MediaId);
+    }
+
+    [SkippableFact]
+    public async Task Local_media_store_deduplicates_per_tenant_without_replacing_immutable_metadata()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        await using var app = CreateApplication(sources);
+        var root = Path.Combine(Path.GetTempPath(), "quesshi-media-tests", Guid.NewGuid().ToString("N"));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MEDIA_DIR"] = root }).Build();
+        var store = new LocalMediaStore(app.Services.GetRequiredService<ITenantDb>(), configuration);
+        var bytes = Png(2, 3);
+        var metadata = JsonSerializer.SerializeToElement(new { width = 2, height = 3 });
+
+        try
+        {
+            var first = await store.StoreAsync(TenantA, new MediaInput(MediaKind.Image, "image/png", bytes, metadata, "first credit"));
+            var duplicate = await store.StoreAsync(TenantA, new MediaInput(MediaKind.Image, "image/png", bytes, JsonSerializer.SerializeToElement(new { width = 99 }), "replacement credit"));
+            var otherTenant = await store.StoreAsync(TenantB, new MediaInput(MediaKind.Image, "image/png", bytes, metadata));
+            await using var read = await store.OpenReadAsync(TenantA, first.StorageKey);
+            using var output = new MemoryStream();
+            await read!.CopyToAsync(output);
+
+            Assert.Equal(first.Id, duplicate.Id);
+            Assert.Equal("first credit", duplicate.Attribution);
+            Assert.Equal(2, duplicate.Meta.GetProperty("width").GetInt32());
+            Assert.NotEqual(first.Id, otherTenant.Id);
+            Assert.Equal(bytes, output.ToArray());
+            Assert.True(File.Exists(Path.Combine(root, TenantA.ToString("N"), first.StorageKey[..2], first.StorageKey)));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Weekly_media_cleanup_removes_only_stale_unreferenced_assets_and_their_files()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var root = Path.Combine(Path.GetTempPath(), "quesshi-media-cleanup-tests", Guid.NewGuid().ToString("N"));
+        var database = new TenantDb(sources);
+        var store = new LocalMediaStore(database, new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["MEDIA_DIR"] = root })
+            .Build());
+        var now = new DateTimeOffset(2030, 1, 8, 0, 0, 0, TimeSpan.Zero);
+
+        try
+        {
+            var stale = await StoreImageAsync(store, 1);
+            var fresh = await StoreImageAsync(store, 2);
+            var questionAsset = await StoreImageAsync(store, 3);
+            var sessionAsset = await StoreImageAsync(store, 4);
+            await ExecuteAsync(owner, "update media_assets set created_at = @old where tenant_id = @tenant and id in (@stale, @question, @session)", ("old", now - TimeSpan.FromDays(8)), ("tenant", TenantA), ("stale", stale.Id), ("question", questionAsset.Id), ("session", sessionAsset.Id));
+            await ExecuteAsync(owner, "update media_assets set created_at = @fresh where tenant_id = @tenant and id = @asset", ("fresh", now - TimeSpan.FromDays(1)), ("tenant", TenantA), ("asset", fresh.Id));
+
+            var question = await InsertRawQuestionAsync(owner, TenantA, null, 1, "en", "choice", "keeps media");
+            await ExecuteAsync(owner, "update questions set media_id = @media where tenant_id = @tenant and id = @question", ("media", questionAsset.Id), ("tenant", TenantA), ("question", question));
+            var player = await InsertPlayerAsync(owner, TenantA);
+            var session = Guid.NewGuid();
+            await ExecuteAsync(owner, "insert into sessions (tenant_id, id, code, format, owner_id, lang, capacity, content) values (@tenant, @id, 'media-cleanup', 'poll', @owner, 'en', 1, '{}'::jsonb)", ("tenant", TenantA), ("id", session), ("owner", player));
+            await ExecuteAsync(owner, "insert into session_items (tenant_id, session_id, slot, kind, kind_version, prompt, payload, card, reveal, level, media_id) values (@tenant, @session, 0, 'choice', 1, 'snapshot', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1, @media)", ("tenant", TenantA), ("session", session), ("media", sessionAsset.Id));
+
+            await new MediaCleanup(store, new TestClock(now)).HandleAsync(new JobContext(0, TenantA, "core", "media-cleanup", JsonSerializer.SerializeToElement(new { }), database), CancellationToken.None);
+
+            Assert.False(File.Exists(Path.Combine(root, TenantA.ToString("N"), stale.StorageKey[..2], stale.StorageKey)));
+            Assert.Equal(3L, await ScalarAsync<long>(owner, "select count(*) from media_assets where tenant_id = @tenant", ("tenant", TenantA)));
+            Assert.Equal(questionAsset.Id, await ScalarAsync<Guid>(owner, "select media_id from questions where id = @question", ("question", question)));
+            Assert.Equal(sessionAsset.Id, await ScalarAsync<Guid>(owner, "select media_id from session_items where session_id = @session", ("session", session)));
+            Assert.True(File.Exists(Path.Combine(root, TenantA.ToString("N"), fresh.StorageKey[..2], fresh.StorageKey)));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 
     [SkippableFact]
@@ -455,17 +568,25 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     private static WebApplication CreateApplication(DatabaseSources sources, IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(sources, 11298, 30298, configuredKinds: kinds);
     private static Task ResetDatabaseAsync(NpgsqlConnection owner) => ExecuteAsync(owner, "delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from players; delete from tenant_languages; delete from tenants");
     private async Task<NpgsqlConnection> OpenAsync(string role) { var connection = new NpgsqlConnection(fixture.ConnectionStringForRole(role)); await connection.OpenAsync(); return connection; }
-    private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null, int kindVersion = 1) => new(kind, kindVersion, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null);
+    private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null, int kindVersion = 1, Guid? mediaId = null) => new(kind, kindVersion, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null, mediaId);
     private static JsonElement ChoicePayload(int firstLength) => JsonSerializer.SerializeToElement(new { options = new[] { new string('a', firstLength), "bravo", "charlie", "delta" }, correctIndex = 0 });
+    private static byte[] Png(byte width, byte height) => [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, width, 0, 0, 0, height];
     private static JsonElement VersionOneChoicePayload(int firstLength) => JsonSerializer.SerializeToElement(new { choices = new[] { new string('a', firstLength), "bravo", "charlie", "delta" }, correctIndex = 0 });
     private static Task<QuestionWriteResult> CreateAsync(IContent content, ITenantDb database, Guid tenant, QuestionWrite write) => database.InTenantAsync(tenant, transaction => content.CreateAsync(transaction, write));
     private static async Task<IReadOnlyList<Guid>> ListIdsAsync(IContent content, ITenantDb database, QuestionFilter filters) => (await database.InTenantAsync(TenantA, transaction => content.ListAsync(transaction, filters))).Select(question => question.Id).ToArray();
+    private static async Task<MediaAsset> StoreImageAsync(IMediaStore store, byte width) => await store.StoreAsync(TenantA, new MediaInput(MediaKind.Image, "image/png", Png(width, 1), JsonSerializer.SerializeToElement(new { width, height = 1 })));
     private static async Task<Guid> InsertCategoryAsync(NpgsqlConnection owner, Guid tenant, string slug) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into categories (tenant_id, id, slug, names) values (@tenant, @id, @slug, '{\"en\":\"Category\"}'::jsonb)", ("tenant", tenant), ("id", id), ("slug", slug)); return id; }
     private static async Task<Guid> InsertPlayerAsync(NpgsqlConnection owner, Guid tenant) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into players (tenant_id, id, display_name, avatar_seed, lang) values (@tenant, @id, 'Player', 'seed', 'en')", ("tenant", tenant), ("id", id)); return id; }
+    private static async Task<Guid> InsertMediaAsync(NpgsqlConnection owner, Guid tenant) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into media_assets (tenant_id, id, kind, storage_key, mime, bytes) values (@tenant, @id, 'image', @key, 'image/png', 1)", ("tenant", tenant), ("id", id), ("key", id.ToString("N"))); return id; }
     private static async Task<Guid> InsertRawQuestionAsync(NpgsqlConnection owner, Guid tenant, Guid? category, int level, string language, string kind, string prompt, string status = "pending", string source = "admin", string family = "trivia", string? topic = null, Guid? ownerId = null) { var id = Guid.NewGuid(); await ExecuteAsync(owner, "insert into questions (tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, topic, fingerprint, status, source, owner_id) values (@tenant, @id, @kind, 1, @family, @language, @category, @level, @prompt, '{\"options\":[\"a\",\"b\",\"c\",\"d\"],\"correctIndex\":0}'::jsonb, @topic, @prompt, @status, @source, @owner)", ("tenant", tenant), ("id", id), ("kind", kind), ("family", family), ("language", language), ("category", (object?)category ?? DBNull.Value), ("level", level), ("prompt", prompt), ("topic", (object?)topic ?? DBNull.Value), ("status", status), ("source", source), ("owner", (object?)ownerId ?? DBNull.Value)); return id; }
     private static async Task<(Guid? Question, Guid? Category)> SessionSnapshotReferencesAsync(NpgsqlConnection owner, Guid tenant, Guid session) { await using var command = new NpgsqlCommand("select question_id, category_id from session_items where tenant_id = @tenant and session_id = @session", owner); command.Parameters.AddWithValue("tenant", tenant); command.Parameters.AddWithValue("session", session); await using var reader = await command.ExecuteReaderAsync(); Assert.True(await reader.ReadAsync()); return (reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetGuid(1)); }
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters) { await using var command = new NpgsqlCommand(sql, connection); foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value); await command.ExecuteNonQueryAsync(); }
-    private static async Task<T> ScalarAsync<T>(NpgsqlConnection connection, string sql) { await using var command = new NpgsqlCommand(sql, connection); var value = (await command.ExecuteScalarAsync())!; return value is T typed ? typed : (T)Convert.ChangeType(value, typeof(T), CultureInfo.InvariantCulture); }
+    private static async Task<T> ScalarAsync<T>(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters) { await using var command = new NpgsqlCommand(sql, connection); foreach (var (name, parameterValue) in parameters) command.Parameters.AddWithValue(name, parameterValue); var result = (await command.ExecuteScalarAsync())!; return result is T typed ? typed : (T)Convert.ChangeType(result, typeof(T), CultureInfo.InvariantCulture); }
+
+    private sealed class TestClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset Now { get; } = now;
+    }
 
     private sealed class VersionTwoChoiceKind : ChoiceKind
     {

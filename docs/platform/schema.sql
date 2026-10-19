@@ -276,6 +276,7 @@ create table questions (
   explanation  text,
   topic        text,                                     -- "subject|aspect", for duplicate control
   fingerprint  text,                                     -- normalised prompt words
+  media_id     uuid,
   status       text not null default 'pending' check (status in ('draft', 'pending', 'approved', 'rejected')),
   source       text not null check (source in ('seed', 'import', 'ai', 'admin', 'player')),
   owner_id     uuid,                                     -- player author; null means the tenant's bank
@@ -283,6 +284,7 @@ create table questions (
   updated_at   timestamptz not null default now(),
   primary key (tenant_id, id),
   foreign key (tenant_id, category_id) references categories on delete set null (category_id),
+  foreign key (tenant_id, media_id) references media_assets,
   foreign key (tenant_id, owner_id) references players on delete cascade,
   check ((source = 'player') = (owner_id is not null))
 );
@@ -292,6 +294,7 @@ create unique index questions_topic on questions (tenant_id, lang, family, topic
 -- Drawing items for a session.
 create index questions_draw on questions (tenant_id, lang, kind, category_id, level)
   where status = 'approved' and owner_id is null;
+create index questions_media on questions (tenant_id, media_id) where media_id is not null;
 create index questions_owner on questions (tenant_id, owner_id) where owner_id is not null;
 create index questions_review on questions (tenant_id, status, created_at desc);
 create index questions_prompt_trgm on questions using gin (prompt gin_trgm_ops);

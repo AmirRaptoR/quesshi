@@ -59,7 +59,7 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Session_migration_creates_the_catalogue_and_defers_media_foreign_keys()
+    public async Task Session_migration_creates_the_catalogue_and_enforces_tenant_matched_media_references()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
@@ -78,8 +78,8 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
             Assert.True(await ScalarAsync<bool>(owner, "select exists (select 1 from pg_indexes where schemaname = 'public' and indexname = @index)", ("index", index)));
         }
 
-        Assert.Equal(3L, await ScalarAsync<long>(owner, "select count(*) from pg_constraint where conrelid = 'session_items'::regclass and contype = 'f'"));
-        Assert.Equal(2L, await ScalarAsync<long>(owner, """
+        Assert.Equal(4L, await ScalarAsync<long>(owner, "select count(*) from pg_constraint where conrelid = 'session_items'::regclass and contype = 'f'"));
+        Assert.Equal(3L, await ScalarAsync<long>(owner, """
             select count(*)
             from pg_constraint fk
             join pg_class referenced on referenced.oid = fk.confrelid
@@ -88,7 +88,12 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
               and referenced.relname in ('questions', 'categories', 'media_assets')
             """));
 
-        await InsertSessionAsync(owner, TenantA, Guid.NewGuid(), OwnerA, "catalogue");
+        var session = Guid.NewGuid();
+        var foreignAsset = await InsertMediaAsync(owner, TenantB);
+        await InsertSessionAsync(owner, TenantA, session, OwnerA, "catalogue");
+        await AssertSqlStateAsync(() => InsertItemAsync(owner, TenantA, session, 0, Guid.NewGuid()), "23503");
+        await AssertSqlStateAsync(() => InsertItemAsync(owner, TenantA, session, 1, foreignAsset), "23503");
+
         Assert.Equal("lobby", await ScalarAsync<string>(owner, "select status from sessions where tenant_id = @tenant and code = 'catalogue'", ("tenant", TenantA)));
         Assert.Equal(-1, await ScalarAsync<int>(owner, "select slot from sessions where tenant_id = @tenant and code = 'catalogue'", ("tenant", TenantA)));
     }
@@ -285,11 +290,18 @@ public sealed class SessionDatabaseTests(PostgresFixture fixture)
     private static async Task InsertParticipantAsync(NpgsqlConnection connection, Guid tenant, Guid session, Guid player, short seat) =>
         await ExecuteAsync(connection, "insert into session_participants (tenant_id, session_id, player_id, seat) values (@tenant, @session, @player, @seat)", ("tenant", tenant), ("session", session), ("player", player), ("seat", seat));
 
-    private static async Task InsertItemAsync(NpgsqlConnection connection, Guid tenant, Guid session, int slot) =>
+    private static async Task InsertItemAsync(NpgsqlConnection connection, Guid tenant, Guid session, int slot, Guid? media = null) =>
         await ExecuteAsync(connection, """
-            insert into session_items (tenant_id, session_id, slot, kind, kind_version, prompt, payload, card, reveal, level)
-            values (@tenant, @session, @slot, 'trivia', 1, 'Question', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1)
-            """, ("tenant", tenant), ("session", session), ("slot", slot));
+            insert into session_items (tenant_id, session_id, slot, kind, kind_version, prompt, payload, card, reveal, level, media_id)
+            values (@tenant, @session, @slot, 'trivia', 1, 'Question', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1, @media)
+            """, ("tenant", tenant), ("session", session), ("slot", slot), ("media", (object?)media ?? DBNull.Value));
+
+    private static async Task<Guid> InsertMediaAsync(NpgsqlConnection connection, Guid tenant)
+    {
+        var id = Guid.NewGuid();
+        await ExecuteAsync(connection, "insert into media_assets (tenant_id, id, kind, storage_key, mime, bytes) values (@tenant, @id, 'image', @storageKey, 'image/png', 1)", ("tenant", tenant), ("id", id), ("storageKey", id.ToString("N")));
+        return id;
+    }
 
     private static async Task InsertAnswerAsync(NpgsqlConnection connection, Guid tenant, Guid session, Guid player, int slot, int seq = 0, int revision = 0, float credit = 0, int takenMs = 0) =>
         await ExecuteAsync(connection, """

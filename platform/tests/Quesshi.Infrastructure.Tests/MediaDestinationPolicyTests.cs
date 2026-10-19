@@ -1,0 +1,184 @@
+using System.Net;
+using System.Net.Http.Headers;
+using Quesshi.Application.Media;
+using Quesshi.Infrastructure.Media;
+
+namespace Quesshi.Infrastructure.Tests;
+
+public sealed class MediaDestinationPolicyTests
+{
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("10.0.0.1")]
+    [InlineData("169.254.169.254")]
+    [InlineData("::1")]
+    [InlineData("fd00::1")]
+    [InlineData("fe80::1")]
+    [InlineData("::ffff:10.0.0.1")]
+    public void Private_and_special_destinations_are_refused(string value)
+    {
+        Assert.False(MediaDestinationPolicy.IsPermitted(IPAddress.Parse(value)));
+    }
+
+    [Theory]
+    [InlineData("1.1.1.1")]
+    [InlineData("2606:4700:4700::1111")]
+    public void Public_destinations_are_permitted(string value)
+    {
+        Assert.True(MediaDestinationPolicy.IsPermitted(IPAddress.Parse(value)));
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1/media")]
+    [InlineData("http://10.0.0.1/media")]
+    [InlineData("http://169.254.169.254/latest/meta-data")]
+    [InlineData("http://[::1]/media")]
+    [InlineData("http://[fd00::1]/media")]
+    [InlineData("http://[fe80::1]/media")]
+    [InlineData("http://[::ffff:10.0.0.1]/media")]
+    public async Task Fetcher_refuses_direct_forbidden_destinations_before_connecting(string url)
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var result = await new MediaFetcher(resolver, new NeverStore()).FetchAsync(Guid.NewGuid(), new Uri(url));
+
+        Assert.Equal(MediaFetchStatus.ForbiddenDestination, result.Status);
+        Assert.Equal(0, resolver.Calls);
+    }
+
+    [Fact]
+    public async Task Fetcher_refuses_a_hostname_that_resolves_to_a_private_address()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("10.0.0.1"));
+        var result = await new MediaFetcher(resolver, new NeverStore()).FetchAsync(Guid.NewGuid(), new Uri("https://media.example/test"));
+
+        Assert.Equal(MediaFetchStatus.ForbiddenDestination, result.Status);
+        Assert.Equal(1, resolver.Calls);
+    }
+
+    [Fact]
+    public async Task Fetcher_rechecks_every_redirect_before_opening_its_connection()
+    {
+        var resolver = new SequencedResolver(IPAddress.Parse("1.1.1.1"), IPAddress.Parse("10.0.0.1"));
+        var transport = new ScriptedTransport(Redirect("http://private.example/image"));
+        var result = await new MediaFetcher(resolver, new NeverStore(), transport)
+            .FetchAsync(Guid.NewGuid(), new Uri("https://public.example/image"));
+
+        Assert.Equal(MediaFetchStatus.ForbiddenDestination, result.Status);
+        Assert.Equal(2, resolver.Calls);
+        Assert.Single(transport.Calls);
+        Assert.Equal(IPAddress.Parse("1.1.1.1"), transport.Calls[0].Address);
+    }
+
+    [Fact]
+    public async Task Fetcher_stops_after_three_redirects()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var transport = new ScriptedTransport(
+            Redirect("/one"), Redirect("/two"), Redirect("/three"), Redirect("/four"));
+        var result = await new MediaFetcher(resolver, new NeverStore(), transport)
+            .FetchAsync(Guid.NewGuid(), new Uri("https://public.example/start"));
+
+        Assert.Equal(MediaFetchStatus.RedirectLimit, result.Status);
+        Assert.Equal(4, resolver.Calls);
+        Assert.Equal(4, transport.Calls.Count);
+    }
+
+    [Fact]
+    public async Task Fetcher_uses_verified_response_type_and_does_not_store_mismatched_content()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var transport = new ScriptedTransport(Media("image/png", "not a png"u8.ToArray()));
+        var result = await new MediaFetcher(resolver, new NeverStore(), transport)
+            .FetchAsync(Guid.NewGuid(), new Uri("https://public.example/image"));
+
+        Assert.Equal(MediaFetchStatus.MismatchedMedia, result.Status);
+    }
+
+    [Fact]
+    public async Task Fetcher_rejects_an_oversized_stream_before_storing_it()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var transport = new ScriptedTransport(Media("image/png", "small"u8.ToArray(), 5 * 1024 * 1024 + 1));
+        var result = await new MediaFetcher(resolver, new NeverStore(), transport)
+            .FetchAsync(Guid.NewGuid(), new Uri("https://public.example/image"));
+
+        Assert.Equal(MediaFetchStatus.TooLarge, result.Status);
+    }
+
+    [Fact]
+    public async Task Fetcher_applies_its_total_timeout_without_storing_an_asset()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var result = await new MediaFetcher(resolver, new NeverStore(), new WaitingTransport(), TimeSpan.FromMilliseconds(20))
+            .FetchAsync(Guid.NewGuid(), new Uri("https://public.example/image"));
+
+        Assert.Equal(MediaFetchStatus.Timeout, result.Status);
+    }
+
+    private static HttpResponseMessage Redirect(string location) => new(HttpStatusCode.Found)
+    {
+        Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) },
+    };
+
+    private static HttpResponseMessage Media(string mime, byte[] bytes, long? length = null)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue(mime);
+        if (length is not null) content.Headers.ContentLength = length;
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+    }
+
+    private sealed class FixedResolver(params IPAddress[] addresses) : IHostAddressResolver
+    {
+        public int Calls { get; private set; }
+
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult<IReadOnlyList<IPAddress>>(addresses);
+        }
+    }
+
+    private sealed class SequencedResolver(params IPAddress[] addresses) : IHostAddressResolver
+    {
+        private int next;
+
+        public int Calls { get; private set; }
+
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult<IReadOnlyList<IPAddress>>([addresses[next++]]);
+        }
+    }
+
+    private sealed class ScriptedTransport(params HttpResponseMessage[] responses) : IMediaFetchTransport
+    {
+        private readonly Queue<HttpResponseMessage> responses = new(responses);
+
+        public List<(Uri Uri, IPAddress Address)> Calls { get; } = [];
+
+        public Task<MediaFetchResponse> GetAsync(Uri uri, IPAddress address, CancellationToken cancellationToken = default)
+        {
+            Calls.Add((uri, address));
+            return Task.FromResult(new MediaFetchResponse(new HttpClient(), responses.Dequeue()));
+        }
+    }
+
+    private sealed class NeverStore : IMediaStore
+    {
+        public Task<MediaAsset> StoreAsync(Guid tenantId, MediaInput input, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Forbidden requests cannot store media.");
+        public Task<MediaAsset?> FindByHashAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Stream?> OpenReadAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class WaitingTransport : IMediaFetchTransport
+    {
+        public async Task<MediaFetchResponse> GetAsync(Uri uri, IPAddress address, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return null!;
+        }
+    }
+}
