@@ -10,6 +10,7 @@ namespace Quesshi.Server.Tests;
 public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 {
     private const string QuestionsMigrationName = "20261018T0100_core_questions.sql";
+    private const string MediaMigrationName = "20261019T0100_core_media_assets.sql";
     private static readonly Guid TenantA = Guid.Parse("c66dbf5d-a7e8-42a0-9215-7c87b00bc13e");
     private static readonly Guid TenantB = Guid.Parse("b2461b37-f799-4a3b-96b3-ff5446c64d95");
 
@@ -259,7 +260,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindQuestionsMigrationAsync(NpgsqlConnection owner)
     {
-        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; delete from schema_migrations where name = '{QuestionsMigrationName}'");
+        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}')");
     }
 
     private async Task<NpgsqlConnection> OpenAsync(string role)

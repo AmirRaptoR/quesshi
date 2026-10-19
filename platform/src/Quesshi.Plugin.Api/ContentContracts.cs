@@ -29,7 +29,8 @@ public sealed record QuestionEnvelope(
     string Fingerprint,
     QuestionStatus Status,
     QuestionSource Source,
-    Guid? OwnerId);
+    Guid? OwnerId,
+    Guid? MediaId = null);
 
 public sealed record QuestionWrite(
     string? Kind,
@@ -44,7 +45,8 @@ public sealed record QuestionWrite(
     string? Topic,
     QuestionStatus Status,
     QuestionSource Source,
-    Guid? OwnerId);
+    Guid? OwnerId,
+    Guid? MediaId = null);
 
 public sealed record QuestionFilter(
     string? Language = null,

@@ -45,10 +45,10 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         var persisted = await transaction.QuerySingleOrDefaultAsync<PersistedQuestion>($"""
                 insert into questions (
                     tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload,
-                    explanation, topic, fingerprint, status, source, owner_id)
+                    explanation, topic, fingerprint, media_id, status, source, owner_id)
                 values (
                     current_setting('app.tenant_id')::uuid, @id, @kind, @kindVersion, @family, @language, @categoryId, @level, @prompt, @payload,
-                    @explanation, @topic, @fingerprint, @status, @source, @ownerId)
+                    @explanation, @topic, @fingerprint, @mediaId, @status, @source, @ownerId)
                 on conflict (tenant_id, lang, family, topic)
                     where topic is not null and owner_id is null do nothing
                 returning {QuestionColumns}
@@ -71,7 +71,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
                 update questions
                 set kind = @kind, kind_version = @kindVersion, family = @family, lang = @language,
                     category_id = @categoryId, level = @level, prompt = @prompt, payload = @payload,
-                    explanation = @explanation, topic = @topic, fingerprint = @fingerprint,
+                    explanation = @explanation, topic = @topic, fingerprint = @fingerprint, media_id = @mediaId,
                     status = @status, source = @source, owner_id = @ownerId, updated_at = now()
                 where id = @id
                 returning {QuestionColumns}
@@ -151,7 +151,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         return new(Write: new NormalizedWrite(
             kind.Id, kind.Version, kind.Family, request.Language.Trim(), request.CategoryId, request.Level,
             request.Prompt.Trim(), payload.Clone(), TrimOrNull(request.Explanation), TrimOrNull(request.Topic),
-            PromptFingerprint.Normalise(request.Prompt), request.Status, request.Source, request.OwnerId));
+            PromptFingerprint.Normalise(request.Prompt), request.Status, request.Source, request.OwnerId, request.MediaId));
     }
 
     private static async Task<bool> CollidesAsync(ITenantTx transaction, NormalizedWrite write, Guid? exceptId, CancellationToken cancellationToken)
@@ -194,6 +194,9 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (write.OwnerId.HasValue && await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from players where id = @id", new { id = write.OwnerId }, cancellationToken) is null)
             return QuestionWriteResult.Invalid([new("owner.unknown", "The question owner is not available in this tenant.")]);
 
+        if (write.MediaId.HasValue && await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from media_assets where id = @id", new { id = write.MediaId }, cancellationToken) is null)
+            return QuestionWriteResult.Invalid([new("media.unknown", "The question media asset is not available in this tenant.")]);
+
         return null;
     }
 
@@ -214,6 +217,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         status = StatusValue(write.Status),
         source = SourceValue(write.Source),
         write.OwnerId,
+        write.MediaId,
     };
 
     private static object FilterParameters(QuestionFilter? filter) => new
@@ -231,7 +235,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
     private static QuestionEnvelope? ToEnvelope(PersistedQuestion? question) => question is null ? null : new(
         question.Id, question.Kind, question.KindVersion, question.Family, question.Language, question.CategoryId, question.Level,
         question.Prompt, JsonDocument.Parse(question.PayloadJson).RootElement.Clone(), question.Explanation, question.Topic,
-        question.Fingerprint, ParseStatus(question.Status), ParseSource(question.Source), question.OwnerId);
+        question.Fingerprint, ParseStatus(question.Status), ParseSource(question.Source), question.OwnerId, question.MediaId);
 
     private static string? TrimOrNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string StatusValue(QuestionStatus status) => status.ToString().ToLowerInvariant();
@@ -239,12 +243,12 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
     private static QuestionStatus ParseStatus(string value) => Enum.Parse<QuestionStatus>(value, true);
     private static QuestionSource ParseSource(string value) => Enum.Parse<QuestionSource>(value, true);
 
-    private const string QuestionColumns = "id as Id, kind as Kind, kind_version::integer as KindVersion, family as Family, lang as Language, category_id as CategoryId, level::integer as Level, prompt as Prompt, payload::text as PayloadJson, explanation as Explanation, topic as Topic, fingerprint as Fingerprint, status as Status, source as Source, owner_id as OwnerId";
+    private const string QuestionColumns = "id as Id, kind as Kind, kind_version::integer as KindVersion, family as Family, lang as Language, category_id as CategoryId, level::integer as Level, prompt as Prompt, payload::text as PayloadJson, explanation as Explanation, topic as Topic, fingerprint as Fingerprint, status as Status, source as Source, owner_id as OwnerId, media_id as MediaId";
     private const string SelectQuestion = "select " + QuestionColumns + " from questions";
 
     private sealed record PreparedWrite(QuestionWriteResult? Result = null, NormalizedWrite? Write = null);
-    private sealed record NormalizedWrite(string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, JsonElement Payload, string? Explanation, string? Topic, string Fingerprint, QuestionStatus Status, QuestionSource Source, Guid? OwnerId);
-    private sealed record PersistedQuestion(Guid Id, string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, string PayloadJson, string? Explanation, string? Topic, string Fingerprint, string Status, string Source, Guid? OwnerId);
+    private sealed record NormalizedWrite(string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, JsonElement Payload, string? Explanation, string? Topic, string Fingerprint, QuestionStatus Status, QuestionSource Source, Guid? OwnerId, Guid? MediaId);
+    private sealed record PersistedQuestion(Guid Id, string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, string PayloadJson, string? Explanation, string? Topic, string Fingerprint, string Status, string Source, Guid? OwnerId, Guid? MediaId);
     private sealed record PersistedBucket(string Language, Guid? CategoryId, int? Level, string Kind, int Approved, int Pending);
 }
 
