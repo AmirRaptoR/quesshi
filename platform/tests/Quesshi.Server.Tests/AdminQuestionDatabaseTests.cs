@@ -60,7 +60,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
         try
         {
-            using var uploadBody = UploadBody(Png(), "image", "image/png", "Photo credit");
+            using var uploadBody = UploadBody(Png(), "image/png", "Photo credit");
             using var uploaded = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, uploadBody);
             asset = await uploaded.Content.ReadFromJsonAsync<MediaResponse>();
             using var delivered = await SendAsync(client, HttpMethod.Get, $"/media/{asset!.Hash}");
@@ -76,7 +76,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         finally
         {
             if (asset is not null)
-                Assert.True(await app.Services.GetRequiredService<IMediaStore>().DeleteAsync(TenantA, asset.Id));
+                await app.Services.GetRequiredService<IMediaStore>().DeleteAsync(TenantA, asset.Id);
         }
     }
 
@@ -100,13 +100,13 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
         try
         {
-            using var moderatorBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var moderatorBody = UploadBody(Wav(), "audio/wav");
             using var moderatorResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", moderatorCookie, moderatorToken, moderatorBody);
-            using var anonymousBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var anonymousBody = UploadBody(Wav(), "audio/wav");
             using var anonymousResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", content: anonymousBody);
-            using var missingTokenBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var missingTokenBody = UploadBody(Wav(), "audio/wav");
             using var missingTokenResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", editorCookie, content: missingTokenBody);
-            using var validBody = UploadBody(Wav(), "audio", "audio/wav");
+            using var validBody = UploadBody(Wav(), "audio/wav");
             using var uploaded = await SendAsync(client, HttpMethod.Post, "/api/admin/media", editorCookie, editorToken, validBody);
             asset = await uploaded.Content.ReadFromJsonAsync<MediaResponse>();
 
@@ -130,7 +130,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         finally
         {
             if (asset is not null)
-                Assert.True(await app.Services.GetRequiredService<IMediaStore>().DeleteAsync(TenantA, asset.Id));
+                await app.Services.GetRequiredService<IMediaStore>().DeleteAsync(TenantA, asset.Id);
         }
     }
 
@@ -141,28 +141,90 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         await using var owner = await PrepareAsync();
         var editor = await InsertAdminAsync(owner, "limits-editor", "limits-editor@example.test");
         await MembershipAsync(owner, TenantA, editor, "editor");
+        var root = Path.Combine(Path.GetTempPath(), "quesshi-media-upload-rejections", Guid.NewGuid().ToString("N"));
+        var priorRoot = Environment.GetEnvironmentVariable("MEDIA_DIR");
+        Environment.SetEnvironmentVariable("MEDIA_DIR", root);
+        try
+        {
+            await using var sources = Sources();
+            await using var app = await StartAsync(sources);
+            using var client = Client();
+            var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+            var token = await AdminAntiforgeryAsync(client, cookie);
+
+            using var imageOverLimit = UploadBody(new byte[5 * 1024 * 1024 + 1], "image/png");
+            using var imageResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, imageOverLimit);
+            using var audioOverLimit = UploadBody(new byte[10 * 1024 * 1024 + 1], "audio/wav");
+            using var audioResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, audioOverLimit);
+            using var videoOverLimit = UploadBody(new byte[25 * 1024 * 1024 + 1], "video/mp4");
+            using var videoResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, videoOverLimit);
+            using var mismatch = UploadBody(Png(), "image/jpeg");
+            using var mismatchResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, mismatch);
+            using var unsupported = UploadBody(Png(), "image/gif");
+            using var unsupportedResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, unsupported);
+            using var unrecognised = UploadBody("not a media file"u8.ToArray(), "image/png");
+            using var unrecognisedResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, unrecognised);
+            await using var count = new NpgsqlCommand("select count(*) from media_assets where tenant_id = @tenant", owner);
+            count.Parameters.AddWithValue("tenant", TenantA);
+
+            Assert.Equal(HttpStatusCode.BadRequest, imageResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, audioResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, videoResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, mismatchResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, unsupportedResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, unrecognisedResponse.StatusCode);
+            Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MEDIA_DIR", priorRoot);
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Api_questions_attach_and_return_only_media_owned_by_the_resolved_tenant()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "media-attachment");
+        var editor = await InsertAdminAsync(owner, "media-question-editor", "media-question-editor@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        var createdMedia = await InsertMediaAsync(owner, TenantA);
+        var editedMedia = await InsertMediaAsync(owner, TenantA);
+        var foreignMedia = await InsertMediaAsync(owner, TenantB);
         await using var sources = Sources();
         await using var app = await StartAsync(sources);
         using var client = Client();
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
         var token = await AdminAntiforgeryAsync(client, cookie);
+        using var createBody = JsonContent.Create(ChoiceRequest("Media create", category, mediaId: createdMedia));
+        using var created = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookie, token, createBody);
+        var question = await created.Content.ReadFromJsonAsync<QuestionResponse>();
+        using var editBody = JsonContent.Create(ChoiceRequest("Media edit", category, mediaId: editedMedia));
+        using var edited = await SendAsync(client, HttpMethod.Put, $"/api/admin/questions/{question!.Id}", cookie, token, editBody);
+        var updated = await edited.Content.ReadFromJsonAsync<QuestionResponse>();
+        using var fetched = await SendAsync(client, HttpMethod.Get, $"/api/admin/questions/{question.Id}", cookie);
+        var reread = await fetched.Content.ReadFromJsonAsync<QuestionResponse>();
+        using var listed = await SendAsync(client, HttpMethod.Get, "/api/admin/questions", cookie);
+        var page = await listed.Content.ReadFromJsonAsync<QuestionListResponse>();
+        using var foreignBody = JsonContent.Create(ChoiceRequest("Foreign media", category, mediaId: foreignMedia));
+        using var foreign = await SendAsync(client, HttpMethod.Put, $"/api/admin/questions/{question.Id}", cookie, token, foreignBody);
+        using var unknownBody = JsonContent.Create(ChoiceRequest("Unknown media", category, mediaId: Guid.NewGuid()));
+        using var unknown = await SendAsync(client, HttpMethod.Put, $"/api/admin/questions/{question.Id}", cookie, token, unknownBody);
+        using var unchanged = await SendAsync(client, HttpMethod.Get, $"/api/admin/questions/{question.Id}", cookie);
+        var afterRejectedEdits = await unchanged.Content.ReadFromJsonAsync<QuestionResponse>();
 
-        using var imageOverLimit = UploadBody(new byte[5 * 1024 * 1024 + 1], "image", "image/png");
-        using var imageResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, imageOverLimit);
-        using var audioOverLimit = UploadBody(new byte[10 * 1024 * 1024 + 1], "audio", "audio/wav");
-        using var audioResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, audioOverLimit);
-        using var videoOverLimit = UploadBody(new byte[25 * 1024 * 1024 + 1], "video", "video/mp4");
-        using var videoResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, videoOverLimit);
-        using var mismatch = UploadBody(Png(), "image", "image/jpeg");
-        using var mismatchResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/media", cookie, token, mismatch);
-        await using var count = new NpgsqlCommand("select count(*) from media_assets where tenant_id = @tenant", owner);
-        count.Parameters.AddWithValue("tenant", TenantA);
-
-        Assert.Equal(HttpStatusCode.BadRequest, imageResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, audioResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, videoResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, mismatchResponse.StatusCode);
-        Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(createdMedia, question.MediaId);
+        Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
+        Assert.Equal(editedMedia, updated!.MediaId);
+        Assert.Equal(editedMedia, reread!.MediaId);
+        Assert.Equal(editedMedia, Assert.Single(page!.Items).MediaId);
+        Assert.Equal(HttpStatusCode.BadRequest, foreign.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Equal(editedMedia, afterRejectedEdits!.MediaId);
     }
 
     [SkippableFact]
@@ -446,20 +508,19 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
     private static HttpClient Client() => new() { BaseAddress = new Uri("http://127.0.0.1:50299") };
 
-    private static object ChoiceRequest(string prompt, Guid category, string status = "pending", string? topic = null, string kind = "choice", string language = "en", object? payload = null, string source = "admin", Guid? ownerId = null) => new
+    private static object ChoiceRequest(string prompt, Guid category, string status = "pending", string? topic = null, string kind = "choice", string language = "en", object? payload = null, string source = "admin", Guid? ownerId = null, Guid? mediaId = null) => new
     {
         kind, kindVersion = 1, family = "trivia", language, categoryId = category, level = 1, prompt,
         payload = payload ?? new { options = new[] { "Paris", "Lyon", "Nice", "Lille" }, correctIndex = 0 },
-        topic, status, source, ownerId,
+        topic, status, source, ownerId, mediaId,
     };
 
-    private static MultipartFormDataContent UploadBody(byte[] bytes, string kind, string mime, string? attribution = null)
+    private static MultipartFormDataContent UploadBody(byte[] bytes, string mime, string? attribution = null)
     {
         var body = new MultipartFormDataContent();
         var file = new ByteArrayContent(bytes);
         file.Headers.ContentType = new MediaTypeHeaderValue(mime);
         body.Add(file, "file", "sample");
-        body.Add(new StringContent(kind), "kind");
         if (attribution is not null) body.Add(new StringContent(attribution), "attribution");
         return body;
     }
@@ -491,6 +552,13 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
     private static Task InsertPollQuestionAsync(NpgsqlConnection owner, Guid tenant, Guid category) =>
         ExecuteAsync(owner, "insert into questions (tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, fingerprint, status, source) values (@tenant, @id, 'poll_choice', 1, 'poll', 'en', @category, 1, 'Poll category reference', '{\"options\":[\"yes\",\"no\"]}'::jsonb, 'poll-category-reference', 'pending', 'admin')", ("tenant", tenant), ("id", Guid.NewGuid()), ("category", category));
+
+    private static async Task<Guid> InsertMediaAsync(NpgsqlConnection owner, Guid tenant)
+    {
+        var id = Guid.NewGuid();
+        await ExecuteAsync(owner, "insert into media_assets (tenant_id, id, kind, storage_key, mime, bytes) values (@tenant, @id, 'image', @key, 'image/png', 1)", ("tenant", tenant), ("id", id), ("key", id.ToString("N")));
+        return id;
+    }
 
     private static async Task<Guid> InsertPlayerAsync(NpgsqlConnection owner, Guid tenant)
     {
@@ -551,7 +619,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
     private sealed record AntiforgeryResponse(string Token);
     private sealed record MediaResponse(Guid Id, string Hash, string Kind, string Mime, long Bytes, JsonElement Meta, string? Attribution);
-    private sealed record QuestionResponse(Guid Id, JsonElement Payload, string Status, string Prompt);
+    private sealed record QuestionResponse(Guid Id, JsonElement Payload, string Status, string Prompt, Guid? MediaId);
     private sealed record QuestionListResponse(IReadOnlyList<QuestionResponse> Items, int Total, IReadOnlyList<QuestionBucketResponse> Buckets);
     private sealed record QuestionBucketResponse(int Approved, int Pending);
     private sealed record ErrorResponse(string Error, IReadOnlyList<ContentProblemResponse>? Problems);

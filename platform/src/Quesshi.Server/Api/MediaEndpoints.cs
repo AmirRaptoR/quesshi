@@ -42,12 +42,11 @@ public sealed class MediaEndpoints : ICoreRouteModule
     {
         if (!context.Request.HasFormContentType) return Error("invalid_media", StatusCodes.Status400BadRequest);
         var form = await context.Request.ReadFormAsync(cancellationToken);
-        if (!TryParseKind(form["kind"], out var expectedKind)) return Error("unsupported_media", StatusCodes.Status400BadRequest);
         if (form.Files.Count != 1) return Error("invalid_media", StatusCodes.Status400BadRequest);
 
         var file = form.Files[0];
         var declaredMime = NormalizeMime(file.ContentType);
-        if (!IsSupported(expectedKind, declaredMime)) return Error("unsupported_media", StatusCodes.Status400BadRequest);
+        if (!TryKindFor(declaredMime, out var expectedKind)) return Error("unsupported_media", StatusCodes.Status400BadRequest);
         if (file.Length > Limit(expectedKind)) return Error("media_too_large", StatusCodes.Status400BadRequest);
 
         var bytes = await ReadLimitedAsync(file, Limit(expectedKind), cancellationToken);
@@ -83,8 +82,6 @@ public sealed class MediaEndpoints : ICoreRouteModule
         return output.ToArray();
     }
 
-    private static bool TryParseKind(string? value, out MediaKind kind) => Enum.TryParse(value, true, out kind) && Enum.IsDefined(kind);
-
     private static string NormalizeMime(string? value) => (value ?? string.Empty).Split(';', 2)[0].Trim().ToLowerInvariant();
     private static long Limit(MediaKind kind) => kind switch
     {
@@ -94,13 +91,19 @@ public sealed class MediaEndpoints : ICoreRouteModule
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    private static bool IsSupported(MediaKind kind, string mime) => (kind, mime) switch
+    private static bool TryKindFor(string mime, out MediaKind kind)
     {
-        (MediaKind.Image, "image/jpeg" or "image/png" or "image/webp") => true,
-        (MediaKind.Audio, "audio/mpeg" or "audio/ogg" or "audio/wav") => true,
-        (MediaKind.Video, "video/mp4" or "video/webm") => true,
-        _ => false,
-    };
+        kind = mime switch
+        {
+            "image/jpeg" or "image/png" or "image/webp" => MediaKind.Image,
+            "audio/mpeg" or "audio/ogg" or "audio/wav" => MediaKind.Audio,
+            "video/mp4" or "video/webm" => MediaKind.Video,
+            _ => default,
+        };
+        return mime is "image/jpeg" or "image/png" or "image/webp"
+            or "audio/mpeg" or "audio/ogg" or "audio/wav"
+            or "video/mp4" or "video/webm";
+    }
 
     private static IResult Error(string error, int statusCode) => Results.Json(new { error }, statusCode: statusCode);
 

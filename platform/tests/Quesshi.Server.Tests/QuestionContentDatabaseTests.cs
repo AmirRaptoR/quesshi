@@ -161,6 +161,47 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     }
 
     [SkippableFact]
+    public async Task Local_media_store_refuses_deleting_question_and_snapshot_references_but_removes_an_unreferenced_file()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        await using var sources = Sources();
+        var root = Path.Combine(Path.GetTempPath(), "quesshi-media-delete-tests", Guid.NewGuid().ToString("N"));
+        var store = new LocalMediaStore(new TenantDb(sources), new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["MEDIA_DIR"] = root })
+            .Build());
+
+        try
+        {
+            var questionAsset = await StoreImageAsync(store, 1);
+            var snapshotAsset = await StoreImageAsync(store, 2);
+            var unreferenced = await StoreImageAsync(store, 3);
+            var question = await InsertRawQuestionAsync(owner, TenantA, null, 1, "en", "choice", "keeps question media");
+            await ExecuteAsync(owner, "update questions set media_id = @media where tenant_id = @tenant and id = @question", ("media", questionAsset.Id), ("tenant", TenantA), ("question", question));
+            var snapshotSourceQuestion = await InsertRawQuestionAsync(owner, TenantA, null, 1, "en", "choice", "removed snapshot source");
+            var player = await InsertPlayerAsync(owner, TenantA);
+            var session = Guid.NewGuid();
+            await ExecuteAsync(owner, "insert into sessions (tenant_id, id, code, format, owner_id, lang, capacity, content) values (@tenant, @id, 'media-delete', 'poll', @owner, 'en', 1, '{}'::jsonb)", ("tenant", TenantA), ("id", session), ("owner", player));
+            await ExecuteAsync(owner, "insert into session_items (tenant_id, session_id, slot, question_id, kind, kind_version, prompt, payload, card, reveal, level, media_id) values (@tenant, @session, 0, @question, 'choice', 1, 'snapshot', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1, @media)", ("tenant", TenantA), ("session", session), ("question", snapshotSourceQuestion), ("media", snapshotAsset.Id));
+            await ExecuteAsync(owner, "delete from questions where tenant_id = @tenant and id = @question", ("tenant", TenantA), ("question", snapshotSourceQuestion));
+
+            var deletedQuestionReference = await store.DeleteAsync(TenantA, questionAsset.Id);
+            var deletedSnapshotReference = await store.DeleteAsync(TenantA, snapshotAsset.Id);
+            var deletedUnreferenced = await store.DeleteAsync(TenantA, unreferenced.Id);
+
+            Assert.False(deletedQuestionReference);
+            Assert.False(deletedSnapshotReference);
+            Assert.True(deletedUnreferenced);
+            Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from session_items where tenant_id = @tenant and session_id = @session and question_id is null", ("tenant", TenantA), ("session", session)));
+            Assert.False(File.Exists(Path.Combine(root, TenantA.ToString("N"), unreferenced.StorageKey[..2], unreferenced.StorageKey)));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [SkippableFact]
     public async Task Deleting_a_question_and_category_nulls_their_session_snapshots()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");

@@ -17,6 +17,7 @@ public static class MediaDestinationPolicy
     public static bool IsPermitted(IPAddress address)
     {
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        if (TryExtractWellKnownNat64Address(address, out var embeddedIpv4)) address = embeddedIpv4;
         if (IPAddress.IsLoopback(address) || IPAddress.Any.Equals(address) || IPAddress.IPv6Any.Equals(address)) return false;
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
@@ -27,15 +28,30 @@ public static class MediaDestinationPolicy
         var bytes = address.GetAddressBytes();
         return bytes[0] switch
         {
-            10 or 127 => false,
+            0 or 10 or 127 or >= 224 => false,
+            100 when bytes[1] is >= 64 and <= 127 => false,
             169 when bytes[1] == 254 => false,
             172 when bytes[1] is >= 16 and <= 31 => false,
-            192 when bytes[1] == 168 => false,
+            192 when bytes[1] is 0 or 168 => false,
+            198 when bytes[1] is 18 or 19 => false,
             _ => true,
         };
     }
 
     private static bool IsUniqueLocal(IPAddress address) => (address.GetAddressBytes()[0] & 0xfe) == 0xfc;
+
+    private static bool TryExtractWellKnownNat64Address(IPAddress address, out IPAddress embeddedIpv4)
+    {
+        embeddedIpv4 = IPAddress.None;
+        if (address.AddressFamily != AddressFamily.InterNetworkV6) return false;
+        var bytes = address.GetAddressBytes();
+        if (bytes[0] != 0x00 || bytes[1] != 0x64 || bytes[2] != 0xff || bytes[3] != 0x9b
+            || bytes[4] != 0 || bytes[5] != 0 || bytes[6] != 0 || bytes[7] != 0
+            || bytes[8] != 0 || bytes[9] != 0 || bytes[10] != 0 || bytes[11] != 0)
+            return false;
+        embeddedIpv4 = new IPAddress(bytes[12..]);
+        return true;
+    }
 }
 
 /// <summary>Streams a checked HTTP response into the immutable media store without auto-following redirects.</summary>

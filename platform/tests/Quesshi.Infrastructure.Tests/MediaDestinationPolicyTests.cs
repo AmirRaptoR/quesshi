@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Text;
 using Quesshi.Application.Media;
 using Quesshi.Infrastructure.Media;
 
@@ -15,6 +17,13 @@ public sealed class MediaDestinationPolicyTests
     [InlineData("fd00::1")]
     [InlineData("fe80::1")]
     [InlineData("::ffff:10.0.0.1")]
+    [InlineData("0.1.2.3")]
+    [InlineData("100.100.100.200")]
+    [InlineData("192.0.0.8")]
+    [InlineData("198.18.0.1")]
+    [InlineData("224.0.0.1")]
+    [InlineData("240.0.0.1")]
+    [InlineData("64:ff9b::a00:1")]
     public void Private_and_special_destinations_are_refused(string value)
     {
         Assert.False(MediaDestinationPolicy.IsPermitted(IPAddress.Parse(value)));
@@ -53,6 +62,39 @@ public sealed class MediaDestinationPolicyTests
 
         Assert.Equal(MediaFetchStatus.ForbiddenDestination, result.Status);
         Assert.Equal(1, resolver.Calls);
+    }
+
+    [Theory]
+    [InlineData("ftp://media.example/image")]
+    [InlineData("file:///tmp/image")]
+    [InlineData("media.example/image")]
+    public async Task Fetcher_rejects_non_http_urls_without_resolving_or_connecting(string url)
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var transport = new ScriptedTransport();
+        var result = await new MediaFetcher(resolver, new NeverStore(), transport)
+            .FetchAsync(Guid.NewGuid(), new Uri(url, UriKind.RelativeOrAbsolute));
+
+        Assert.Equal(MediaFetchStatus.InvalidUrl, result.Status);
+        Assert.Equal(0, resolver.Calls);
+        Assert.Empty(transport.Calls);
+    }
+
+    [Fact]
+    public async Task Checked_transport_connects_to_the_verified_address_instead_of_resolving_the_hostname()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var served = ServeOnceAsync(listener, cancellation.Token);
+
+        using var response = await new CheckedMediaFetchTransport().GetAsync(
+            new Uri($"http://media.example.test:{port}/asset"), IPAddress.Loopback, cancellation.Token);
+        var request = await served;
+
+        Assert.Equal(HttpStatusCode.OK, response.Response.StatusCode);
+        Assert.Contains($"Host: media.example.test:{port}", request, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -106,6 +148,19 @@ public sealed class MediaDestinationPolicyTests
     }
 
     [Fact]
+    public async Task Fetcher_rejects_a_lengthless_audio_stream_over_its_kind_limit_without_storing()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var store = new NeverStore();
+        var transport = new ScriptedTransport(Media("audio/wav", new byte[10 * 1024 * 1024 + 1], lengthless: true));
+        var result = await new MediaFetcher(resolver, store, transport)
+            .FetchAsync(Guid.NewGuid(), new Uri("https://public.example/audio"));
+
+        Assert.Equal(MediaFetchStatus.TooLarge, result.Status);
+        Assert.Equal(0, store.StoreCalls);
+    }
+
+    [Fact]
     public async Task Fetcher_applies_its_total_timeout_without_storing_an_asset()
     {
         var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
@@ -120,12 +175,23 @@ public sealed class MediaDestinationPolicyTests
         Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) },
     };
 
-    private static HttpResponseMessage Media(string mime, byte[] bytes, long? length = null)
+    private static HttpResponseMessage Media(string mime, byte[] bytes, long? length = null, bool lengthless = false)
     {
-        var content = new ByteArrayContent(bytes);
+        HttpContent content = lengthless ? new LengthlessContent(bytes) : new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue(mime);
         if (length is not null) content.Headers.ContentLength = length;
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+    }
+
+    private static async Task<string> ServeOnceAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        using var client = await listener.AcceptTcpClientAsync(cancellationToken);
+        await using var stream = client.GetStream();
+        var buffer = new byte[4096];
+        var read = await stream.ReadAsync(buffer, cancellationToken);
+        var response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray();
+        await stream.WriteAsync(response, cancellationToken);
+        return Encoding.ASCII.GetString(buffer, 0, read);
     }
 
     private sealed class FixedResolver(params IPAddress[] addresses) : IHostAddressResolver
@@ -167,7 +233,13 @@ public sealed class MediaDestinationPolicyTests
 
     private sealed class NeverStore : IMediaStore
     {
-        public Task<MediaAsset> StoreAsync(Guid tenantId, MediaInput input, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Forbidden requests cannot store media.");
+        public int StoreCalls { get; private set; }
+
+        public Task<MediaAsset> StoreAsync(Guid tenantId, MediaInput input, CancellationToken cancellationToken = default)
+        {
+            StoreCalls++;
+            throw new InvalidOperationException("Forbidden requests cannot store media.");
+        }
         public Task<MediaAsset?> FindByHashAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Stream?> OpenReadAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<bool> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -179,6 +251,19 @@ public sealed class MediaDestinationPolicyTests
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return null!;
+        }
+    }
+
+    private sealed class LengthlessContent(byte[] bytes) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(bytes).AsTask();
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) => stream.WriteAsync(bytes, cancellationToken).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
         }
     }
 }
