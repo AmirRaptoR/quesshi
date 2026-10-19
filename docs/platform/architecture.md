@@ -2014,6 +2014,7 @@ Everything else is meant to play as it does now. These are the intended changes:
 | A finished game's answers are stored as rows that can be queried and paged | Today they are kept in grain state, readable only by waking the grain |
 | Every question medium is a stored file | Today a question may point at any URL |
 | Languages are codes, not three fixed ones | Tenants may add languages |
+| An unscoped bank draw excludes uncategorized questions | The owner's allow-list-only decision keeps every bank draw within active, family-allowed categories |
 | Flashcards and packs | New format |
 
 ## 20. Decisions taken by the owner

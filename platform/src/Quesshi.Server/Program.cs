@@ -7,6 +7,7 @@ using Quesshi.Infrastructure.Capabilities;
 using Quesshi.Infrastructure.Jobs;
 using Quesshi.Plugin.Api;
 using Quesshi.Features;
+using Quesshi.Features.Sources.Bank;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Migrations;
 using Quesshi.Server.Commands;
@@ -213,6 +214,7 @@ public static class Program
         builder.Services.AddSingleton<ILeadImageProvider, WikipediaImageProvider>();
         builder.Services.AddSingleton<ICategoryService, CategoryService>();
         builder.Services.AddSingleton<IContent, ContentService>();
+        builder.Services.AddSingleton<SourceResultValidator>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
         builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
         builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
@@ -269,10 +271,14 @@ public static class Program
         builder.Services.AddSingleton<SignInRegistry>(provider => SignInRegistry.Create(
             provider.GetRequiredService<FeatureRegistry>().Capabilities,
             SignInRegistry.Discover(typeof(FeaturesMarker).Assembly)));
+        builder.Services.AddSingleton<ISourceRegistry>(provider => SourceRegistry.Create(
+            provider.GetRequiredService<FeatureRegistry>().Capabilities,
+            [new BankSource()]));
         builder.Services.AddSingleton(provider =>
         {
             var features = provider.GetRequiredService<FeatureRegistry>();
             _ = provider.GetRequiredService<SignInRegistry>();
+            _ = provider.GetRequiredService<ISourceRegistry>();
             return features.Capabilities;
         });
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Jobs);
@@ -370,6 +376,7 @@ public static class Program
     {
         var features = FeatureRegistry.Create(FeatureRegistry.Discover(typeof(FeaturesMarker).Assembly));
         _ = SignInRegistry.Create(features.Capabilities, SignInRegistry.Discover(typeof(FeaturesMarker).Assembly));
+        _ = SourceRegistry.Create(features.Capabilities, [new BankSource()]);
         return features.Capabilities;
     }
 
