@@ -156,8 +156,24 @@ public sealed class ImportEndpoints : ICoreRouteModule
     private static CandidateBuild BuildCandidate(ImportDocumentRow documentRow, IKindRuntime kind, IImports mapping, QuestionStatus defaultStatus)
     {
         var row = new ImportRow(documentRow.Fields);
-        if (!mapping.Matches(LegacyKind(kind.Id), row)) return new(new ContentProblem("kind.mismatch", "The row does not match the selected question kind."));
-        var payload = Payload(kind, mapping, row);
+        JsonElement payload;
+        try
+        {
+            if (!mapping.Matches(LegacyKind(kind.Id), row)) return new(new ContentProblem("kind.mismatch", "The row does not match the selected question kind."));
+            payload = Payload(kind, mapping, row);
+        }
+        catch (ArgumentException exception)
+        {
+            return new(new ContentProblem("payload.malformed", exception.Message));
+        }
+        catch (FormatException exception)
+        {
+            return new(new ContentProblem("payload.malformed", exception.Message));
+        }
+        catch (JsonException exception)
+        {
+            return new(new ContentProblem("payload.malformed", exception.Message));
+        }
         var categoryText = Field(row, "category", "categoryId");
         Guid? category = null;
         if (categoryText is not null)
@@ -187,7 +203,9 @@ public sealed class ImportEndpoints : ICoreRouteModule
                 ? await fetcher.ProbeAsync(url, cancellationToken)
                 : await fetcher.FetchAsync(tenantId, url, reference.Attribution, cancellationToken);
             if (fetched.Status != MediaFetchStatus.Success) return new("media_unreachable");
-            if (reference.Kind is not null && (!TryMediaKind(reference.Kind, out var expected) || (!dryRun && fetched.Asset!.Kind != expected))) return new("media_invalid");
+            if (reference.Kind is not null
+                && (!TryMediaKind(reference.Kind, out var expected)
+                    || (fetched.Asset?.Kind ?? fetched.Kind) != expected)) return new("media_invalid");
             return new(null, fetched.Asset?.Id);
         }
 
@@ -198,13 +216,13 @@ public sealed class ImportEndpoints : ICoreRouteModule
             using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: false);
             var entry = archive.Entries.SingleOrDefault(item => string.Equals(item.FullName, reference.Value, StringComparison.Ordinal));
             if (entry is null || string.IsNullOrEmpty(entry.Name) || !IsBundlePath(entry.FullName) || entry.Length > 25 * 1024 * 1024) return new("media_bundle_invalid");
-            if (dryRun) return new();
             await using var entryStream = entry.Open();
             await using var output = new MemoryStream();
             await entryStream.CopyToAsync(output, cancellationToken);
             var bytes = output.ToArray();
             if (!MediaSniffer.TryInspect(bytes, out var kind, out var mime, out var meta)) return new("media_bundle_invalid");
             if (reference.Kind is not null && (!TryMediaKind(reference.Kind, out var expected) || expected != kind)) return new("media_bundle_invalid");
+            if (dryRun) return new();
             var asset = await store.StoreAsync(tenantId, new MediaInput(kind, mime, bytes, meta, reference.Attribution), cancellationToken);
             return new(null, asset.Id);
         }

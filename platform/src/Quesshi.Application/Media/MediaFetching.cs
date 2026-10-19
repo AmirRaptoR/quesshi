@@ -21,7 +21,7 @@ public enum MediaFetchStatus
     Failed,
 }
 
-public sealed record MediaFetchResult(MediaFetchStatus Status, MediaAsset? Asset = null);
+public sealed record MediaFetchResult(MediaFetchStatus Status, MediaAsset? Asset = null, MediaKind? Kind = null);
 
 /// <summary>Fetches remote media only after every connection target has passed destination policy.</summary>
 public interface IMediaFetcher

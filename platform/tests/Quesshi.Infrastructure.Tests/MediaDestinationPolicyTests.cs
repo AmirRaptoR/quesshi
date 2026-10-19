@@ -180,8 +180,7 @@ public sealed class MediaDestinationPolicyTests
         var result = await new MediaFetcher(resolver, store, new ScriptedTransport(response))
             .ProbeAsync(new Uri("https://public.example/image"));
 
-        Assert.Equal(MediaFetchStatus.Success, result.Status);
-        Assert.Equal(0, store.StoreCalls);
+        Assert.Equal((MediaFetchStatus.Success, (MediaKind?)MediaKind.Image, 0), (result.Status, result.Kind, store.StoreCalls));
     }
 
     private static HttpResponseMessage Redirect(string location) => new(HttpStatusCode.Found)
