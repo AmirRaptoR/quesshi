@@ -16,7 +16,8 @@ optional `mediaAttribution`; the selected kind supplies its own fields.
 
 The response has `rows`, `accepted`, `rejected`, and nonblocking `warnings`.  Each row
 is `would_import`, `imported`, `duplicate`, `invalid`, `bad_row`, `media_unreachable`,
-or `media_bundle_invalid`; duplicates name either `existingQuestionId` or `existingRow`.
+`media_invalid`, or `media_bundle_invalid`; duplicates name either `existingQuestionId`
+or `existingRow`.
 Request-wide input failures return `{ "error": "..." }` before writes.  Dry runs perform
 the same validation, duplicate and bounded URL-header checks as a stable commit, but do
 not create questions or media assets and do not download URL response bodies.
