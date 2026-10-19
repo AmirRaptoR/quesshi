@@ -85,7 +85,10 @@ public sealed class MediaFetcher : IMediaFetcher
         this.timeout = timeout;
     }
 
-    public async Task<MediaFetchResult> FetchAsync(Guid tenantId, Uri url, CancellationToken cancellationToken = default)
+    public Task<MediaFetchResult> FetchAsync(Guid tenantId, Uri url, CancellationToken cancellationToken = default) =>
+        FetchAsync(tenantId, url, null, cancellationToken);
+
+    public async Task<MediaFetchResult> FetchAsync(Guid tenantId, Uri url, string? attribution, CancellationToken cancellationToken = default)
     {
         if (!IsHttp(url)) return new(MediaFetchStatus.InvalidUrl);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -117,9 +120,52 @@ public sealed class MediaFetcher : IMediaFetcher
                     || actualKind != expectedKind
                     || !string.Equals(actualMime, declaredMime, StringComparison.Ordinal))
                     return new(MediaFetchStatus.MismatchedMedia);
-                return new(MediaFetchStatus.Success, await store.StoreAsync(tenantId, new MediaInput(actualKind, actualMime, bytes, meta), timeout.Token));
+                return new(MediaFetchStatus.Success, await store.StoreAsync(tenantId, new MediaInput(actualKind, actualMime, bytes, meta, attribution), timeout.Token));
             }
 
+            return new(MediaFetchStatus.RedirectLimit);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(MediaFetchStatus.Timeout);
+        }
+        catch (HttpRequestException)
+        {
+            return new(MediaFetchStatus.Failed);
+        }
+        catch (SocketException)
+        {
+            return new(MediaFetchStatus.Failed);
+        }
+    }
+
+    public async Task<MediaFetchResult> ProbeAsync(Uri url, CancellationToken cancellationToken = default)
+    {
+        if (!IsHttp(url)) return new(MediaFetchStatus.InvalidUrl);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(this.timeout);
+        try
+        {
+            var current = url;
+            for (var redirects = 0; redirects <= 3; redirects++)
+            {
+                var address = await ResolvePublicAddressAsync(current, timeout.Token);
+                if (address is null) return new(MediaFetchStatus.ForbiddenDestination);
+                using var fetched = await transport.GetAsync(current, address, timeout.Token);
+                var response = fetched.Response;
+                if (IsRedirect(response.StatusCode))
+                {
+                    if (redirects == 3) return new(MediaFetchStatus.RedirectLimit);
+                    if (response.Headers.Location is null || !Uri.TryCreate(current, response.Headers.Location, out var target) || !IsHttp(target))
+                        return new(MediaFetchStatus.InvalidUrl);
+                    current = target;
+                    continue;
+                }
+
+                if (!response.IsSuccessStatusCode) return new(MediaFetchStatus.Failed);
+                var mime = NormalizeMime(response.Content.Headers.ContentType?.MediaType);
+                return TryKindFor(mime, out _) ? new(MediaFetchStatus.Success) : new(MediaFetchStatus.UnsupportedMedia);
+            }
             return new(MediaFetchStatus.RedirectLimit);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
