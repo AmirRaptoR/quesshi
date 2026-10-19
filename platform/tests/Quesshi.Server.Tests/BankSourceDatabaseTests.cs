@@ -74,6 +74,28 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         await Assert.ThrowsAsync<SourceParameterException>(() => DrawAsync(new BankParams(categories), new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia")], [1], 9)));
     }
 
+    [Theory]
+    [InlineData(10, "1,1,2,2,3,3,4,4,5,5")]
+    [InlineData(20, "1,1,1,2,2,2,2,2,3,3,3,3,4,4,4,4,4,5,5,5")]
+    [InlineData(30, "1,1,1,1,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,5,5,5,5")]
+    [InlineData(40, "1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5")]
+    [InlineData(50, "1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5")]
+    [InlineData(100, "1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5")]
+    public async Task Bank_matches_the_legacy_level_ramp_for_each_supported_plan_length(int count, string expectedLevels)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "allowed", true);
+        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [category] }));
+        var expected = expectedLevels.Split(',').Select(int.Parse).ToArray();
+        for (var index = 0; index < expected.Length; index++)
+            _ = await InsertQuestionAsync(owner, TenantA, category, expected[index], "en", "approved", null, $"level-{index}");
+
+        var result = await DrawAsync(new BankParams([category]), new SourceDrawPlan(count, "en", [new SourceKind("choice", "trivia")], [1, 2, 3, 4, 5], 9));
+
+        Assert.Equal(expected, await ReadLevelsAsync(owner, result.Ids));
+    }
+
     [SkippableFact]
     public async Task Bank_reports_found_and_needed_when_selected_buckets_are_unfillable()
     {
@@ -154,6 +176,16 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         var id = Guid.NewGuid();
         await ExecuteAsync(owner, "insert into questions (tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, fingerprint, status, source, owner_id) values (@tenant, @id, 'choice', 1, 'trivia', @language, @category, @level, @prompt, '{\"options\":[\"a\",\"b\",\"c\",\"d\"],\"correctIndex\":0}'::jsonb, @prompt, @status, @source, @owner)", ("tenant", tenant), ("id", id), ("language", language), ("category", (object?)category ?? DBNull.Value), ("level", level), ("prompt", prompt), ("status", status), ("source", ownerId is null ? "admin" : "player"), ("owner", (object?)ownerId ?? DBNull.Value));
         return id;
+    }
+
+    private static async Task<IReadOnlyList<int>> ReadLevelsAsync(NpgsqlConnection connection, IReadOnlyList<Guid> ids)
+    {
+        await using var command = new NpgsqlCommand("select id, level from questions where id = any(@ids)", connection);
+        command.Parameters.AddWithValue("ids", ids.ToArray());
+        await using var reader = await command.ExecuteReaderAsync();
+        var levels = new Dictionary<Guid, int>();
+        while (await reader.ReadAsync()) levels[reader.GetGuid(0)] = reader.GetInt32(1);
+        return ids.Select(id => levels[id]).ToArray();
     }
 
     private static async Task<Guid> InsertPlayerAsync(NpgsqlConnection owner, Guid tenant)
