@@ -1,9 +1,12 @@
 @using Quesshi.Web.Models
 @using Quesshi.Web.Services
+@using Microsoft.JSInterop
+@implements IDisposable
 @inject AppConfig Config
 @inject AuthState Auth
 @inject Translator Translator
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 @if (confirmation is not null)
 {
@@ -39,6 +42,10 @@ else
                 <button class="btn btn--ghost btn--block" type="button" @onclick="ResetCode">@Translator["auth.back"]</button>
             </form>
         }
+        @if (GoogleClientId is not null)
+        {
+            <div id="google-sign-in" @ref="googleButton"></div>
+        }
         @if (GuestsEnabled)
         {
             <GuestEntry OnCreated="GuestCreatedAsync" />
@@ -53,9 +60,59 @@ else
     private bool busy;
     private bool codeRequested;
     private VerificationResult? confirmation;
+    private ElementReference googleButton;
+    private DotNetObjectReference<SignIn>? googleCredentialReceiver;
+    private string? renderedGoogleClientId;
 
     private bool GuestsEnabled => Config.Current.Capabilities.TryGetValue("switch", out var switches)
         && switches.Contains("guests", StringComparer.Ordinal);
+
+    private string? GoogleClientId
+    {
+        get
+        {
+            foreach (var method in Config.Current.SignInMethods)
+            {
+                if (string.Equals(method.Id, "google", StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(method.Settings?.ClientId)) return method.Settings.ClientId.Trim();
+            }
+
+            return null;
+        }
+    }
+
+    protected override void OnInitialized() => Config.Changed += ConfigChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (confirmation is not null)
+        {
+            renderedGoogleClientId = null;
+            return;
+        }
+
+        var clientId = GoogleClientId;
+        if (clientId is null)
+        {
+            renderedGoogleClientId = null;
+            return;
+        }
+
+        if (string.Equals(clientId, renderedGoogleClientId, StringComparison.Ordinal)) return;
+
+        googleCredentialReceiver ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("quesshi.google.render", googleButton, clientId, googleCredentialReceiver);
+            renderedGoogleClientId = clientId;
+        }
+        catch (JSException)
+        {
+            renderedGoogleClientId = clientId;
+            error = "common.error";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     private async Task RequestCodeAsync()
     {
@@ -103,6 +160,58 @@ else
         error = "auth.badCode";
     }
 
+    [JSInvokable]
+    public async Task GoogleCredentialAsync(string? idToken)
+    {
+        if (busy) return;
+
+        if (string.IsNullOrWhiteSpace(idToken))
+        {
+            error = "common.error";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        busy = true;
+        error = null;
+        try
+        {
+            var result = await Auth.SignInWithGoogleAsync(idToken);
+            if (!result.IsSuccess || result.Value is null)
+            {
+                error = "common.error";
+                return;
+            }
+
+            if (string.Equals(result.Value.Status, "signed_in", StringComparison.Ordinal))
+            {
+                Navigation.NavigateTo("/", replace: true);
+                return;
+            }
+
+            if (string.Equals(result.Value.Status, "profile_needed", StringComparison.Ordinal)
+                && result.Value.Token is not null
+                && result.Value.DisplayName is not null
+                && result.Value.AvatarSeed is not null
+                && result.Value.Lang is not null)
+            {
+                confirmation = result.Value;
+                return;
+            }
+
+            error = "common.error";
+        }
+        catch (HttpRequestException)
+        {
+            error = "common.error";
+        }
+        finally
+        {
+            busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private void ResetCode()
     {
         codeRequested = false;
@@ -127,5 +236,13 @@ else
     {
         Navigation.NavigateTo("/", replace: true);
         return Task.CompletedTask;
+    }
+
+    private void ConfigChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Config.Changed -= ConfigChanged;
+        googleCredentialReceiver?.Dispose();
     }
 }

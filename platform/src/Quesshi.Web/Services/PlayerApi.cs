@@ -22,6 +22,9 @@ public sealed class PlayerApi(ClientHttp client)
     public async Task<ApiResponse<VerificationResult>> VerifyCodeAsync(string email, string code, CancellationToken cancellationToken = default) =>
         await SendMutationAsync<VerificationResult>(HttpMethod.Post, "/api/auth/verify", new { email, code }, cancellationToken);
 
+    public async Task<ApiResponse<VerificationResult>> SignInWithGoogleAsync(string idToken, CancellationToken cancellationToken = default) =>
+        await SendMutationAsync<VerificationResult>(HttpMethod.Post, "/api/auth/x/google", new { idToken }, cancellationToken);
+
     public async Task<ApiResponse<VerificationResult>> ConfirmProfileAsync(string token, string displayName, string avatarSeed, string lang, CancellationToken cancellationToken = default) =>
         await SendMutationAsync<VerificationResult>(HttpMethod.Post, "/api/auth/profile", new { token, displayName, avatarSeed, lang }, cancellationToken);
 

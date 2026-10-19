@@ -65,7 +65,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var tenant = await SeedAsync(entitled: true, enabled: true);
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11155, 30155);
-        app.Urls.Add("http://127.0.0.1:50155");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
@@ -73,7 +73,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
             await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
             await owner.OpenAsync();
             var before = await StateAsync(owner);
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50155") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var invalidSigningKey = RSA.Create(2048);
             using var response = await PostAsync(
                 client,
@@ -104,7 +104,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var tenant = await SeedAsync(entitled: true, enabled: true);
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11160, 30160);
-        app.Urls.Add("http://127.0.0.1:50160");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
@@ -112,7 +112,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
             await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
             await owner.OpenAsync();
             var before = await StateAsync(owner);
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50160") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var response = await PostContentAsync(
                 client,
                 tenant,
@@ -149,12 +149,12 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
 
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11156, 30156);
-        app.Urls.Add("http://127.0.0.1:50156");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50156") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using (var profileNeeded = await PostAsync(
                        client,
                        tenant,
@@ -196,12 +196,12 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var accountId = await SeedLiveAccountAsync(tenant, email);
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11158, 30158);
-        app.Urls.Add("http://127.0.0.1:50158");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50158") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var response = await PostAsync(
                 client,
                 tenant,
@@ -232,12 +232,12 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var accountId = await SeedLiveAccountAsync(tenant, email);
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11159, 30159);
-        app.Urls.Add("http://127.0.0.1:50159");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50159") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var response = await PostAsync(
                 client,
                 tenant,
@@ -269,12 +269,12 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var unentitled = await SeedAsync(entitled: false, enabled: true);
         await using var sources = CreateSources();
         await using var app = CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var first = await GetConfigAsync(client, enabled);
             using var firstDocument = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
             var firstVersion = firstDocument.RootElement.GetProperty("configVersion").GetInt64();

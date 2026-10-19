@@ -10,6 +10,7 @@ namespace Quesshi.Web.Tests;
 /// </summary>
 public class BrowserTranslationTests
 {
+    private const string TranslationKeyPattern = "\\\"(?<key>[a-z]+(?:\\.[a-z][A-Za-z]*)+)\\\"";
     private static readonly string Folder = Path.Combine(AppContext.BaseDirectory, "i18n");
     private static readonly string[] Languages = ["en", "fa", "nl"];
     private static readonly string[] BrowserSourceFolders =
@@ -65,8 +66,7 @@ public class BrowserTranslationTests
     {
         var keys = BrowserSourceFolders
             .SelectMany(folder => Directory.EnumerateFiles(folder, "*.razor"))
-            .SelectMany(path => Regex.Matches(File.ReadAllText(path), "\\\"(?<key>[a-z]+(?:\\.[a-z][A-Za-z]*)+)\\\"")
-                .Select(match => match.Groups["key"].Value))
+            .SelectMany(path => TranslationKeys(File.ReadAllText(path)))
             .ToHashSet(StringComparer.Ordinal);
 
         foreach (var language in Languages)
@@ -80,4 +80,20 @@ public class BrowserTranslationTests
                 $"{language}.json is missing player screen keys: {string.Join(", ", missing)}");
         }
     }
+
+    [Fact]
+    public void Field_assigned_browser_translation_keys_are_checked_for_translations()
+    {
+        var keys = TranslationKeys("""error = "auth.missing";""");
+        var missing = keys
+            .Where(key => !Read("en").TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        Assert.Equal(["auth.missing"], missing);
+    }
+
+    private static IEnumerable<string> TranslationKeys(string source)
+        => Regex.Matches(source, TranslationKeyPattern)
+            .Select(match => match.Groups["key"].Value)
+            .Where(key => !key.StartsWith("quesshi.", StringComparison.Ordinal));
 }

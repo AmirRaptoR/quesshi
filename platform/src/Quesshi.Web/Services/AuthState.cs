@@ -49,6 +49,13 @@ public sealed class AuthState(PlayerApi api)
         return result;
     }
 
+    public async Task<ApiResponse<VerificationResult>> SignInWithGoogleAsync(string idToken, CancellationToken cancellationToken = default)
+    {
+        var result = await api.SignInWithGoogleAsync(idToken, cancellationToken);
+        if (result.IsSuccess && string.Equals(result.Value?.Status, "signed_in", StringComparison.Ordinal)) await ReloadAfterIdentityChangeAsync(cancellationToken);
+        return result;
+    }
+
     public async Task<ApiResponse<VerificationResult>> ConfirmProfileAsync(string token, string displayName, string avatarSeed, string lang, CancellationToken cancellationToken = default)
     {
         var result = await api.ConfirmProfileAsync(token, displayName, avatarSeed, lang, cancellationToken);
