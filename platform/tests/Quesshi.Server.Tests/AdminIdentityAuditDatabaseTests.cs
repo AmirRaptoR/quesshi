@@ -14,6 +14,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private const string CategoryMigrationName = "20261016T0100_core_categories.sql";
     private const string MembershipActivityMigrationName = "20261018T0000_core_admin_membership_activity.sql";
     private const string QuestionsMigrationName = "20261018T0100_core_questions.sql";
+    private const string MediaMigrationName = "20261019T0100_core_media_assets.sql";
     private static readonly Guid TenantA = Guid.Parse("8d6b19a5-9349-48ec-b63b-28e987f95158");
     private static readonly Guid TenantB = Guid.Parse("bd41c053-3e51-43ce-b842-3d625a56c7d1");
 
@@ -110,7 +111,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindQuestionsMigrationAsync(NpgsqlConnection owner)
     {
-        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; delete from schema_migrations where name = '{QuestionsMigrationName}'");
+        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}')");
     }
 
     private static Task InsertTenantsAsync(NpgsqlConnection owner) =>
