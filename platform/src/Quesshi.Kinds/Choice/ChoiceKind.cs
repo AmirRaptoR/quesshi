@@ -4,13 +4,33 @@ using Quesshi.Shared;
 
 namespace Quesshi.Kinds.Choice;
 
-public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, ChoiceAnswer, ChoiceStored, ChoiceReveal>
+public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, ChoiceAnswer, ChoiceStored, ChoiceReveal>, IImports<ChoicePayload>
 {
+    private static readonly string[] ImportFields = ["choice1", "choice2", "choice3", "choice4", "correctIndex"];
+    private static readonly ImportExample Example = new(new Dictionary<string, string?>
+    {
+        ["choice1"] = "Mercury",
+        ["choice2"] = "Venus",
+        ["choice3"] = "Earth",
+        ["choice4"] = "Mars",
+        ["correctIndex"] = "2"
+    });
+
     public override string Id => "choice";
     public override int Version => 1;
     public override string Family => "trivia";
     public override bool Gradable => true;
     protected override JsonSerializerContext SerializerContext => ChoiceJsonContext.Default;
+    public IReadOnlyList<string> CsvColumns => ImportFields;
+    public IReadOnlyList<string> JsonFields => ImportFields;
+    public ImportExample CsvExample => Example;
+    public ImportExample JsonExample => Example;
+
+    public bool Matches(string? legacyKind, ImportRow row) => string.Equals(legacyKind, "choice", StringComparison.OrdinalIgnoreCase);
+
+    public ChoicePayload Convert(ImportRow row) => new(
+        [row.Field("choice1") ?? "", row.Field("choice2") ?? "", row.Field("choice3") ?? "", row.Field("choice4") ?? ""],
+        ImportValues.Integer(row, "correctIndex", -1));
 
     public override ChoicePayload Upgrade(int from, JsonElement payload)
     {
