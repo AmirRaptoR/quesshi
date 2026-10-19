@@ -45,6 +45,51 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     }
 
     [SkippableFact]
+    public async Task Api_import_defaults_to_a_dry_run_without_creating_questions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-dry-run");
+        var editor = await InsertAdminAsync(owner, "import-dry-run", "import-dry-run@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = ImportBody(category, "Dry run question");
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        await using var count = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+        count.Parameters.AddWithValue("tenant", TenantA);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
+    }
+
+    [SkippableFact]
+    public async Task Api_import_commits_row_status_with_import_source()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-commit");
+        var editor = await InsertAdminAsync(owner, "import-commit", "import-commit@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = ImportBody(category, "Committed import question", dryRun: false, status: "approved");
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        var report = await response.Content.ReadAsStringAsync();
+        await using var stored = new NpgsqlCommand("select status || ':' || source from questions where tenant_id = @tenant", owner);
+        stored.Parameters.AddWithValue("tenant", TenantA);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True((string)(await stored.ExecuteScalarAsync())! == "approved:import", report);
+    }
+
+    [SkippableFact]
     public async Task Api_editor_uploads_tenant_media_with_attribution_and_public_delivery_is_isolated()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -522,6 +567,17 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         file.Headers.ContentType = new MediaTypeHeaderValue(mime);
         body.Add(file, "file", "sample");
         if (attribution is not null) body.Add(new StringContent(attribution), "attribution");
+        return body;
+    }
+
+    private static MultipartFormDataContent ImportBody(Guid category, string prompt, bool? dryRun = null, string? status = null)
+    {
+        var body = new MultipartFormDataContent();
+        body.Add(new StringContent("choice"), "kind");
+        if (dryRun is not null) body.Add(new StringContent(dryRun.Value.ToString().ToLowerInvariant()), "dryRun");
+        if (status is not null) body.Add(new StringContent(status), "status");
+        var csv = $"language,category,level,prompt,choice1,choice2,choice3,choice4,correctIndex,status\nen,{category},2,\"{prompt}\",Paris,Lyon,Nice,Lille,0,approved\n";
+        body.Add(new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "questions.csv");
         return body;
     }
 
