@@ -63,7 +63,9 @@ public sealed class ImportWorkflow
 
     public void CompleteImport(ImportOperation operation, ImportReport? report)
     {
-        if (operation.InputVersion == inputVersion && Matches(operation.Inputs)) Report = report;
+        if (operation.InputVersion != inputVersion || !Matches(operation.Inputs)) return;
+        Report = report;
+        dryRunVersion = -1;
     }
 
     private void Invalidate()

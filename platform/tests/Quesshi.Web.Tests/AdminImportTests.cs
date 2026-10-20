@@ -169,8 +169,26 @@ public sealed class AdminImportTests : BunitContext
         {
             Assert.Contains(questionId, cut.Markup, StringComparison.Ordinal);
             Assert.Contains("question.invalid: The question could not be imported.", cut.Markup, StringComparison.Ordinal);
+            Assert.NotNull(cut.Find("[data-testid='import']").GetAttribute("disabled"));
         });
         Assert.Contains("dryRun\r\n\r\nfalse", handler.Requests.Last().Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_successful_import_consumes_its_dry_run()
+    {
+        var handler = new QueueHandler(
+            Json("""{"token":"csrf"}"""),
+            Json("""{"rows":[{"row":2,"outcome":"would_import"}],"accepted":1,"rejected":0,"warnings":[]}"""),
+            Json("""{"rows":[{"row":2,"outcome":"imported","questionId":"c4c4ca7d-0b48-4a09-b42f-3bd14d9e1f8a"}],"accepted":1,"rejected":0,"warnings":[]}"""));
+        var cut = RenderImport(handler, await SignedInStateAsync("Editor"));
+
+        UploadQuestionFile(cut, "questions.csv");
+        cut.Find("[data-testid='dry-run']").Click();
+        cut.WaitForAssertion(() => Assert.Null(cut.Find("[data-testid='import']").GetAttribute("disabled")));
+        cut.Find("[data-testid='import']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='import']").GetAttribute("disabled")));
     }
 
     [Fact]
