@@ -21,7 +21,7 @@ public sealed class ImportParsingTests
     {
         await using var input = new MemoryStream(Encoding.UTF8.GetBytes("[{\"prompt\":\"first\"},42,{\"prompt\":\"last\"}]"));
 
-        var (error, document) = await ImportParsing.ParseAsync("json", input, input.Length, []);
+        var (error, document) = await ImportParsing.ParseAsync("json", input, input.Length, Array.Empty<string>());
 
         Assert.Null(error);
         Assert.Collection(document!.Rows,

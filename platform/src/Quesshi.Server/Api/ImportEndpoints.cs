@@ -108,7 +108,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
 
         foreach (var candidate in accepted)
         {
-            var result = await database.InTenantAsync(tenant.Id, transaction => content.CreateAsync(transaction, candidate.Write, cancellationToken), cancellationToken: cancellationToken);
+            var result = await database.InTenantAsync(tenant.Id, transaction => CreateImportedAsync(transaction, content, candidate.Write, cancellationToken), cancellationToken: cancellationToken);
             reports.Add(result.Status switch
             {
                 QuestionWriteStatus.Success => new ImportRowReport(candidate.Row, "imported", QuestionId: result.Question!.Id),
@@ -325,15 +325,42 @@ public sealed class ImportEndpoints : ICoreRouteModule
     private static string? Field(ImportRow row, string primary, string legacy) => row.Field(primary) ?? row.Field(legacy);
     private static string? FileFormat(string? fileName) => Path.GetExtension(fileName ?? "").TrimStart('.').ToLowerInvariant() is var extension && extension is "csv" or "json" ? extension : null;
     private static string? LegacyKind(string id) => id switch { "choice" => "choice", "order" => "sort", "map_pick" => "map", _ => null };
-    private static IReadOnlyList<string> RequiredCsvColumns(IKindRuntime kind) => kind.Id switch
+    private static IReadOnlyList<IReadOnlyCollection<string>> RequiredCsvColumns(IKindRuntime kind)
     {
-        "choice" => ["prompt", "choice1", "choice2", "choice3", "choice4", "correctIndex"],
-        "order" => ["prompt", "item1", "item2", "item3", "item4"],
-        "map_pick" => ["prompt", "targetShape", "baseLayer"],
-        "poll_choice" => ["prompt", "answerSource", "choice1", "choice2"],
-        "poll_roster" => ["prompt", "answerSource"],
-        _ => ["prompt"],
-    };
+        var columns = new List<IReadOnlyCollection<string>>
+        {
+            new[] { "language", "lang" },
+            new[] { "category", "categoryId" },
+        };
+        if (kind.Id is not ("poll_choice" or "poll_roster")) columns.Add(new[] { "level" });
+        columns.AddRange(kind.Id switch
+        {
+            "choice" => new IReadOnlyCollection<string>[] { new[] { "prompt" }, new[] { "choice1" }, new[] { "choice2" }, new[] { "choice3" }, new[] { "choice4" }, new[] { "correctIndex" } },
+            "order" => new IReadOnlyCollection<string>[] { new[] { "prompt" }, new[] { "item1" }, new[] { "item2" }, new[] { "item3" }, new[] { "item4" } },
+            "map_pick" => new IReadOnlyCollection<string>[] { new[] { "prompt" }, new[] { "targetShape" }, new[] { "baseLayer" } },
+            "poll_choice" => new IReadOnlyCollection<string>[] { new[] { "prompt" }, new[] { "answerSource" }, new[] { "choice1" }, new[] { "choice2" } },
+            "poll_roster" => new IReadOnlyCollection<string>[] { new[] { "prompt" }, new[] { "answerSource" } },
+            _ => new IReadOnlyCollection<string>[] { new[] { "prompt" } },
+        });
+        return columns;
+    }
+
+    private static async Task<QuestionWriteResult> CreateImportedAsync(
+        ITenantTx transaction,
+        IContent content,
+        QuestionWrite write,
+        CancellationToken cancellationToken)
+    {
+        // Prompt fingerprints use normalized fuzzy comparison, so PostgreSQL cannot express
+        // them as a uniqueness constraint. Keep the lock in the import path: it serializes
+        // competing imports for this tenant language/category without changing other writes.
+        await transaction.ExecuteAsync("""
+            select pg_advisory_xact_lock(hashtextextended(
+                'quesshi:import-prompt-fingerprint:' || current_setting('app.tenant_id') || ':' || @language || ':' || coalesce(@categoryId::text, ''),
+                0))
+            """, new { write.Language, write.CategoryId }, cancellationToken);
+        return await content.CreateAsync(transaction, write, cancellationToken);
+    }
     private static bool IsBundlePath(string value) => !Path.IsPathRooted(value) && !value.Contains('\\')
         && value.Split('/', StringSplitOptions.None).All(part => part.Length > 0 && part != "." && part != "..");
     private static bool IsRegularBundleFile(ZipArchiveEntry entry)

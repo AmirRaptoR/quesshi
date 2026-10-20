@@ -21,6 +21,20 @@ internal static class ImportParsing
         long contentLength,
         IReadOnlyCollection<string> requiredCsvColumns,
         CancellationToken cancellationToken = default)
+        => await ParseAsync(
+            format,
+            content,
+            contentLength,
+            requiredCsvColumns.Select(column => (IReadOnlyCollection<string>)new[] { column }).ToArray(),
+            cancellationToken);
+
+    /// <summary>Parses CSV requirements whose individual groups may contain compatible header aliases.</summary>
+    internal static async Task<(string? Error, ImportDocument? Document)> ParseAsync(
+        string? format,
+        Stream? content,
+        long contentLength,
+        IReadOnlyCollection<IReadOnlyCollection<string>> requiredCsvHeaderGroups,
+        CancellationToken cancellationToken = default)
     {
         var normalizedFormat = format?.Trim().ToLowerInvariant();
         if (normalizedFormat is not ("csv" or "json")) return ("bad_format", null);
@@ -28,13 +42,13 @@ internal static class ImportParsing
         if (contentLength > MaximumBytes) return ("file_too_large", null);
 
         return normalizedFormat == "csv"
-            ? await ParseCsvAsync(content, requiredCsvColumns, cancellationToken)
+            ? await ParseCsvAsync(content, requiredCsvHeaderGroups, cancellationToken)
             : await ParseJsonAsync(content, cancellationToken);
     }
 
     private static async Task<(string? Error, ImportDocument? Document)> ParseCsvAsync(
         Stream content,
-        IReadOnlyCollection<string> requiredColumns,
+        IReadOnlyCollection<IReadOnlyCollection<string>> requiredHeaderGroups,
         CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(content, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
@@ -43,7 +57,8 @@ internal static class ImportParsing
 
         var headerRecord = records[0];
         var header = headerRecord.Fields.Select((value, index) => NormalizeHeader(value, index == 0)).ToArray();
-        if (headerRecord.IsMalformed || !header.ToHashSet(StringComparer.OrdinalIgnoreCase).IsSupersetOf(requiredColumns))
+        var names = header.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (headerRecord.IsMalformed || requiredHeaderGroups.Any(group => !group.Any(names.Contains)))
             return ("missing_header", null);
 
         if (records.Count - 1 > MaximumRows) return ("too_many_rows", null);

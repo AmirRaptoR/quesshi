@@ -137,6 +137,32 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     }
 
     [SkippableFact]
+    public async Task Api_import_templates_require_an_editor_and_a_known_kind_and_format()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        _ = await InsertCategoryAsync(owner, TenantA, "import-template-permissions");
+        var moderator = await InsertAdminAsync(owner, "template-moderator", "template-moderator@example.test");
+        await MembershipAsync(owner, TenantA, moderator, "moderator");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        using var anonymous = await SendAsync(client, HttpMethod.Get, "/api/admin/import/templates/choice.csv");
+        var moderatorCookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, moderator);
+        using var forbidden = await SendAsync(client, HttpMethod.Get, "/api/admin/import/templates/choice.csv", moderatorCookie);
+        var editor = await InsertAdminAsync(owner, "template-editor", "template-editor@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        var editorCookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        using var unknownKind = await SendAsync(client, HttpMethod.Get, "/api/admin/import/templates/unknown.csv", editorCookie);
+        using var unknownFormat = await SendAsync(client, HttpMethod.Get, "/api/admin/import/templates/choice.txt", editorCookie);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, unknownKind.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, unknownFormat.StatusCode);
+    }
+
+    [SkippableFact]
     public async Task Api_import_requires_admin_antiforgery()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -290,6 +316,46 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     }
 
     [SkippableFact]
+    public async Task Api_import_requires_each_common_csv_header_before_writing_questions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-common-headers");
+        var editor = await InsertAdminAsync(owner, "import-common-headers", "import-common-headers@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        var headers = new[]
+        {
+            ("choice", "category,level,prompt,choice1,choice2,choice3,choice4,correctIndex"),
+            ("choice", "language,level,prompt,choice1,choice2,choice3,choice4,correctIndex"),
+            ("choice", "language,category,prompt,choice1,choice2,choice3,choice4,correctIndex"),
+            ("poll_roster", "category,prompt,answerSource"),
+            ("poll_roster", "language,prompt,answerSource"),
+        };
+        var responses = new List<HttpResponseMessage>();
+        foreach (var (kind, header) in headers)
+        {
+            var csv = header + "\nen," + category + ",1,Missing common header,one,two,three,four,1\n";
+            responses.Add(await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, ImportBody(kind, System.Text.Encoding.UTF8.GetBytes(csv), "questions.csv")));
+        }
+        await using var count = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+        count.Parameters.AddWithValue("tenant", TenantA);
+        try
+        {
+            Assert.All(responses, response => Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode));
+            Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
+        }
+        finally
+        {
+            foreach (var response in responses) response.Dispose();
+        }
+    }
+
+    [SkippableFact]
     public async Task Api_import_preserves_valid_rows_after_malformed_csv_and_json_rows()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -341,6 +407,31 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
         Assert.Equal(["imported"], Outcomes(sortReport));
         Assert.Equal(["imported"], Outcomes(mapReport));
+    }
+
+    [SkippableFact]
+    public async Task Api_import_preserves_bom_quoted_newlines_and_ignored_csv_columns_through_the_http_route()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-csv-compatibility");
+        var editor = await InsertAdminAsync(owner, "import-csv-compatibility", "import-csv-compatibility@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        var csv = "LANGUAGE,CATEGORY,LEVEL,PROMPT,CHOICE1,CHOICE2,CHOICE3,CHOICE4,CORRECTINDEX,IGNORED\n" +
+                  "en," + category + ",1,\"First line\nSecond line\",one,two,three,four,1,ignored\n";
+        using var body = ImportBody("choice", System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv)).ToArray(), "questions.csv", dryRun: false);
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        using var report = await ReportAsync(response);
+        await using var prompt = new NpgsqlCommand("select prompt from questions where tenant_id = @tenant", owner);
+        prompt.Parameters.AddWithValue("tenant", TenantA);
+
+        Assert.Equal(["imported"], Outcomes(report));
+        Assert.Equal("First line\nSecond line", (string)(await prompt.ExecuteScalarAsync())!);
     }
 
     [SkippableFact]
@@ -406,6 +497,41 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     }
 
     [SkippableFact]
+    public async Task Api_import_reports_tenant_topic_and_in_file_duplicates_at_the_import_boundary()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-duplicate-boundaries");
+        var editor = await InsertAdminAsync(owner, "import-duplicate-boundaries", "import-duplicate-boundaries@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var unsupportedBody = ImportBody("choice", System.Text.Encoding.UTF8.GetBytes("language,category,level,prompt,choice1,choice2,choice3,choice4,correctIndex\nzz," + category + ",1,Unsupported language,one,two,three,four,1\n"), "questions.csv", dryRun: false);
+        using var unsupported = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, unsupportedBody);
+        using var unsupportedReport = await ReportAsync(unsupported);
+        using var existingBody = ImportBody("choice", ChoiceCsv(category, ("Existing topic", 1, null, null, null, "Europe", "capital")), "questions.csv", dryRun: false);
+        using var existing = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, existingBody);
+        using var existingReport = await ReportAsync(existing);
+        using var topicBody = ImportBody("choice", ChoiceCsv(category, ("Different prompt", 2, null, null, null, "Europe", "capital")), "questions.csv", dryRun: false);
+        using var topic = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, topicBody);
+        using var topicReport = await ReportAsync(topic);
+        using var fileBody = ImportBody("choice", ChoiceCsv(category,
+            ("File duplicate one", 3, null, null, null, "File", "same"),
+            ("File duplicate two", 4, null, null, null, "File", "same")), "questions.csv", dryRun: false);
+        using var file = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, fileBody);
+        using var fileReport = await ReportAsync(file);
+
+        Assert.Equal(["invalid"], Outcomes(unsupportedReport));
+        Assert.Equal(["duplicate"], Outcomes(topicReport));
+        Assert.Equal(existingReport.RootElement.GetProperty("rows")[0].GetProperty("questionId").GetString(), topicReport.RootElement.GetProperty("rows")[0].GetProperty("existingQuestionId").GetString());
+        Assert.Equal(["imported", "duplicate"], Outcomes(fileReport));
+        Assert.Equal(1, fileReport.RootElement.GetProperty("rows")[1].GetProperty("existingRow").GetInt32());
+    }
+
+    [SkippableFact]
     public async Task Api_import_concurrent_commits_report_one_import_and_one_duplicate()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -413,25 +539,49 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         var category = await InsertCategoryAsync(owner, TenantA, "import-race");
         var editor = await InsertAdminAsync(owner, "import-race", "import-race@example.test");
         await MembershipAsync(owner, TenantA, editor, "editor");
-        await using var sources = Sources();
-        await using var app = await StartAsync(sources);
-        using var client = Client();
-        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
-        var token = await AdminAntiforgeryAsync(client, cookie);
-        using var firstBody = ImportBody("choice", ChoiceCsv(category, ("Competing question", 1, null, null, null, "Race", "same")), "questions.csv", dryRun: false);
-        using var secondBody = ImportBody("choice", ChoiceCsv(category, ("Competing question", 1, null, null, null, "Race", "same")), "questions.csv", dryRun: false);
-        var responses = await Task.WhenAll(
-            SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, firstBody),
-            SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, secondBody));
-        using var first = responses[0];
-        using var second = responses[1];
-        using var firstReport = await ReportAsync(first);
-        using var secondReport = await ReportAsync(second);
-        await using var count = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
-        count.Parameters.AddWithValue("tenant", TenantA);
+        await using (var hold = new NpgsqlCommand("""
+            create function hold_prompt_fingerprint_import() returns trigger language plpgsql as $$
+            begin
+              if new.prompt = 'Competing question' then perform pg_sleep(0.4); end if;
+              return new;
+            end;
+            $$;
+            create trigger hold_prompt_fingerprint_import before insert on questions
+            for each row execute function hold_prompt_fingerprint_import();
+            """, owner))
+        {
+            await hold.ExecuteNonQueryAsync();
+        }
 
-        Assert.Equal(["duplicate", "imported"], Outcomes(firstReport).Concat(Outcomes(secondReport)).Order().ToArray());
-        Assert.Equal(1L, (long)(await count.ExecuteScalarAsync())!);
+        try
+        {
+            await using var sources = Sources();
+            await using var app = await StartAsync(sources);
+            using var client = Client();
+            var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+            var token = await AdminAntiforgeryAsync(client, cookie);
+            using var firstBody = ImportBody("choice", ChoiceCsv(category, ("Competing question", 1, null, null, null, null, null)), "questions.csv", dryRun: false);
+            using var secondBody = ImportBody("choice", ChoiceCsv(category, ("Competing question", 1, null, null, null, null, null)), "questions.csv", dryRun: false);
+            var responses = await Task.WhenAll(
+                SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, firstBody),
+                SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, secondBody));
+            using var first = responses[0];
+            using var second = responses[1];
+            using var firstReport = await ReportAsync(first);
+            using var secondReport = await ReportAsync(second);
+            await using var count = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+            count.Parameters.AddWithValue("tenant", TenantA);
+            var duplicate = new[] { firstReport, secondReport }.SelectMany(report => report.RootElement.GetProperty("rows").EnumerateArray()).Single(row => row.GetProperty("outcome").GetString() == "duplicate");
+
+            Assert.Equal(["duplicate", "imported"], Outcomes(firstReport).Concat(Outcomes(secondReport)).Order().ToArray());
+            Assert.False(string.IsNullOrWhiteSpace(duplicate.GetProperty("existingQuestionId").GetString()));
+            Assert.Equal(1L, (long)(await count.ExecuteScalarAsync())!);
+        }
+        finally
+        {
+            await using var cleanup = new NpgsqlCommand("drop trigger if exists hold_prompt_fingerprint_import on questions; drop function if exists hold_prompt_fingerprint_import();", owner);
+            await cleanup.ExecuteNonQueryAsync();
+        }
     }
 
     [SkippableFact]
@@ -598,6 +748,53 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     }
 
     [SkippableFact]
+    public async Task Api_import_dry_run_and_commit_have_equivalent_stable_row_reports_without_dry_run_writes_or_body_fetches()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-stable-dry-run");
+        var editor = await InsertAdminAsync(owner, "import-stable-dry-run", "import-stable-dry-run@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        var bodyReads = 0;
+        var transport = new ImportMediaTransport(_ => PngResponse(() => bodyReads++));
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources, services => ConfigureImportMedia(services, transport));
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var existingBody = ImportBody("choice", ChoiceCsv(category, ("Stable existing", 1, null, null, null, null, null)), "questions.csv", dryRun: false);
+        using var existing = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, existingBody);
+        var csv = ChoiceCsv(category,
+            ("Stable existing", 1, null, null, null, null, null),
+            ("Stable invalid", 9, null, null, null, null, null),
+            ("Stable media", 2, "https://media.example/photo.png", "image", "Stable credit", null, null));
+        using var dryRunBody = ImportBody("choice", csv, "questions.csv");
+        using var dryRun = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, dryRunBody);
+        using var dryRunReport = await ReportAsync(dryRun);
+        await using var beforeQuestions = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+        beforeQuestions.Parameters.AddWithValue("tenant", TenantA);
+        await using var beforeAssets = new NpgsqlCommand("select count(*) from media_assets where tenant_id = @tenant", owner);
+        beforeAssets.Parameters.AddWithValue("tenant", TenantA);
+        var questionsAfterDryRun = (long)(await beforeQuestions.ExecuteScalarAsync())!;
+        var assetsAfterDryRun = (long)(await beforeAssets.ExecuteScalarAsync())!;
+        var callsAfterDryRun = transport.Calls;
+        var bodyReadsAfterDryRun = bodyReads;
+        using var commitBody = ImportBody("choice", csv, "questions.csv", dryRun: false);
+        using var commit = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, commitBody);
+        using var commitReport = await ReportAsync(commit);
+
+        Assert.Equal(["duplicate", "invalid", "would_import"], Outcomes(dryRunReport));
+        Assert.Equal(["duplicate", "invalid", "imported"], Outcomes(commitReport));
+        Assert.Equal(RowProblems(dryRunReport), RowProblems(commitReport));
+        Assert.Equal(1L, questionsAfterDryRun);
+        Assert.Equal(0L, assetsAfterDryRun);
+        Assert.Equal(0, bodyReadsAfterDryRun);
+        Assert.Equal(1, callsAfterDryRun);
+        Assert.Equal(2, transport.Calls);
+        Assert.Equal(1, bodyReads);
+    }
+
+    [SkippableFact]
     public async Task Api_import_reports_nonblocking_level_and_answer_length_warnings()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -620,6 +817,51 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         Assert.Equal(1, report.RootElement.GetProperty("accepted").GetInt32());
         Assert.Contains("levels.incomplete", warnings);
         Assert.Contains("choice.answer_length_tell", warnings);
+    }
+
+    [SkippableFact]
+    public async Task Api_import_reports_a_shortest_correct_answer_length_warning()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-shortest-warning");
+        var editor = await InsertAdminAsync(owner, "import-shortest-warning", "import-shortest-warning@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        var csv = "language,category,level,prompt,choice1,choice2,choice3,choice4,correctIndex\n" +
+                  "en," + category + ",1,Shortest tell,longer,medium,tiny,wide,2\n";
+        using var body = ImportBody("choice", System.Text.Encoding.UTF8.GetBytes(csv), "questions.csv");
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        using var report = await ReportAsync(response);
+
+        Assert.Contains(report.RootElement.GetProperty("warnings").EnumerateArray(), warning => warning.GetProperty("code").GetString() == "choice.answer_length_tell");
+    }
+
+    [SkippableFact]
+    public async Task Api_import_splits_tied_answer_lengths_at_the_warning_threshold()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "import-tied-warning");
+        var editor = await InsertAdminAsync(owner, "import-tied-warning", "import-tied-warning@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        var rows = Enumerable.Range(1, 4).Select(level => "en," + category + "," + level + ",Tied " + level + ",tiny,wide,longer,longer,2")
+            .Append("en," + category + ",5,Neither,tiny,wide,middle,very-long,2");
+        var csv = "language,category,level,prompt,choice1,choice2,choice3,choice4,correctIndex\n" + string.Join("\n", rows) + "\n";
+        using var body = ImportBody("choice", System.Text.Encoding.UTF8.GetBytes(csv), "questions.csv");
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        using var report = await ReportAsync(response);
+
+        Assert.DoesNotContain(report.RootElement.GetProperty("warnings").EnumerateArray(), warning => warning.GetProperty("code").GetString() == "choice.answer_length_tell");
     }
 
     [SkippableFact]
@@ -1182,6 +1424,11 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     private static string[] Outcomes(JsonDocument report) =>
         report.RootElement.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("outcome").GetString()!).ToArray();
 
+    private static string[] RowProblems(JsonDocument report) =>
+        report.RootElement.GetProperty("rows").EnumerateArray()
+            .Select(row => row.GetProperty("problems").GetRawText())
+            .ToArray();
+
     private static void ConfigureImportMedia(IServiceCollection services, ImportMediaTransport transport)
     {
         services.RemoveAll<IMediaFetcher>();
@@ -1191,11 +1438,35 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             transport));
     }
 
-    private static HttpResponseMessage PngResponse()
+    private static HttpResponseMessage PngResponse(Action? bodyRead = null)
     {
-        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Png()) };
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = bodyRead is null ? new ByteArrayContent(Png()) : new TrackingContent(Png(), bodyRead),
+        };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
         return response;
+    }
+
+    private sealed class TrackingContent(byte[] bytes, Action bodyRead) : HttpContent
+    {
+        protected override bool TryComputeLength(out long length)
+        {
+            length = bytes.Length;
+            return true;
+        }
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            bodyRead();
+            await stream.WriteAsync(bytes);
+        }
+
+        protected override Task<Stream> CreateContentReadStreamAsync()
+        {
+            bodyRead();
+            return Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+        }
     }
 
     private sealed class ImportMediaResolver : IHostAddressResolver
