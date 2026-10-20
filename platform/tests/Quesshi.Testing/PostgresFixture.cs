@@ -7,6 +7,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 {
     public const string AdminConnectionStringEnvironmentVariable = "QUESSHI_TEST_POSTGRES";
     public const string RolePassword = "quesshi-test-role-password";
+    private const long BootstrapLockKey = 869_327_625_914_302_761;
 
     private readonly string? _adminConnectionString;
 
@@ -44,30 +45,45 @@ public sealed class PostgresFixture : IAsyncLifetime
         }
 
         DatabaseName = $"quesshi_test_{Guid.NewGuid():N}";
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
-        await connection.OpenAsync();
-        await ExecuteBootstrapAsync(connection);
-        await using (var rolePasswords = new NpgsqlCommand($"alter role quesshi_owner password '{RolePassword}'; alter role quesshi_app password '{RolePassword}'; alter role quesshi_system password '{RolePassword}';", connection))
+        try
         {
-            await rolePasswords.ExecuteNonQueryAsync();
-        }
-        await using (var command = new NpgsqlCommand($"CREATE DATABASE {QuoteIdentifier(DatabaseName)}", connection))
-        {
-            await command.ExecuteNonQueryAsync();
-        }
-        await using (var grant = new NpgsqlCommand($"GRANT CREATE ON DATABASE {QuoteIdentifier(DatabaseName)} TO quesshi_owner", connection))
-        {
-            await grant.ExecuteNonQueryAsync();
-        }
+            await using var connection = new NpgsqlConnection(_adminConnectionString);
+            await connection.OpenAsync();
+            await BootstrapRolesAsync(connection);
+            await using (var command = new NpgsqlCommand($"CREATE DATABASE {QuoteIdentifier(DatabaseName)}", connection))
+            {
+                await command.ExecuteNonQueryAsync();
+            }
+            await using (var grant = new NpgsqlCommand($"GRANT CREATE ON DATABASE {QuoteIdentifier(DatabaseName)} TO quesshi_owner", connection))
+            {
+                await grant.ExecuteNonQueryAsync();
+            }
 
-        ConnectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
+            ConnectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
+            {
+                Database = DatabaseName
+            }.ConnectionString;
+            await using var databaseConnection = new NpgsqlConnection(ConnectionString);
+            await databaseConnection.OpenAsync();
+            await using var schemaGrant = new NpgsqlCommand("grant usage, create on schema public to quesshi_owner", databaseConnection);
+            await schemaGrant.ExecuteNonQueryAsync();
+        }
+        catch
         {
-            Database = DatabaseName
-        }.ConnectionString;
-        await using var databaseConnection = new NpgsqlConnection(ConnectionString);
-        await databaseConnection.OpenAsync();
-        await using var schemaGrant = new NpgsqlCommand("grant usage, create on schema public to quesshi_owner", databaseConnection);
-        await schemaGrant.ExecuteNonQueryAsync();
+            var databaseName = DatabaseName;
+            DatabaseName = null;
+            ConnectionString = null;
+            try
+            {
+                await DropDatabaseAsync(databaseName);
+            }
+            catch
+            {
+                // Preserve the initialization failure when cleanup cannot reach PostgreSQL.
+            }
+
+            throw;
+        }
     }
 
     public string ConnectionStringForRole(string role) => new NpgsqlConnectionStringBuilder(ConnectionString)
@@ -81,6 +97,13 @@ public sealed class PostgresFixture : IAsyncLifetime
         var databaseName = DatabaseName;
         DatabaseName = null;
         ConnectionString = null;
+        if (string.IsNullOrWhiteSpace(_adminConnectionString) || string.IsNullOrWhiteSpace(databaseName)) return;
+
+        await DropDatabaseAsync(databaseName);
+    }
+
+    private async Task DropDatabaseAsync(string? databaseName)
+    {
         if (string.IsNullOrWhiteSpace(_adminConnectionString) || string.IsNullOrWhiteSpace(databaseName)) return;
 
         await using var connection = new NpgsqlConnection(_adminConnectionString);
@@ -97,11 +120,29 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     private static bool IsCi() => string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
 
-    private static async Task ExecuteBootstrapAsync(NpgsqlConnection connection)
+    private static async Task BootstrapRolesAsync(NpgsqlConnection connection)
+    {
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var lockCommand = new NpgsqlCommand("SELECT pg_advisory_xact_lock(@key)", connection, transaction))
+        {
+            lockCommand.Parameters.AddWithValue("key", BootstrapLockKey);
+            await lockCommand.ExecuteNonQueryAsync();
+        }
+
+        await ExecuteBootstrapAsync(connection, transaction);
+        await using (var rolePasswords = new NpgsqlCommand($"alter role quesshi_owner password '{RolePassword}'; alter role quesshi_app password '{RolePassword}'; alter role quesshi_system password '{RolePassword}';", connection, transaction))
+        {
+            await rolePasswords.ExecuteNonQueryAsync();
+        }
+
+        await transaction.CommitAsync();
+    }
+
+    private static async Task ExecuteBootstrapAsync(NpgsqlConnection connection, NpgsqlTransaction transaction)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "deploy", "bootstrap-roles.sql");
         var sql = await File.ReadAllTextAsync(path);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         await command.ExecuteNonQueryAsync();
     }
 
