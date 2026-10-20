@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Quesshi.Plugin.Api;
 using Quesshi.Testing;
 
@@ -40,6 +41,27 @@ public sealed class SessionEndpointDatabaseTests(PostgresFixture postgres) : IAs
     }
 
     [SkippableFact]
+    public async Task Session_creation_rejects_a_caller_supplied_started_roster()
+    {
+        var host = Host;
+        await host.SetCapabilityAsync("format", "async_duel", true);
+        var id = Guid.NewGuid();
+        var rejected = await host.Player.PostAsJsonAsync("/api/sessions", new
+        {
+            id,
+            format = "async_duel",
+            content = new { source = "bank", parameters = new { }, count = 10 },
+            rules = new { },
+            capacity = 2,
+            shape = "started",
+            participants = new[] { new { playerId = Guid.NewGuid(), role = "player" } },
+        });
+        var absent = await host.Player.GetAsync($"/api/sessions/{id}");
+
+        Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.NotFound), (rejected.StatusCode, absent.StatusCode));
+    }
+
+    [SkippableFact]
     public async Task Disabled_format_rejects_new_session_creation()
     {
         var disabled = await Host.Player.PostAsJsonAsync("/api/sessions", Lobby(Guid.NewGuid()));
@@ -54,10 +76,42 @@ public sealed class SessionEndpointDatabaseTests(PostgresFixture postgres) : IAs
         await host.SetCapabilityAsync("format", "async_duel", true);
         var id = Guid.NewGuid();
         var created = await host.Player.PostAsJsonAsync("/api/sessions", Lobby(id));
+        var otherAccount = Guid.NewGuid();
+        var otherPlayer = Guid.NewGuid();
+        await host.ExecuteOwnerAsync("""
+            insert into accounts(id, email) values (@otherAccount, @email);
+            insert into players(tenant_id, id, account_id, display_name, avatar_seed, lang)
+            values (@tenantId, @otherPlayer, @otherAccount, 'Other player', 'other', 'en');
+            insert into session_participants(tenant_id, session_id, player_id, seat, role, phase, slot, slot_started_at)
+            values (@tenantId, @id, @otherPlayer, 1, 'player', '1', 0, now());
+            insert into session_items(tenant_id, session_id, slot, kind, kind_version, prompt, payload, resolved, card, reveal)
+            values (@tenantId, @id, 0, 'choice', 1, 'Persisted prompt', '{"options":[]}'::jsonb, '{}'::jsonb,
+                    '{"text":"persisted-card"}'::jsonb, '{"text":"reveal-secret"}'::jsonb);
+            insert into session_answers(tenant_id, session_id, slot, player_id, answer, received_at)
+            values (@tenantId, @id, 0, @otherPlayer, '{"text":"other-secret"}'::jsonb, now());
+            update sessions set status = 'running', phase = '1', slot = 0, started_at = now(), due_at = now() + interval '1 minute'
+            where tenant_id = @tenantId and id = @id;
+            update session_participants set phase = '1', slot = 0, slot_started_at = now()
+            where tenant_id = @tenantId and session_id = @id and player_id = @playerId;
+            """, new
+        {
+            tenantId = host.TenantId,
+            id,
+            playerId = host.PlayerId,
+            otherAccount,
+            otherPlayer,
+            email = $"other-{otherAccount:N}@example.test",
+        });
         var seated = await host.Player.GetAsync($"/api/sessions/{id}");
+        var body = await seated.Content.ReadAsStringAsync();
+        Assert.True(seated.StatusCode == HttpStatusCode.OK, body);
+        using var view = JsonDocument.Parse(body);
 
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, seated.StatusCode);
+        Assert.Equal((HttpStatusCode.Created, id.ToString(), "persisted-card", JsonValueKind.Null, 0),
+            (created.StatusCode, view.RootElement.GetProperty("Id").GetString(),
+                view.RootElement.GetProperty("Body").GetProperty("You").GetProperty("Card").GetProperty("text").GetString(),
+                view.RootElement.GetProperty("Body").GetProperty("You").GetProperty("Reveal").ValueKind,
+                view.RootElement.GetProperty("Body").GetProperty("Others").GetArrayLength()));
     }
 
     [SkippableFact]
@@ -111,7 +165,6 @@ public sealed class SessionEndpointDatabaseTests(PostgresFixture postgres) : IAs
         content = new { source = "bank", parameters = new { }, count = 10 },
         rules = new { },
         capacity = 2,
-        shape = "lobby",
     };
 
     private sealed record ErrorResponse(string Error);

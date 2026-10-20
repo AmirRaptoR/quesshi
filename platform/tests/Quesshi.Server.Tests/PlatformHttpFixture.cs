@@ -56,6 +56,14 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
             """, new { tenantId = TenantId, type, key, enabled }, cancellationToken: cancellationToken));
     }
 
+    /// <summary>Executes setup SQL as the database owner for a hosted route test.</summary>
+    public async Task ExecuteOwnerAsync(string sql, object parameters, CancellationToken cancellationToken = default)
+    {
+        await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        await owner.ExecuteAsync(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_application is not null) throw new InvalidOperationException("The platform HTTP fixture has already started.");

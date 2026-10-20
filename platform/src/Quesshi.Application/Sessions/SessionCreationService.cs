@@ -101,7 +101,7 @@ internal sealed class SessionCreationService(
                 state = transition.Current;
             }
 
-            var created = await InsertWithCodeAsync(transaction, creatorId, request, creator.Language, now, cancellationToken);
+            var created = await InsertWithCodeAsync(transaction, creatorId, request, roster, creator.Language, now, cancellationToken);
             if (created is null)
             {
                 var afterCollision = await ReplayAsync(transaction, creatorId, request, cancellationToken);
@@ -122,29 +122,20 @@ internal sealed class SessionCreationService(
 
     private async Task<SessionCreateResult?> ReplayAsync(ITenantTx transaction, Guid creatorId, SessionCreateRequest request, CancellationToken cancellationToken)
     {
+        var expected = Roster(creatorId, request);
+        if (expected is null) return await IdConflictIfExistsAsync(transaction, request.Id, cancellationToken);
+
         var equal = await transaction.QuerySingleOrDefaultAsync<ReplayRow>("""
-            select code as Code, status as Status,
-                   (select count(*)::int from session_participants where session_id = sessions.id) as SeatCount
+            select code as Code
             from sessions
             where id = @id and owner_id = @creatorId and format = @format and capacity = @capacity
               and content = @content and rules = @rules
+              and creation_shape = @shape and creation_roster = @roster
             """, new { id = request.Id, creatorId, format = request.Format, capacity = request.Capacity,
-                content = Json(request.Content), rules = new Jsonb<JsonElement>(request.Rules, SessionJsonContext.Default.JsonElement) }, cancellationToken);
-        if (equal is not null && (request.Shape == SessionShape.Lobby ? equal.Status == "lobby" : equal.Status == "running"))
-        {
-            var expected = Roster(creatorId, request);
-            if (expected is not null && equal.SeatCount == expected.Count)
-            {
-                var seats = await transaction.QueryAsync<ReplaySeat>("""
-                    select player_id as PlayerId, role as Role
-                    from session_participants where session_id = @id order by seat
-                    """, new { id = request.Id }, cancellationToken);
-                if (seats.Select(seat => new SessionParticipant(seat.PlayerId, seat.Role)).SequenceEqual(expected))
-                    return new(SessionCreateStatus.Replayed, request.Id, equal.Code);
-            }
-        }
-        var exists = await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from sessions where id = @id", new { id = request.Id }, cancellationToken);
-        return exists is null ? null : new(SessionCreateStatus.IdConflict, Error: "id_conflict");
+                content = Json(request.Content), rules = new Jsonb<JsonElement>(request.Rules, SessionJsonContext.Default.JsonElement),
+                shape = Shape(request.Shape), roster = Json(expected) }, cancellationToken);
+        if (equal is not null) return new(SessionCreateStatus.Replayed, request.Id, equal.Code);
+        return await IdConflictIfExistsAsync(transaction, request.Id, cancellationToken);
     }
 
     private static IReadOnlyList<SessionParticipant>? Roster(Guid creator, SessionCreateRequest request) => request.Shape switch
@@ -154,18 +145,19 @@ internal sealed class SessionCreationService(
         _ => null,
     };
 
-    private async Task<string?> InsertWithCodeAsync(ITenantTx transaction, Guid creatorId, SessionCreateRequest request, string language, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<string?> InsertWithCodeAsync(ITenantTx transaction, Guid creatorId, SessionCreateRequest request, IReadOnlyList<SessionParticipant> roster, string language, DateTimeOffset now, CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt != 32; attempt++)
         {
             var code = codes.Next();
             var inserted = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
-                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, rules, created_at, started_at)
-                values (app_tenant(), @id, @code, @format, @creatorId, @language, @status, @capacity, @content, @rules, @now, @startedAt)
+                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, rules, creation_shape, creation_roster, created_at, started_at)
+                values (app_tenant(), @id, @code, @format, @creatorId, @language, @status, @capacity, @content, @rules, @shape, @roster, @now, @startedAt)
                 on conflict do nothing returning id
                 """, new { id = request.Id, code, format = request.Format, creatorId, language,
                     status = request.Shape == SessionShape.Lobby ? "lobby" : "running", capacity = request.Capacity,
-                    content = Json(request.Content), rules = new Jsonb<JsonElement>(request.Rules, SessionJsonContext.Default.JsonElement), now,
+                    content = Json(request.Content), rules = new Jsonb<JsonElement>(request.Rules, SessionJsonContext.Default.JsonElement),
+                    shape = Shape(request.Shape), roster = Json(roster), now,
                     startedAt = request.Shape == SessionShape.Lobby ? (DateTimeOffset?)null : now }, cancellationToken);
             if (inserted is not null) return code;
             var exists = await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from sessions where id = @id", new { id = request.Id }, cancellationToken);
@@ -284,6 +276,13 @@ internal sealed class SessionCreationService(
     private static async Task<bool> EnabledAsync(ITenantTx transaction, string type, string key, CancellationToken cancellationToken) =>
         await transaction.QuerySingleOrDefaultAsync<bool?>("select entitled and enabled from tenant_capabilities where type = @type and key = @key", new { type, key }, cancellationToken) == true;
     private static Jsonb<SessionContent> Json(SessionContent content) => new(content, SessionJsonContext.Default.SessionContent);
+    private static Jsonb<SessionParticipant[]> Json(IReadOnlyList<SessionParticipant> roster) => new(roster.ToArray(), SessionJsonContext.Default.SessionParticipantArray);
+    private static string Shape(SessionShape shape) => shape.ToString().ToLowerInvariant();
+    private static async Task<SessionCreateResult?> IdConflictIfExistsAsync(ITenantTx transaction, Guid id, CancellationToken cancellationToken)
+    {
+        var exists = await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from sessions where id = @id", new { id }, cancellationToken);
+        return exists is null ? null : new(SessionCreateStatus.IdConflict, Error: "id_conflict");
+    }
     private static JsonElement ContentElement(SessionContent content) => JsonSerializer.SerializeToElement(content, SessionJsonContext.Default.SessionContent);
     private static JsonElement SnapshotJson(ReadySnapshot snapshot) => JsonSerializer.SerializeToElement(new
     {
@@ -295,11 +294,11 @@ internal sealed class SessionCreationService(
     private static long Seed(Guid id) => BitConverter.ToInt64(id.ToByteArray());
     private static readonly JsonElement Empty = JsonDocument.Parse("{}").RootElement.Clone();
     private sealed record PlayerData(Guid Id, string Language, bool IsGuest);
-    private sealed record ReplayRow(string Code, string Status, int SeatCount);
-    private sealed record ReplaySeat(Guid PlayerId, string Role);
+    private sealed record ReplayRow(string Code);
     private sealed record PersistedItem(SessionItemState Value, Guid? QuestionId, string Prompt, Guid? MediaId, Guid? CategoryId, JsonElement? Category);
 }
 
 [JsonSerializable(typeof(JsonElement))]
 [JsonSerializable(typeof(SessionContent))]
+[JsonSerializable(typeof(SessionParticipant[]))]
 internal sealed partial class SessionJsonContext : JsonSerializerContext;

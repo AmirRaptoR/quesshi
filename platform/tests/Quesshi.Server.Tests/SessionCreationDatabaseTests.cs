@@ -30,8 +30,162 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
         var replayed = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
 
-        Assert.Equal(created.Code, replayed.Code);
-        Assert.Equal(SessionCreateStatus.Replayed, replayed.Status);
+        Assert.Equal((SessionCreateStatus.Replayed, created.SessionId, created.Code), (replayed.Status, replayed.SessionId, replayed.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_replays_the_original_request_after_the_session_has_progressed()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid());
+
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+        await using (var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner")))
+        {
+            await owner.OpenAsync();
+            await owner.ExecuteAsync("""
+                update sessions set status = 'running', started_at = created_at, phase = 'play', slot = 0
+                where tenant_id = @tenantId and id = @sessionId;
+                insert into session_participants(tenant_id, session_id, player_id, seat, role)
+                values (@tenantId, @sessionId, @playerId, 1, 'player');
+                """, new { tenantId = seeded.TenantA, sessionId = request.Id, playerId = seeded.OtherA });
+        }
+
+        var replayed = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        Assert.Equal((SessionCreateStatus.Replayed, request.Id, created.Code), (replayed.Status, replayed.SessionId, replayed.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_reused_id_with_a_different_capacity()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid());
+        _ = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request with { Capacity = 3 }));
+
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_reused_id_with_a_different_shape()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid());
+        _ = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request with { Shape = SessionShape.Open }));
+
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_reused_id_with_different_content_parameters()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid());
+        _ = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            request with { Content = request.Content with { Parameters = Json("{\"level\":2}") } }));
+
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_reused_id_with_a_different_content_count()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid());
+        _ = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            request with { Content = request.Content with { Count = 9 } }));
+
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_replays_an_open_request_with_its_original_id_and_code()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ready"), ("kind", "choice"));
+        await using var app = CreateApplication(source: new FixedSource(ChoiceSnapshots(10)));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid()) with { Content = new("ready", Json("{}"), 10), Shape = SessionShape.Open };
+
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+        var replayed = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        Assert.Equal((SessionCreateStatus.Replayed, created.SessionId, created.Code), (replayed.Status, replayed.SessionId, replayed.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_replays_a_started_roster_with_its_original_id_and_code()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ready"), ("kind", "choice"));
+        await using var app = CreateApplication(source: new FixedSource(ChoiceSnapshots(10)));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid()) with
+        {
+            Content = new("ready", Json("{}"), 10),
+            Shape = SessionShape.Started,
+            Participants = [new(seeded.CreatorA), new(seeded.OtherA)],
+        };
+
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+        var replayed = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        Assert.Equal((SessionCreateStatus.Replayed, created.SessionId, created.Code), (replayed.Status, replayed.SessionId, replayed.Code));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_reused_id_with_a_different_started_roster()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ready"), ("kind", "choice"));
+        await using var app = CreateApplication(source: new FixedSource(ChoiceSnapshots(10)));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid()) with
+        {
+            Content = new("ready", Json("{}"), 10),
+            Shape = SessionShape.Started,
+            Participants = [new(seeded.CreatorA), new(seeded.OtherA)],
+        };
+        _ = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            request with { Participants = [new(seeded.CreatorA), new(seeded.GuestA)] }));
+
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
     }
 
     [SkippableFact]
@@ -47,7 +201,7 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
 
         var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.OtherA, request));
 
-        Assert.Equal(SessionCreateStatus.IdConflict, result.Status);
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
     }
 
     [SkippableFact]
@@ -63,7 +217,7 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
 
         var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request with { Format = "other" }));
 
-        Assert.Equal(SessionCreateStatus.IdConflict, result.Status);
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
     }
 
     [SkippableFact]
@@ -79,7 +233,7 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
 
         var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request with { Content = new("other", Json("{}"), 10) }));
 
-        Assert.Equal(SessionCreateStatus.IdConflict, result.Status);
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
     }
 
     [SkippableFact]
@@ -95,7 +249,7 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
 
         var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request with { Rules = Json("{\"x\":1}") }));
 
-        Assert.Equal(SessionCreateStatus.IdConflict, result.Status);
+        Assert.Equal((SessionCreateStatus.IdConflict, null, null), (result.Status, result.SessionId, result.Code));
     }
 
     [SkippableFact]
@@ -144,6 +298,73 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
 
         Assert.Equal((SessionCreateStatus.Invalid, "invalid_capacity"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
+    public async Task Creation_honors_a_configured_tenant_capacity()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await SetCapacityAsync(seeded.TenantA, 1);
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, Request(Guid.NewGuid()) with { Capacity = 2 }));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "invalid_capacity"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
+    public async Task Creation_caps_a_tenant_capacity_setting_at_500()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await SetCapacityAsync(seeded.TenantA, 900);
+        await EnableAsync(seeded.TenantA, ("format", "large_lobby"));
+        await using var app = CreateApplication(formats: new FormatRegistry([new LargeLobbyFormat()]));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            new SessionCreateRequest(Guid.NewGuid(), "large_lobby", new("bank", Json("{}"), 1), Json("{}"), 501, SessionShape.Lobby)));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "invalid_capacity"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_guests_when_the_format_disallows_them()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("format", "large_lobby"));
+        await using var app = CreateApplication(formats: new FormatRegistry([new LargeLobbyFormat()]));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.GuestA,
+            new SessionCreateRequest(Guid.NewGuid(), "large_lobby", new("bank", Json("{}"), 1), Json("{}"), 1, SessionShape.Lobby)));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "guest_not_allowed"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_an_unentitled_format_even_when_it_is_enabled()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using (var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner")))
+        {
+            await owner.OpenAsync();
+            await owner.ExecuteAsync("update tenant_capabilities set entitled = false, enabled = true where tenant_id = @tenantId and type = 'format' and key = 'async_duel'", new { tenantId = seeded.TenantA });
+        }
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, Request(Guid.NewGuid())));
+
+        Assert.Equal(SessionCreateStatus.FormatUnavailable, result.Status);
     }
 
     [SkippableFact]
@@ -249,16 +470,15 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         var request = new SessionCreateRequest(Guid.NewGuid(), "async_duel", new("ready", Json("{}"), 10), Json("{}"), 2, SessionShape.Open);
 
         var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
-        Assert.True(created.Status == SessionCreateStatus.Created, created.Error);
-        var row = await database.InTenantAsync(seeded.TenantA, async tx => (await tx.QueryAsync<(string Status, int Items, int Seats, bool Eligible, DateTimeOffset? DueAt)>("""
-            select status, (select count(*)::int from session_items where session_id = sessions.id) as Items,
+        var row = await database.InTenantAsync(seeded.TenantA, async tx => (await tx.QueryAsync<(string Status, int Capacity, int Items, int Seats, bool Eligible, DateTimeOffset? DueAt, DateTimeOffset? StartedAt)>("""
+            select status, capacity, (select count(*)::int from session_items where session_id = sessions.id) as Items,
                    (select count(*)::int from session_participants where session_id = sessions.id) as Seats,
                    (select eligible from session_participants where session_id = sessions.id and player_id = @playerId) as Eligible,
-                   due_at as DueAt
+                   due_at as DueAt, started_at as StartedAt
             from sessions where id = @id
             """, new { id = created.SessionId, playerId = seeded.CreatorA })).Single());
 
-        Assert.Equal(("running", 10, 1, false, true), (row.Status, row.Items, row.Seats, row.Eligible, row.DueAt is not null));
+        Assert.Equal(("running", 2, 10, 1, false, true, true), (row.Status, row.Capacity, row.Items, row.Seats, row.Eligible, row.DueAt is not null, row.StartedAt is not null));
     }
 
     [SkippableFact]
@@ -289,6 +509,24 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Creation_rejects_a_ready_snapshot_with_an_invalid_kind_version()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ready"), ("kind", "choice"));
+        var badVersion = ((PickedSnapshots)ChoiceSnapshots(10)).Items.ToArray();
+        badVersion[0] = badVersion[0] with { KindVersion = 99 };
+        await using var app = CreateApplication(source: new FixedSource(new PickedSnapshots(badVersion)));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            new SessionCreateRequest(Guid.NewGuid(), "async_duel", new("ready", Json("{}"), 10), Json("{}"), 2, SessionShape.Open)));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "invalid_source_result"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
     public async Task Started_shared_pacing_marks_account_players_eligible_at_start()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -301,10 +539,14 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
             [new(seeded.CreatorA), new(seeded.OtherA)]);
 
         var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
-        Assert.True(created.Status == SessionCreateStatus.Created, created.Error);
-        var eligible = await database.InTenantAsync(seeded.TenantA, tx => tx.QueryAsync<bool>("select eligible from session_participants where session_id = @id order by seat", new { id = created.SessionId }));
+        var row = await database.InTenantAsync(seeded.TenantA, async tx => (await tx.QueryAsync<(string Status, int Items, int Seats, DateTimeOffset? StartedAt, string Eligible)>("""
+            select status, (select count(*)::int from session_items where session_id = sessions.id) as Items,
+                   (select count(*)::int from session_participants where session_id = sessions.id) as Seats, started_at as StartedAt
+                   , (select array_agg(eligible order by seat)::text from session_participants where session_id = sessions.id) as Eligible
+            from sessions where id = @id
+            """, new { id = created.SessionId })).Single());
 
-        Assert.Equal([true, true], eligible);
+        Assert.Equal(("running", 1, 2, true, "{t,t}"), (row.Status, row.Items, row.Seats, row.StartedAt is not null, row.Eligible));
     }
 
     [SkippableFact]
@@ -401,6 +643,17 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
             await owner.ExecuteAsync("insert into tenant_capabilities(tenant_id,type,key,entitled,enabled) values (@tenantId,@type,@key,true,true) on conflict (tenant_id,type,key) do update set entitled = true, enabled = true", new { tenantId, type = capability.Type, key = capability.Key });
     }
 
+    private async Task SetCapacityAsync(Guid tenantId, int capacity)
+    {
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        await owner.ExecuteAsync("""
+            insert into tenant_capabilities(tenant_id, type, key, entitled, enabled, settings)
+            values (@tenantId, 'switch', 'sessions', true, true, jsonb_build_object('capacity', @capacity))
+            on conflict (tenant_id, type, key) do update set settings = excluded.settings
+            """, new { tenantId, capacity });
+    }
+
     private async Task<IReadOnlyList<Guid>> InsertQuestionsAsync(Guid tenantId, int count)
     {
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
@@ -432,10 +685,10 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         return await owner.QuerySingleAsync<string?>("select category::text from session_items where tenant_id = @tenantId and session_id = @sessionId and slot = 0", new { tenantId, sessionId });
     }
 
-    private WebApplication CreateApplication(ISessionCodeGenerator? codes = null, ISource? source = null)
+    private WebApplication CreateApplication(ISessionCodeGenerator? codes = null, ISource? source = null, IFormatRegistry? formats = null)
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        return Program.CreateApplication(sources, 11920, 31920, configureServices: services =>
+        return Program.CreateApplication(sources, 11920, 31920, configuredFormats: formats, configureServices: services =>
         {
             services.AddSingleton<IClock>(new TestClock(DateTimeOffset.Parse("2026-10-20T00:00:00Z")));
             if (codes is not null) services.AddSingleton(codes);
@@ -499,5 +752,21 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
             found = string.Equals(id, source.Id, StringComparison.Ordinal) ? source : null;
             return found is not null;
         }
+    }
+
+    private sealed class LargeLobbyFormat : IFormat
+    {
+        public string Id => "large_lobby";
+        public FormatSpec Spec { get; } = new(Pacing.Personal, 1, 600, true, false, _ => true, false, null, false, [new Role("player")], TimeSpan.Zero, new Dictionary<string, Type>());
+        public FormatVersions Versions { get; } = new(1, 1, 1);
+        public JsonElement ReadRules(JsonElement raw) => raw;
+        public DrawPlan Plan(ContentSpec content, JsonElement rules) => new(content.Count, []);
+        public void Start(ISession session) { }
+        public void Apply(ISession session, Command command) { }
+        public void Timeout(ISession session) { }
+        public object View(IViewing viewing) => new { };
+        public JsonElement UpgradeState(int from, JsonElement state) => state;
+        public JsonElement UpgradeRules(int from, JsonElement rules) => rules;
+        public JsonElement UpgradeResult(int from, JsonElement result) => result;
     }
 }

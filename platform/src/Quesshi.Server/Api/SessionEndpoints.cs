@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
@@ -70,18 +71,20 @@ public sealed class SessionEndpoints : ICoreRouteModule
 
     private static IResult Error(string error, int status) => Results.Json(new { error }, statusCode: status);
 
-    public sealed record CreateSessionBody(Guid Id, string? Format, CreateContentBody? Content, JsonElement Rules, int Capacity, string? Shape, IReadOnlyList<CreateParticipantBody>? Participants)
+    public sealed record CreateSessionBody(Guid Id, string? Format, CreateContentBody? Content, JsonElement Rules, int Capacity)
     {
+        [JsonExtensionData]
+        public IDictionary<string, JsonElement>? AdditionalProperties { get; init; }
+
         public SessionCreateRequest? ToRequest()
         {
             if (Id == Guid.Empty || string.IsNullOrWhiteSpace(Format) || Content is null || string.IsNullOrWhiteSpace(Content.Source)
-                || Rules.ValueKind != JsonValueKind.Object || Content.Parameters.ValueKind != JsonValueKind.Object || !Enum.TryParse<SessionShape>(Shape, true, out var shape))
+                || Rules.ValueKind != JsonValueKind.Object || Content.Parameters.ValueKind != JsonValueKind.Object
+                || AdditionalProperties is { Count: > 0 })
                 return null;
-            return new SessionCreateRequest(Id, Format, new SessionContent(Content.Source, Content.Parameters, Content.Count), Rules, Capacity, shape,
-                Participants?.Select(participant => new SessionParticipant(participant.PlayerId, participant.Role ?? "player")).ToArray());
+            return new SessionCreateRequest(Id, Format, new SessionContent(Content.Source, Content.Parameters, Content.Count), Rules, Capacity, SessionShape.Lobby);
         }
     }
 
     public sealed record CreateContentBody(string? Source, JsonElement Parameters, int Count);
-    public sealed record CreateParticipantBody(Guid PlayerId, string? Role);
 }
