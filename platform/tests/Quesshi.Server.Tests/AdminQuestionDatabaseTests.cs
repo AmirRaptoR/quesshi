@@ -1489,6 +1489,204 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         Assert.Equal("draft", question!.Status);
     }
 
+    public static IEnumerable<object[]> EditableKinds()
+    {
+        yield return ["choice", "trivia", new { options = new[] { "Paris", "Lyon", "Nice", "Lille" }, correctIndex = 0 }, new { options = new[] { "Rome", "Milan", "Turin", "Naples" }, correctIndex = 1 }];
+        yield return ["order", "trivia", new { items = new[] { new { id = "a", text = "Alpha" }, new { id = "b", text = "Bravo" }, new { id = "c", text = "Charlie" }, new { id = "d", text = "Delta" } } }, new { items = new[] { new { id = "a", text = "April" }, new { id = "b", text = "May" }, new { id = "c", text = "June" }, new { id = "d", text = "July" } } }];
+        yield return ["map_pick", "trivia", new { baseLayer = 1, target = new { shape = 0, countryCode = "NL" } }, new { baseLayer = 0, target = new { shape = 0, countryCode = "BE" } }];
+        yield return ["poll_choice", "poll", new { options = new[] { new { id = "yes", text = "Yes" }, new { id = "no", text = "No" } } }, new { options = new[] { new { id = "red", text = "Red" }, new { id = "blue", text = "Blue" } } }];
+        yield return ["poll_roster", "poll", new { }, new { }];
+    }
+
+    public static IEnumerable<object[]> InvalidEditableKinds()
+    {
+        yield return ["choice", "trivia", new { options = new[] { "Only one" }, correctIndex = 0 }, "options.tooFew"];
+        yield return ["order", "trivia", new { items = new[] { new { id = "one", text = "Only one" } } }, "items.tooFew"];
+        yield return ["map_pick", "trivia", new { baseLayer = 1, target = new { shape = 0, countryCode = "ZZ" } }, "target.country.invalid"];
+        yield return ["poll_choice", "poll", new { options = new[] { new { id = "yes", text = "Yes" } } }, "options.tooFew"];
+        yield return ["poll_roster", "poll", new { unexpected = true }, "payload.unexpected"];
+    }
+
+    [SkippableTheory]
+    [MemberData(nameof(EditableKinds))]
+    public async Task Api_editor_can_create_and_edit_each_question_kind(string kind, string family, object payload, object editedPayload)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, $"{kind}-editing");
+        var editor = await InsertAdminAsync(owner, $"{kind}-editing", $"{kind}-editing@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var createBody = JsonContent.Create(QuestionRequest(kind, family, $"Original {kind}", category, payload));
+        using var created = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookie, token, createBody);
+        var id = (await created.Content.ReadFromJsonAsync<QuestionResponse>())!.Id;
+        using var updateBody = JsonContent.Create(QuestionRequest(kind, family, $"Updated {kind}", category, editedPayload, status: "approved", level: 2, explanation: "Updated explanation"));
+        using var updated = await SendAsync(client, HttpMethod.Put, $"/api/admin/questions/{id}", cookie, token, updateBody);
+        using var reread = await SendAsync(client, HttpMethod.Get, $"/api/admin/questions/{id}", cookie);
+        var question = await reread.Content.ReadFromJsonAsync<QuestionResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        Assert.Equal(("approved", $"Updated {kind}"), (question!.Status, question.Prompt));
+        if (kind == "map_pick")
+        {
+            Assert.Equal(("Blank", "Country", "BE"), (
+                question.Payload.GetProperty("baseLayer").GetString(),
+                question.Payload.GetProperty("target").GetProperty("shape").GetString(),
+                question.Payload.GetProperty("target").GetProperty("countryCode").GetString()));
+        }
+        else Assert.True(JsonElement.DeepEquals(JsonSerializer.SerializeToElement(editedPayload), question.Payload));
+    }
+
+    [SkippableTheory]
+    [MemberData(nameof(InvalidEditableKinds))]
+    public async Task Api_rejects_invalid_payloads_for_each_editable_question_kind(string kind, string family, object payload, string problemCode)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, $"{kind}-invalid");
+        var editor = await InsertAdminAsync(owner, $"{kind}-invalid", $"{kind}-invalid@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = JsonContent.Create(QuestionRequest(kind, family, $"Invalid {kind}", category, payload));
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookie, token, body);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(error!.Problems!, problem => problem.Code == problemCode);
+    }
+
+    public static IEnumerable<object[]> PreviewKinds()
+    {
+        yield return ["choice", "trivia", new { options = new[] { "Paris", "Lyon", "Nice", "Lille" }, correctIndex = 0 }, "correctIndex"];
+        yield return ["order", "trivia", new { items = new[] { new { id = "a", text = "Alpha" }, new { id = "b", text = "Bravo" }, new { id = "c", text = "Charlie" }, new { id = "d", text = "Delta" } } }, "itemIds"];
+        yield return ["map_pick", "trivia", new { baseLayer = 1, target = new { shape = 0, countryCode = "NL" } }, "target"];
+        yield return ["poll_choice", "poll", new { options = new[] { new { id = "yes", text = "Yes" }, new { id = "no", text = "No" } } }, "answer"];
+        yield return ["poll_roster", "poll", new { }, "extra"];
+    }
+
+    [SkippableTheory]
+    [MemberData(nameof(PreviewKinds))]
+    public async Task Api_question_preview_returns_the_player_card_without_answer_fields(string kind, string family, object payload, string answerOnlyProperty)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, $"{kind}-preview");
+        var editor = await InsertAdminAsync(owner, $"{kind}-preview", $"{kind}-preview@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var createBody = JsonContent.Create(QuestionRequest(kind, family, $"Preview {kind}", category, payload));
+        using var created = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookie, token, createBody);
+        var id = (await created.Content.ReadFromJsonAsync<QuestionResponse>())!.Id;
+        using var preview = await SendAsync(client, HttpMethod.Get, $"/api/admin/questions/{id}/preview", cookie);
+        using var response = JsonDocument.Parse(await preview.Content.ReadAsStreamAsync());
+
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        Assert.Equal(kind, response.RootElement.GetProperty("kind").GetString());
+        Assert.False(response.RootElement.GetProperty("card").TryGetProperty(answerOnlyProperty, out _));
+    }
+
+    [SkippableFact]
+    public async Task Api_editor_can_bulk_approve_selected_questions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "bulk-approve");
+        var editor = await InsertAdminAsync(owner, "bulk-approve", "bulk-approve@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var firstBody = JsonContent.Create(ChoiceRequest("Bulk first", category));
+        using var first = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookie, token, firstBody);
+        using var secondBody = JsonContent.Create(ChoiceRequest("Bulk second", category));
+        using var second = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookie, token, secondBody);
+        var ids = new[] { (await first.Content.ReadFromJsonAsync<QuestionResponse>())!.Id, (await second.Content.ReadFromJsonAsync<QuestionResponse>())!.Id };
+        using var approveBody = JsonContent.Create(new { ids });
+        using var approved = await SendAsync(client, HttpMethod.Post, "/api/admin/questions/approve", cookie, token, approveBody);
+        using var listed = await SendAsync(client, HttpMethod.Get, "/api/admin/questions?status=approved", cookie);
+        var page = await listed.Content.ReadFromJsonAsync<QuestionListResponse>();
+
+        Assert.Equal(HttpStatusCode.NoContent, approved.StatusCode);
+        Assert.Equal(ids.Order(), page!.Items.Select(question => question.Id).Order());
+    }
+
+    [SkippableFact]
+    public async Task Api_bulk_approval_keeps_tenant_questions_unchanged_when_a_selection_is_foreign()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var categoryA = await InsertCategoryAsync(owner, TenantA, "bulk-atomic-a");
+        var categoryB = await InsertCategoryAsync(owner, TenantB, "bulk-atomic-b");
+        var editorA = await InsertAdminAsync(owner, "bulk-atomic-a", "bulk-atomic-a@example.test");
+        var editorB = await InsertAdminAsync(owner, "bulk-atomic-b", "bulk-atomic-b@example.test");
+        await MembershipAsync(owner, TenantA, editorA, "editor");
+        await MembershipAsync(owner, TenantB, editorB, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+        var cookieA = await IssueCookieAsync(sessions, TenantA, editorA);
+        var cookieB = await IssueCookieAsync(sessions, TenantB, editorB);
+        var tokenA = await AdminAntiforgeryAsync(client, cookieA);
+        var tokenB = await AdminAntiforgeryAsync(client, cookieB, "questions-b.example.test");
+        using var firstBody = JsonContent.Create(ChoiceRequest("Tenant A question", categoryA));
+        using var first = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookieA, tokenA, firstBody);
+        using var secondBody = JsonContent.Create(ChoiceRequest("Tenant B question", categoryB));
+        using var second = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", cookieB, tokenB, secondBody, host: "questions-b.example.test");
+        var firstId = (await first.Content.ReadFromJsonAsync<QuestionResponse>())!.Id;
+        var secondId = (await second.Content.ReadFromJsonAsync<QuestionResponse>())!.Id;
+        using var approveBody = JsonContent.Create(new { ids = new[] { firstId, secondId } });
+        using var approve = await SendAsync(client, HttpMethod.Post, "/api/admin/questions/approve", cookieA, tokenA, approveBody);
+        using var reread = await SendAsync(client, HttpMethod.Get, $"/api/admin/questions/{firstId}", cookieA);
+        var question = await reread.Content.ReadFromJsonAsync<QuestionResponse>();
+
+        Assert.Equal((HttpStatusCode.NotFound, "pending"), (approve.StatusCode, question!.Status));
+    }
+
+    [SkippableFact]
+    public async Task Api_moderator_cannot_bulk_approve_questions()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "bulk-moderator");
+        var editor = await InsertAdminAsync(owner, "bulk-moderator-editor", "bulk-moderator-editor@example.test");
+        var moderator = await InsertAdminAsync(owner, "bulk-moderator", "bulk-moderator@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await MembershipAsync(owner, TenantA, moderator, "moderator");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
+        var editorCookie = await IssueCookieAsync(sessions, TenantA, editor);
+        var moderatorCookie = await IssueCookieAsync(sessions, TenantA, moderator);
+        var editorToken = await AdminAntiforgeryAsync(client, editorCookie);
+        var moderatorToken = await AdminAntiforgeryAsync(client, moderatorCookie);
+        using var createBody = JsonContent.Create(ChoiceRequest("Moderator bulk", category));
+        using var created = await SendAsync(client, HttpMethod.Post, "/api/admin/questions", editorCookie, editorToken, createBody);
+        var id = (await created.Content.ReadFromJsonAsync<QuestionResponse>())!.Id;
+        using var approveBody = JsonContent.Create(new { ids = new[] { id } });
+        using var approve = await SendAsync(client, HttpMethod.Post, "/api/admin/questions/approve", moderatorCookie, moderatorToken, approveBody);
+        using var reread = await SendAsync(client, HttpMethod.Get, $"/api/admin/questions/{id}", editorCookie);
+        var question = await reread.Content.ReadFromJsonAsync<QuestionResponse>();
+
+        Assert.Equal((HttpStatusCode.Forbidden, "pending"), (approve.StatusCode, question!.Status));
+    }
+
     [SkippableFact]
     public async Task Api_question_writes_refuse_moderators_anonymous_and_unsafe_requests()
     {
@@ -1736,6 +1934,12 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         kind, kindVersion = 1, family = "trivia", language, categoryId = category, level = 1, prompt,
         payload = payload ?? new { options = new[] { "Paris", "Lyon", "Nice", "Lille" }, correctIndex = 0 },
         topic, status, source, ownerId, mediaId,
+    };
+
+    private static object QuestionRequest(string kind, string family, string prompt, Guid category, object payload, string status = "pending", int level = 1, string? explanation = null) => new
+    {
+        kind, kindVersion = 1, family, language = "en", categoryId = category, level, prompt, payload, explanation,
+        topic = (string?)null, status, source = "admin", ownerId = (Guid?)null, mediaId = (Guid?)null,
     };
 
     private static MultipartFormDataContent UploadBody(byte[] bytes, string mime, string? attribution = null)

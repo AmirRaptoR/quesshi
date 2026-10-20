@@ -1,0 +1,100 @@
+@inject ClientHttp Http
+
+<section class="card stack" data-testid="question-editor">
+    <h2>@(Question is null ? "Create question" : "Edit question")</h2>
+    <EditForm Model="draft" OnValidSubmit="SaveAsync">
+        <label>Kind <select data-testid="question-editor-kind" value="@draft.Kind" @onchange="ChangeKind"><option value="choice">choice</option><option value="order">order</option><option value="map_pick">map_pick</option><option value="poll_choice">poll_choice</option><option value="poll_roster">poll_roster</option></select></label>@ProblemsFor("kind", "family")
+        <label>Language <select @bind="draft.Language">@foreach (var language in Languages) { <option value="@language.Code">@language.DisplayName</option> }</select></label>@ProblemsFor("language")
+        <label>Category <select @bind="draft.CategoryId"><option value=""></option>@foreach (var category in Categories) { <option value="@category.Id">@category.Slug</option> }</select></label>@ProblemsFor("category")
+        <label>Level <InputNumber @bind-Value="draft.Level" /></label>@ProblemsFor("level")
+        <label>Prompt <InputText data-testid="question-prompt" @bind-Value="draft.Prompt" /></label>@ProblemsFor("prompt", "question")
+        <label>Explanation <InputText @bind-Value="draft.Explanation" /></label>
+        <label>Status <select @bind="draft.Status"><option value="pending">pending</option><option value="approved">approved</option><option value="rejected">rejected</option></select></label>@ProblemsFor("status")
+        <KindEditor Kind="@draft.Kind" Payload="@draft.Payload" PayloadChanged="SetPayload" Lang="@draft.Language" />
+        @ProblemsFor("payload", "options", "correctIndex", "items", "target", "roster")
+        <MediaChooser @bind-Value="draft.MediaId" />
+        <button type="submit" data-testid="save-question">Save</button>
+    </EditForm>
+</section>
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    [Parameter] public QuestionResponse? Question { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<TenantLanguageModel> Languages { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<QuestionCategoryModel> Categories { get; set; } = [];
+    [Parameter, EditorRequired] public EventCallback<QuestionResponse> Saved { get; set; }
+
+    private readonly List<QuestionProblem> problems = [];
+    private QuestionDraft draft = new();
+    private Guid? loadedId;
+    private QuestionAdminApi? api;
+
+    protected override void OnParametersSet()
+    {
+        if (Question?.Id == loadedId) return;
+        loadedId = Question?.Id;
+        draft = Question is null ? QuestionDraft.New(Languages.FirstOrDefault()?.Code ?? "en") : QuestionDraft.From(Question);
+    }
+
+    private void ChangeKind(ChangeEventArgs change)
+    {
+        var kind = change.Value?.ToString() ?? "choice";
+        if (StringComparer.Ordinal.Equals(kind, draft.Kind)) return;
+        draft.RememberPayload();
+        draft.Kind = kind;
+        draft.Family = draft.Kind.StartsWith("poll_", StringComparison.Ordinal) ? "poll" : "trivia";
+        draft.RestorePayload();
+    }
+
+    private Task SetPayload(object value) { draft.Payload = value; draft.RememberPayload(); return Task.CompletedTask; }
+
+    private async Task SaveAsync()
+    {
+        api ??= new QuestionAdminApi(Http);
+        problems.Clear();
+        var write = draft.ToWrite();
+        var result = Question is null ? await api.CreateAsync(write) : await api.UpdateAsync(Question.Id, write);
+        if (!result.Success || result.Value is null) { problems.AddRange(result.Problems.Count == 0 ? [new QuestionProblem(result.Error ?? "save_failed", "Question could not be saved.")] : result.Problems); return; }
+        await Saved.InvokeAsync(result.Value);
+    }
+
+    public sealed record TenantLanguageModel(string Code, string DisplayName, string Direction);
+    public sealed record QuestionCategoryModel(Guid Id, string Slug);
+    private sealed class QuestionDraft
+    {
+        private readonly Dictionary<string, object> payloads = new(StringComparer.Ordinal);
+        public string Kind { get; set; } = "choice"; public int KindVersion { get; set; } = 1; public string Family { get; set; } = "trivia"; public string Language { get; set; } = "en"; public Guid? CategoryId { get; set; } public int? Level { get; set; } = 1; public string Prompt { get; set; } = string.Empty; public string? Explanation { get; set; } public string Status { get; set; } = "pending"; public Guid? MediaId { get; set; } public object Payload { get; set; } = QuestionPayloadCodec.NewPayload("choice");
+        public static QuestionDraft New(string language)
+        {
+            var draft = new QuestionDraft { Language = language };
+            draft.RememberPayload();
+            return draft;
+        }
+        public static QuestionDraft From(QuestionResponse value)
+        {
+            var draft = new QuestionDraft { Kind = value.Kind, KindVersion = value.KindVersion, Family = value.Family, Language = value.Language, CategoryId = value.CategoryId, Level = value.Level, Prompt = value.Prompt, Explanation = value.Explanation, Status = value.Status, MediaId = value.MediaId, Payload = QuestionPayloadCodec.ReadPayload(value.Kind, value.Payload) };
+            draft.RememberPayload();
+            return draft;
+        }
+        public void RememberPayload() => payloads[Kind] = Payload;
+        public void RestorePayload() => Payload = payloads.TryGetValue(Kind, out var saved) ? saved : QuestionPayloadCodec.NewPayload(Kind);
+        public QuestionWrite ToWrite() => new(Kind, KindVersion, Family, Language, CategoryId, Level, Prompt, QuestionPayloadCodec.WritePayload(Kind, Payload), Explanation, null, Status, "admin", null, MediaId);
+    }
+
+    private RenderFragment ProblemsFor(params string[] prefixes) => builder =>
+    {
+        var messages = problems.Where(problem => prefixes.Any(prefix => problem.Code.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))).ToArray();
+        if (messages.Length == 0) return;
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "form-error");
+        builder.AddAttribute(2, "role", "alert");
+        foreach (var problem in messages)
+        {
+            builder.OpenElement(3, "p");
+            builder.AddAttribute(4, "data-testid", "question-problem");
+            builder.AddContent(5, problem.Message);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+}

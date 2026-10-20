@@ -1,0 +1,216 @@
+@page "/admin/questions"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject ClientHttp Http
+@inject IClientTranslator Text
+@inject Microsoft.JSInterop.IJSRuntime Js
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (!CanEdit)
+{
+    <section class="card"><p>@Text[QuestionAdminText.Denied]</p></section>
+}
+else
+{
+    <section class="stack" data-testid="question-screen" lang="@selectedLanguage.Code" dir="@selectedLanguage.Direction" aria-labelledby="admin-questions-title">
+        <h1 id="admin-questions-title">@Text[QuestionAdminText.Title]</h1>
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+        <button type="button" data-testid="new-question" @onclick="NewQuestion">@Text[QuestionAdminText.Create]</button>
+        <section class="card stack" aria-label="@Text[QuestionAdminText.Filters]">
+            <label>@Text[QuestionAdminText.Search] <input data-testid="question-search" value="@filter.Prompt" @onchange="SetPromptAsync" /></label>
+            <label>@Text[QuestionAdminText.Language]
+                <select data-testid="question-language" value="@filter.Language" @onchange="SetLanguageAsync">
+                    @foreach (var language in languages) { <option value="@language.Code">@language.DisplayName</option> }
+                </select>
+            </label>
+            <label>@Text[QuestionAdminText.Family]
+                <select data-testid="question-family" value="@filter.Family" @onchange="SetFamilyAsync">
+                    <option value="">@Text[QuestionAdminText.All]</option><option value="trivia">@Text[QuestionAdminText.Trivia]</option><option value="poll">@Text[QuestionAdminText.Poll]</option>
+                </select>
+            </label>
+            <label>@Text[QuestionAdminText.Kind] <input data-testid="question-kind" value="@filter.Kind" @onchange="SetKindAsync" /></label>
+            <label>@Text[QuestionAdminText.Category]
+                <select data-testid="question-category" value="@filter.CategoryId" @onchange="SetCategoryAsync"><option value="">@Text[QuestionAdminText.All]</option>@foreach (var category in categories) { <option value="@category.Id">@category.Slug</option> }</select>
+            </label>
+            <label>@Text[QuestionAdminText.Level] <input data-testid="question-level" type="number" value="@filter.Level" @onchange="SetLevelAsync" /></label>
+            <label>@Text[QuestionAdminText.Status] <select data-testid="question-status" value="@filter.Status" @onchange="SetStatusAsync"><option value="">@Text[QuestionAdminText.All]</option><option value="pending">@Text[QuestionAdminText.Pending]</option><option value="approved">@Text[QuestionAdminText.Approved]</option><option value="rejected">@Text[QuestionAdminText.Rejected]</option></select></label>
+        </section>
+        <section class="card stack" aria-live="polite">
+            @if (selected.Count != 0)
+            {
+                <button type="button" data-testid="bulk-approve-questions" @onclick="BulkApproveAsync">Approve selected (@selected.Count)</button>
+            }
+            @foreach (var question in questions)
+            {
+                <article data-testid="question-row" data-family="@question.Family">
+                    <input type="checkbox" aria-label="Select @question.Prompt" checked="@selected.Contains(question.Id)" @onchange="change => Select(question.Id, change)" />
+                    <strong>@question.Prompt</strong><span>@question.Kind</span><span>@question.Status</span>
+                    <button type="button" @onclick="() => EditQuestion(question)">@Text[QuestionAdminText.Edit]</button>
+                    <button type="button" data-testid="approve-question" @onclick="() => ApproveAsync(question.Id)">Approve</button>
+                    <button type="button" data-testid="reject-question" @onclick="() => RejectAsync(question.Id)">Reject</button>
+                    <button type="button" data-testid="delete-question" @onclick="() => DeleteAsync(question.Id)">Delete</button>
+                </article>
+            }
+            @if (questions.Count == 0) { <p>@Text[QuestionAdminText.Empty]</p> }
+            <nav aria-label="@Text[QuestionAdminText.Paging]">
+                <button type="button" disabled="@(page <= 1)" @onclick="PreviousAsync">@Text[QuestionAdminText.Previous]</button>
+                <span data-testid="question-page">@(page)</span>
+                <button type="button" disabled="@(questions.Count < PageSize)" @onclick="NextAsync">@Text[QuestionAdminText.Next]</button>
+            </nav>
+        </section>
+        @if (editorOpen)
+        {
+            <QuestionEditor Question="@editing" Languages="@languages.Select(language => new QuestionEditor.TenantLanguageModel(language.Code, language.DisplayName, language.Direction)).ToArray()" Categories="@categories.Select(category => new QuestionEditor.QuestionCategoryModel(category.Id, category.Slug)).ToArray()" Saved="SavedAsync" />
+        }
+        @if (previewId.HasValue) { <QuestionPreview QuestionId="@previewId.Value" Language="@previewLanguage" Direction="@previewDirection" /> }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private const int PageSize = 25;
+    private readonly List<TenantLanguage> languages = [];
+    private readonly List<CategoryResponse> categories = [];
+    private readonly List<QuestionResponse> questions = [];
+    private readonly HashSet<Guid> selected = [];
+    private TenantLanguage selectedLanguage = new("en", "English", "ltr");
+    private QuestionFilter filter = new();
+    private int page = 1;
+    private bool editorOpen;
+    private Guid? previewId;
+    private string previewLanguage = "en";
+    private string previewDirection = "ltr";
+    private global::Quesshi.Web.Admin.QuestionResponse? editing;
+    private bool loaded;
+    private string? error;
+
+    private bool CanEdit => State?.Session is { IsPlatform: true } || string.Equals(State?.Session?.Role, "Owner", StringComparison.OrdinalIgnoreCase) || string.Equals(State?.Session?.Role, "Editor", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanEdit && !loaded) await InitializeAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
+        loaded = true;
+        try
+        {
+            var config = await Http.GetFromJsonAsync<TenantConfig>("/api/config") ?? throw new InvalidOperationException("The tenant configuration response was empty.");
+            languages.Clear();
+            languages.AddRange(config.Languages);
+            selectedLanguage = await SelectLanguageAsync(config);
+            filter.Language = selectedLanguage.Code;
+            var categoriesResult = await Http.GetFromJsonAsync<List<CategoryResponse>>("/api/admin/categories");
+            categories.Clear();
+            categories.AddRange(categoriesResult ?? []);
+            await LoadQuestionsAsync();
+        }
+        catch (HttpRequestException)
+        {
+            error = QuestionAdminText.LoadFailed;
+        }
+    }
+
+    private async Task LoadQuestionsAsync()
+    {
+        try
+        {
+            var query = new List<string> { $"page={page}", $"pageSize={PageSize}" };
+            AddQuery(query, "language", filter.Language); AddQuery(query, "family", filter.Family); AddQuery(query, "kind", filter.Kind);
+            AddQuery(query, "categoryId", filter.CategoryId); AddQuery(query, "level", filter.Level); AddQuery(query, "status", filter.Status); AddQuery(query, "text", filter.Prompt);
+            var response = await Http.GetFromJsonAsync<QuestionListResponse>($"/api/admin/questions?{string.Join('&', query)}") ?? throw new InvalidOperationException("The question list response was empty.");
+            questions.Clear(); questions.AddRange(response.Items); selected.IntersectWith(questions.Select(question => question.Id)); page = response.Page; error = null;
+        }
+        catch (HttpRequestException)
+        {
+            error = QuestionAdminText.LoadFailed;
+        }
+    }
+
+    private async Task<TenantLanguage> SelectLanguageAsync(TenantConfig config)
+    {
+        var saved = await Js.InvokeAsync<string?>("quesshi.get", CancellationToken.None, ["quesshi.lang"]);
+        var browserLanguages = await Js.InvokeAsync<string[]>("quesshi.browserLanguages", []);
+        return config.Languages.FirstOrDefault(language => string.Equals(language.Code, saved, StringComparison.OrdinalIgnoreCase))
+            ?? (browserLanguages ?? []).Select(browser => config.Languages.FirstOrDefault(language => string.Equals(language.Code, browser, StringComparison.OrdinalIgnoreCase) || browser.StartsWith($"{language.Code}-", StringComparison.OrdinalIgnoreCase))).FirstOrDefault(language => language is not null)
+            ?? config.Languages.FirstOrDefault(language => string.Equals(language.Code, config.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? config.Languages.First();
+    }
+
+    private async Task SetPromptAsync(ChangeEventArgs change) { filter.Prompt = change.Value?.ToString(); await ResetAndLoadAsync(); }
+    private async Task SetFamilyAsync(ChangeEventArgs change) { filter.Family = change.Value?.ToString(); await ResetAndLoadAsync(); }
+    private async Task SetKindAsync(ChangeEventArgs change) { filter.Kind = change.Value?.ToString(); await ResetAndLoadAsync(); }
+    private async Task SetCategoryAsync(ChangeEventArgs change) { filter.CategoryId = change.Value?.ToString(); await ResetAndLoadAsync(); }
+    private async Task SetLevelAsync(ChangeEventArgs change) { filter.Level = change.Value?.ToString(); await ResetAndLoadAsync(); }
+    private async Task SetStatusAsync(ChangeEventArgs change) { filter.Status = change.Value?.ToString(); await ResetAndLoadAsync(); }
+    private async Task SetLanguageAsync(ChangeEventArgs change)
+    {
+        filter.Language = change.Value?.ToString();
+        selectedLanguage = languages.FirstOrDefault(language => string.Equals(language.Code, filter.Language, StringComparison.OrdinalIgnoreCase)) ?? selectedLanguage;
+        await ResetAndLoadAsync();
+    }
+    private async Task ResetAndLoadAsync() { page = 1; await LoadQuestionsAsync(); }
+    private Task PreviousAsync() { page--; return LoadQuestionsAsync(); }
+    private Task NextAsync() { page++; return LoadQuestionsAsync(); }
+    private void NewQuestion() { editing = null; editorOpen = true; }
+    private void EditQuestion(global::Quesshi.Web.Admin.QuestionResponse question) { editing = question; editorOpen = true; }
+    private async Task SavedAsync(global::Quesshi.Web.Admin.QuestionResponse saved)
+    {
+        editorOpen = false;
+        previewId = saved.Id;
+        previewLanguage = saved.Language;
+        previewDirection = languages.FirstOrDefault(language => string.Equals(language.Code, saved.Language, StringComparison.OrdinalIgnoreCase))?.Direction ?? "ltr";
+        await LoadQuestionsAsync();
+    }
+    private void Select(Guid id, ChangeEventArgs change)
+    {
+        var isSelected = change.Value is bool value
+            ? value
+            : bool.TryParse(change.Value?.ToString(), out var parsed) && parsed;
+        if (isSelected) selected.Add(id); else selected.Remove(id);
+    }
+
+    private Task ApproveAsync(Guid id) => MutateAsync(api => api.ApproveAsync(id));
+    private Task RejectAsync(Guid id) => MutateAsync(api => api.RejectAsync(id));
+    private Task DeleteAsync(Guid id) => MutateAsync(api => api.DeleteAsync(id));
+    private Task BulkApproveAsync() => MutateAsync(api => api.BulkApproveAsync(selected));
+
+    private async Task MutateAsync(Func<QuestionAdminApi, Task<QuestionApiResult<object>>> mutation)
+    {
+        var result = await mutation(new QuestionAdminApi(Http));
+        if (!result.Success)
+        {
+            error = QuestionAdminText.MutationFailed;
+            return;
+        }
+        selected.Clear();
+        await LoadQuestionsAsync();
+    }
+
+    private static void AddQuery(List<string> query, string name, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) query.Add($"{name}={Uri.EscapeDataString(value)}");
+    }
+
+    private sealed class QuestionFilter
+    {
+        public string? Language { get; set; }
+        public string? Family { get; set; }
+        public string? Kind { get; set; }
+        public string? CategoryId { get; set; }
+        public string? Level { get; set; }
+        public string? Status { get; set; }
+        public string? Prompt { get; set; }
+    }
+    private sealed record TenantConfig(IReadOnlyList<TenantLanguage> Languages, string DefaultLanguage);
+    private sealed record TenantLanguage(string Code, string DisplayName, string Direction);
+    private sealed record CategoryResponse(Guid Id, string Slug);
+    private sealed record QuestionListResponse(IReadOnlyList<global::Quesshi.Web.Admin.QuestionResponse> Items, int Total, int Page, int PageSize, IReadOnlyList<object> Buckets);
+}
