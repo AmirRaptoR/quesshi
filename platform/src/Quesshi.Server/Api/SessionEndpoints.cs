@@ -21,8 +21,8 @@ public sealed class SessionEndpoints : ICoreRouteModule
     private static async Task<IResult> CreateAsync(
         [FromBody] CreateSessionBody body,
         HttpContext context,
-        ITenantDb database,
-        ISessions sessions,
+        [FromServices] ITenantDb database,
+        [FromServices] ISessions sessions,
         CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("Session creation requires tenant resolution.");
@@ -51,10 +51,10 @@ public sealed class SessionEndpoints : ICoreRouteModule
     private static async Task<IResult> GetAsync(
         Guid id,
         HttpContext context,
-        ISessionSnapshotLoader snapshots,
-        IFormatRegistry formats,
-        IViewRenderer renderer,
-        IClock clock,
+        [FromServices] ISessionSnapshotLoader snapshots,
+        [FromServices] IFormatRegistry formats,
+        [FromServices] IViewRenderer renderer,
+        [FromServices] IClock clock,
         CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("Session viewing requires tenant resolution.");

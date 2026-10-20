@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Dapper;
 using Quesshi.Application.Content;
 using Quesshi.Engine.Contracts;
 using Quesshi.Plugin.Api;
@@ -186,16 +187,29 @@ internal sealed class SessionCreationService(
     private static async Task PersistItemsAsync(ITenantTx transaction, Guid sessionId, IEnumerable<PersistedItem> items, CancellationToken cancellationToken)
     {
         foreach (var item in items)
+        {
+            var parameters = new DynamicParameters();
+            parameters.Add("sessionId", sessionId);
+            parameters.Add("slot", item.Value.Metadata.Slot);
+            parameters.Add("questionId", item.QuestionId);
+            parameters.Add("kind", item.Value.Metadata.Kind);
+            parameters.Add("kindVersion", item.Value.Metadata.KindVersion);
+            parameters.Add("prompt", item.Prompt);
+            parameters.Add("payload", new Jsonb<JsonElement>(item.Value.Payload, SessionJsonContext.Default.JsonElement));
+            parameters.Add("resolved", new Jsonb<JsonElement>(item.Value.Resolved, SessionJsonContext.Default.JsonElement));
+            parameters.Add("card", new Jsonb<JsonElement>(item.Value.Card, SessionJsonContext.Default.JsonElement));
+            parameters.Add("reveal", new Jsonb<JsonElement>(item.Value.Reveal, SessionJsonContext.Default.JsonElement));
+            parameters.Add("mediaId", item.MediaId);
+            parameters.Add("level", item.Value.Metadata.Level);
+            parameters.Add("categoryId", item.CategoryId);
+            parameters.Add("category", item.Category is { } category
+                ? new Jsonb<JsonElement>(category, SessionJsonContext.Default.JsonElement)
+                : null);
             await transaction.ExecuteAsync("""
                 insert into session_items (tenant_id, session_id, slot, question_id, kind, kind_version, prompt, payload, resolved, card, reveal, media_id, level, category_id, category)
                 values (app_tenant(), @sessionId, @slot, @questionId, @kind, @kindVersion, @prompt, @payload, @resolved, @card, @reveal, @mediaId, @level, @categoryId, @category)
-                """, new { sessionId, slot = item.Value.Metadata.Slot, questionId = item.QuestionId, kind = item.Value.Metadata.Kind, kindVersion = item.Value.Metadata.KindVersion,
-                    prompt = item.Prompt, payload = new Jsonb<JsonElement>(item.Value.Payload, SessionJsonContext.Default.JsonElement), resolved = new Jsonb<JsonElement>(item.Value.Resolved, SessionJsonContext.Default.JsonElement),
-                    card = new Jsonb<JsonElement>(item.Value.Card, SessionJsonContext.Default.JsonElement), reveal = new Jsonb<JsonElement>(item.Value.Reveal, SessionJsonContext.Default.JsonElement),
-                    mediaId = item.MediaId, level = item.Value.Metadata.Level, categoryId = item.CategoryId,
-                    category = item.Category is { } category
-                        ? (object)new Jsonb<JsonElement>(category, SessionJsonContext.Default.JsonElement)
-                        : DBNull.Value }, cancellationToken);
+                """, parameters, cancellationToken);
+        }
     }
 
     private static Task PersistSessionAsync(ITenantTx transaction, Guid sessionId, SessionState state, FormatVersions versions, CancellationToken cancellationToken) =>
@@ -216,11 +230,13 @@ internal sealed class SessionCreationService(
             var sourceItem = questions[slot];
             var question = sourceItem.Question;
             var snapshot = sourceItem.Snapshot;
-            var kindId = question?.Kind ?? snapshot!.Kind;
-            var kindVersion = question?.KindVersion ?? snapshot!.KindVersion;
-            var payloadSource = question?.Payload ?? snapshot!.Payload;
-            var level = question?.Level ?? snapshot!.Level;
-            var categoryId = question?.CategoryId ?? snapshot!.CategoryId;
+            if (question is null && snapshot is null) throw new InvalidSourceResultException("A source question must contain a question or ready snapshot.");
+
+            var kindId = question is null ? snapshot!.Kind : question.Kind;
+            var kindVersion = question is null ? snapshot!.KindVersion : question.KindVersion;
+            var payloadSource = question is null ? snapshot!.Payload : question.Payload;
+            var level = question is null ? snapshot!.Level : question.Level;
+            var categoryId = question is null ? snapshot!.CategoryId : question.CategoryId;
             var kind = kinds.GetCurrent(kindId);
             var payload = kind.Upgrade(kindVersion, payloadSource);
             JsonElement resolved;
@@ -243,7 +259,9 @@ internal sealed class SessionCreationService(
                 _ = kind.Reveal(payload, resolved);
             }
             var category = await CategoryAsync(transaction, categoryId, cancellationToken);
-            values.Add(new PersistedItem(SessionItemState.Create(new SessionItem(slot, kind.Id, kind.Version, level, categoryId?.ToString()), payload, resolved, card, reveal), question?.Id, question?.Prompt ?? snapshot!.Prompt, question?.MediaId ?? snapshot!.MediaId, categoryId, category));
+            var prompt = question is null ? snapshot!.Prompt : question.Prompt;
+            var mediaId = question is null ? snapshot!.MediaId : question.MediaId;
+            values.Add(new PersistedItem(SessionItemState.Create(new SessionItem(slot, kind.Id, kind.Version, level, categoryId?.ToString()), payload, resolved, card, reveal), question?.Id, prompt, mediaId, categoryId, category));
         }
         return values.ToArray();
     }

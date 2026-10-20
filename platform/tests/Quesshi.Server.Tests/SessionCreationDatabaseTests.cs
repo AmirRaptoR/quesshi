@@ -8,6 +8,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
+using Quesshi.Shared;
 using Quesshi.Server;
 using Quesshi.Testing;
 
@@ -131,6 +132,55 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Creation_rejects_a_capacity_above_the_tenant_limit()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid()) with { Capacity = 21 };
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "invalid_capacity"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_started_roster_below_the_format_player_range()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid()) with { Shape = SessionShape.Started, Participants = [new(seeded.CreatorA)] };
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "invalid_roster"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
+    public async Task Creation_rejects_a_roster_role_the_format_does_not_allow()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = Request(Guid.NewGuid()) with
+        {
+            Shape = SessionShape.Started,
+            Participants = [new(seeded.CreatorA), new(seeded.OtherA, "spectator")],
+        };
+
+        var result = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+
+        Assert.Equal((SessionCreateStatus.Invalid, "invalid_roster"), (result.Status, result.Error));
+    }
+
+    [SkippableFact]
     public async Task Creation_retries_an_active_code_collision()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -209,6 +259,33 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
             """, new { id = created.SessionId, playerId = seeded.CreatorA })).Single());
 
         Assert.Equal(("running", 10, 1, false, true), (row.Status, row.Items, row.Seats, row.Eligible, row.DueAt is not null));
+    }
+
+    [SkippableFact]
+    public async Task Creation_keeps_card_reveal_grading_and_category_presentation_after_source_content_changes()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ids"), ("kind", "choice"));
+        var questionIds = await InsertQuestionsAsync(seeded.TenantA, 10);
+        await using var app = CreateApplication(source: new FixedSource(new PickedQuestionIds(questionIds), "ids"));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var loader = app.Services.GetRequiredService<ISessionSnapshotLoader>();
+        var kinds = app.Services.GetRequiredService<IKindRegistry>();
+        var request = new SessionCreateRequest(Guid.NewGuid(), "async_duel", new("ids", Json("{}"), 10), Json("{}"), 2, SessionShape.Open);
+
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+        var before = (await loader.LoadItemsAsync(seeded.TenantA, created.SessionId!.Value, [0])).Single();
+        var beforeCategory = await ItemCategoryAsync(seeded.TenantA, created.SessionId.Value);
+        await ChangeThenDeleteQuestionsAsync(seeded.TenantA, questionIds);
+        var after = (await loader.LoadItemsAsync(seeded.TenantA, created.SessionId.Value, [0])).Single();
+        var afterCategory = await ItemCategoryAsync(seeded.TenantA, created.SessionId.Value);
+        var beforeGrade = kinds.Get(before.Metadata.Kind, before.Metadata.KindVersion).Grade(before.Payload, before.Resolved, Json("{\"index\":0}"));
+        var afterGrade = kinds.Get(after.Metadata.Kind, after.Metadata.KindVersion).Grade(after.Payload, after.Resolved, Json("{\"index\":0}"));
+
+        Assert.Equal((before.Card.GetRawText(), before.Reveal.GetRawText(), beforeGrade, beforeCategory),
+            (after.Card.GetRawText(), after.Reveal.GetRawText(), afterGrade, afterCategory));
     }
 
     [SkippableFact]
@@ -322,6 +399,37 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         await owner.OpenAsync();
         foreach (var capability in capabilities)
             await owner.ExecuteAsync("insert into tenant_capabilities(tenant_id,type,key,entitled,enabled) values (@tenantId,@type,@key,true,true) on conflict (tenant_id,type,key) do update set entitled = true, enabled = true", new { tenantId, type = capability.Type, key = capability.Key });
+    }
+
+    private async Task<IReadOnlyList<Guid>> InsertQuestionsAsync(Guid tenantId, int count)
+    {
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        var categoryId = Guid.NewGuid();
+        await owner.ExecuteAsync("insert into categories(tenant_id, id, slug, names) values (@tenantId, @id, 'snapshot-category', '{\"en\":\"Original category\"}'::jsonb)", new { tenantId, id = categoryId });
+        var ids = Enumerable.Range(0, count).Select(_ => Guid.NewGuid()).ToArray();
+        foreach (var (id, index) in ids.Select((id, index) => (id, index)))
+            await owner.ExecuteAsync("""
+                insert into questions(tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, fingerprint, status, source)
+                values (@tenantId, @id, 'choice', 1, 'trivia', 'en', @categoryId, 1, @prompt,
+                        '{"options":["original","b","c","d"],"correctIndex":0}'::jsonb, @prompt, 'approved', 'admin')
+                """, new { tenantId, id, categoryId, prompt = $"Original prompt {index}" });
+        return ids;
+    }
+
+    private async Task ChangeThenDeleteQuestionsAsync(Guid tenantId, IReadOnlyList<Guid> questionIds)
+    {
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        await owner.ExecuteAsync("update questions set prompt = 'changed', payload = '{\"options\":[\"changed\",\"b\",\"c\",\"d\"],\"correctIndex\":1}'::jsonb where tenant_id = @tenantId and id = any(@questionIds)", new { tenantId, questionIds });
+        await owner.ExecuteAsync("delete from questions where tenant_id = @tenantId and id = any(@questionIds); delete from categories where tenant_id = @tenantId and slug = 'snapshot-category'", new { tenantId, questionIds });
+    }
+
+    private async Task<string?> ItemCategoryAsync(Guid tenantId, Guid sessionId)
+    {
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        return await owner.QuerySingleAsync<string?>("select category::text from session_items where tenant_id = @tenantId and session_id = @sessionId and slot = 0", new { tenantId, sessionId });
     }
 
     private WebApplication CreateApplication(ISessionCodeGenerator? codes = null, ISource? source = null)

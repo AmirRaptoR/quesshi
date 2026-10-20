@@ -29,12 +29,15 @@ public sealed partial class TenantLocks(bool enforceOrder = true) : ILocks
             "select id from questions where tenant_id = @tenantId and id = any(@ids) order by id for update",
             parameters,
             cancellationToken);
-        var packs = await transaction.QueryAsync<Guid>(
-            "select id from packs where tenant_id = @tenantId and id = any(@ids) order by id for update",
-            parameters,
-            cancellationToken);
         Remember(tenantTransaction, "questions", questions);
-        Remember(tenantTransaction, "packs", packs);
+        if (await HasPacksAsync(transaction, cancellationToken))
+        {
+            var packs = await transaction.QueryAsync<Guid>(
+                "select id from packs where tenant_id = @tenantId and id = any(@ids) order by id for update",
+                parameters,
+                cancellationToken);
+            Remember(tenantTransaction, "packs", packs);
+        }
         tenantTransaction.LastLockStep = Math.Max(tenantTransaction.LastLockStep, 2);
     }
 
@@ -62,6 +65,11 @@ public sealed partial class TenantLocks(bool enforceOrder = true) : ILocks
         Remember(tenantTransaction, table, locked);
         tenantTransaction.LastLockStep = Math.Max(tenantTransaction.LastLockStep, 3);
     }
+
+    private static async Task<bool> HasPacksAsync(ITenantTx transaction, CancellationToken cancellationToken)
+        => await transaction.QuerySingleOrDefaultAsync<string>(
+            "select to_regclass('public.packs')::text",
+            cancellationToken: cancellationToken) is not null;
 
     private void EnsureStep(TenantTransaction transaction, int requestedStep, string name, IReadOnlyCollection<Guid> keys, IReadOnlyCollection<string> tables)
     {
