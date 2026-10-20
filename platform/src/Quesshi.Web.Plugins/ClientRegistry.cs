@@ -8,6 +8,15 @@ public interface IClientTranslator
     string this[string key] { get; }
 }
 
+/// <summary>Accepts client-owned translations that complement the tenant's shared table.</summary>
+public interface IClientTranslationRegistry
+{
+    void Register(ClientTranslation translation);
+}
+
+/// <summary>A screen-owned table for one tenant language.</summary>
+public sealed record ClientTranslation(string LanguageCode, IReadOnlyDictionary<string, string> Values);
+
 /// <summary>Describes the client components for one kind.</summary>
 public interface IKindClient
 {
@@ -47,25 +56,54 @@ public interface IAdminClientRegistry
 {
     Type? Root { get; }
     IReadOnlyList<Type> Pages { get; }
+    IReadOnlyList<System.Reflection.Assembly> PageAssemblies { get; }
+    IReadOnlyList<AdminNavigation> Navigation { get; }
     Task LoadAsync();
     void RegisterRoot(Type component);
     void RegisterPage(Type component);
+    void RegisterNavigation(AdminNavigation navigation);
+    void RegisterTranslation(ClientTranslation translation);
 }
+
+/// <summary>Registers a screen link and the roles that may use it.</summary>
+public sealed record AdminNavigation(
+    string Href,
+    string LabelKey,
+    IReadOnlySet<string> Roles,
+    Func<AdminNavigationContext, bool>? IsAvailable = null)
+{
+    public bool IsVisibleTo(AdminNavigationContext context) =>
+        Roles.Any(role => string.Equals(role, context.Role, StringComparison.OrdinalIgnoreCase)) && (IsAvailable?.Invoke(context) ?? true);
+}
+
+/// <summary>The admin identity details a registered screen may use for navigation availability.</summary>
+public sealed record AdminNavigationContext(string? Role, bool IsPlatform);
 
 public sealed class AdminClientRegistry : IAdminClientRegistry
 {
     private readonly IClientAssemblyLoader loader;
+    private readonly IClientTranslationRegistry translations;
     private readonly Lazy<Task> load;
     private readonly List<Type> pages = [];
+    private readonly List<AdminNavigation> navigation = [];
 
-    public AdminClientRegistry(IClientAssemblyLoader loader)
+    public AdminClientRegistry(IClientAssemblyLoader loader, IClientTranslationRegistry translations)
     {
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(translations);
         this.loader = loader;
+        this.translations = translations;
         load = new Lazy<Task>(LoadCoreAsync);
     }
 
     public Type? Root { get; private set; }
     public IReadOnlyList<Type> Pages => pages;
+    public IReadOnlyList<Assembly> PageAssemblies => pages
+        .Select(page => page.Assembly)
+        .Where(assembly => assembly != Root?.Assembly)
+        .Distinct()
+        .ToArray();
+    public IReadOnlyList<AdminNavigation> Navigation => navigation;
 
     public Task LoadAsync() => load.Value;
 
@@ -82,6 +120,20 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
         pages.Add(component);
     }
 
+    public void RegisterNavigation(AdminNavigation contribution)
+    {
+        ArgumentNullException.ThrowIfNull(contribution);
+        if (string.IsNullOrWhiteSpace(contribution.Href)) throw new ArgumentException("An admin navigation URL is required.", nameof(contribution));
+        if (string.IsNullOrWhiteSpace(contribution.LabelKey)) throw new ArgumentException("An admin navigation label key is required.", nameof(contribution));
+        navigation.Add(contribution);
+    }
+
+    public void RegisterTranslation(ClientTranslation translation)
+    {
+        ArgumentNullException.ThrowIfNull(translation);
+        translations.Register(translation);
+    }
+
     private async Task LoadCoreAsync()
     {
         var entries = (await loader.LoadAsync("Quesshi.Web.Admin.dll"))
@@ -91,8 +143,8 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
             .Where(entry => entry is not null)
             .Cast<IAdminClientAssemblyEntry>()
             .ToArray();
-        if (entries.Length != 1) throw new InvalidOperationException("The admin client must contain exactly one entry point.");
-        entries[0].Register(this);
+        if (entries.Length == 0) throw new InvalidOperationException("The admin client did not provide an entry point.");
+        foreach (var entry in entries) entry.Register(this);
         if (Root is null) throw new InvalidOperationException("The admin client did not register its root component.");
     }
 }

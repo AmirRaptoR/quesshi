@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Quesshi.Web.Plugins;
 using Quesshi.Web.Services;
 
 namespace Quesshi.Web.Tests;
@@ -45,11 +46,46 @@ public sealed class TranslatorTests
         Assert.Equal("Fallback", translator.Or("missing", "Fallback"));
     }
 
+    [Fact]
+    public async Task A_screen_can_register_an_english_label_without_changing_the_shell_table()
+    {
+        var translator = CreateTranslator(Response("{}"));
+        translator.Register(new ClientTranslation("en", new Dictionary<string, string> { ["content.nav"] = "Content" }));
+
+        await translator.UseAsync("en");
+
+        Assert.Equal("Content", translator["content.nav"]);
+    }
+
+    [Fact]
+    public async Task A_screen_can_register_a_persian_label_without_changing_the_shell_table()
+    {
+        var translator = CreateTranslator(Response("{}"));
+        translator.Register(new ClientTranslation("fa", new Dictionary<string, string> { ["content.nav"] = "محتوا" }));
+
+        await translator.UseAsync("fa");
+
+        Assert.Equal("محتوا", translator["content.nav"]);
+    }
+
+    [Fact]
+    public async Task A_screen_label_falls_back_to_english_when_the_tenant_language_has_no_translation()
+    {
+        var translator = CreateTranslator(Response("{}"));
+        translator.Register(new ClientTranslation("en", new Dictionary<string, string> { ["content.nav"] = "Content" }));
+
+        await translator.UseAsync("nl");
+
+        Assert.Equal("Content", translator["content.nav"]);
+    }
+
     private static Translator CreateTranslator(params object[] results)
     {
         var client = new HttpClient(new ResultHandler(results)) { BaseAddress = new Uri("https://tenant.example/") };
         return new Translator(new ClientHttp(client, new NoopReloader()));
     }
+
+    private static HttpResponseMessage Response(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
     private sealed class ResultHandler(params object[] results) : HttpMessageHandler
     {

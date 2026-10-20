@@ -1,8 +1,11 @@
 using System.Reflection;
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Components;
 using Quesshi.Kinds.MapPick.Client;
 using Quesshi.Web.Admin;
 using Quesshi.Web.Plugins;
+using Quesshi.Web.Services;
 
 namespace Quesshi.Web.Tests;
 
@@ -91,7 +94,7 @@ public sealed class ClientRegistryTests
     public async Task Admin_client_loads_once_and_registers_every_routable_component()
     {
         var loader = new RecordingLoader(typeof(AdminClientEntry).Assembly);
-        var registry = new AdminClientRegistry(loader);
+        var registry = new AdminClientRegistry(loader, new RecordingTranslationRegistry());
 
         await registry.LoadAsync();
         await registry.LoadAsync();
@@ -107,6 +110,75 @@ public sealed class ClientRegistryTests
             registry.Pages.OrderBy(type => type.FullName));
     }
 
+    [Fact]
+    public async Task Admin_client_loads_one_root_and_multiple_independent_page_contributions()
+    {
+        var registry = new AdminClientRegistry(
+            new RecordingLoader(typeof(AdminClientEntry).Assembly, typeof(ContributedAdminEntry).Assembly),
+            new RecordingTranslationRegistry());
+
+        await registry.LoadAsync();
+
+        Assert.Same(typeof(AdminApp), registry.Root);
+        Assert.Contains(typeof(ContributedAdminPage), registry.Pages);
+    }
+
+    [Fact]
+    public async Task Admin_client_exposes_a_contributed_page_assembly_to_the_router()
+    {
+        var registry = new AdminClientRegistry(
+            new RecordingLoader(typeof(AdminClientEntry).Assembly, typeof(ContributedAdminEntry).Assembly),
+            new RecordingTranslationRegistry());
+
+        await registry.LoadAsync();
+
+        Assert.Contains(typeof(ContributedAdminPage).Assembly, registry.PageAssemblies);
+    }
+
+    [Fact]
+    public async Task Admin_client_contribution_registers_an_english_label_with_the_translator()
+    {
+        var translator = await LoadContributedTranslatorAsync();
+
+        await translator.UseAsync("en");
+
+        Assert.Equal("Content", translator["content.navigation"]);
+    }
+
+    [Fact]
+    public async Task Admin_client_contribution_registers_a_persian_label_with_the_translator()
+    {
+        var translator = await LoadContributedTranslatorAsync();
+
+        await translator.UseAsync("fa");
+
+        Assert.Equal("محتوا", translator["content.navigation"]);
+    }
+
+    [Fact]
+    public async Task Admin_client_contribution_falls_back_to_english_without_a_tenant_language_translation()
+    {
+        var translator = await LoadContributedTranslatorAsync();
+
+        await translator.UseAsync("nl");
+
+        Assert.Equal("Content", translator["content.navigation"]);
+    }
+
+    private static async Task<Translator> LoadContributedTranslatorAsync()
+    {
+        var translator = new Translator(new ClientHttp(
+            new HttpClient(new TranslationHandler()) { BaseAddress = new Uri("https://tenant.example/") },
+            new NoopReloader()));
+        var registry = new AdminClientRegistry(
+            new RecordingLoader(typeof(AdminClientEntry).Assembly, typeof(ContributedAdminEntry).Assembly),
+            translator);
+
+        await registry.LoadAsync();
+
+        return translator;
+    }
+
     private sealed class RecordingLoader(params Assembly[] assemblies) : IClientAssemblyLoader
     {
         public List<string> AssemblyNames { get; } = [];
@@ -116,6 +188,28 @@ public sealed class ClientRegistryTests
             AssemblyNames.Add(assemblyName);
             return Task.FromResult<IReadOnlyList<Assembly>>(assemblies);
         }
+    }
+
+    private sealed class RecordingTranslationRegistry : IClientTranslationRegistry
+    {
+        public void Register(ClientTranslation translation)
+        {
+            ArgumentNullException.ThrowIfNull(translation);
+        }
+    }
+
+    private sealed class TranslationHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}", Encoding.UTF8, "application/json"),
+            });
+    }
+
+    private sealed class NoopReloader : IClientReloader
+    {
+        public Task ReloadOnceAsync(string buildId) => Task.CompletedTask;
     }
 
     public sealed class LazyEntry : IKindClientAssemblyEntry
@@ -134,4 +228,27 @@ public sealed class ClientRegistryTests
     private sealed class PlayV1;
     private sealed class RevealV1;
     private sealed class Editor;
+
+    public sealed class ContributedAdminEntry : IAdminClientAssemblyEntry
+    {
+        public void Register(IAdminClientRegistry registry)
+        {
+            registry.RegisterPage(typeof(ContributedAdminPage));
+            registry.RegisterTranslation(new ClientTranslation("en", EnglishLabels));
+            registry.RegisterTranslation(new ClientTranslation("fa", PersianLabels));
+        }
+
+        private static IReadOnlyDictionary<string, string> EnglishLabels { get; } = new Dictionary<string, string>
+        {
+            ["content.navigation"] = "Content",
+        };
+
+        private static IReadOnlyDictionary<string, string> PersianLabels { get; } = new Dictionary<string, string>
+        {
+            ["content.navigation"] = "محتوا",
+        };
+    }
+
+    [Route("/admin/contributed")]
+    public sealed class ContributedAdminPage : ComponentBase;
 }

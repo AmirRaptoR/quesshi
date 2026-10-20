@@ -20,7 +20,10 @@ builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredSe
 builder.Services.AddScoped<Sounds>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddScoped<IClientAssemblyLoader, LazyAssemblyClientLoader>();
-builder.Services.AddScoped<IAdminClientRegistry, AdminClientRegistry>();
+builder.Services.AddScoped<IAdminClientRegistry>(services => new AdminClientRegistry(
+    services.GetRequiredService<IClientAssemblyLoader>(),
+    services.GetRequiredService<IClientTranslationRegistry>()));
+builder.Services.AddScoped<IClientTranslationRegistry>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<IClientRegistry>(services =>
 {
     var registry = new ClientRegistry(services.GetRequiredService<IClientAssemblyLoader>());
