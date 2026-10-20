@@ -1,12 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Schema;
 using Quesshi.Shared;
 
 namespace Quesshi.Kinds.PollChoice;
 
-public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved, PollChoiceCard, PollChoiceAnswer, PollChoiceStored, PollChoiceReveal>, IImports<PollChoicePayload>
+public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved, PollChoiceCard, PollChoiceAnswer, PollChoiceStored, PollChoiceReveal>, IImports<PollChoicePayload>, IGenerates
 {
     private static readonly string[] ImportFields = ["answerSource", "choice1", "choice2", "choice3", "choice4", "choice5", "choice6", "choice7", "choice8"];
+    private static readonly JsonElement GenerationSchema = CreateGenerationSchema();
     private static readonly ImportExample Example = new(new Dictionary<string, string?>
     {
         ["answerSource"] = "fixed",
@@ -23,6 +25,8 @@ public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved,
     public IReadOnlyList<string> JsonFields => ImportFields;
     public ImportExample CsvExample => Example;
     public ImportExample JsonExample => Example;
+    public string PromptFragment => "Provide two to eight distinct fixed response options for this poll.";
+    public JsonElement CandidateSchema => GenerationSchema;
 
     public bool Matches(string? legacyKind, ImportRow row) => string.Equals(row.Field("answerSource"), "fixed", StringComparison.OrdinalIgnoreCase);
 
@@ -32,6 +36,11 @@ public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved,
             .Where(choice => choice.Text is not null)
             .Select(choice => new PollChoiceOption($"choice{choice.Number}", choice.Text))
             .ToArray());
+
+    public IReadOnlyList<Problem> PostCheck(JsonElement candidate) => Validate(ToPayloadValue(ReadCandidate(candidate)), new ValidateEnv("en"));
+
+    public JsonElement ToPayload(JsonElement candidate) =>
+        JsonSerializer.SerializeToElement(ToPayloadValue(ReadCandidate(candidate)), PollChoiceJsonContext.Default.PollChoicePayload);
 
     public override PollChoicePayload Upgrade(int from, JsonElement payload)
     {
@@ -91,6 +100,23 @@ public sealed class PollChoiceKind : Kind<PollChoicePayload, PollChoiceResolved,
     }
 
     public override Grade Grade(Item<PollChoicePayload, PollChoiceResolved> item, PollChoiceStored stored) => Quesshi.Shared.Grade.None;
+
+    private static PollChoiceCandidate ReadCandidate(JsonElement candidate)
+    {
+        if (candidate.ValueKind != JsonValueKind.Object) throw new JsonException("Poll choice candidate must be an object.");
+        return JsonSerializer.Deserialize(candidate, PollChoiceJsonContext.Default.PollChoiceCandidate)
+            ?? throw new JsonException("Poll choice candidate is invalid.");
+    }
+
+    private static PollChoicePayload ToPayloadValue(PollChoiceCandidate candidate) => new(
+        candidate.Choices?.Select((choice, index) => new PollChoiceOption($"choice{index + 1}", choice?.Trim())).ToArray());
+
+    private static JsonElement CreateGenerationSchema()
+    {
+        var schema = JsonSchemaExporter.GetJsonSchemaAsNode(PollChoiceJsonContext.Default.PollChoiceCandidate);
+        using var document = JsonDocument.Parse(schema.ToJsonString());
+        return document.RootElement.Clone();
+    }
 }
 
 public static class VotingRules
@@ -100,6 +126,7 @@ public static class VotingRules
 }
 
 public sealed record PollChoicePayload([property: JsonRequired] IReadOnlyList<PollChoiceOption?>? Options);
+public sealed record PollChoiceCandidate([property: JsonRequired] IReadOnlyList<string>? Choices);
 public sealed record PollChoiceOption(string? Id, string? Text);
 public sealed record PollChoiceResolved;
 public sealed record PollChoiceCard(IReadOnlyList<PollChoiceOption> Options);
@@ -164,6 +191,7 @@ public abstract class PollChoiceAnswerConverterBase<T> : JsonConverter<T> where 
 }
 
 [JsonSerializable(typeof(PollChoicePayload))]
+[JsonSerializable(typeof(PollChoiceCandidate))]
 [JsonSerializable(typeof(PollChoiceOption))]
 [JsonSerializable(typeof(PollChoiceResolved))]
 [JsonSerializable(typeof(PollChoiceCard))]
