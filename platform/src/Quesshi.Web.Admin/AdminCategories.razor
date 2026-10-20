@@ -1,0 +1,180 @@
+@page "/admin/categories"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject ClientHttp Http
+@inject IClientTranslator Text
+@inject Microsoft.JSInterop.IJSRuntime Js
+
+@if (State?.Status == AdminSessionStatus.Loading) { <p class="muted">@Text["common.loading"]</p> }
+else if (!CanEdit) { <section class="card"><p>@Text[CategoryAdminText.Denied]</p></section> }
+else
+{
+    <section class="stack" lang="@selectedLanguage.Code" dir="@selectedLanguage.Direction" aria-labelledby="admin-categories-title">
+        <h1 id="admin-categories-title">@Text[CategoryAdminText.Title]</h1>
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+
+        <EditForm Model="create" OnValidSubmit="CreateAsync"><div class="card stack">
+            <h2>@Text[CategoryAdminText.Create]</h2>
+            @CategoryFields(create)
+            <button class="btn" type="submit">@Text[CategoryAdminText.Create]</button>
+        </div></EditForm>
+
+        <section class="card stack" aria-labelledby="admin-category-bank-settings">
+            <h2 id="admin-category-bank-settings">@Text[CategoryAdminText.BankSettings]</h2>
+            @foreach (var family in BankFamilies)
+            {
+                <fieldset><legend>@Text[CategoryAdminText.Family(family)]</legend>
+                    @foreach (var category in categories)
+                    {
+                        <label><input type="checkbox" checked="@IsAllowed(family, category.Id)" @onchange="change => SetAllowed(family, category.Id, change.Value is bool selected && selected)" /> @NameFor(category)</label>
+                    }
+                </fieldset>
+            }
+            <button class="btn" type="button" @onclick="SaveBankSettingsAsync">@Text[CategoryAdminText.SaveBankSettings]</button>
+        </section>
+
+        @foreach (var category in categories)
+        {
+            <EditForm Model="category" OnValidSubmit="() => SaveAsync(category)"><div class="card stack">
+                <h2>@NameFor(category)</h2>
+                @CategoryFields(category)
+                <button class="btn" type="submit">@Text[CategoryAdminText.Save]</button>
+            </div></EditForm>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private static readonly string[] BankFamilies = ["trivia", "poll"];
+    private readonly Dictionary<string, HashSet<Guid>> allowedByFamily = new(StringComparer.Ordinal);
+    private readonly List<CategoryModel> categories = [];
+    private readonly List<TenantLanguage> languages = [];
+    private CategoryModel create = NewCategory();
+    private TenantLanguage selectedLanguage = new("en", "English", "ltr");
+    private string? error;
+
+    private bool CanEdit => State?.Session is { IsPlatform: true } || string.Equals(State?.Session?.Role, "Owner", StringComparison.OrdinalIgnoreCase) || string.Equals(State?.Session?.Role, "Editor", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanEdit) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var config = await Http.GetFromJsonAsync<TenantConfig>("/api/config") ?? throw new InvalidOperationException("The tenant configuration response was empty.");
+            languages.Clear();
+            languages.AddRange(config.Languages);
+            selectedLanguage = await SelectLanguageAsync(config);
+            var categoryTask = Http.GetFromJsonAsync<List<CategoryResponse>>("/api/admin/categories");
+            var settingsTask = Http.GetFromJsonAsync<BankSettingsResponse>("/api/admin/categories/bank-settings");
+            await Task.WhenAll(categoryTask, settingsTask);
+            categories.Clear();
+            categories.AddRange((categoryTask.Result ?? []).Select(CategoryModel.From));
+            EnsureNames(create);
+            foreach (var category in categories) EnsureNames(category);
+            allowedByFamily.Clear();
+            foreach (var family in BankFamilies)
+            {
+                allowedByFamily.Add(family, (settingsTask.Result?.CategoriesByFamily.TryGetValue(family, out var categoryIds) == true ? categoryIds : []).ToHashSet());
+            }
+            error = null;
+        }
+        catch (HttpRequestException)
+        {
+            error = CategoryAdminText.LoadFailed;
+        }
+    }
+
+    private async Task<TenantLanguage> SelectLanguageAsync(TenantConfig config)
+    {
+        var saved = await Js.InvokeAsync<string?>("quesshi.get", CancellationToken.None, ["quesshi.lang"]);
+        var browserLanguages = await Js.InvokeAsync<string[]>("quesshi.browserLanguages", []);
+        var offered = config.Languages;
+        var chosen = offered.FirstOrDefault(language => string.Equals(language.Code, saved, StringComparison.OrdinalIgnoreCase))
+            ?? (browserLanguages ?? []).Select(browser => offered.FirstOrDefault(language => string.Equals(language.Code, browser, StringComparison.OrdinalIgnoreCase) || browser.StartsWith($"{language.Code}-", StringComparison.OrdinalIgnoreCase))).FirstOrDefault(language => language is not null)
+            ?? offered.FirstOrDefault(language => string.Equals(language.Code, config.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? offered.First();
+        return chosen;
+    }
+
+    private async Task CreateAsync()
+    {
+        var result = await MutateAsync(HttpMethod.Post, "/api/admin/categories", create);
+        if (result)
+        {
+            create = NewCategory();
+            EnsureNames(create);
+        }
+    }
+
+    private Task SaveAsync(CategoryModel category) => MutateAsync(HttpMethod.Put, $"/api/admin/categories/{category.Id}", category);
+
+    private async Task<bool> MutateAsync(HttpMethod method, string path, object body)
+    {
+        if (State is null) return false;
+        var result = await State.MutateAsync<object>(method, path, body);
+        if (!result.Success) { error = result.Error ?? CategoryAdminText.SaveFailed; return false; }
+        await LoadAsync();
+        return true;
+    }
+
+    private Task SaveBankSettingsAsync() => MutateAsync(HttpMethod.Put, "/api/admin/categories/bank-settings", new { categoriesByFamily = allowedByFamily.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray(), StringComparer.Ordinal) });
+
+    private bool IsAllowed(string family, Guid id) => allowedByFamily.TryGetValue(family, out var ids) && ids.Contains(id);
+
+    private void SetAllowed(string family, Guid id, bool selected)
+    {
+        if (!allowedByFamily.TryGetValue(family, out var ids)) return;
+        if (selected) ids.Add(id); else ids.Remove(id);
+    }
+
+    private string NameFor(CategoryModel category) => category.Names.TryGetValue(selectedLanguage.Code, out var name) && !string.IsNullOrWhiteSpace(name) ? name : category.Slug;
+
+    private void EnsureNames(CategoryModel category)
+    {
+        foreach (var language in languages) category.Names.TryAdd(language.Code, string.Empty);
+    }
+
+    private static void SetName(CategoryModel category, string language, ChangeEventArgs change) => category.Names[language] = change.Value?.ToString() ?? string.Empty;
+
+    private RenderFragment CategoryFields(CategoryModel category) => @<>
+        @foreach (var language in languages)
+        {
+            <label>@language.DisplayName <input value="@category.Names[language.Code]" @onchange="change => SetName(category, language.Code, change)" /></label>
+        }
+        <label>@Text[CategoryAdminText.Slug] <InputText @bind-Value="category.Slug" /></label>
+        <label>@Text[CategoryAdminText.Icon] <InputText @bind-Value="category.Icon" /></label>
+        <label>@Text[CategoryAdminText.Color] <InputText @bind-Value="category.Color" /></label>
+        <label>@Text[CategoryAdminText.Order] <InputNumber @bind-Value="category.SortOrder" /></label>
+        <label><InputCheckbox @bind-Value="category.IsActive" /> @Text[CategoryAdminText.Active]</label>
+    </>;
+
+    private static CategoryModel NewCategory() => new() { SortOrder = 0, IsActive = true };
+
+    private sealed record TenantConfig(IReadOnlyList<TenantLanguage> Languages, string DefaultLanguage);
+    private sealed record TenantLanguage(string Code, string DisplayName, string Direction);
+    private sealed record CategoryResponse(Guid Id, string Slug, Dictionary<string, string> Names, string? Icon, string? Color, int SortOrder, bool IsActive);
+    private sealed record BankSettingsResponse(Dictionary<string, Guid[]> CategoriesByFamily);
+    private sealed class CategoryModel
+    {
+        public Guid Id { get; init; }
+        public string Slug { get; set; } = string.Empty;
+        public Dictionary<string, string> Names { get; set; } = new(StringComparer.Ordinal);
+        public string? Icon { get; set; }
+        public string? Color { get; set; }
+        public int SortOrder { get; set; }
+        public bool IsActive { get; set; }
+
+        public static CategoryModel From(CategoryResponse category) => new()
+        {
+            Id = category.Id, Slug = category.Slug, Names = new(category.Names, StringComparer.Ordinal), Icon = category.Icon, Color = category.Color, SortOrder = category.SortOrder, IsActive = category.IsActive
+        };
+    }
+}

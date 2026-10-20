@@ -20,6 +20,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
 
     public Task<IReadOnlyList<CategoryDisplay>> ListActiveAsync(
         Guid tenantId,
+        string? family,
         string? language,
         CancellationToken cancellationToken = default) =>
         database.InTenantAsync<IReadOnlyList<CategoryDisplay>>(tenantId, async transaction =>
@@ -36,8 +37,60 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
                 where is_active
                 order by sort_order, id
                 """, cancellationToken: cancellationToken);
-            return categories.Select(category => ToDisplay(category, language, defaultLanguage)).ToArray();
+            var allowed = family is null
+                ? null
+                : (await ReadBankSettingsAsync(transaction, cancellationToken)).CategoriesByFamily.TryGetValue(family, out var ids)
+                    ? ids.ToHashSet()
+                    : [];
+            return categories
+                .Where(category => allowed is null || allowed.Contains(category.Id))
+                .Select(category => ToDisplay(category, language, defaultLanguage))
+                .ToArray();
         }, cancellationToken: cancellationToken, readOnly: true);
+
+    public Task<BankCategorySettings> GetBankSettingsAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
+        database.InTenantAsync(tenantId, transaction => ReadBankSettingsAsync(transaction, cancellationToken),
+            cancellationToken: cancellationToken, readOnly: true);
+
+    public async Task<BankCategorySettingsChangeResult> SetBankSettingsAsync(
+        Guid tenantId,
+        IReadOnlyDictionary<string, IReadOnlyList<Guid>>? categoriesByFamily,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryNormalizeBankSettings(categoriesByFamily, out var normalized)) return BankCategorySettingsChangeResult.Invalid;
+
+        return await database.InTenantAsync(tenantId, async transaction =>
+        {
+            var ids = normalized.Values.SelectMany(ids => ids).Distinct().ToArray();
+            var existing = ids.Length == 0
+                ? 0L
+                : await transaction.QuerySingleOrDefaultAsync<long>("select count(*) from categories where id = any(@ids)",
+                    new { ids }, cancellationToken);
+            if (existing != ids.Length) return BankCategorySettingsChangeResult.Invalid;
+
+            var settings = new BankCategorySettings(normalized);
+            var updated = await transaction.ExecuteAsync("""
+                update tenant_capabilities
+                set settings = @settings
+                where type = 'source' and key = 'bank'
+                """, new
+            {
+                settings = new Jsonb<BankCategorySettings>(settings, CategoryJsonContext.Default.BankCategorySettings),
+            }, cancellationToken);
+            if (updated != 1) return BankCategorySettingsChangeResult.Missing;
+
+            var version = await transaction.QuerySingleOrDefaultAsync<long?>("""
+                update tenants
+                set config_version = config_version + 1
+                where id = @tenantId
+                returning config_version
+                """, new { tenantId }, cancellationToken);
+            if (version is null) return BankCategorySettingsChangeResult.Missing;
+            await transaction.ExecuteAsync("select pg_notify('quesshi_config', @message)",
+                new { message = $"config:{tenantId}:{version.Value}" }, cancellationToken);
+            return BankCategorySettingsChangeResult.Success;
+        }, cancellationToken: cancellationToken);
+    }
 
     public async Task<CategoryChangeResult> CreateAsync(
         Guid tenantId,
@@ -179,6 +232,38 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
         return names.Keys.All(offeredLanguages.Contains);
     }
 
+    private static async Task<BankCategorySettings> ReadBankSettingsAsync(ITenantTx transaction, CancellationToken cancellationToken)
+    {
+        var json = await transaction.QuerySingleOrDefaultAsync<JsonElement?>("""
+            select settings
+            from tenant_capabilities
+            where type = 'source' and key = 'bank'
+            """, cancellationToken: cancellationToken);
+        var settings = json is null
+            ? null
+            : JsonSerializer.Deserialize(json.Value, CategoryJsonContext.Default.BankCategorySettings);
+        return settings is { CategoriesByFamily: not null }
+            ? new(settings.CategoriesByFamily)
+            : new(new Dictionary<string, Guid[]>(StringComparer.Ordinal));
+    }
+
+    private static bool TryNormalizeBankSettings(
+        IReadOnlyDictionary<string, IReadOnlyList<Guid>>? categoriesByFamily,
+        out Dictionary<string, Guid[]> normalized)
+    {
+        normalized = new(StringComparer.Ordinal);
+        if (categoriesByFamily is null) return false;
+
+        foreach (var (family, ids) in categoriesByFamily)
+        {
+            if (!BankCategoryFamilies.IsKnown(family) || ids is null || ids.Any(id => id == Guid.Empty))
+                return false;
+            var copied = ids.Distinct().ToArray();
+            if (copied.Length != ids.Count || !normalized.TryAdd(family, copied)) return false;
+        }
+        return true;
+    }
+
     private static bool TryNormalize(CategoryWrite request, out NormalizedCategoryWrite normalized)
     {
         normalized = default!;
@@ -233,7 +318,9 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
 internal interface ICategoryService
 {
     Task<IReadOnlyList<CategoryDefinition>> ListAsync(Guid tenantId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<CategoryDisplay>> ListActiveAsync(Guid tenantId, string? language, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CategoryDisplay>> ListActiveAsync(Guid tenantId, string? family, string? language, CancellationToken cancellationToken = default);
+    Task<BankCategorySettings> GetBankSettingsAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<BankCategorySettingsChangeResult> SetBankSettingsAsync(Guid tenantId, IReadOnlyDictionary<string, IReadOnlyList<Guid>>? categoriesByFamily, CancellationToken cancellationToken = default);
     Task<CategoryChangeResult> CreateAsync(Guid tenantId, CategoryWrite request, CancellationToken cancellationToken = default);
     Task<CategoryChangeResult> UpdateAsync(Guid tenantId, Guid id, CategoryWrite request, CancellationToken cancellationToken = default);
     Task<CategoryChangeResult> DeactivateAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
@@ -264,6 +351,30 @@ internal sealed record CategoryDisplay(Guid Id, string Slug, string Name, string
 
 internal sealed record CategoryWrite(string? Slug, IReadOnlyDictionary<string, string>? Names, string? Icon, string? Color, int SortOrder, bool? IsActive = null);
 
+internal static class BankCategoryFamilies
+{
+    public static readonly IReadOnlyList<string> All = ["trivia", "poll"];
+
+    public static bool IsKnown(string? value) => !string.IsNullOrWhiteSpace(value)
+        && All.Contains(value, StringComparer.Ordinal);
+}
+
+internal sealed record BankCategorySettings([property: JsonPropertyName("categoriesByFamily")] Dictionary<string, Guid[]> CategoriesByFamily);
+
+internal enum BankCategorySettingsChangeStatus
+{
+    Success,
+    Invalid,
+    Missing,
+}
+
+internal sealed record BankCategorySettingsChangeResult(BankCategorySettingsChangeStatus Status)
+{
+    public static readonly BankCategorySettingsChangeResult Success = new(BankCategorySettingsChangeStatus.Success);
+    public static readonly BankCategorySettingsChangeResult Invalid = new(BankCategorySettingsChangeStatus.Invalid);
+    public static readonly BankCategorySettingsChangeResult Missing = new(BankCategorySettingsChangeStatus.Missing);
+}
+
 internal enum CategoryChangeStatus
 {
     Success,
@@ -286,4 +397,5 @@ internal sealed record CategoryChangeResult(CategoryChangeStatus Status, Categor
 }
 
 [JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(BankCategorySettings))]
 internal partial class CategoryJsonContext : JsonSerializerContext;
