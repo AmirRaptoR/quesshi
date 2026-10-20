@@ -155,7 +155,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             ("tenant", TenantA));
         var editor = await InsertAdminAsync(owner, "bank-import", "bank-import@example.test");
         await MembershipAsync(owner, TenantA, editor, "editor");
-        var transport = new ImportMediaTransport(_ => PngResponse());
+        var transport = new ImportMediaTransport(uri => uri.Host == "media.example.test" ? PngResponse(width: 2) : PngResponse());
         await using var sources = Sources();
         await using var app = await StartAsync(sources, services => ConfigureImportMedia(services, transport));
         using var client = Client();
@@ -1637,11 +1637,11 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             transport));
     }
 
-    private static HttpResponseMessage PngResponse(Action? bodyRead = null)
+    private static HttpResponseMessage PngResponse(Action? bodyRead = null, byte width = 1)
     {
         var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = bodyRead is null ? new ByteArrayContent(Png()) : new TrackingContent(Png(), bodyRead),
+            Content = bodyRead is null ? new ByteArrayContent(Png(width)) : new TrackingContent(Png(width), bodyRead),
         };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
         return response;
@@ -1685,11 +1685,11 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         }
     }
 
-    private static byte[] Png() =>
+    private static byte[] Png(byte width = 1) =>
     [
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
         0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, width, 0x00, 0x00, 0x00, 0x01,
         0x08, 0x06, 0x00, 0x00, 0x00,
     ];
 
