@@ -352,6 +352,7 @@ public sealed record ExportCategory(
     bool IsActive);
 public sealed record ExportSettings(IReadOnlyList<string> TriviaCategorySlugs, IReadOnlyList<string> VotingCategorySlugs);
 public sealed record ExportReference(string QuestionId, string? Value, string Scope);
+public sealed record MediaReference(string QuestionId, string? Path, string Scope);
 public sealed record SkippedQuestion(string QuestionId, string Reason);
 public sealed record ExportReport
 {
@@ -359,8 +360,8 @@ public sealed record ExportReport
     public ExportCounts ExportedLanguages { get; } = new();
     public ExportCounts ExportedStatuses { get; } = new();
     public List<SkippedQuestion> Skipped { get; } = [];
-    public List<ExportReference> MissingMedia { get; } = [];
-    public List<ExportReference> OutsideMedia { get; } = [];
+    public List<MediaReference> MissingMedia { get; } = [];
+    public List<MediaReference> OutsideMedia { get; } = [];
     public List<ExportReference> MissingCategoryReferences { get; } = [];
 }
 public sealed class ExportCounts : Dictionary<string, int>

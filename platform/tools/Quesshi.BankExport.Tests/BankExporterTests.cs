@@ -140,8 +140,8 @@ public sealed class BankExporterTests
         Assert.Equal("Credit", exported.RootElement[0].GetProperty("mediaAttribution").GetString());
         Assert.Equal("https://example.test/media.png", exported.RootElement[5].GetProperty("mediaUrl").GetString());
         Assert.Equal("missing", report.MissingMedia.Single().QuestionId);
-        Assert.Equal("missing.png", report.MissingMedia.Single().Value);
-        Assert.Equal(["../secret.png", "..\\secret.png", Path.Combine(Directory.GetParent(fixture.MediaDirectory)!.FullName, "secret.png")], report.OutsideMedia.Select(reference => reference.Value).OrderBy(value => value));
+        Assert.Equal("missing.png", report.MissingMedia.Single().Path);
+        Assert.Equal(["../secret.png", "..\\secret.png", Path.Combine(Directory.GetParent(fixture.MediaDirectory)!.FullName, "secret.png")], report.OutsideMedia.Select(reference => reference.Path).OrderBy(value => value));
         Assert.False(File.Exists(Path.Combine(fixture.BundleDirectory, "media", "secret.png")));
         Assert.Equal(
             new Dictionary<string, string>
