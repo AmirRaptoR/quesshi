@@ -1,0 +1,29 @@
+@page "/admin/media"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (CanEdit)
+{
+    <section class="stack" aria-labelledby="admin-media-title">
+        <h1 id="admin-media-title">@Text[AdminMediaText.Title]</h1>
+        <MediaChooser @bind-Value="selectedId" />
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    private Guid? selectedId;
+    private bool CanEdit => State?.Session is { MustChangePassword: false } session &&
+        (string.Equals(session.Role, "editor", StringComparison.OrdinalIgnoreCase) || string.Equals(session.Role, "owner", StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) Navigation.NavigateTo("/admin/login");
+        else if (State?.Session?.MustChangePassword == true) Navigation.NavigateTo("/admin/password");
+    }
+}

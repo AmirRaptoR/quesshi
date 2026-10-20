@@ -1,0 +1,111 @@
+@using System.Net.Http.Headers
+@inject IClientTranslator Text
+
+@if (CanEdit)
+{
+    <section class="card stack" data-testid="media-chooser">
+        <label for="media-attribution">@Text[AdminMediaText.Attribution]</label>
+        <input id="media-attribution" @bind="attribution" />
+
+        <label for="media-upload">@Text[AdminMediaText.Upload]</label>
+        <InputFile id="media-upload" OnChange="UploadAsync" accept="image/jpeg,image/png,image/webp,audio/mpeg,audio/ogg,audio/wav,video/mp4,video/webm" />
+
+        <EditForm Model="this" OnValidSubmit="FetchAsync">
+            <label for="media-url">@Text[AdminMediaText.Url]</label>
+            <InputText id="media-url" @bind-Value="url" inputmode="url" />
+            <button class="btn" type="submit">@Text[AdminMediaText.Fetch]</button>
+        </EditForm>
+
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+        @if (asset is not null)
+        {
+            <article data-testid="selected-media" class="stack">
+                <a href="@asset.Url" data-testid="media-url">@asset.Url</a>
+                @if (asset.Kind == "image") { <img src="@asset.Url" alt="@asset.Attribution" /> }
+                else if (asset.Kind == "audio") { <audio controls src="@asset.Url"></audio> }
+                else if (asset.Kind == "video") { <video controls src="@asset.Url"></video> }
+                <output data-testid="media-id">@asset.Id</output>
+                <span>@Text[AdminMediaText.Selected]</span>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+    [Parameter] public Guid? Value { get; set; }
+    [Parameter] public EventCallback<Guid?> ValueChanged { get; set; }
+    [Parameter] public EventCallback<AdminMediaAsset?> AssetChanged { get; set; }
+
+    private string attribution = string.Empty;
+    private string url = string.Empty;
+    private string? error;
+    private AdminMediaAsset? asset;
+    private Guid? loadedId;
+    private const long MaximumUploadBytes = 25 * 1024 * 1024;
+    private bool CanEdit => State?.Session is { MustChangePassword: false } session &&
+        (string.Equals(session.Role, "editor", StringComparison.OrdinalIgnoreCase) || string.Equals(session.Role, "owner", StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!CanEdit || Value is null || Value == loadedId || State is null) return;
+        var result = await State.GetAsync<AdminMediaAsset>($"/api/admin/media/{Value}");
+        if (result.Success && result.Value is not null)
+        {
+            asset = result.Value;
+            loadedId = asset.Id;
+        }
+        else error = ErrorKey(result);
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs change)
+    {
+        if (State is null || change.FileCount != 1) { error = AdminMediaText.Error; return; }
+        var file = change.File;
+        if (file.Size > MaximumUploadBytes)
+        {
+            error = "admin.media.media_too_large";
+            return;
+        }
+
+        try
+        {
+            var result = await State.MutateContentAsync<AdminMediaAsset>(HttpMethod.Post, "/api/admin/media", () => UploadContent(file, attribution));
+            await SelectAsync(result);
+        }
+        catch (IOException)
+        {
+            error = "admin.media.media_too_large";
+        }
+    }
+
+    private async Task FetchAsync()
+    {
+        if (State is null) return;
+        var result = await State.MutateAsync<AdminMediaAsset>(HttpMethod.Post, "/api/admin/media/fetch", new AdminMediaFetchRequest(url, attribution));
+        await SelectAsync(result);
+    }
+
+    private async Task SelectAsync(AdminResult<AdminMediaAsset> result)
+    {
+        if (!result.Success || result.Value is null) { error = ErrorKey(result); return; }
+        error = null;
+        asset = result.Value;
+        loadedId = asset.Id;
+        await ValueChanged.InvokeAsync(asset.Id);
+        await AssetChanged.InvokeAsync(asset);
+    }
+
+    private static MultipartFormDataContent UploadContent(IBrowserFile file, string attribution)
+    {
+        var body = new MultipartFormDataContent();
+        var content = new StreamContent(file.OpenReadStream(MaximumUploadBytes + 1));
+        if (!string.IsNullOrWhiteSpace(file.ContentType))
+            content.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
+        body.Add(content, "file", file.Name);
+        body.Add(new StringContent(attribution), "attribution");
+        return body;
+    }
+
+    private static string ErrorKey<T>(AdminResult<T> result) => AdminMediaText.ForError(result.Failure?.Code);
+}

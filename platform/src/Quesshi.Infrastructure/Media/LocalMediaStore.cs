@@ -67,6 +67,17 @@ public sealed class LocalMediaStore(ITenantDb database, IConfiguration configura
         }, cancellationToken: cancellationToken, readOnly: true);
     }
 
+    public async Task<MediaAsset?> FindByIdAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default) =>
+        await database.InTenantAsync(tenantId, async transaction =>
+        {
+            var asset = await transaction.QuerySingleOrDefaultAsync<PersistedAsset>("""
+                select id as Id, storage_key as StorageKey, kind as Kind, mime as Mime, bytes as Bytes,
+                       meta::text as MetaJson, attribution as Attribution, created_at as CreatedAt
+                from media_assets where id = @id
+                """, new { id }, cancellationToken);
+            return asset is null ? null : ToAsset(asset);
+        }, cancellationToken: cancellationToken, readOnly: true);
+
     public async Task<Stream?> OpenReadAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default)
     {
         var asset = await FindByHashAsync(tenantId, hash, cancellationToken);

@@ -59,11 +59,26 @@ public sealed class AdminApi(ClientHttp client)
     public Task<AdminResult<T>> MutateAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(method);
-        ValidateMutationPath(path);
+        ValidateAdminPath(path);
         return ReadMutationAsync<T>(method, path, body, cancellationToken);
     }
 
-    private static void ValidateMutationPath(string path)
+    public async Task<AdminResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default)
+    {
+        ValidateAdminPath(path);
+        using var response = await SendAsync(HttpMethod.Get, path, null, false, cancellationToken);
+        return await ReadAsync<T>(response, cancellationToken);
+    }
+
+    public Task<AdminResult<T>> MutateContentAsync<T>(HttpMethod method, string path, Func<HttpContent> contentFactory, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentNullException.ThrowIfNull(contentFactory);
+        ValidateAdminPath(path);
+        return ReadContentMutationAsync<T>(method, path, contentFactory, cancellationToken);
+    }
+
+    private static void ValidateAdminPath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var pathEnd = path.IndexOfAny(['?', '#']);
@@ -85,6 +100,12 @@ public sealed class AdminApi(ClientHttp client)
         using (result.Response) return await ReadAsync<object>(result.Response, cancellationToken);
     }
 
+    private async Task<AdminResult<T>> ReadContentMutationAsync<T>(HttpMethod method, string path, Func<HttpContent> contentFactory, CancellationToken cancellationToken)
+    {
+        var result = await SendContentMutationAsync(method, path, contentFactory, cancellationToken);
+        using (result.Response) return await ReadAsync<T>(result.Response, cancellationToken);
+    }
+
     private async Task<(HttpResponseMessage Response, bool Success)> SendMutationAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
     {
         if (antiforgeryToken is null) await RefreshAntiforgeryAsync(cancellationToken);
@@ -94,6 +115,19 @@ public sealed class AdminApi(ClientHttp client)
             response.Dispose();
             await RefreshAntiforgeryAsync(cancellationToken);
             response = await SendAsync(method, path, body, true, cancellationToken);
+        }
+        return (response, response.IsSuccessStatusCode);
+    }
+
+    private async Task<(HttpResponseMessage Response, bool Success)> SendContentMutationAsync(HttpMethod method, string path, Func<HttpContent> contentFactory, CancellationToken cancellationToken)
+    {
+        if (antiforgeryToken is null) await RefreshAntiforgeryAsync(cancellationToken);
+        var response = await SendContentAsync(method, path, contentFactory, true, cancellationToken);
+        if (await IsStaleTokenAsync(response, cancellationToken))
+        {
+            response.Dispose();
+            await RefreshAntiforgeryAsync(cancellationToken);
+            response = await SendContentAsync(method, path, contentFactory, true, cancellationToken);
         }
         return (response, response.IsSuccessStatusCode);
     }
@@ -112,6 +146,14 @@ public sealed class AdminApi(ClientHttp client)
         request.SetBrowserRequestCredentials(BrowserRequestCredentials.Include);
         if (uncached) request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         if (body is not null) request.Content = JsonContent.Create(body);
+        if (includeToken) request.Headers.TryAddWithoutValidation("X-CSRF-Admin", antiforgeryToken);
+        return await client.SendAsync(request, cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> SendContentAsync(HttpMethod method, string path, Func<HttpContent> contentFactory, bool includeToken, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = contentFactory() };
+        request.SetBrowserRequestCredentials(BrowserRequestCredentials.Include);
         if (includeToken) request.Headers.TryAddWithoutValidation("X-CSRF-Admin", antiforgeryToken);
         return await client.SendAsync(request, cancellationToken);
     }

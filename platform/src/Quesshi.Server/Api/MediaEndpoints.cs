@@ -12,9 +12,12 @@ public sealed class MediaEndpoints : ICoreRouteModule
 {
     public void Map(CoreRouteBuilder routes)
     {
-        routes.AdminRoutes(AdminRole.Editor)
-            .MapPost("/media", UploadAsync)
+        var media = routes.AdminRoutes(AdminRole.Editor);
+        media.MapPost("/media", UploadAsync)
             .WithMetadata(new AdminAuditMetadata("admin.media.upload", "media"));
+        media.MapPost("/media/fetch", FetchAsync)
+            .WithMetadata(new AdminAuditMetadata("admin.media.fetch", "media"));
+        media.MapGet("/media/{id:guid}", LookupAsync);
     }
 
     public static void MapPublic(WebApplication app) => app.MapGet("/media/{hash}", GetAsync);
@@ -64,6 +67,35 @@ public sealed class MediaEndpoints : ICoreRouteModule
         return Results.Created($"/media/{asset.StorageKey}", new MediaResponse(asset));
     }
 
+    private static async Task<IResult> FetchAsync(
+        HttpContext context,
+        FetchMediaRequest? request,
+        [FromServices] IMediaFetcher fetcher,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(request?.Url, UriKind.Absolute, out var url))
+            return Error("invalid_media_url", StatusCodes.Status400BadRequest);
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Results.NotFound();
+
+        var result = await fetcher.FetchAsync(tenant.Id, url, request.Attribution, cancellationToken);
+        return result.Status is MediaFetchStatus.Success && result.Asset is not null
+            ? Results.Created($"/media/{result.Asset.StorageKey}", new MediaResponse(result.Asset))
+            : FetchError(result.Status);
+    }
+
+    private static async Task<IResult> LookupAsync(
+        HttpContext context,
+        Guid id,
+        [FromServices] IMediaStore media,
+        CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Results.NotFound();
+        var asset = await media.FindByIdAsync(tenant.Id, id, cancellationToken);
+        return asset is null ? Results.NotFound() : Results.Ok(new MediaResponse(asset));
+    }
+
     private static async Task<byte[]?> ReadLimitedAsync(IFormFile file, long limit, CancellationToken cancellationToken)
     {
         await using var input = file.OpenReadStream();
@@ -107,6 +139,18 @@ public sealed class MediaEndpoints : ICoreRouteModule
 
     private static IResult Error(string error, int statusCode) => Results.Json(new { error }, statusCode: statusCode);
 
+    private static IResult FetchError(MediaFetchStatus status) => status switch
+    {
+        MediaFetchStatus.InvalidUrl => Error("invalid_media_url", StatusCodes.Status400BadRequest),
+        MediaFetchStatus.ForbiddenDestination => Error("media_destination_forbidden", StatusCodes.Status400BadRequest),
+        MediaFetchStatus.RedirectLimit => Error("media_redirect_limit", StatusCodes.Status400BadRequest),
+        MediaFetchStatus.TooLarge => Error("media_too_large", StatusCodes.Status400BadRequest),
+        MediaFetchStatus.UnsupportedMedia => Error("unsupported_media", StatusCodes.Status400BadRequest),
+        MediaFetchStatus.MismatchedMedia => Error("media_type_mismatch", StatusCodes.Status400BadRequest),
+        MediaFetchStatus.Timeout => Error("media_fetch_timeout", StatusCodes.Status504GatewayTimeout),
+        _ => Error("media_fetch_failed", StatusCodes.Status502BadGateway),
+    };
+
     private sealed record MediaResponse(MediaAsset Asset)
     {
         public Guid Id { get; } = Asset.Id;
@@ -116,5 +160,8 @@ public sealed class MediaEndpoints : ICoreRouteModule
         public long Bytes { get; } = Asset.Bytes;
         public object Meta { get; } = Asset.Meta;
         public string? Attribution { get; } = Asset.Attribution;
+        public string Url { get; } = $"/media/{Asset.StorageKey}";
     }
+
+    private sealed record FetchMediaRequest(string? Url, string? Attribution);
 }
