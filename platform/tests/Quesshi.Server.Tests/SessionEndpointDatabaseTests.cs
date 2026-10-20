@@ -33,6 +33,23 @@ public sealed class SessionEndpointDatabaseTests(PostgresFixture postgres) : IAs
     }
 
     [SkippableFact]
+    public async Task Session_creation_rejects_a_nonempty_request_with_an_invalid_capacity()
+    {
+        var host = Host;
+        await host.SetCapabilityAsync("format", "async_duel", true);
+        var invalid = await host.Player.PostAsJsonAsync("/api/sessions", new
+        {
+            id = Guid.NewGuid(),
+            format = "async_duel",
+            content = new { source = "bank", parameters = new { }, count = 10 },
+            rules = new { },
+            capacity = 0,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [SkippableFact]
     public async Task Session_creation_rejects_a_guest()
     {
         var guest = await Host.Guest.PostAsJsonAsync("/api/sessions", Lobby(Guid.NewGuid()));

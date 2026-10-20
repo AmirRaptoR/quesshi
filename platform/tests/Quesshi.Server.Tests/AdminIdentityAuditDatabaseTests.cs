@@ -15,6 +15,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private const string MembershipActivityMigrationName = "20261018T0000_core_admin_membership_activity.sql";
     private const string QuestionsMigrationName = "20261018T0100_core_questions.sql";
     private const string MediaMigrationName = "20261019T0100_core_media_assets.sql";
+    private const string SessionCreationMigrationName = "20261020T0100_core_session_creation_identity.sql";
     private static readonly Guid TenantA = Guid.Parse("8d6b19a5-9349-48ec-b63b-28e987f95158");
     private static readonly Guid TenantB = Guid.Parse("bd41c053-3e51-43ce-b842-3d625a56c7d1");
 
@@ -105,7 +106,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private static async Task ResetNewContractAsync(NpgsqlConnection owner)
     {
         await RewindQuestionsMigrationAsync(owner);
-        await ExecuteAsync(owner, $"delete from schema_migrations where name in ('{MigrationName}', '{LaterMigrationName}', '{CategoryMigrationName}', '20261016T0100_core_player_bans.sql', '{MembershipActivityMigrationName}'); drop table categories; drop function revoke_player_sessions(uuid); alter table auth_sessions drop column revoked_at; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
+        await ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name in ('{SessionCreationMigrationName}', '{MigrationName}', '{LaterMigrationName}', '{CategoryMigrationName}', '20261016T0100_core_player_bans.sql', '{MembershipActivityMigrationName}'); drop table categories; drop function revoke_player_sessions(uuid); alter table auth_sessions drop column revoked_at; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
         await ExecuteAsync(owner, "delete from tenants where id in (@a, @b)", ("a", TenantA), ("b", TenantB));
     }
 
