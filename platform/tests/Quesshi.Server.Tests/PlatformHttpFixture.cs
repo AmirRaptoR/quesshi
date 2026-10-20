@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
@@ -20,6 +21,9 @@ namespace Quesshi.Server.Tests;
 public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisposable
 {
     private const string TenantHost = "platform-http.example.test";
+    private const int FirstFixedHttpTestPort = 50000;
+    private const int LastFixedHttpTestPort = 50999;
+    private static readonly ConcurrentDictionary<int, byte> ReservedPorts = new();
     private readonly PostgresFixture _postgres = new();
     private readonly IReadOnlyList<IFeature> _features = features;
     private readonly List<HttpClient> _clients = [];
@@ -48,6 +52,7 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         await Program.MigrateAsync(_postgres.ConnectionStringForRole("quesshi_owner"), cancellationToken);
         _identities = await SeedAsync(cancellationToken);
 
+        HttpPort = AllocatePort();
         SiloPort = AllocatePort();
         GatewayPort = AllocatePort();
         var sources = new DatabaseSources(
@@ -61,13 +66,13 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
                 SiloPort,
                 GatewayPort,
                 configuredFeatures: FeatureRegistry.Create(_features));
-            application.Urls.Add("http://127.0.0.1:0");
+            application.Urls.Add($"http://127.0.0.1:{HttpPort}");
             await application.StartAsync(cancellationToken);
             await application.Services.GetRequiredService<PostgresClock>().StartAsync(cancellationToken);
 
             _application = application;
             var address = new Uri(application.Urls.Single());
-            HttpPort = address.Port;
+            if (address.Port != HttpPort) throw new InvalidOperationException("The platform host did not bind its allocated HTTP port.");
             Anonymous = await CreatePlayerClientAsync(null, cancellationToken);
             Guest = await CreateGuestClientAsync(cancellationToken);
             Player = await CreatePlayerClientAsync(_identities.AccountId, cancellationToken);
@@ -78,8 +83,15 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         }
         catch
         {
-            if (application is null) await sources.DisposeAsync();
-            else await application.DisposeAsync();
+            try
+            {
+                if (application is null) await sources.DisposeAsync();
+                else await application.DisposeAsync();
+            }
+            finally
+            {
+                ReleasePorts();
+            }
             throw;
         }
     }
@@ -87,12 +99,19 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     public async ValueTask DisposeAsync()
     {
         foreach (var client in _clients) client.Dispose();
-        if (_application is not null)
+        try
         {
-            await _application.StopAsync();
-            await _application.DisposeAsync();
+            if (_application is not null)
+            {
+                await _application.StopAsync();
+                await _application.DisposeAsync();
+            }
+            await _postgres.DisposeAsync();
         }
-        await _postgres.DisposeAsync();
+        finally
+        {
+            ReleasePorts();
+        }
     }
 
     private async Task<HttpClient> CreatePlayerClientAsync(Guid? accountId, CancellationToken cancellationToken)
@@ -223,9 +242,21 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
 
     private static int AllocatePort()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
+        while (true)
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            if (port is >= FirstFixedHttpTestPort and <= LastFixedHttpTestPort) continue;
+            if (ReservedPorts.TryAdd(port, 0)) return port;
+        }
+    }
+
+    private void ReleasePorts()
+    {
+        if (HttpPort != 0) ReservedPorts.TryRemove(HttpPort, out _);
+        if (SiloPort != 0) ReservedPorts.TryRemove(SiloPort, out _);
+        if (GatewayPort != 0) ReservedPorts.TryRemove(GatewayPort, out _);
     }
 
     private sealed class TenantRequestHandler(string host, Uri origin, string? cookie, string token, string cookieName, string antiforgeryHeader) : DelegatingHandler(new HttpClientHandler())
