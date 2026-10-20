@@ -125,7 +125,7 @@ public sealed class BankExporterTests
             new() { Id = "missing", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Missing", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = "missing.png" },
             new() { Id = "outside", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Outside", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = "../secret.png" },
             new() { Id = "outside-windows", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Outside Windows", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = "..\\secret.png" },
-            new() { Id = "outside-absolute", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Outside Absolute", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = Path.Combine(Path.GetTempPath(), "secret.png") },
+            new() { Id = "outside-absolute", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Outside Absolute", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = Path.Combine(Directory.GetParent(fixture.MediaDirectory)!.FullName, "secret.png") },
             new() { Id = "remote", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Remote", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = "https://example.test/media.png", MediaKind = 1 },
             new() { Id = "player", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Player", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, Source = 3 },
             new() { Id = "invalid", Family = 0, Kind = 99, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Invalid" },
@@ -141,9 +141,16 @@ public sealed class BankExporterTests
         Assert.Equal("https://example.test/media.png", exported.RootElement[5].GetProperty("mediaUrl").GetString());
         Assert.Equal("missing", report.MissingMedia.Single().QuestionId);
         Assert.Equal("missing.png", report.MissingMedia.Single().Value);
-        Assert.Equal(["../secret.png", "..\\secret.png", Path.Combine(Path.GetTempPath(), "secret.png")], report.OutsideMedia.Select(reference => reference.Value).OrderBy(value => value));
+        Assert.Equal(["../secret.png", "..\\secret.png", Path.Combine(Directory.GetParent(fixture.MediaDirectory)!.FullName, "secret.png")], report.OutsideMedia.Select(reference => reference.Value).OrderBy(value => value));
         Assert.False(File.Exists(Path.Combine(fixture.BundleDirectory, "media", "secret.png")));
-        Assert.Equal(["category_missing", "player_owned", "unsupported_trivia_shape"], report.Skipped.Select(question => question.Reason).OrderBy(reason => reason));
+        Assert.Equal(
+            new Dictionary<string, string>
+            {
+                ["invalid"] = "unsupported_trivia_shape",
+                ["player"] = "player_owned",
+                ["unknown-category"] = "category_missing",
+            },
+            report.Skipped.ToDictionary(question => question.QuestionId, question => question.Reason));
         Assert.Equal("unknown-category", report.MissingCategoryReferences.Single(reference => reference.Scope == "question").QuestionId);
     }
 
