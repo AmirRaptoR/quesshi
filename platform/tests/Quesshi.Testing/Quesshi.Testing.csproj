@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="../../src/Quesshi.Application/Quesshi.Application.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
     <PackageReference Include="xunit.extensibility.core" Version="2.9.3" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../deploy/bootstrap-roles.sql" Link="deploy/bootstrap-roles.sql" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="MediaSamples/*.jpg;MediaSamples/*.png;MediaSamples/*.webp;MediaSamples/*.mp3;MediaSamples/*.ogg;MediaSamples/*.wav;MediaSamples/*.mp4;MediaSamples/*.webm" LogicalName="Quesshi.Testing.MediaSamples.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
