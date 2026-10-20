@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Security;
 using Quesshi.Server.Tenants;
+using Quesshi.Shared;
 
 namespace Quesshi.Server.Api;
 
@@ -17,12 +18,14 @@ public sealed class QuestionEndpoints : ICoreRouteModule
         var questions = routes.AdminRoutes(AdminRole.Editor).MapGroup("/questions");
         questions.MapGet("", ListAsync);
         questions.MapGet("/{id:guid}", GetAsync);
+        questions.MapGet("/{id:guid}/preview", PreviewAsync);
         questions.MapPost("", CreateAsync).WithMetadata(new AdminAuditMetadata("admin.question.create", "question"));
         questions.MapPut("/{id:guid}", UpdateAsync).WithMetadata(new AdminAuditMetadata("admin.question.update", "question"));
         questions.MapDelete("/{id:guid}", DeleteAsync).WithMetadata(new AdminAuditMetadata("admin.question.delete", "question"));
         questions.MapPut("/{id:guid}/status", SetStatusAsync).WithMetadata(new AdminAuditMetadata("admin.question.status", "question"));
         questions.MapPost("/{id:guid}/approve", ApproveAsync).WithMetadata(new AdminAuditMetadata("admin.question.approve", "question"));
         questions.MapPost("/{id:guid}/reject", RejectAsync).WithMetadata(new AdminAuditMetadata("admin.question.reject", "question"));
+        questions.MapPost("/approve", BulkApproveAsync).WithMetadata(new AdminAuditMetadata("admin.question.bulk_approve", "question"));
     }
 
     private static async Task<IResult> ListAsync(
@@ -69,6 +72,24 @@ public sealed class QuestionEndpoints : ICoreRouteModule
         return question is null ? Results.NotFound() : Results.Ok(ToResponse(question));
     }
 
+    private static async Task<IResult> PreviewAsync(HttpContext context, Guid id, [FromServices] ITenantDb database, [FromServices] IContent content, [FromServices] IKindRegistry kinds, CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Results.NotFound();
+        var question = await database.InTenantAsync(tenant.Id, transaction => content.GetAsync(transaction, id, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
+        if (question is null || !kinds.TryGetCurrent(question.Kind, out var kind) || kind is null) return Results.NotFound();
+        try
+        {
+            var payload = kind.Upgrade(question.KindVersion, question.Payload);
+            var resolved = kind.Resolve(payload, new ResolveContext("preview", 0, []));
+            return Results.Ok(new QuestionPreviewResponse(question.Id, question.Kind, kind.Version, question.Language, question.Prompt, question.MediaId, kind.Card(payload, resolved)));
+        }
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
+        {
+            return Error("invalid_question", StatusCodes.Status400BadRequest);
+        }
+    }
+
     private static async Task<IResult> CreateAsync(HttpContext context, QuestionWriteRequest? request, [FromServices] ITenantDb database, [FromServices] IContent content, CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context);
@@ -103,6 +124,15 @@ public sealed class QuestionEndpoints : ICoreRouteModule
 
     private static Task<IResult> RejectAsync(HttpContext context, Guid id, [FromServices] ITenantDb database, [FromServices] IContent content, CancellationToken cancellationToken) =>
         ChangeStatusAsync(context, id, QuestionStatus.Rejected.ToString(), database, content, cancellationToken);
+
+    private static async Task<IResult> BulkApproveAsync(HttpContext context, BulkApproveRequest? request, [FromServices] ITenantDb database, [FromServices] IContent content, CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Results.NotFound();
+        if (request?.Ids is not { Count: > 0 } || request.Ids.Any(id => id == Guid.Empty)) return Error("invalid_question_ids", StatusCodes.Status400BadRequest);
+        var approved = await database.InTenantAsync(tenant.Id, transaction => content.SetStatusAsync(transaction, request.Ids, QuestionStatus.Approved, cancellationToken), cancellationToken: cancellationToken);
+        return approved ? Results.NoContent() : Results.NotFound();
+    }
 
     private static async Task<IResult> ChangeStatusAsync(HttpContext context, Guid id, string? value, ITenantDb database, IContent content, CancellationToken cancellationToken)
     {
@@ -193,7 +223,9 @@ public sealed class QuestionEndpoints : ICoreRouteModule
 
     private sealed record QuestionWriteRequest(string? Kind, int KindVersion, string? Family, string? Language, Guid? CategoryId, int? Level, string? Prompt, JsonElement Payload, string? Explanation, string? Topic, string? Status, string? Source, Guid? OwnerId, Guid? MediaId = null);
     private sealed record QuestionStatusRequest(string? Status);
+    private sealed record BulkApproveRequest(IReadOnlyList<Guid>? Ids);
     private sealed record QuestionResponse(Guid Id, string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, JsonElement Payload, string? Explanation, string? Topic, string Status, string Source, Guid? OwnerId, Guid? MediaId);
     private sealed record QuestionBucketResponse(string Language, Guid? CategoryId, int? Level, string Kind, int Approved, int Pending);
     private sealed record QuestionListResponse(IReadOnlyList<QuestionResponse> Items, int Total, int Page, int PageSize, IReadOnlyList<QuestionBucketResponse> Buckets);
+    private sealed record QuestionPreviewResponse(Guid Id, string Kind, int KindVersion, string Language, string Prompt, Guid? MediaId, JsonElement Card);
 }

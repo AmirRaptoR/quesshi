@@ -17,6 +17,10 @@
         </EditForm>
 
         @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+        @foreach (var message in ValidationMessages)
+        {
+            <p class="form-error" role="alert" data-testid="media-problem">@message</p>
+        }
         @if (asset is not null)
         {
             <article data-testid="selected-media" class="stack">
@@ -36,6 +40,7 @@
     [Parameter] public Guid? Value { get; set; }
     [Parameter] public EventCallback<Guid?> ValueChanged { get; set; }
     [Parameter] public EventCallback<AdminMediaAsset?> AssetChanged { get; set; }
+    [Parameter] public IReadOnlyList<string> ValidationMessages { get; set; } = [];
 
     private string attribution = string.Empty;
     private string url = string.Empty;

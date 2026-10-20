@@ -11,6 +11,7 @@ public interface IContent
     Task<QuestionWriteResult> EditAsync(ITenantTx transaction, Guid id, QuestionWrite request, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(ITenantTx transaction, Guid id, CancellationToken cancellationToken = default);
     Task<bool> SetStatusAsync(ITenantTx transaction, Guid id, QuestionStatus status, CancellationToken cancellationToken = default);
+    Task<bool> SetStatusAsync(ITenantTx transaction, IReadOnlyList<Guid> ids, QuestionStatus status, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<QuestionBucketCount>> BucketCountsAsync(ITenantTx transaction, QuestionFilter? filter = null, CancellationToken cancellationToken = default);
 }
 

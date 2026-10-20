@@ -1,0 +1,42 @@
+@using Quesshi.Web.Plugins
+@inject ClientHttp Http
+
+@if (preview is not null)
+{
+    <section class="card stack" data-testid="question-preview" lang="@Language" dir="@Direction">
+        <h2>Preview</h2>
+        <p>@preview.Prompt</p>
+        @if (medium is not null)
+        {
+            <section data-testid="preview-medium">
+                @if (medium.Kind == "image") { <img src="@medium.Url" alt="@medium.Attribution" /> }
+                else if (medium.Kind == "audio") { <audio controls src="@medium.Url"></audio> }
+                else if (medium.Kind == "video") { <video controls src="@medium.Url"></video> }
+            </section>
+        }
+        <KindPlay Card="@(new KindCard(preview.Kind, preview.KindVersion, QuestionPayloadCodec.ReadCard(preview.Kind, preview.Card)))" Disabled="true" OnAnswer="IgnoreAnswerAsync" />
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid QuestionId { get; set; }
+    [Parameter, EditorRequired] public string Language { get; set; } = "en";
+    [Parameter, EditorRequired] public string Direction { get; set; } = "ltr";
+    [CascadingParameter] public AdminState? State { get; set; }
+    private PreviewResponse? preview;
+    private AdminMediaAsset? medium;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        preview = await Http.GetFromJsonAsync<PreviewResponse>($"/api/admin/questions/{QuestionId}/preview");
+        medium = null;
+        if (preview?.MediaId is Guid mediaId && State is not null)
+        {
+            var result = await State.GetAsync<AdminMediaAsset>($"/api/admin/media/{mediaId}");
+            medium = result.Success ? result.Value : null;
+        }
+    }
+
+    private static Task IgnoreAnswerAsync(object? _) => Task.CompletedTask;
+    private sealed record PreviewResponse(Guid Id, string Kind, int KindVersion, string Language, string Prompt, Guid? MediaId, System.Text.Json.JsonElement Card);
+}

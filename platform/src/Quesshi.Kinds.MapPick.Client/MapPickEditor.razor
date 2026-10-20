@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
 @using Quesshi.Kinds.MapPick
 @using Quesshi.Shared
 
@@ -6,13 +7,13 @@
 {
     <section class="map_pick-editor" data-kind="map_pick">
         <label>Base layer
-            <select value="@baseLayer" @onchange="SetBaseLayerAsync">
+            <select data-testid="map-base-layer" value="@baseLayer" @onchange="SetBaseLayerAsync">
                 <option value="@MapBaseLayer.Blank">Blank</option>
                 <option value="@MapBaseLayer.Borders">Borders</option>
             </select>
         </label>
         <label>Answer type
-            <select value="@shape" @onchange="SetShapeAsync">
+            <select data-testid="map-target-shape" value="@shape" @onchange="SetShapeAsync">
                 <option value="@MapTargetKind.Country">Country</option>
                 <option value="@MapTargetKind.Point">Point</option>
             </select>
@@ -20,7 +21,7 @@
 
         @if (shape == MapTargetKind.Country)
         {
-            <label>Country code <input aria-label="Country code" value="@countryCode" @onchange="SetCountryAsync" /></label>
+            <label>Country code <input data-testid="map-country-code" aria-label="Country code" value="@countryCode" @onchange="SetCountryAsync" /></label>
         }
         else
         {
