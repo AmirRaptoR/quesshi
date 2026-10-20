@@ -18,7 +18,7 @@ else
     <section class="stack" data-testid="question-screen" lang="@selectedLanguage.Code" dir="@selectedLanguage.Direction" aria-labelledby="admin-questions-title">
         <h1 id="admin-questions-title">@Text[QuestionAdminText.Title]</h1>
         @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
-        <button type="button" data-testid="new-question" @onclick="NewQuestion">@Text[QuestionAdminText.Create]</button>
+        <button type="button" data-testid="new-question" @onclick="NewQuestionAsync">@Text[QuestionAdminText.Create]</button>
         <section class="card stack" aria-label="@Text[QuestionAdminText.Filters]">
             <label>@Text[QuestionAdminText.Search] <input data-testid="question-search" value="@filter.Prompt" @onchange="SetPromptAsync" /></label>
             <label>@Text[QuestionAdminText.Language]
@@ -48,7 +48,8 @@ else
                 <article data-testid="question-row" data-family="@question.Family">
                     <input type="checkbox" aria-label="Select @question.Prompt" checked="@selected.Contains(question.Id)" @onchange="change => Select(question.Id, change)" />
                     <strong>@question.Prompt</strong><span>@question.Kind</span><span>@question.Status</span>
-                    <button type="button" @onclick="() => EditQuestion(question)">@Text[QuestionAdminText.Edit]</button>
+                    <button type="button" @onclick="() => EditQuestionAsync(question)">@Text[QuestionAdminText.Edit]</button>
+                    <button type="button" data-testid="preview-question" @onclick="() => PreviewQuestion(question)">Preview</button>
                     <button type="button" data-testid="approve-question" @onclick="() => ApproveAsync(question.Id)">Approve</button>
                     <button type="button" data-testid="reject-question" @onclick="() => RejectAsync(question.Id)">Reject</button>
                     <button type="button" data-testid="delete-question" @onclick="() => DeleteAsync(question.Id)">Delete</button>
@@ -63,7 +64,7 @@ else
         </section>
         @if (editorOpen)
         {
-            <QuestionEditor Question="@editing" Languages="@languages.Select(language => new QuestionEditor.TenantLanguageModel(language.Code, language.DisplayName, language.Direction)).ToArray()" Categories="@categories.Select(category => new QuestionEditor.QuestionCategoryModel(category.Id, category.Slug)).ToArray()" Saved="SavedAsync" />
+            <QuestionEditor Question="@editing" Languages="@languages.Select(language => new QuestionEditor.TenantLanguageModel(language.Code, language.DisplayName, language.Direction)).ToArray()" Categories="@editorCategories.Select(category => new QuestionEditor.QuestionCategoryModel(category.Id, category.Slug)).ToArray()" FamilyChanged="LoadEditorCategoriesAsync" Saved="SavedAsync" />
         }
         @if (previewId.HasValue) { <QuestionPreview QuestionId="@previewId.Value" Language="@previewLanguage" Direction="@previewDirection" /> }
     </section>
@@ -75,6 +76,7 @@ else
     private const int PageSize = 25;
     private readonly List<TenantLanguage> languages = [];
     private readonly List<CategoryResponse> categories = [];
+    private readonly List<CategoryResponse> editorCategories = [];
     private readonly List<QuestionResponse> questions = [];
     private readonly HashSet<Guid> selected = [];
     private TenantLanguage selectedLanguage = new("en", "English", "ltr");
@@ -85,6 +87,7 @@ else
     private string previewLanguage = "en";
     private string previewDirection = "ltr";
     private global::Quesshi.Web.Admin.QuestionResponse? editing;
+    private string editorFamily = "trivia";
     private bool loaded;
     private string? error;
 
@@ -110,6 +113,7 @@ else
             var categoriesResult = await Http.GetFromJsonAsync<List<CategoryResponse>>("/api/admin/categories");
             categories.Clear();
             categories.AddRange(categoriesResult ?? []);
+            await LoadEditorCategoriesAsync("trivia");
             await LoadQuestionsAsync();
         }
         catch (HttpRequestException)
@@ -144,6 +148,14 @@ else
             ?? config.Languages.First();
     }
 
+    private async Task LoadEditorCategoriesAsync(string family)
+    {
+        editorFamily = family;
+        var categoriesResult = await Http.GetFromJsonAsync<List<CategoryResponse>>($"/api/categories?family={Uri.EscapeDataString(family)}&language={Uri.EscapeDataString(selectedLanguage.Code)}");
+        editorCategories.Clear();
+        editorCategories.AddRange(categoriesResult ?? []);
+    }
+
     private async Task SetPromptAsync(ChangeEventArgs change) { filter.Prompt = change.Value?.ToString(); await ResetAndLoadAsync(); }
     private async Task SetFamilyAsync(ChangeEventArgs change) { filter.Family = change.Value?.ToString(); await ResetAndLoadAsync(); }
     private async Task SetKindAsync(ChangeEventArgs change) { filter.Kind = change.Value?.ToString(); await ResetAndLoadAsync(); }
@@ -154,13 +166,20 @@ else
     {
         filter.Language = change.Value?.ToString();
         selectedLanguage = languages.FirstOrDefault(language => string.Equals(language.Code, filter.Language, StringComparison.OrdinalIgnoreCase)) ?? selectedLanguage;
+        if (editorOpen) await LoadEditorCategoriesAsync(editorFamily);
         await ResetAndLoadAsync();
     }
     private async Task ResetAndLoadAsync() { page = 1; await LoadQuestionsAsync(); }
     private Task PreviousAsync() { page--; return LoadQuestionsAsync(); }
     private Task NextAsync() { page++; return LoadQuestionsAsync(); }
-    private void NewQuestion() { editing = null; editorOpen = true; }
-    private void EditQuestion(global::Quesshi.Web.Admin.QuestionResponse question) { editing = question; editorOpen = true; }
+    private async Task NewQuestionAsync() { editing = null; await LoadEditorCategoriesAsync("trivia"); editorOpen = true; }
+    private async Task EditQuestionAsync(global::Quesshi.Web.Admin.QuestionResponse question) { editing = question; await LoadEditorCategoriesAsync(question.Family); editorOpen = true; }
+    private void PreviewQuestion(global::Quesshi.Web.Admin.QuestionResponse question)
+    {
+        previewId = question.Id;
+        previewLanguage = question.Language;
+        previewDirection = languages.FirstOrDefault(language => string.Equals(language.Code, question.Language, StringComparison.OrdinalIgnoreCase))?.Direction ?? "ltr";
+    }
     private async Task SavedAsync(global::Quesshi.Web.Admin.QuestionResponse saved)
     {
         editorOpen = false;

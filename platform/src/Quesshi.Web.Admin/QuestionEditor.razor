@@ -4,15 +4,15 @@
     <h2>@(Question is null ? "Create question" : "Edit question")</h2>
     <EditForm Model="draft" OnValidSubmit="SaveAsync">
         <label>Kind <select data-testid="question-editor-kind" value="@draft.Kind" @onchange="ChangeKind"><option value="choice">choice</option><option value="order">order</option><option value="map_pick">map_pick</option><option value="poll_choice">poll_choice</option><option value="poll_roster">poll_roster</option></select></label>@ProblemsFor("kind", "family")
-        <label>Language <select @bind="draft.Language">@foreach (var language in Languages) { <option value="@language.Code">@language.DisplayName</option> }</select></label>@ProblemsFor("language")
-        <label>Category <select @bind="draft.CategoryId"><option value=""></option>@foreach (var category in Categories) { <option value="@category.Id">@category.Slug</option> }</select></label>@ProblemsFor("category")
-        <label>Level <InputNumber @bind-Value="draft.Level" /></label>@ProblemsFor("level")
+        <label>Language <select data-testid="question-language" @bind="draft.Language">@foreach (var language in Languages) { <option value="@language.Code">@language.DisplayName</option> }</select></label>@ProblemsFor("language")
+        <label>Category <select data-testid="question-category" @bind="draft.CategoryId"><option value=""></option>@foreach (var category in Categories) { <option value="@category.Id">@category.Slug</option> }</select></label>@ProblemsFor("category")
+        <label>Level <InputNumber data-testid="question-level" @bind-Value="draft.Level" /></label>@ProblemsFor("level")
         <label>Prompt <InputText data-testid="question-prompt" @bind-Value="draft.Prompt" /></label>@ProblemsFor("prompt", "question")
-        <label>Explanation <InputText @bind-Value="draft.Explanation" /></label>
-        <label>Status <select @bind="draft.Status"><option value="pending">pending</option><option value="approved">approved</option><option value="rejected">rejected</option></select></label>@ProblemsFor("status")
+        <label>Explanation <InputText data-testid="question-explanation" @bind-Value="draft.Explanation" /></label>
+        <label>Status <select data-testid="question-status" @bind="draft.Status"><option value="pending">pending</option><option value="approved">approved</option><option value="rejected">rejected</option></select></label>@ProblemsFor("status")
         <KindEditor Kind="@draft.Kind" Payload="@draft.Payload" PayloadChanged="SetPayload" Lang="@draft.Language" />
         @ProblemsFor("payload", "options", "correctIndex", "items", "target", "roster")
-        <MediaChooser @bind-Value="draft.MediaId" />
+        <MediaChooser @bind-Value="draft.MediaId" ValidationMessages="@MediaProblems" />
         <button type="submit" data-testid="save-question">Save</button>
     </EditForm>
 </section>
@@ -22,6 +22,7 @@
     [Parameter] public QuestionResponse? Question { get; set; }
     [Parameter, EditorRequired] public IReadOnlyList<TenantLanguageModel> Languages { get; set; } = [];
     [Parameter, EditorRequired] public IReadOnlyList<QuestionCategoryModel> Categories { get; set; } = [];
+    [Parameter] public EventCallback<string> FamilyChanged { get; set; }
     [Parameter, EditorRequired] public EventCallback<QuestionResponse> Saved { get; set; }
 
     private readonly List<QuestionProblem> problems = [];
@@ -31,12 +32,19 @@
 
     protected override void OnParametersSet()
     {
-        if (Question?.Id == loadedId) return;
-        loadedId = Question?.Id;
-        draft = Question is null ? QuestionDraft.New(Languages.FirstOrDefault()?.Code ?? "en") : QuestionDraft.From(Question);
+        if (Question?.Id != loadedId)
+        {
+            loadedId = Question?.Id;
+            draft = Question is null ? QuestionDraft.New(Languages.FirstOrDefault()?.Code ?? "en") : QuestionDraft.From(Question);
+        }
+
+        if (draft.CategoryId is Guid categoryId && Categories.Count != 0 && !Categories.Any(category => category.Id == categoryId))
+        {
+            draft.CategoryId = null;
+        }
     }
 
-    private void ChangeKind(ChangeEventArgs change)
+    private async Task ChangeKind(ChangeEventArgs change)
     {
         var kind = change.Value?.ToString() ?? "choice";
         if (StringComparer.Ordinal.Equals(kind, draft.Kind)) return;
@@ -44,9 +52,15 @@
         draft.Kind = kind;
         draft.Family = draft.Kind.StartsWith("poll_", StringComparison.Ordinal) ? "poll" : "trivia";
         draft.RestorePayload();
+        await FamilyChanged.InvokeAsync(draft.Family);
     }
 
     private Task SetPayload(object value) { draft.Payload = value; draft.RememberPayload(); return Task.CompletedTask; }
+
+    private IReadOnlyList<string> MediaProblems => problems
+        .Where(problem => problem.Code.StartsWith("media", StringComparison.OrdinalIgnoreCase))
+        .Select(problem => problem.Message)
+        .ToArray();
 
     private async Task SaveAsync()
     {
