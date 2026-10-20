@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Plugin.Api;
 using Quesshi.Server;
 using Quesshi.Server.Security;
 using Quesshi.Testing;
@@ -20,6 +21,22 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 {
     // 10161-10164 and 30161-30164 are reserved for this class.
     private static int nextSiloPort = 10160;
+
+    [SkippableFact]
+    public async Task Failed_upgrade_codes_are_rejected_by_the_shared_dynamic_host()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var host = new PlatformHttpFixture([new GuestUpgradeHostFeature()]);
+        await host.StartAsync();
+
+        using var response = await host.Guest.PostAsJsonAsync("/api/me/upgrade", new
+        {
+            email = "failed-route@example.test",
+            code = "000000"
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 
     [SkippableFact]
     public async Task Upgrade_rotates_every_guest_session_and_keeps_the_same_player()
@@ -288,4 +305,17 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
     private sealed record StatusResponse(string Status);
     private sealed record ErrorResponse(string Error);
     private sealed record ProfileResponse(Guid Id, string DisplayName, string AvatarSeed, string Lang);
+
+    private sealed class GuestUpgradeHostFeature : IFeature
+    {
+        public string Id => "guest_upgrade_host";
+
+        public FeatureSettings Settings => FeatureSettings.Create(new GuestUpgradeHostSettings(), _ => []);
+
+        public void Configure(IFeatureBuilder feature)
+        {
+        }
+    }
+
+    private sealed record GuestUpgradeHostSettings;
 }

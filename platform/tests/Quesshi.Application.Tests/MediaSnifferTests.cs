@@ -1,21 +1,13 @@
 using System.Buffers.Binary;
 using Quesshi.Application.Media;
+using Quesshi.Testing;
 
 namespace Quesshi.Application.Tests;
 
 public sealed class MediaSnifferTests
 {
     public static IEnumerable<object[]> SupportedSamples =>
-    [
-        [Jpeg(), MediaKind.Image, "image/jpeg"],
-        [Png(), MediaKind.Image, "image/png"],
-        [Webp(), MediaKind.Image, "image/webp"],
-        ["ID3"u8.ToArray(), MediaKind.Audio, "audio/mpeg"],
-        ["OggS"u8.ToArray(), MediaKind.Audio, "audio/ogg"],
-        [Wave(), MediaKind.Audio, "audio/wav"],
-        [Mp4(), MediaKind.Video, "video/mp4"],
-        [Webm(), MediaKind.Video, "video/webm"],
-    ];
+        MediaSamples.All.Select(sample => new object[] { MediaSamples.ReadBytes(sample), sample.Kind, sample.Mime });
 
     [Theory]
     [MemberData(nameof(SupportedSamples))]

@@ -24,6 +24,17 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     private const string OtherTenantHost = "security-other.example.test";
 
     [SkippableFact]
+    public async Task Editor_only_route_preserves_the_shared_role_matrix()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var host = new PlatformHttpFixture([new SecurityRoutesFeature()]);
+        await host.StartAsync();
+
+        await RoleMatrix.ForEditorOnlyMutation(host)
+            .AssertAsync(client => client.PostAsync("/api/admin/x/security/editor", null));
+    }
+
+    [SkippableFact]
     public async Task Player_and_open_routes_enforce_identity_capability_origin_and_antiforgery()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
