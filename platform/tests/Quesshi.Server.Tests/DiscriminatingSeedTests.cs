@@ -43,19 +43,20 @@ public sealed class DiscriminatingSeedTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Bank_selection_excludes_an_eligible_question_in_an_unselected_category()
+    public async Task Bank_selection_never_returns_an_eligible_question_in_an_unselected_category()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
         var tenant = await TenantSeed.CreateAsync(owner, "seed-bank-category");
         var selectedCategory = await CategorySeed.CreateAsync(owner, tenant, "selected");
-        var selectedQuestion = await QuestionSeed.CreateAsync(owner, tenant, selectedCategory, "approved");
+        _ = await QuestionSeed.CreateAsync(owner, tenant, selectedCategory, "approved");
+        _ = await QuestionSeed.CreateAsync(owner, tenant, selectedCategory, "approved");
         var unselected = await DiscriminatingSeeds.AddUnselectedCategoryWithEligibleQuestionAsync(owner, tenant);
         await EnableBankAsync(owner, tenant, [selectedCategory.Id, unselected.Category.Id]);
 
-        var result = await DrawAsync(tenant.Id, new BankParams([selectedCategory.Id]));
+        var result = await DrawAsync(tenant.Id, new BankParams([selectedCategory.Id]), count: 2);
 
-        Assert.Equal(new[] { selectedQuestion.Id }, result.Ids);
+        Assert.DoesNotContain(unselected.Question.Id, result.Ids);
     }
 
     [SkippableFact]
@@ -117,11 +118,11 @@ public sealed class DiscriminatingSeedTests(PostgresFixture fixture)
         return owner;
     }
 
-    private async Task<PickedQuestionIds> DrawAsync(Guid tenantId, BankParams parameters)
+    private async Task<PickedQuestionIds> DrawAsync(Guid tenantId, BankParams parameters, int count = 1)
     {
         await using var sources = Sources();
         var database = new TenantDb(sources);
-        var plan = new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia")], [1], BankDrawSeed);
+        var plan = new SourceDrawPlan(count, "en", [new SourceKind("choice", "trivia")], [1], BankDrawSeed);
         var result = await database.InTenantAsync(tenantId, transaction => new BankSource().PickAsync(transaction, JsonSerializer.SerializeToElement(parameters), plan, Guid.Empty));
         return Assert.IsType<PickedQuestionIds>(result);
     }

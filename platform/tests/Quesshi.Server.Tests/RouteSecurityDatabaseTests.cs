@@ -33,12 +33,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var app = Program.CreateApplication(sources, 11145, 30145, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50145");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50145") };
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var accountContext = new DefaultHttpContext();
             await sessions.IssueAccountAsync(accountContext, seeded.TenantId, seeded.AccountId);
@@ -237,12 +237,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var app = Program.CreateApplication(sources, 11175, 30175, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50175");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50175") };
             var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var accountContext = new DefaultHttpContext();
@@ -285,12 +285,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11176, 30176);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50176");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50176") };
             var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var guestContext = new DefaultHttpContext();
@@ -364,12 +364,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
         await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var app = Program.CreateApplication(sources, 11179, 30179, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50179");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50179") };
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var context = new DefaultHttpContext();
             await sessions.IssueAccountAsync(context, seeded.TenantId, seeded.AccountId);
@@ -401,12 +401,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11177, 30177);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50177");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50177") };
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var moderatorCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.ModeratorAdminId);
             using (var ban = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", moderatorCookie,
@@ -446,12 +446,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11146, 30146);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50146");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50146") };
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var accountContext = new DefaultHttpContext();
             await sessions.IssueAccountAsync(accountContext, seeded.TenantId, seeded.AccountId);
@@ -603,12 +603,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_system"));
         var registry = FeatureRegistry.Create([new SecurityRoutesFeature()]);
         await using var app = Program.CreateApplication(sources, 11153, 30153, configuredFeatures: registry);
-        app.Urls.Add("http://127.0.0.1:0");
+        app.Urls.Add("http://127.0.0.1:50153");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50153") };
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var ownerCookie = await IssueAdminCookieAsync(adminSessions, seeded.TenantId, seeded.OwnerAdminId);
 
