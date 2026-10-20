@@ -38,6 +38,8 @@ public sealed class AdminState(AdminApi api)
     public Task<AdminResult<AdminAccount>> CreateAsync(string username, string email, string password, CancellationToken cancellationToken = default) => api.CreateAsync(username, email, password, cancellationToken);
     public Task<AdminResult<object>> SetMembershipActiveAsync(Guid id, bool active, CancellationToken cancellationToken = default) => api.SetMembershipActiveAsync(id, active, cancellationToken);
     public Task<AdminResult<T>> MutateAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken = default) => api.MutateAsync<T>(method, path, body, cancellationToken);
+    public Task<AdminResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default) => api.GetAsync<T>(path, cancellationToken);
+    public Task<AdminResult<T>> MutateContentAsync<T>(HttpMethod method, string path, Func<HttpContent> contentFactory, CancellationToken cancellationToken = default) => api.MutateContentAsync<T>(method, path, contentFactory, cancellationToken);
 
     public async Task<AdminResult<object>> SignOutAsync(CancellationToken cancellationToken = default)
     {

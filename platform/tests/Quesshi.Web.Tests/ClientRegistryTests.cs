@@ -165,6 +165,25 @@ public sealed class ClientRegistryTests
         Assert.Equal("Content", translator["content.navigation"]);
     }
 
+    [Fact]
+    public async Task Admin_media_contribution_registers_localized_editor_navigation()
+    {
+        var translator = new Translator(new ClientHttp(
+            new HttpClient(new TranslationHandler()) { BaseAddress = new Uri("https://tenant.example/") },
+            new NoopReloader()));
+        var registry = new AdminClientRegistry(
+            new RecordingLoader(typeof(AdminClientEntry).Assembly),
+            translator);
+
+        await registry.LoadAsync();
+        await translator.UseAsync("fa");
+
+        var navigation = Assert.Single(registry.Navigation, entry => entry.Href == "/admin/media");
+        Assert.Equal("رسانه", translator["admin.media.nav"]);
+        Assert.True(navigation.IsVisibleTo(new AdminNavigationContext("editor", IsPlatform: false)));
+        Assert.False(navigation.IsVisibleTo(new AdminNavigationContext("moderator", IsPlatform: false)));
+    }
+
     private static async Task<Translator> LoadContributedTranslatorAsync()
     {
         var translator = new Translator(new ClientHttp(

@@ -31,6 +31,8 @@ public interface IMediaStore
 
     Task<MediaAsset?> FindByHashAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default);
 
+    Task<MediaAsset?> FindByIdAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);
+
     Task<Stream?> OpenReadAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default);

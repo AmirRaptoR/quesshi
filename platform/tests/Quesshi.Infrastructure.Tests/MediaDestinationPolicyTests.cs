@@ -254,6 +254,7 @@ public sealed class MediaDestinationPolicyTests
             throw new InvalidOperationException("Forbidden requests cannot store media.");
         }
         public Task<MediaAsset?> FindByHashAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<MediaAsset?> FindByIdAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Stream?> OpenReadAsync(Guid tenantId, string hash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<bool> DeleteAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
