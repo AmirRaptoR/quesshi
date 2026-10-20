@@ -149,6 +149,10 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         var mongoConnection = Environment.GetEnvironmentVariable("QUESSHI_TEST_MONGO");
         Skip.If(string.IsNullOrWhiteSpace(mongoConnection), "MongoDB is not configured.");
         await using var owner = await PrepareAsync();
+        await ExecuteAsync(
+            owner,
+            "insert into tenant_languages (tenant_id, code, name, english_name) values (@tenant, 'nl', 'Nederlands', 'Dutch')",
+            ("tenant", TenantA));
         var editor = await InsertAdminAsync(owner, "bank-import", "bank-import@example.test");
         await MembershipAsync(owner, TenantA, editor, "editor");
         await using var sources = Sources();
@@ -183,7 +187,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             [
                 new() { Id = "choice", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Choice", Choices = ["a", "b", "c", "d"], CorrectIndex = 2, MediaUrl = "/media/photo.png", MediaKind = 1, MediaAttribution = "Credit", Status = 1, Source = 1 },
                 new() { Id = "order", Family = 0, Kind = 1, Lang = 1, CategoryId = "history", Level = 2, Prompt = "Order", Choices = ["a", "b", "c", "d"], Status = 2, Source = 2 },
-                new() { Id = "map", Family = 0, Kind = 2, Lang = 2, CategoryId = "places", Level = 3, Prompt = "Map", TargetShape = 1, TargetLatitude = 52.3676, TargetLongitude = 4.9041, TargetRadiusKm = 2.5, BaseLayer = 1 },
+                new() { Id = "map", Family = 0, Kind = 2, Lang = 2, CategoryId = "places", Level = 3, Prompt = "Map", TargetShape = 1, TargetLatitude = 52.3676, TargetLongitude = 4.9041, TargetRadiusKm = 25, BaseLayer = 1 },
                 new() { Id = "poll-choice", Family = 1, Lang = 0, CategoryId = "history", Level = 4, Prompt = "Poll choice", AnswerSource = 1, FixedChoices = ["yes", "no"] },
                 new() { Id = "poll-roster", Family = 1, Lang = 1, CategoryId = "places", Level = 5, Prompt = "Poll roster", AnswerSource = 0 },
             ]);
