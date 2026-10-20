@@ -263,7 +263,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindQuestionsMigrationAsync(NpgsqlConnection owner)
     {
-        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}')");
+        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; drop table ai_calls; drop table ai_budgets; drop table generation_runs; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}', '20261020T2300_ai_generation_budgets.sql')");
     }
 
     private static Task RewindSessionCreationMigrationAsync(NpgsqlConnection owner) =>

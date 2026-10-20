@@ -4,5 +4,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Features/*/Migrations/**/*.sql" />
+    <EmbeddedResource Include="AiGeneration/Migrations/**/*.sql" LogicalName="Quesshi.Features.Features.ai_generation.Migrations.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
