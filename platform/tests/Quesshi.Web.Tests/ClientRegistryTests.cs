@@ -111,6 +111,25 @@ public sealed class ClientRegistryTests
     }
 
     [Fact]
+    public async Task Admin_client_registers_the_import_screen_for_owners_and_editors_in_the_tenant_language()
+    {
+        var translator = new Translator(new ClientHttp(
+            new HttpClient(new TranslationHandler()) { BaseAddress = new Uri("https://tenant.example/") },
+            new NoopReloader()));
+        var registry = new AdminClientRegistry(new RecordingLoader(typeof(AdminClientEntry).Assembly), translator);
+
+        await registry.LoadAsync();
+        await translator.UseAsync("fa");
+
+        var navigation = Assert.Single(registry.Navigation, item => item.Href == "/admin/import");
+        Assert.Contains(typeof(AdminImport), registry.Pages);
+        Assert.True(navigation.IsVisibleTo(new AdminNavigationContext("Editor", false)));
+        Assert.True(navigation.IsVisibleTo(new AdminNavigationContext("Owner", false)));
+        Assert.False(navigation.IsVisibleTo(new AdminNavigationContext("Moderator", false)));
+        Assert.Equal("وارد کردن پرسش‌ها", translator["admin.import.navigation"]);
+    }
+
+    [Fact]
     public async Task Admin_client_loads_one_root_and_multiple_independent_page_contributions()
     {
         var registry = new AdminClientRegistry(

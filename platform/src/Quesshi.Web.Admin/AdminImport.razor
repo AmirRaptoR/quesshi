@@ -1,0 +1,134 @@
+@page "/admin/import"
+@layout AdminLayout
+@inject ClientHttp Http
+@inject IClientTranslator Text
+@inject NavigationManager Navigation
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (!CanImport)
+{
+    <section class="card"><p>@Copy(ImportText.Denied)</p></section>
+}
+else
+{
+    <section class="stack" aria-labelledby="admin-import-title">
+        <h1 id="admin-import-title">@Copy(ImportText.Title)</h1>
+        <p class="muted">@Text["admin.import.hint"]</p>
+        <div class="stack">
+            <label for="admin-import-kind">@Copy(ImportText.Kind)</label>
+            <select id="admin-import-kind" data-testid="import-kind" value="@workflow.Kind" @onchange="ChangeKind">
+                @foreach (var kind in Kinds)
+                {
+                    <option value="@kind.Id">@Copy(kind.Label)</option>
+                }
+            </select>
+            <label for="admin-import-file">@Copy(ImportText.File)</label>
+            <InputFile id="admin-import-file" data-testid="import-file" OnChange="SelectFile" accept=".csv,.json,text/csv,application/json" />
+            <label for="admin-import-bundle">@Copy(ImportText.Bundle)</label>
+            <InputFile id="admin-import-bundle" data-testid="import-bundle" OnChange="SelectBundle" accept=".zip,application/zip" />
+        </div>
+        <section class="card stack" aria-labelledby="admin-import-templates">
+            <h2 id="admin-import-templates">@Copy(ImportText.Templates)</h2>
+            @foreach (var kind in Kinds)
+            {
+                <div data-testid="template-@kind.Id"><strong>@Copy(kind.Label)</strong> <a href="@TemplateHref(kind.Id, "csv")" download>@Copy(ImportText.Csv)</a> <a href="@TemplateHref(kind.Id, "json")" download>@Copy(ImportText.Json)</a></div>
+            }
+        </section>
+        @if (error is { } errorText) { <p class="form-error" role="alert">@Copy(errorText)</p> }
+        <div>
+            <button class="btn btn--quiet" data-testid="dry-run" @onclick="DryRunAsync" disabled="@(!workflow.CanDryRun || working)">@Text["admin.import.dryRun"]</button>
+            <button class="btn" data-testid="import" @onclick="ImportAsync" disabled="@(!workflow.CanImport || working)">@Text["admin.import.commit"]</button>
+        </div>
+        @if (working) { <p class="muted">@Text["admin.import.working"]</p> }
+        @if (workflow.Report is { } report)
+        {
+            <section class="stack" aria-labelledby="admin-import-results">
+                <h2 id="admin-import-results">@Copy(ImportText.Results)</h2>
+                <p>@string.Format(Text["admin.import.summary"], report.Rows.Count, report.Accepted, report.Rejected)</p>
+                <table><thead><tr><th>@Copy(ImportText.Row)</th><th>@Copy(ImportText.Outcome)</th><th>@Copy(ImportText.Problem)</th><th>@Copy(ImportText.QuestionId)</th></tr></thead><tbody>
+                    @foreach (var row in report.Rows)
+                    {
+                        <tr><td>@row.Row</td><td>@row.Outcome</td><td>@Problems(row)</td><td>@QuestionId(row)</td></tr>
+                    }
+                </tbody></table>
+            </section>
+        }
+    </section>
+}
+
+@code {
+    private static readonly IReadOnlyList<ImportKind> Kinds =
+    [
+        new("choice", ImportText.KindChoice),
+        new("order", ImportText.KindOrder),
+        new("map_pick", ImportText.KindMapPick),
+        new("poll_choice", ImportText.KindPollChoice),
+        new("poll_roster", ImportText.KindPollRoster),
+    ];
+
+    [CascadingParameter] public AdminState? State { get; set; }
+    private readonly ImportWorkflow workflow = new();
+    private AdminImportApi api = null!;
+    private bool working;
+    private ImportText? error;
+    private bool CanImport => State?.Session is { MustChangePassword: false } session &&
+        (string.Equals(session.Role, "Owner", StringComparison.OrdinalIgnoreCase) || string.Equals(session.Role, "Editor", StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized() => api = new AdminImportApi(Http);
+
+    protected override void OnParametersSet()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) Navigation.NavigateTo("/admin/login");
+        if (State?.Session?.MustChangePassword == true) Navigation.NavigateTo("/admin/password");
+    }
+
+    private void ChangeKind(ChangeEventArgs args)
+    {
+        if (args.Value is string kind) workflow.SetKind(kind);
+    }
+
+    private void SelectFile(InputFileChangeEventArgs args) => workflow.SetFile(args.File);
+    private void SelectBundle(InputFileChangeEventArgs args) => workflow.SetMediaBundle(args.File);
+
+    private async Task DryRunAsync()
+    {
+        var operation = workflow.BeginDryRun();
+        working = true;
+        error = null;
+        try
+        {
+            var result = await api.DryRunAsync(operation.Inputs);
+            workflow.CompleteDryRun(operation, result.Value);
+            if (!result.Success) error = ImportText.Failed;
+        }
+        finally { working = false; }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (!workflow.TryBeginImport(out var operation) || operation is null)
+        {
+            error = ImportText.DryRunRequired;
+            return;
+        }
+
+        working = true;
+        error = null;
+        try
+        {
+            var result = await api.ImportAsync(operation.Inputs);
+            workflow.CompleteImport(operation, result.Value);
+            if (!result.Success) error = ImportText.Failed;
+        }
+        finally { working = false; }
+    }
+
+    private static string TemplateHref(string kind, string format) => $"/api/admin/import/templates/{kind}.{format}";
+    private static string Problems(ImportRowReport row) => row.Problems is { Count: > 0 } ? string.Join("; ", row.Problems.Select(problem => $"{problem.Code}: {problem.Message}")) : "—";
+    private static string QuestionId(ImportRowReport row) => (row.QuestionId ?? row.ExistingQuestionId)?.ToString() ?? (row.ExistingRow is { } existingRow ? $"row {existingRow}" : "—");
+    private string Copy(ImportText text) => ImportCopy.Get(Text, text);
+    private sealed record ImportKind(string Id, ImportText Label);
+}
