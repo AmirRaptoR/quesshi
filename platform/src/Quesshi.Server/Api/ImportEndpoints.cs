@@ -56,7 +56,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
         var state = await database.InTenantAsync(tenant.Id, async transaction => new ImportState(
             await content.ListAsync(transaction, cancellationToken: cancellationToken),
             await transaction.QueryAsync<string>("select code from tenant_languages", cancellationToken: cancellationToken),
-            await transaction.QueryAsync<Guid>("select id from categories", cancellationToken: cancellationToken)), cancellationToken: cancellationToken, readOnly: true);
+            await transaction.QueryAsync<CategoryReference>("select id as Id, slug as Slug from categories", cancellationToken: cancellationToken)), cancellationToken: cancellationToken, readOnly: true);
 
         var reports = new List<ImportRowReport>(parsed.Document!.Rows.Count);
         var accepted = new List<ImportCandidate>();
@@ -68,7 +68,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
                 continue;
             }
 
-            var candidate = BuildCandidate(row, kind!, mapping!, defaultStatus);
+            var candidate = BuildCandidate(row, kind!, mapping!, defaultStatus, state);
             if (candidate.Error is not null)
             {
                 reports.Add(new(row.Number, "invalid", [candidate.Error]));
@@ -158,7 +158,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
         return Results.File(bytes, format == "csv" ? "text/csv" : "application/json", $"{kind}.{format}");
     }
 
-    private static CandidateBuild BuildCandidate(ImportDocumentRow documentRow, IKindRuntime kind, IImports mapping, QuestionStatus defaultStatus)
+    private static CandidateBuild BuildCandidate(ImportDocumentRow documentRow, IKindRuntime kind, IImports mapping, QuestionStatus defaultStatus, ImportState state)
     {
         var row = new ImportRow(documentRow.Fields);
         JsonElement payload;
@@ -180,11 +180,19 @@ public sealed class ImportEndpoints : ICoreRouteModule
             return new(new ContentProblem("payload.malformed", exception.Message));
         }
         var categoryText = Field(row, "category", "categoryId");
+        var categorySlug = row.Field("categorySlug");
+        if (!string.IsNullOrWhiteSpace(categoryText) && !string.IsNullOrWhiteSpace(categorySlug))
+            return new(new ContentProblem("category.ambiguous", "Specify either a category id or a category slug."));
         Guid? category = null;
-        if (categoryText is not null)
+        if (!string.IsNullOrWhiteSpace(categoryText))
         {
             if (!Guid.TryParse(categoryText, out var parsedCategory)) return new(new ContentProblem("category.invalid", "Category must be a category id."));
             category = parsedCategory;
+        }
+        else if (!string.IsNullOrWhiteSpace(categorySlug))
+        {
+            if (!state.TryCategory(categorySlug, out var resolvedCategory)) return new(new ContentProblem("category.unknown", "Category slug does not exist."));
+            category = resolvedCategory;
         }
         var levelText = row.Field("level");
         int? level = null;
@@ -194,8 +202,10 @@ public sealed class ImportEndpoints : ICoreRouteModule
             level = parsedLevel;
         }
         if (!TryStatus(row.Field("status"), defaultStatus, out var status)) return new(new ContentProblem("status.invalid", "Status must be draft, pending, approved, or rejected."));
+        if (!TrySource(row.Field("source"), QuestionSource.Import, out var source) || source is QuestionSource.Player)
+            return new(new ContentProblem("source.invalid", "Source must be seed, import, ai, or admin."));
         return new(new QuestionWrite(kind.Id, kind.Version, kind.Family, Field(row, "language", "lang"), category, level,
-            row.Field("prompt"), payload, row.Field("explanation"), TopicKey.From(row.Field("subject"), row.Field("aspect")), status, QuestionSource.Import, null),
+            row.Field("prompt"), payload, row.Field("explanation"), row.Field("topic") ?? TopicKey.From(row.Field("subject"), row.Field("aspect")), status, source, null),
             new MediaReference(row.Field("mediaUrl"), row.Field("mediaKind"), row.Field("mediaAttribution")));
     }
 
@@ -244,7 +254,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
             problems.Add(new("question.invalid", "Language, category, prompt and a level from 1 to 5 are required."));
         if (write.Language is not null && !state.Languages.Contains(write.Language, StringComparer.OrdinalIgnoreCase))
             problems.Add(new("language.unsupported", "The question language is not enabled for this tenant."));
-        if (write.CategoryId is not null && !state.Categories.Contains(write.CategoryId.Value))
+        if (write.CategoryId is not null && !state.Categories.Any(category => category.Id == write.CategoryId.Value))
             problems.Add(new("category.unknown", "The question category is not available in this tenant."));
         try
         {
@@ -330,7 +340,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
         var columns = new List<IReadOnlyCollection<string>>
         {
             new[] { "language", "lang" },
-            new[] { "category", "categoryId" },
+            new[] { "category", "categoryId", "categorySlug" },
         };
         if (kind.Id is not ("poll_choice" or "poll_roster")) columns.Add(new[] { "level" });
         columns.AddRange(kind.Id switch
@@ -374,6 +384,7 @@ public sealed class ImportEndpoints : ICoreRouteModule
     private static bool TryMediaKind(string value, out MediaKind kind) => Enum.TryParse(value, true, out kind) && Enum.IsDefined(kind);
     private static bool TryBoolean(string? value, bool fallback, out bool result) => string.IsNullOrWhiteSpace(value) ? (result = fallback) == fallback : bool.TryParse(value, out result);
     private static bool TryStatus(string? value, QuestionStatus fallback, out QuestionStatus result) => string.IsNullOrWhiteSpace(value) ? (result = fallback) == fallback : Enum.TryParse(value, true, out result) && Enum.IsDefined(result);
+    private static bool TrySource(string? value, QuestionSource fallback, out QuestionSource result) => string.IsNullOrWhiteSpace(value) ? (result = fallback) == fallback : Enum.TryParse(value, true, out result) && Enum.IsDefined(result);
     private static IResult Error(string error, int status) => Results.Json(new { error }, statusCode: status);
     private static ImportReport Report(IReadOnlyList<ImportRowReport> rows, IReadOnlyList<ImportWarning>? warnings = null) => new(rows.OrderBy(row => row.Row).ToArray(), rows.Count(row => row.Outcome is "imported" or "would_import"), rows.Count(row => row.Outcome is not ("imported" or "would_import")), warnings ?? []);
     private static byte[] Csv(IReadOnlyDictionary<string, string?> fields) => System.Text.Encoding.UTF8.GetBytes(string.Join(',', fields.Keys) + "\n" + string.Join(',', fields.Values.Select(value => '"' + (value ?? "").Replace("\"", "\"\"") + '"')) + "\n");
@@ -416,7 +427,16 @@ public sealed class ImportEndpoints : ICoreRouteModule
         return wins / choices.Count;
     }
 
-    private sealed record ImportState(IReadOnlyList<QuestionEnvelope> Questions, IReadOnlyList<string> Languages, IReadOnlyList<Guid> Categories);
+    private sealed record CategoryReference(Guid Id, string Slug);
+    private sealed record ImportState(IReadOnlyList<QuestionEnvelope> Questions, IReadOnlyList<string> Languages, IReadOnlyList<CategoryReference> Categories)
+    {
+        public bool TryCategory(string slug, out Guid id)
+        {
+            var category = Categories.SingleOrDefault(item => string.Equals(item.Slug, slug, StringComparison.OrdinalIgnoreCase));
+            id = category?.Id ?? Guid.Empty;
+            return category is not null;
+        }
+    }
     private sealed record CandidateBuild(ContentProblem? Error = null, QuestionWrite? Write = null, MediaReference? Media = null)
     {
         public CandidateBuild(QuestionWrite write) : this(null, write) { }

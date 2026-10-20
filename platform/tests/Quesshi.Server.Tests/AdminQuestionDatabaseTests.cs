@@ -7,7 +7,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Driver;
 using Npgsql;
+using Quesshi.BankExport;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Application.Media;
 using Quesshi.Infrastructure.Media;
@@ -23,6 +25,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 {
     private static readonly Guid TenantA = Guid.Parse("8ab4e15b-45e9-4d67-a32b-b80cbe902c3a");
     private static readonly Guid TenantB = Guid.Parse("54e5eb40-2d22-48a2-9f36-e967f67a1c44");
+    private bool databasePrepared;
     private static Uri? clientBaseAddress;
 
     [SkippableFact]
@@ -91,6 +94,130 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True((string)(await stored.ExecuteScalarAsync())! == "approved:import", report);
+    }
+
+    [SkippableFact]
+    public async Task Api_import_resolves_category_slug_and_preserves_legacy_metadata()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "legacy-history");
+        var editor = await InsertAdminAsync(owner, "legacy-metadata", "legacy-metadata@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        var row = JsonSerializer.SerializeToUtf8Bytes(new[]
+        {
+            new
+            {
+                language = "fa",
+                categorySlug = "legacy-history",
+                level = 3,
+                prompt = "Legacy metadata question",
+                choice1 = "one",
+                choice2 = "two",
+                choice3 = "three",
+                choice4 = "four",
+                correctIndex = 1,
+                explanation = "Legacy explanation",
+                topic = "legacy-topic",
+                status = "approved",
+                source = "ai",
+            },
+        });
+        using var body = ImportBody("choice", row, "questions.json", dryRun: false);
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        await using var stored = new NpgsqlCommand("""
+            select q.lang || ':' || c.slug || ':' || q.level || ':' || q.explanation || ':' || q.topic || ':' || q.status || ':' || q.source
+            from questions q join categories c on c.id = q.category_id
+            where q.tenant_id = @tenant and q.category_id = @category
+            """, owner);
+        stored.Parameters.AddWithValue("tenant", TenantA);
+        stored.Parameters.AddWithValue("category", category);
+
+        Assert.Equal("fa:legacy-history:3:Legacy explanation:legacy-topic:approved:ai", await stored.ExecuteScalarAsync());
+    }
+
+    [SkippableFact]
+    public async Task Legacy_bank_bundle_dry_runs_and_imports_every_question_kind_through_the_platform_apis()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var mongoConnection = Environment.GetEnvironmentVariable("QUESSHI_TEST_MONGO");
+        Skip.If(string.IsNullOrWhiteSpace(mongoConnection), "MongoDB is not configured.");
+        await using var owner = await PrepareAsync();
+        var editor = await InsertAdminAsync(owner, "bank-import", "bank-import@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        foreach (var category in new[] { "history", "places" })
+        {
+            using var categoryBody = JsonContent.Create(new { slug = category, names = new Dictionary<string, string> { ["en"] = category }, icon = "book", color = "#225588", sortOrder = 1, isActive = true });
+            using var categoryResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookie, token, categoryBody);
+            Assert.Equal(HttpStatusCode.Created, categoryResponse.StatusCode);
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "quesshi-bank-export-e2e", Guid.NewGuid().ToString("N"));
+        var media = Path.Combine(root, "legacy-media");
+        var bundle = Path.Combine(root, "bundle");
+        var databaseName = "bank_export_e2e_" + Guid.NewGuid().ToString("N");
+        var mongo = new MongoClient(mongoConnection);
+        try
+        {
+            Directory.CreateDirectory(media);
+            await File.WriteAllBytesAsync(Path.Combine(media, "photo.png"), Png());
+            var database = mongo.GetDatabase(databaseName);
+            await database.GetCollection<LegacyCategory>("categories").InsertManyAsync(
+            [
+                new() { Id = "history", NameEn = "History", NameFa = "تاریخ", NameNl = "Geschiedenis", Icon = "book", Color = "#225588", SortOrder = 1, IsActive = true },
+                new() { Id = "places", NameEn = "Places", NameFa = "مکان", NameNl = "Plaatsen", Icon = "map", Color = "#228855", SortOrder = 2, IsActive = true },
+            ]);
+            await database.GetCollection<LegacyContentSettings>("content_settings").InsertOneAsync(new() { TriviaCategoryIds = ["history", "places"], VotingCategoryIds = ["history"] });
+            await database.GetCollection<LegacyQuestion>("questions").InsertManyAsync(
+            [
+                new() { Id = "choice", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Choice", Choices = ["a", "b", "c", "d"], CorrectIndex = 2, MediaUrl = "/media/photo.png", MediaKind = 1, MediaAttribution = "Credit", Status = 1, Source = 1 },
+                new() { Id = "order", Family = 0, Kind = 1, Lang = 1, CategoryId = "history", Level = 2, Prompt = "Order", Choices = ["a", "b", "c", "d"], Status = 2, Source = 2 },
+                new() { Id = "map", Family = 0, Kind = 2, Lang = 2, CategoryId = "places", Level = 3, Prompt = "Map", TargetShape = 1, TargetLatitude = 52.3676, TargetLongitude = 4.9041, TargetRadiusKm = 2.5, BaseLayer = 1 },
+                new() { Id = "poll-choice", Family = 1, Lang = 0, CategoryId = "history", Level = 4, Prompt = "Poll choice", AnswerSource = 1, FixedChoices = ["yes", "no"] },
+                new() { Id = "poll-roster", Family = 1, Lang = 1, CategoryId = "places", Level = 5, Prompt = "Poll roster", AnswerSource = 0 },
+            ]);
+
+            var exported = await Program.Main(["--connection", mongoConnection!, "--database", databaseName, "--output", bundle, "--media-root", media]);
+            Assert.Equal(0, exported);
+            var mediaBundle = Zip("media/photo.png", Png());
+            foreach (var kind in new[] { "choice", "order", "map_pick", "poll_choice", "poll_roster" })
+            {
+                var rows = await File.ReadAllBytesAsync(Path.Combine(bundle, kind + ".json"));
+                using var dryRunBody = ImportBody(kind, rows, kind + ".json", bundle: mediaBundle);
+                using var dryRun = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, dryRunBody);
+                using var dryRunReport = await ReportAsync(dryRun);
+                using var importBody = ImportBody(kind, rows, kind + ".json", dryRun: false, bundle: mediaBundle);
+                using var imported = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, importBody);
+                using var importReport = await ReportAsync(imported);
+                Assert.Equal(["would_import"], Outcomes(dryRunReport));
+                Assert.Equal(["imported"], Outcomes(importReport));
+            }
+            await using var importedCount = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+            importedCount.Parameters.AddWithValue("tenant", TenantA);
+            await using var attribution = new NpgsqlCommand("select m.attribution || ':' || m.kind from questions q join media_assets m on m.tenant_id = q.tenant_id and m.id = q.media_id where q.tenant_id = @tenant and q.prompt = 'Choice'", owner);
+            attribution.Parameters.AddWithValue("tenant", TenantA);
+            await using var importedFields = new NpgsqlCommand("select string_agg(q.kind || ':' || q.lang || ':' || c.slug || ':' || q.level || ':' || q.status || ':' || q.source, ',' order by q.kind) from questions q join categories c on c.tenant_id = q.tenant_id and c.id = q.category_id where q.tenant_id = @tenant", owner);
+            importedFields.Parameters.AddWithValue("tenant", TenantA);
+
+            Assert.Equal(5L, (long)(await importedCount.ExecuteScalarAsync())!);
+            Assert.Equal("Credit:image", await attribution.ExecuteScalarAsync());
+            Assert.Equal("choice:fa:history:1:approved:ai,map_pick:nl:places:3:pending:seed,order:en:history:2:rejected:admin,poll_choice:fa:history:4:pending:seed,poll_roster:en:places:5:pending:seed", await importedFields.ExecuteScalarAsync());
+        }
+        finally
+        {
+            await mongo.DropDatabaseAsync(databaseName);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
 
     [SkippableFact]
@@ -1322,13 +1449,14 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
     public async Task DisposeAsync()
     {
-        if (fixture.ConnectionString is null) return;
+        if (fixture.ConnectionString is null || !databasePrepared) return;
         await using var owner = await OpenAsync("quesshi_owner");
         await ResetDatabaseAsync(owner);
     }
 
     private async Task<NpgsqlConnection> PrepareAsync()
     {
+        databasePrepared = true;
         await Quesshi.Server.Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ResetDatabaseAsync(owner);

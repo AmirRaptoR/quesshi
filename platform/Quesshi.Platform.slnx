@@ -34,4 +34,8 @@
     <Project Path="bench/Quesshi.Bench.Live/Quesshi.Bench.Live.csproj" />
     <Project Path="bench/Quesshi.Bench.Live.Tests/Quesshi.Bench.Live.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Quesshi.BankExport/Quesshi.BankExport.csproj" />
+    <Project Path="tools/Quesshi.BankExport.Tests/Quesshi.BankExport.Tests.csproj" />
+  </Folder>
 </Solution>

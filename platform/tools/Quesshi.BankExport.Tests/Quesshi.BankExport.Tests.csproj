@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Quesshi.BankExport/Quesshi.BankExport.csproj" />
+    <PackageReference Include="MongoDB.Driver" Version="3.11.0" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+  </ItemGroup>
+  <Import Project="../../tests/TestProject.props" />
+</Project>
