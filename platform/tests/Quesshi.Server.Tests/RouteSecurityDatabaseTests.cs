@@ -285,12 +285,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11176, 30176);
-        app.Urls.Add("http://127.0.0.1:50176");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50176") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var guestContext = new DefaultHttpContext();
