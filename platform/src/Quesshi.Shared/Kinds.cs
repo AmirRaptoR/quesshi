@@ -26,12 +26,23 @@ public interface IKindRuntime : IKind
     Grade Grade(JsonElement payload, JsonElement resolved, JsonElement? stored);
 }
 
+/// <summary>Optional generation capability supplied by a question kind.</summary>
+public interface IGenerates
+{
+    string PromptFragment { get; }
+    JsonElement CandidateSchema { get; }
+    IReadOnlyList<Problem> PostCheck(JsonElement candidate);
+    JsonElement ToPayload(JsonElement candidate);
+}
+
 public interface IKindRegistry
 {
     IKindRuntime Get(string id, int version);
     IKindRuntime GetCurrent(string id);
     bool TryGet(string id, int version, out IKindRuntime? kind);
     bool TryGetCurrent(string id, out IKindRuntime? kind);
+    bool TryGetGenerator(string id, int version, out IGenerates? generator);
+    bool TryGetCurrentGenerator(string id, out IGenerates? generator);
 }
 
 public sealed class KindRegistry : IKindRegistry
@@ -62,6 +73,17 @@ public sealed class KindRegistry : IKindRegistry
 
     public bool TryGet(string id, int version, out IKindRuntime? kind) => _versions.TryGetValue((id, version), out kind);
     public bool TryGetCurrent(string id, out IKindRuntime? kind) => _current.TryGetValue(id, out kind);
+    public bool TryGetGenerator(string id, int version, out IGenerates? generator)
+    {
+        generator = TryGet(id, version, out var kind) ? kind as IGenerates : null;
+        return generator is not null;
+    }
+
+    public bool TryGetCurrentGenerator(string id, out IGenerates? generator)
+    {
+        generator = TryGetCurrent(id, out var kind) ? kind as IGenerates : null;
+        return generator is not null;
+    }
 }
 
 public abstract class Kind<TPayload, TResolved, TCard, TAnswer, TStored, TReveal> : IKindRuntime

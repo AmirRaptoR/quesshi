@@ -1,13 +1,15 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Schema;
 using Quesshi.Shared;
 
 namespace Quesshi.Kinds.PollRoster;
 
-public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved, PollRosterCard, PollRosterAnswer, PollRosterStored, PollRosterReveal>, IImports<PollRosterPayload>
+public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved, PollRosterCard, PollRosterAnswer, PollRosterStored, PollRosterReveal>, IImports<PollRosterPayload>, IGenerates
 {
     private const int MaxLegacyChoices = 8;
     private static readonly string[] ImportFields = ["answerSource", "choice1", "choice2", "choice3", "choice4", "choice5", "choice6", "choice7", "choice8"];
+    private static readonly JsonElement GenerationSchema = CreateGenerationSchema();
     private static readonly ImportExample Example = new(new Dictionary<string, string?>
     {
         ["answerSource"] = "participants"
@@ -22,6 +24,8 @@ public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved,
     public IReadOnlyList<string> JsonFields => ImportFields;
     public ImportExample CsvExample => Example;
     public ImportExample JsonExample => Example;
+    public string PromptFragment => "Create a poll whose options are the active participants; do not supply fixed response options.";
+    public JsonElement CandidateSchema => GenerationSchema;
 
     public bool Matches(string? legacyKind, ImportRow row) => string.Equals(row.Field("answerSource"), "participants", StringComparison.OrdinalIgnoreCase);
 
@@ -32,6 +36,18 @@ public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved,
             .Where(field => field.Value is not null)
             .ToDictionary(field => field.Name, field => JsonSerializer.SerializeToElement(field.Value));
         return new() { Extra = unexpected.Count == 0 ? null : unexpected };
+    }
+
+    public IReadOnlyList<Problem> PostCheck(JsonElement candidate)
+    {
+        ReadCandidate(candidate);
+        return Validate(new PollRosterPayload(), new ValidateEnv("en"));
+    }
+
+    public JsonElement ToPayload(JsonElement candidate)
+    {
+        ReadCandidate(candidate);
+        return JsonSerializer.SerializeToElement(new PollRosterPayload(), PollRosterJsonContext.Default.PollRosterPayload);
     }
 
     public override PollRosterPayload Upgrade(int from, JsonElement payload)
@@ -75,6 +91,20 @@ public sealed class PollRosterKind : Kind<PollRosterPayload, PollRosterResolved,
     }
 
     public override Grade Grade(Item<PollRosterPayload, PollRosterResolved> item, PollRosterStored stored) => Quesshi.Shared.Grade.None;
+
+    private static PollRosterCandidate ReadCandidate(JsonElement candidate)
+    {
+        if (candidate.ValueKind != JsonValueKind.Object) throw new JsonException("Poll roster candidate must be an object.");
+        return JsonSerializer.Deserialize(candidate, PollRosterJsonContext.Default.PollRosterCandidate)
+            ?? throw new JsonException("Poll roster candidate is invalid.");
+    }
+
+    private static JsonElement CreateGenerationSchema()
+    {
+        var schema = JsonSchemaExporter.GetJsonSchemaAsNode(PollRosterJsonContext.Default.PollRosterCandidate);
+        using var document = JsonDocument.Parse(schema.ToJsonString());
+        return document.RootElement.Clone();
+    }
 }
 
 public sealed class PollRosterPayload
@@ -82,6 +112,7 @@ public sealed class PollRosterPayload
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; set; }
 }
+public sealed record PollRosterCandidate;
 public sealed record PollRosterOption(int Seat, string Name);
 public sealed record PollRosterResolved(IReadOnlyList<PollRosterOption> Options);
 public sealed record PollRosterCard(IReadOnlyList<PollRosterOption> Options);
@@ -144,6 +175,7 @@ public abstract class PollRosterAnswerConverterBase<T> : JsonConverter<T> where 
 }
 
 [JsonSerializable(typeof(PollRosterPayload))]
+[JsonSerializable(typeof(PollRosterCandidate))]
 [JsonSerializable(typeof(PollRosterOption))]
 [JsonSerializable(typeof(PollRosterResolved))]
 [JsonSerializable(typeof(PollRosterCard))]

@@ -1,12 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Schema;
 using Quesshi.Shared;
 
 namespace Quesshi.Kinds.Choice;
 
-public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, ChoiceAnswer, ChoiceStored, ChoiceReveal>, IImports<ChoicePayload>
+public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, ChoiceAnswer, ChoiceStored, ChoiceReveal>, IImports<ChoicePayload>, IGenerates
 {
     private static readonly string[] ImportFields = ["choice1", "choice2", "choice3", "choice4", "correctIndex"];
+    private static readonly JsonElement GenerationSchema = CreateGenerationSchema();
     private static readonly ImportExample Example = new(new Dictionary<string, string?>
     {
         ["choice1"] = "Mercury",
@@ -25,12 +27,19 @@ public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, Choice
     public IReadOnlyList<string> JsonFields => ImportFields;
     public ImportExample CsvExample => Example;
     public ImportExample JsonExample => Example;
+    public string PromptFragment => "Provide exactly four distinct answer choices and the zero-based correctIndex for the one correct choice.";
+    public JsonElement CandidateSchema => GenerationSchema;
 
     public bool Matches(string? legacyKind, ImportRow row) => string.Equals(legacyKind, "choice", StringComparison.OrdinalIgnoreCase);
 
     public ChoicePayload Convert(ImportRow row) => new(
         [row.Field("choice1") ?? "", row.Field("choice2") ?? "", row.Field("choice3") ?? "", row.Field("choice4") ?? ""],
         ImportValues.Integer(row, "correctIndex", -1));
+
+    public IReadOnlyList<Problem> PostCheck(JsonElement candidate) => Validate(ToPayloadValue(ReadCandidate(candidate)), new ValidateEnv("en"));
+
+    public JsonElement ToPayload(JsonElement candidate) =>
+        JsonSerializer.SerializeToElement(ToPayloadValue(ReadCandidate(candidate)), ChoiceJsonContext.Default.ChoicePayload);
 
     public override ChoicePayload Upgrade(int from, JsonElement payload)
     {
@@ -80,9 +89,27 @@ public class ChoiceKind : Kind<ChoicePayload, ChoiceResolved, ChoiceCard, Choice
 
     public override Grade Grade(Item<ChoicePayload, ChoiceResolved> item, ChoiceStored stored) =>
         Quesshi.Shared.Grade.Of(stored.Index == item.Payload.CorrectIndex ? 1 : 0);
+
+    private static ChoiceCandidate ReadCandidate(JsonElement candidate)
+    {
+        if (candidate.ValueKind != JsonValueKind.Object) throw new JsonException("Choice candidate must be an object.");
+        return JsonSerializer.Deserialize(candidate, ChoiceJsonContext.Default.ChoiceCandidate)
+            ?? throw new JsonException("Choice candidate is invalid.");
+    }
+
+    private static ChoicePayload ToPayloadValue(ChoiceCandidate candidate) => new(
+        candidate.Choices?.Select(choice => choice?.Trim() ?? string.Empty).ToArray(), candidate.CorrectIndex);
+
+    private static JsonElement CreateGenerationSchema()
+    {
+        var schema = JsonSchemaExporter.GetJsonSchemaAsNode(ChoiceJsonContext.Default.ChoiceCandidate);
+        using var document = JsonDocument.Parse(schema.ToJsonString());
+        return document.RootElement.Clone();
+    }
 }
 
 public sealed record ChoicePayload([property: JsonRequired] IReadOnlyList<string>? Options, [property: JsonRequired] int CorrectIndex);
+public sealed record ChoiceCandidate([property: JsonRequired] IReadOnlyList<string>? Choices, [property: JsonRequired] int CorrectIndex);
 public sealed record ChoiceResolved;
 public sealed record ChoiceCard(IReadOnlyList<string> Options);
 public sealed record ChoiceAnswer([property: JsonRequired] int Index);
@@ -90,6 +117,7 @@ public sealed record ChoiceStored([property: JsonRequired] int Index);
 public sealed record ChoiceReveal(int CorrectIndex, string CorrectOption);
 
 [JsonSerializable(typeof(ChoicePayload))]
+[JsonSerializable(typeof(ChoiceCandidate))]
 [JsonSerializable(typeof(ChoiceResolved))]
 [JsonSerializable(typeof(ChoiceCard))]
 [JsonSerializable(typeof(ChoiceAnswer))]

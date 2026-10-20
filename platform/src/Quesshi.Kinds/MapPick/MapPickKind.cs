@@ -1,13 +1,15 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Schema;
 using Quesshi.Shared;
 
 namespace Quesshi.Kinds.MapPick;
 
-public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickCard, MapPickAnswer, MapPickStored, MapPickReveal>, IImports<MapPickPayload>
+public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickCard, MapPickAnswer, MapPickStored, MapPickReveal>, IImports<MapPickPayload>, IGenerates
 {
     private const double RadiusComparisonEpsilonKm = 1e-9;
     private static readonly string[] ImportFields = ["targetShape", "countryCode", "latitude", "longitude", "radiusKm", "baseLayer"];
+    private static readonly JsonElement GenerationSchema = CreateGenerationSchema();
     private static readonly ImportExample CsvImportExample = new(new Dictionary<string, string?>
     {
         ["targetShape"] = "country",
@@ -32,6 +34,8 @@ public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickC
     public IReadOnlyList<string> JsonFields => ImportFields;
     public ImportExample CsvExample => CsvImportExample;
     public ImportExample JsonExample => JsonImportExample;
+    public string PromptFragment => "Generate either a drawable country or a city. A city must name its country and use coordinates inside that country's bundled map outline.";
+    public JsonElement CandidateSchema => GenerationSchema;
 
     public bool Matches(string? legacyKind, ImportRow row) => string.Equals(legacyKind, "map", StringComparison.OrdinalIgnoreCase);
 
@@ -47,6 +51,31 @@ public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickC
         };
         return new(baseLayer, target);
     }
+
+    public IReadOnlyList<Problem> PostCheck(JsonElement candidate)
+    {
+        var value = ReadCandidate(candidate);
+        var countryCode = value.CountryCode?.Trim().ToUpperInvariant();
+        var problems = new List<Problem>();
+        if (!IsCountryCode(countryCode) || !WorldMapCountries.Codes.Contains(countryCode!))
+            problems.Add(new("target.country.invalid", "Map candidate country must be a drawable ISO alpha-2 code."));
+
+        var payload = ToPayloadValue(value);
+        problems.AddRange(Validate(payload, new ValidateEnv("en")));
+
+        if (string.Equals(value.TargetKind?.Trim(), "city", StringComparison.OrdinalIgnoreCase)
+            && countryCode is not null
+            && Geo.IsValidLatitude(value.Latitude ?? double.NaN)
+            && Geo.IsValidLongitude(value.Longitude ?? double.NaN)
+            && WorldMapCountries.Codes.Contains(countryCode)
+            && !WorldMapGeometry.Contains(countryCode, value.Latitude!.Value, value.Longitude!.Value))
+            problems.Add(new("target.coordinates.outsideCountry", "City coordinates must be inside the named country's map outline."));
+
+        return problems;
+    }
+
+    public JsonElement ToPayload(JsonElement candidate) =>
+        JsonSerializer.SerializeToElement(ToPayloadValue(ReadCandidate(candidate)), MapPickJsonContext.Default.MapPickPayload);
 
     public override MapPickPayload Upgrade(int from, JsonElement payload)
     {
@@ -147,6 +176,31 @@ public sealed class MapPickKind : Kind<MapPickPayload, MapPickResolved, MapPickC
     }
 
     private static bool IsCountryCode(string? code) => code is { Length: 2 } && code.All(char.IsAsciiLetterUpper);
+
+    private static MapPickCandidate ReadCandidate(JsonElement candidate)
+    {
+        if (candidate.ValueKind != JsonValueKind.Object) throw new JsonException("Map pick candidate must be an object.");
+        return JsonSerializer.Deserialize(candidate, MapPickJsonContext.Default.MapPickCandidate)
+            ?? throw new JsonException("Map pick candidate is invalid.");
+    }
+
+    private static MapPickPayload ToPayloadValue(MapPickCandidate candidate)
+    {
+        var countryCode = candidate.CountryCode?.Trim().ToUpperInvariant();
+        return candidate.TargetKind?.Trim().ToLowerInvariant() switch
+        {
+            "country" => new(MapBaseLayer.Borders, new(MapTargetKind.Country, countryCode)),
+            "city" => new(MapBaseLayer.Borders, new(MapTargetKind.Point, null, candidate.Latitude, candidate.Longitude, candidate.RadiusKm)),
+            _ => new(MapBaseLayer.Borders, new(null))
+        };
+    }
+
+    private static JsonElement CreateGenerationSchema()
+    {
+        var schema = JsonSchemaExporter.GetJsonSchemaAsNode(MapPickJsonContext.Default.MapPickCandidate);
+        using var document = JsonDocument.Parse(schema.ToJsonString());
+        return document.RootElement.Clone();
+    }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<MapBaseLayer>))]
@@ -156,6 +210,7 @@ public enum MapBaseLayer { Blank, Borders }
 public enum MapTargetKind { Country, Point }
 
 public sealed record MapPickPayload([property: JsonRequired] MapBaseLayer? BaseLayer, [property: JsonRequired] MapTarget? Target);
+public sealed record MapPickCandidate([property: JsonRequired] string? TargetKind, [property: JsonRequired] string? CountryCode, double? Latitude = null, double? Longitude = null, double? RadiusKm = null);
 public sealed record MapPickResolved(MapTarget Target);
 public sealed record MapPickCard(MapBaseLayer? BaseLayer, MapTargetKind? Shape);
 public sealed record MapPickReveal(MapTarget Target);
@@ -168,6 +223,7 @@ public sealed record MapPickStored(MapTargetKind Shape, string? CountryCode = nu
 public sealed record MapTarget([property: JsonRequired] MapTargetKind? Shape, string? CountryCode = null, double? Latitude = null, double? Longitude = null, double? RadiusKm = null);
 
 [JsonSerializable(typeof(MapPickPayload))]
+[JsonSerializable(typeof(MapPickCandidate))]
 [JsonSerializable(typeof(MapPickResolved))]
 [JsonSerializable(typeof(MapPickCard))]
 [JsonSerializable(typeof(MapPickAnswer))]

@@ -1,12 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Schema;
 using Quesshi.Shared;
 
 namespace Quesshi.Kinds.Order;
 
-public sealed class OrderKind : Kind<OrderPayload, OrderResolved, OrderCard, OrderAnswer, OrderStored, OrderReveal>, IImports<OrderPayload>
+public sealed class OrderKind : Kind<OrderPayload, OrderResolved, OrderCard, OrderAnswer, OrderStored, OrderReveal>, IImports<OrderPayload>, IGenerates
 {
     private static readonly string[] ImportFields = ["item1", "item2", "item3", "item4"];
+    private static readonly JsonElement GenerationSchema = CreateGenerationSchema();
     private static readonly ImportExample Example = new(new Dictionary<string, string?>
     {
         ["item1"] = "First",
@@ -24,11 +26,25 @@ public sealed class OrderKind : Kind<OrderPayload, OrderResolved, OrderCard, Ord
     public IReadOnlyList<string> JsonFields => ImportFields;
     public ImportExample CsvExample => Example;
     public ImportExample JsonExample => Example;
+    public string PromptFragment => "Order exactly four distinct items by one explicit, measurable criterion; state that criterion so the ordering can be checked.";
+    public JsonElement CandidateSchema => GenerationSchema;
 
     public bool Matches(string? legacyKind, ImportRow row) => string.Equals(legacyKind, "sort", StringComparison.OrdinalIgnoreCase);
 
     public OrderPayload Convert(ImportRow row) => new(
         [new("item1", row.Field("item1")), new("item2", row.Field("item2")), new("item3", row.Field("item3")), new("item4", row.Field("item4"))]);
+
+    public IReadOnlyList<Problem> PostCheck(JsonElement candidate)
+    {
+        var value = ReadCandidate(candidate);
+        var problems = new List<Problem>(Validate(ToPayloadValue(value), new ValidateEnv("en")));
+        if (string.IsNullOrWhiteSpace(value.Criterion))
+            problems.Add(new("criterion.blank", "Order candidates need a measurable ordering criterion."));
+        return problems;
+    }
+
+    public JsonElement ToPayload(JsonElement candidate) =>
+        JsonSerializer.SerializeToElement(ToPayloadValue(ReadCandidate(candidate)), OrderJsonContext.Default.OrderPayload);
 
     public override OrderPayload Upgrade(int from, JsonElement payload)
     {
@@ -103,9 +119,27 @@ public sealed class OrderKind : Kind<OrderPayload, OrderResolved, OrderCard, Ord
     private static IReadOnlyList<OrderItem> RequiredItems(OrderPayload payload) =>
         payload.Items?.Select(item => new OrderItem(item?.Id?.Trim(), item?.Text?.Trim())).ToArray()
         ?? throw new InvalidOperationException("Order items are required.");
+
+    private static OrderCandidate ReadCandidate(JsonElement candidate)
+    {
+        if (candidate.ValueKind != JsonValueKind.Object) throw new JsonException("Order candidate must be an object.");
+        return JsonSerializer.Deserialize(candidate, OrderJsonContext.Default.OrderCandidate)
+            ?? throw new JsonException("Order candidate is invalid.");
+    }
+
+    private static OrderPayload ToPayloadValue(OrderCandidate candidate) => new(
+        candidate.Items?.Select((item, index) => new OrderItem($"item{index + 1}", item?.Trim())).ToArray());
+
+    private static JsonElement CreateGenerationSchema()
+    {
+        var schema = JsonSchemaExporter.GetJsonSchemaAsNode(OrderJsonContext.Default.OrderCandidate);
+        using var document = JsonDocument.Parse(schema.ToJsonString());
+        return document.RootElement.Clone();
+    }
 }
 
 public sealed record OrderPayload([property: JsonRequired] IReadOnlyList<OrderItem>? Items);
+public sealed record OrderCandidate([property: JsonRequired] string? Criterion, [property: JsonRequired] IReadOnlyList<string>? Items);
 public sealed record OrderItem([property: JsonRequired] string? Id, [property: JsonRequired] string? Text);
 public sealed record OrderResolved(IReadOnlyList<string> ItemIds);
 public sealed record OrderCard(IReadOnlyList<OrderItem> Items);
@@ -114,6 +148,7 @@ public sealed record OrderStored([property: JsonRequired] IReadOnlyList<string> 
 public sealed record OrderReveal(IReadOnlyList<string> ItemIds);
 
 [JsonSerializable(typeof(OrderPayload))]
+[JsonSerializable(typeof(OrderCandidate))]
 [JsonSerializable(typeof(OrderItem))]
 [JsonSerializable(typeof(OrderResolved))]
 [JsonSerializable(typeof(OrderCard))]
