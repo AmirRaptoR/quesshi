@@ -68,8 +68,10 @@ internal sealed class SourceResultValidator(IContent content, IKindRegistry kind
                     throw new InvalidSourceResultException("The snapshot payload is invalid.");
                 var raw = SnapshotJson(snapshot);
                 _ = kind.UpgradeSnapshot(snapshot.KindVersion, raw);
+                _ = kind.Card(payload, snapshot.Resolved);
+                _ = kind.Reveal(payload, snapshot.Resolved);
             }
-            catch (Exception exception) when (exception is JsonException or NotSupportedException)
+            catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
             {
                 throw new InvalidSourceResultException("The snapshot does not match its kind.", exception);
             }

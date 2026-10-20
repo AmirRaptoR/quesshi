@@ -38,10 +38,23 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     public HttpClient Owner { get; private set; } = null!;
     public HttpClient PlatformAdministrator { get; private set; } = null!;
     public string DatabaseName => _postgres.DatabaseName ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its database.");
+    public Guid TenantId => _identities?.TenantId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
+    public Guid PlayerId => _identities?.PlayerId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
     public int HttpPort { get; private set; }
     public int SiloPort { get; private set; }
     public int GatewayPort { get; private set; }
     public Uri TenantOrigin => new($"http://{TenantHost}");
+
+    public async Task SetCapabilityAsync(string type, string key, bool enabled, CancellationToken cancellationToken = default)
+    {
+        await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        await owner.ExecuteAsync(new CommandDefinition("""
+            insert into tenant_capabilities(tenant_id, type, key, entitled, enabled)
+            values (@tenantId, @type, @key, true, @enabled)
+            on conflict (tenant_id, type, key) do update set entitled = true, enabled = excluded.enabled
+            """, new { tenantId = TenantId, type, key, enabled }, cancellationToken: cancellationToken));
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {

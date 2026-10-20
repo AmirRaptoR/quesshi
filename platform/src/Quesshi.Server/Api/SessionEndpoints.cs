@@ -4,6 +4,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Security;
+using Quesshi.Server.Tenants;
 using Quesshi.Shared;
 
 namespace Quesshi.Server.Api;
@@ -59,7 +60,9 @@ public sealed class SessionEndpoints : ICoreRouteModule
         var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("Session viewing requires tenant resolution.");
         var player = context.Player() ?? throw new InvalidOperationException("Session viewing requires player authentication.");
         var state = await snapshots.LoadAsync(tenant.Id, id, cancellationToken);
-        if (state is null || !state.Seats.ContainsKey(player.PlayerId.ToString()) || state.Session.Format is null || !formats.TryGet(state.Session.Format, out var format))
+        if (state is null || !state.Seats.ContainsKey(player.PlayerId.ToString()) || state.Session.Format is null)
+            return Error("not_found", StatusCodes.Status404NotFound);
+        if (!formats.TryGet(state.Session.Format, out var format) || format is null)
             return Error("not_found", StatusCodes.Status404NotFound);
         var view = renderer.Render(state, format, player.PlayerId.ToString(), clock.Now);
         return Results.Content(view.Json, "application/json");

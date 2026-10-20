@@ -123,7 +123,7 @@ internal sealed class SessionCreationService(
     {
         var equal = await transaction.QuerySingleOrDefaultAsync<ReplayRow>("""
             select code as Code, status as Status,
-                   (select count(*) from session_participants where session_id = sessions.id) as SeatCount
+                   (select count(*)::int from session_participants where session_id = sessions.id) as SeatCount
             from sessions
             where id = @id and owner_id = @creatorId and format = @format and capacity = @capacity
               and content = @content and rules = @rules
@@ -193,7 +193,9 @@ internal sealed class SessionCreationService(
                     prompt = item.Prompt, payload = new Jsonb<JsonElement>(item.Value.Payload, SessionJsonContext.Default.JsonElement), resolved = new Jsonb<JsonElement>(item.Value.Resolved, SessionJsonContext.Default.JsonElement),
                     card = new Jsonb<JsonElement>(item.Value.Card, SessionJsonContext.Default.JsonElement), reveal = new Jsonb<JsonElement>(item.Value.Reveal, SessionJsonContext.Default.JsonElement),
                     mediaId = item.MediaId, level = item.Value.Metadata.Level, categoryId = item.CategoryId,
-                    category = item.Category is null ? null : new Jsonb<JsonElement>(item.Category.Value, SessionJsonContext.Default.JsonElement) }, cancellationToken);
+                    category = item.Category is { } category
+                        ? (object)new Jsonb<JsonElement>(category, SessionJsonContext.Default.JsonElement)
+                        : DBNull.Value }, cancellationToken);
     }
 
     private static Task PersistSessionAsync(ITenantTx transaction, Guid sessionId, SessionState state, FormatVersions versions, CancellationToken cancellationToken) =>
