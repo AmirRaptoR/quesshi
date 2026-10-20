@@ -7,7 +7,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Driver;
 using Npgsql;
+using Quesshi.BankExport;
+using BankExportProgram = Quesshi.BankExport.Program;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Application.Media;
 using Quesshi.Infrastructure.Media;
@@ -23,6 +26,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 {
     private static readonly Guid TenantA = Guid.Parse("8ab4e15b-45e9-4d67-a32b-b80cbe902c3a");
     private static readonly Guid TenantB = Guid.Parse("54e5eb40-2d22-48a2-9f36-e967f67a1c44");
+    private bool databasePrepared;
     private static Uri? clientBaseAddress;
 
     [SkippableFact]
@@ -91,6 +95,175 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True((string)(await stored.ExecuteScalarAsync())! == "approved:import", report);
+    }
+
+    [SkippableFact]
+    public async Task Api_import_resolves_category_slug_and_preserves_legacy_metadata()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var category = await InsertCategoryAsync(owner, TenantA, "legacy-history");
+        var editor = await InsertAdminAsync(owner, "legacy-metadata", "legacy-metadata@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources);
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        var row = JsonSerializer.SerializeToUtf8Bytes(new[]
+        {
+            new
+            {
+                language = "fa",
+                categorySlug = "legacy-history",
+                level = 3,
+                prompt = "Legacy metadata question",
+                choice1 = "one",
+                choice2 = "two",
+                choice3 = "three",
+                choice4 = "four",
+                correctIndex = 1,
+                explanation = "Legacy explanation",
+                topic = "legacy-topic",
+                status = "approved",
+                source = "ai",
+            },
+        });
+        using var body = ImportBody("choice", row, "questions.json", dryRun: false);
+        using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, body);
+        await using var stored = new NpgsqlCommand("""
+            select q.lang || ':' || c.slug || ':' || q.level || ':' || q.explanation || ':' || q.topic || ':' || q.status || ':' || q.source
+            from questions q join categories c on c.id = q.category_id
+            where q.tenant_id = @tenant and q.category_id = @category
+            """, owner);
+        stored.Parameters.AddWithValue("tenant", TenantA);
+        stored.Parameters.AddWithValue("category", category);
+
+        Assert.Equal("fa:legacy-history:3:Legacy explanation:legacy-topic:approved:ai", await stored.ExecuteScalarAsync());
+    }
+
+    [SkippableFact]
+    public async Task Legacy_bank_bundle_dry_runs_and_imports_every_question_kind_through_the_platform_apis()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var mongoConnection = Environment.GetEnvironmentVariable("QUESSHI_TEST_MONGO");
+        Skip.If(string.IsNullOrWhiteSpace(mongoConnection), "MongoDB is not configured.");
+        await using var owner = await PrepareAsync();
+        await ExecuteAsync(
+            owner,
+            "insert into tenant_languages (tenant_id, code, name, english_name) values (@tenant, 'nl', 'Nederlands', 'Dutch')",
+            ("tenant", TenantA));
+        var editor = await InsertAdminAsync(owner, "bank-import", "bank-import@example.test");
+        await MembershipAsync(owner, TenantA, editor, "editor");
+        var transport = new ImportMediaTransport(uri => uri.Host == "media.example.test" ? PngResponse(width: 2) : PngResponse());
+        await using var sources = Sources();
+        await using var app = await StartAsync(sources, services => ConfigureImportMedia(services, transport));
+        using var client = Client();
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+
+        var root = Path.Combine(Path.GetTempPath(), "quesshi-bank-export-e2e", Guid.NewGuid().ToString("N"));
+        var media = Path.Combine(root, "legacy-media");
+        var bundle = Path.Combine(root, "bundle");
+        var databaseName = "bank_export_e2e_" + Guid.NewGuid().ToString("N");
+        var mongo = new MongoClient(mongoConnection);
+        try
+        {
+            Directory.CreateDirectory(media);
+            await File.WriteAllBytesAsync(Path.Combine(media, "photo.png"), Png());
+            var database = mongo.GetDatabase(databaseName);
+            await database.GetCollection<LegacyCategory>("categories").InsertManyAsync(
+            [
+                new() { Id = "history", NameEn = "History", NameFa = "تاریخ", NameNl = "Geschiedenis", Icon = "book", Color = "#225588", SortOrder = 1, IsActive = true },
+                new() { Id = "places", NameEn = "Places", NameFa = "مکان", NameNl = "Plaatsen", Icon = "map", Color = "#228855", SortOrder = 2, IsActive = true },
+            ]);
+            await database.GetCollection<LegacyContentSettings>("content_settings").InsertOneAsync(new() { TriviaCategoryIds = ["history", "places"], VotingCategoryIds = ["history"] });
+            await database.GetCollection<LegacyQuestion>("questions").InsertManyAsync(
+            [
+                new() { Id = "choice", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Choice", Choices = ["a", "b", "c", "d"], CorrectIndex = 2, MediaUrl = "/media/photo.png", MediaKind = 1, MediaAttribution = "Credit", Explanation = "Choice explanation", Topic = "choice-topic", Status = 1, Source = 1 },
+                new() { Id = "missing-media", Family = 0, Lang = 0, CategoryId = "history", Level = 5, Prompt = "Missing media", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = "/media/missing.png" },
+                new() { Id = "order", Family = 0, Kind = 1, Lang = 1, CategoryId = "history", Level = 2, Prompt = "Order", Choices = ["a", "b", "c", "d"], Explanation = "Order explanation", Topic = "order-topic", Status = 2, Source = 2 },
+                new() { Id = "map-city", Family = 0, Kind = 2, Lang = 2, CategoryId = "places", Level = 3, Prompt = "Map city", TargetShape = 1, TargetLatitude = 52.3676, TargetLongitude = 4.9041, TargetRadiusKm = 25, BaseLayer = 1 },
+                new() { Id = "map-country", Family = 0, Kind = 2, Lang = 1, CategoryId = "places", Level = 4, Prompt = "Map country", TargetShape = 0, TargetCountryCode = "NL", BaseLayer = 0, MediaUrl = "https://media.example.test/country.png", MediaKind = 1, MediaAttribution = "Remote credit" },
+                new() { Id = "poll-choice", Family = 1, Lang = 0, CategoryId = "history", Prompt = "Poll choice", AnswerSource = 1, FixedChoices = ["yes", "no"], Explanation = "Poll choice explanation", Topic = "poll-choice-topic" },
+                new() { Id = "poll-roster", Family = 1, Lang = 1, CategoryId = "places", Prompt = "Poll roster", AnswerSource = 0, Explanation = "Poll roster explanation", Topic = "poll-roster-topic" },
+            ]);
+
+            var exported = await BankExportProgram.Main(["--connection", mongoConnection!, "--database", databaseName, "--output", bundle, "--media-root", media]);
+            Assert.Equal(0, exported);
+            using var categories = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "categories.json")));
+            foreach (var category in categories.RootElement.EnumerateArray())
+            {
+                using var categoryBody = JsonContent.Create(category);
+                using var categoryResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookie, token, categoryBody);
+                Assert.Equal(HttpStatusCode.Created, categoryResponse.StatusCode);
+            }
+            using var settings = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "settings.json")));
+            Assert.Equal(["history", "places"], settings.RootElement.GetProperty("triviaCategorySlugs").EnumerateArray().Select(value => value.GetString()!).ToArray());
+            Assert.Equal(["history"], settings.RootElement.GetProperty("votingCategorySlugs").EnumerateArray().Select(value => value.GetString()!).ToArray());
+            using var report = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "report.json")));
+            Assert.Equal("missing-media", report.RootElement.GetProperty("missingMedia")[0].GetProperty("questionId").GetString());
+            Assert.Equal("/media/missing.png", report.RootElement.GetProperty("missingMedia")[0].GetProperty("path").GetString());
+            using var choiceBundle = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "choice.json")));
+            Assert.Equal("media/missing.png", choiceBundle.RootElement[1].GetProperty("mediaUrl").GetString());
+
+            var mediaBundle = Zip("media/photo.png", Png());
+            foreach (var kind in new[] { "choice", "order", "map_pick", "poll_choice", "poll_roster" })
+            {
+                var rows = await File.ReadAllBytesAsync(Path.Combine(bundle, kind + ".json"));
+                using var dryRunBody = ImportBody(kind, rows, kind + ".json", bundle: mediaBundle);
+                using var dryRun = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, dryRunBody);
+                using var dryRunReport = await ReportAsync(dryRun);
+                if (kind == "choice")
+                {
+                    await using var dryRunCount = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+                    dryRunCount.Parameters.AddWithValue("tenant", TenantA);
+                    Assert.Equal(0L, (long)(await dryRunCount.ExecuteScalarAsync())!);
+                }
+                using var importBody = ImportBody(kind, rows, kind + ".json", dryRun: false, bundle: mediaBundle);
+                using var imported = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, importBody);
+                using var importReport = await ReportAsync(imported);
+                var expectedRows = kind switch
+                {
+                    "choice" => new[] { "would_import", "media_bundle_invalid" },
+                    "map_pick" => new[] { "would_import", "would_import" },
+                    _ => new[] { "would_import" },
+                };
+                var expectedImports = expectedRows.Select(outcome => outcome == "would_import" ? "imported" : outcome).ToArray();
+                Assert.Equal(expectedRows, Outcomes(dryRunReport));
+                Assert.Equal(expectedImports, Outcomes(importReport));
+            }
+            await using var importedCount = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+            importedCount.Parameters.AddWithValue("tenant", TenantA);
+            Assert.Equal(6L, (long)(await importedCount.ExecuteScalarAsync())!);
+            var importedRows = await ImportedRowsAsync(owner);
+            var choice = importedRows["Choice"];
+            Assert.Equal(["a", "b", "c", "d"], choice.Payload.GetProperty("options").EnumerateArray().Select(option => option.GetString()!).ToArray());
+            Assert.Equal(2, choice.Payload.GetProperty("correctIndex").GetInt32());
+            Assert.Equal("fa:history:1:Choice explanation:choice-topic:approved:ai:Credit:image", choice.Metadata);
+            var order = importedRows["Order"];
+            Assert.Equal(["a", "b", "c", "d"], order.Payload.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("text").GetString()!).ToArray());
+            Assert.Equal("en:history:2:Order explanation:order-topic:rejected:admin::", order.Metadata);
+            var city = importedRows["Map city"].Payload;
+            Assert.Equal("Borders", city.GetProperty("baseLayer").GetString());
+            Assert.Equal(52.3676, city.GetProperty("target").GetProperty("latitude").GetDouble());
+            Assert.Equal(4.9041, city.GetProperty("target").GetProperty("longitude").GetDouble());
+            Assert.Equal(25, city.GetProperty("target").GetProperty("radiusKm").GetDouble());
+            var country = importedRows["Map country"];
+            Assert.Equal("Blank", country.Payload.GetProperty("baseLayer").GetString());
+            Assert.Equal("Country", country.Payload.GetProperty("target").GetProperty("shape").GetString());
+            Assert.Equal("NL", country.Payload.GetProperty("target").GetProperty("countryCode").GetString());
+            Assert.Equal("en:places:4:::pending:seed:Remote credit:image", country.Metadata);
+            Assert.Equal(["yes", "no"], importedRows["Poll choice"].Payload.GetProperty("options").EnumerateArray().Select(option => option.GetProperty("text").GetString()!).ToArray());
+            Assert.Equal("fa:history::Poll choice explanation:poll-choice-topic:pending:seed::", importedRows["Poll choice"].Metadata);
+            Assert.Equal(JsonValueKind.Object, importedRows["Poll roster"].Payload.ValueKind);
+            Assert.Equal("en:places::Poll roster explanation:poll-roster-topic:pending:seed::", importedRows["Poll roster"].Metadata);
+        }
+        finally
+        {
+            await mongo.DropDatabaseAsync(databaseName);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
 
     [SkippableFact]
@@ -1322,13 +1495,14 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
     public async Task DisposeAsync()
     {
-        if (fixture.ConnectionString is null) return;
+        if (fixture.ConnectionString is null || !databasePrepared) return;
         await using var owner = await OpenAsync("quesshi_owner");
         await ResetDatabaseAsync(owner);
     }
 
     private async Task<NpgsqlConnection> PrepareAsync()
     {
+        databasePrepared = true;
         await Quesshi.Server.Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ResetDatabaseAsync(owner);
@@ -1352,6 +1526,31 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         return app;
     }
+
+    private static async Task<IReadOnlyDictionary<string, ImportedBankRow>> ImportedRowsAsync(NpgsqlConnection owner)
+    {
+        await using var command = new NpgsqlCommand("""
+            select q.prompt, q.payload::text,
+                coalesce(q.lang, '') || ':' || c.slug || ':' || coalesce(q.level::text, '') || ':' ||
+                coalesce(q.explanation, '') || ':' || coalesce(q.topic, '') || ':' || q.status || ':' || q.source || ':' ||
+                coalesce(m.attribution, '') || ':' || coalesce(m.kind, '')
+            from questions q
+            join categories c on c.tenant_id = q.tenant_id and c.id = q.category_id
+            left join media_assets m on m.tenant_id = q.tenant_id and m.id = q.media_id
+            where q.tenant_id = @tenant
+            """, owner);
+        command.Parameters.AddWithValue("tenant", TenantA);
+        await using var reader = await command.ExecuteReaderAsync();
+        var rows = new Dictionary<string, ImportedBankRow>(StringComparer.Ordinal);
+        while (await reader.ReadAsync())
+        {
+            using var payload = JsonDocument.Parse(reader.GetString(1));
+            rows.Add(reader.GetString(0), new ImportedBankRow(payload.RootElement.Clone(), reader.GetString(2)));
+        }
+        return rows;
+    }
+
+    private sealed record ImportedBankRow(JsonElement Payload, string Metadata);
 
     private static HttpClient Client() => new() { BaseAddress = clientBaseAddress ?? throw new InvalidOperationException("The test application has not started.") };
 
@@ -1438,11 +1637,11 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             transport));
     }
 
-    private static HttpResponseMessage PngResponse(Action? bodyRead = null)
+    private static HttpResponseMessage PngResponse(Action? bodyRead = null, byte width = 1)
     {
         var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = bodyRead is null ? new ByteArrayContent(Png()) : new TrackingContent(Png(), bodyRead),
+            Content = bodyRead is null ? new ByteArrayContent(Png(width)) : new TrackingContent(Png(width), bodyRead),
         };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
         return response;
@@ -1486,11 +1685,11 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         }
     }
 
-    private static byte[] Png() =>
+    private static byte[] Png(byte width = 1) =>
     [
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
         0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, width, 0x00, 0x00, 0x00, 0x01,
         0x08, 0x06, 0x00, 0x00, 0x00,
     ];
 
