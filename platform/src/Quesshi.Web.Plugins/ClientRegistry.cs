@@ -87,13 +87,10 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
     private readonly List<Type> pages = [];
     private readonly List<AdminNavigation> navigation = [];
 
-    public AdminClientRegistry(IClientAssemblyLoader loader)
-        : this(loader, new NullClientTranslationRegistry())
-    {
-    }
-
     public AdminClientRegistry(IClientAssemblyLoader loader, IClientTranslationRegistry translations)
     {
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(translations);
         this.loader = loader;
         this.translations = translations;
         load = new Lazy<Task>(LoadCoreAsync);
@@ -149,11 +146,6 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
         if (entries.Length == 0) throw new InvalidOperationException("The admin client did not provide an entry point.");
         foreach (var entry in entries) entry.Register(this);
         if (Root is null) throw new InvalidOperationException("The admin client did not register its root component.");
-    }
-
-    private sealed class NullClientTranslationRegistry : IClientTranslationRegistry
-    {
-        public void Register(ClientTranslation translation) { }
     }
 }
 

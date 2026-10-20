@@ -134,6 +134,30 @@ public sealed class AdminClientTests
         Assert.Equal("content.questions.invalid", result.Failure!.Code);
     }
 
+    [Fact]
+    public async Task A_registered_screen_mutation_rejects_an_absolute_url_before_sending_a_request()
+    {
+        var handler = new Handler();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => State(handler).MutateAsync<object>(HttpMethod.Post, "https://other.example/api/admin/content", null));
+    }
+
+    [Fact]
+    public async Task A_registered_screen_mutation_rejects_a_protocol_relative_url_before_sending_a_request()
+    {
+        var handler = new Handler();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => State(handler).MutateAsync<object>(HttpMethod.Post, "//other.example/api/admin/content", null));
+    }
+
+    [Fact]
+    public async Task A_registered_screen_mutation_rejects_a_path_with_parent_segments_before_sending_a_request()
+    {
+        var handler = new Handler();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => State(handler).MutateAsync<object>(HttpMethod.Post, "/api/admin/content/../accounts", null));
+    }
+
     private static AdminApi Api(Handler handler) => new(new ClientHttp(new HttpClient(handler) { BaseAddress = new Uri("https://tenant.example/") }, new NullReloader()));
     private static AdminState State(Handler handler) => new(Api(handler));
     private static HttpResponseMessage Response(HttpStatusCode status, string? json = null) => new(status) { Content = new StringContent(json ?? string.Empty, Encoding.UTF8, "application/json") };

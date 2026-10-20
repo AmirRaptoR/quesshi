@@ -59,8 +59,18 @@ public sealed class AdminApi(ClientHttp client)
     public Task<AdminResult<T>> MutateAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(method);
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ValidateMutationPath(path);
         return ReadMutationAsync<T>(method, path, body, cancellationToken);
+    }
+
+    private static void ValidateMutationPath(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var pathEnd = path.IndexOfAny(['?', '#']);
+        var pathOnly = pathEnd < 0 ? path : path[..pathEnd];
+        if (!path.StartsWith("/api/admin/", StringComparison.Ordinal) ||
+            pathOnly.Split('/').Contains("..", StringComparer.Ordinal))
+            throw new ArgumentException("A root-relative admin API path is required.", nameof(path));
     }
 
     private async Task<AdminResult<T>> ReadMutationAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)

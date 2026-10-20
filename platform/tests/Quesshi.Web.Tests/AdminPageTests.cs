@@ -11,7 +11,7 @@ namespace Quesshi.Web.Tests;
 
 public sealed class AdminPageTests : BunitContext
 {
-    private readonly AdminClientRegistry adminRegistry = new(new EmptyLoader());
+    private readonly AdminClientRegistry adminRegistry = new(new EmptyLoader(), new EmptyTranslationRegistry());
 
     public AdminPageTests()
     {
@@ -609,6 +609,14 @@ public sealed class AdminPageTests : BunitContext
     {
         public Task<IReadOnlyList<System.Reflection.Assembly>> LoadAsync(string assemblyName) =>
             Task.FromResult<IReadOnlyList<System.Reflection.Assembly>>([]);
+    }
+
+    private sealed class EmptyTranslationRegistry : IClientTranslationRegistry
+    {
+        public void Register(ClientTranslation translation)
+        {
+            ArgumentNullException.ThrowIfNull(translation);
+        }
     }
 
     private sealed class TestTranslator : IClientTranslator
