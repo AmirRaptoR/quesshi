@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Npgsql;
 using Quesshi.BankExport;
+using BankExportProgram = Quesshi.BankExport.Program;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Application.Media;
 using Quesshi.Infrastructure.Media;
@@ -187,7 +188,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
                 new() { Id = "poll-roster", Family = 1, Lang = 1, CategoryId = "places", Level = 5, Prompt = "Poll roster", AnswerSource = 0 },
             ]);
 
-            var exported = await Program.Main(["--connection", mongoConnection!, "--database", databaseName, "--output", bundle, "--media-root", media]);
+            var exported = await BankExportProgram.Main(["--connection", mongoConnection!, "--database", databaseName, "--output", bundle, "--media-root", media]);
             Assert.Equal(0, exported);
             var mediaBundle = Zip("media/photo.png", Png());
             foreach (var kind in new[] { "choice", "order", "map_pick", "poll_choice", "poll_roster" })
