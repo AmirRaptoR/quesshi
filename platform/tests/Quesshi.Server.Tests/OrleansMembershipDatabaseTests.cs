@@ -223,11 +223,11 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
             loggerFactory.CreateLogger("tenant-probe").LogInformation("Tenant probe");
             return Results.Ok(TenantResolutionMiddleware.GetTenant(context)?.Slug);
         });
-        app.Urls.Add("http://127.0.0.1:50126");
+        app.Urls.Add("http://127.0.0.1:0");
         try
         {
             await app.StartAsync();
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50126") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var publicHealth = new HttpRequestMessage(HttpMethod.Get, "/health");
             publicHealth.Headers.Host = "no-tenant.example.test";
             Assert.NotEqual(System.Net.HttpStatusCode.NotFound, (await client.SendAsync(publicHealth)).StatusCode);

@@ -170,6 +170,19 @@ public sealed class MediaDestinationPolicyTests
         Assert.Equal(MediaFetchStatus.Timeout, result.Status);
     }
 
+    [Fact]
+    public async Task Probe_checks_media_headers_without_downloading_or_storing_the_body()
+    {
+        var resolver = new FixedResolver(IPAddress.Parse("1.1.1.1"));
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ThrowingContent() };
+        response.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        var store = new NeverStore();
+        var result = await new MediaFetcher(resolver, store, new ScriptedTransport(response))
+            .ProbeAsync(new Uri("https://public.example/image"));
+
+        Assert.Equal((MediaFetchStatus.Success, (MediaKind?)MediaKind.Image, 0), (result.Status, result.Kind, store.StoreCalls));
+    }
+
     private static HttpResponseMessage Redirect(string location) => new(HttpStatusCode.Found)
     {
         Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) },
@@ -259,6 +272,18 @@ public sealed class MediaDestinationPolicyTests
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(bytes).AsTask();
 
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) => stream.WriteAsync(bytes, cancellationToken).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    private sealed class ThrowingContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            throw new InvalidOperationException("A media probe must not read a response body.");
 
         protected override bool TryComputeLength(out long length)
         {

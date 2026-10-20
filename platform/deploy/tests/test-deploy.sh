@@ -75,12 +75,12 @@ RELEASE_TAG=good compose run --rm --no-deps app tenant add \
 RELEASE_TAG=good compose run --rm --no-deps app tenant add \
     --slug beta --name Beta --host beta.staging.test --default-language en \
     --language 'en:English:English:ltr'
-curl --fail --silent --show-error -H 'Host: alpha.staging.test' "http://127.0.0.1:$app_port/api/config" \
-    | grep -q '"name":"Alpha"'
-curl --fail --silent --show-error -H 'Host: beta.staging.test' "http://127.0.0.1:$app_port/api/config" \
-    | grep -q '"name":"Beta"'
-curl --fail --silent --show-error -H 'Host: alpha.staging.test' "http://127.0.0.1:$app_port/" \
-    | grep -q '<!DOCTYPE html>'
+alpha_config="$(curl --fail --silent --show-error -H 'Host: alpha.staging.test' "http://127.0.0.1:$app_port/api/config")"
+[[ "$alpha_config" == *'"name":"Alpha"'* ]]
+beta_config="$(curl --fail --silent --show-error -H 'Host: beta.staging.test' "http://127.0.0.1:$app_port/api/config")"
+[[ "$beta_config" == *'"name":"Beta"'* ]]
+alpha_page="$(curl --fail --silent --show-error -H 'Host: alpha.staging.test' "http://127.0.0.1:$app_port/")"
+[[ "$alpha_page" == *'<!DOCTYPE html>'* ]]
 curl --fail --silent --show-error -H 'Host: alpha.staging.test' \
     "http://127.0.0.1:$app_port/_framework/blazor.webassembly.js" >/dev/null
 [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Host: missing.staging.test' "http://127.0.0.1:$app_port/api/config")" == 404 ]]
