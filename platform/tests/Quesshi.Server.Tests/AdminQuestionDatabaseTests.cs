@@ -155,17 +155,12 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             ("tenant", TenantA));
         var editor = await InsertAdminAsync(owner, "bank-import", "bank-import@example.test");
         await MembershipAsync(owner, TenantA, editor, "editor");
+        var transport = new ImportMediaTransport(_ => PngResponse());
         await using var sources = Sources();
-        await using var app = await StartAsync(sources);
+        await using var app = await StartAsync(sources, services => ConfigureImportMedia(services, transport));
         using var client = Client();
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, editor);
         var token = await AdminAntiforgeryAsync(client, cookie);
-        foreach (var category in new[] { "history", "places" })
-        {
-            using var categoryBody = JsonContent.Create(new { slug = category, names = new Dictionary<string, string> { ["en"] = category }, icon = "book", color = "#225588", sortOrder = 1, isActive = true });
-            using var categoryResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookie, token, categoryBody);
-            Assert.Equal(HttpStatusCode.Created, categoryResponse.StatusCode);
-        }
 
         var root = Path.Combine(Path.GetTempPath(), "quesshi-bank-export-e2e", Guid.NewGuid().ToString("N"));
         var media = Path.Combine(root, "legacy-media");
@@ -185,15 +180,33 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             await database.GetCollection<LegacyContentSettings>("content_settings").InsertOneAsync(new() { TriviaCategoryIds = ["history", "places"], VotingCategoryIds = ["history"] });
             await database.GetCollection<LegacyQuestion>("questions").InsertManyAsync(
             [
-                new() { Id = "choice", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Choice", Choices = ["a", "b", "c", "d"], CorrectIndex = 2, MediaUrl = "/media/photo.png", MediaKind = 1, MediaAttribution = "Credit", Status = 1, Source = 1 },
-                new() { Id = "order", Family = 0, Kind = 1, Lang = 1, CategoryId = "history", Level = 2, Prompt = "Order", Choices = ["a", "b", "c", "d"], Status = 2, Source = 2 },
-                new() { Id = "map", Family = 0, Kind = 2, Lang = 2, CategoryId = "places", Level = 3, Prompt = "Map", TargetShape = 1, TargetLatitude = 52.3676, TargetLongitude = 4.9041, TargetRadiusKm = 25, BaseLayer = 1 },
-                new() { Id = "poll-choice", Family = 1, Lang = 0, CategoryId = "history", Level = 4, Prompt = "Poll choice", AnswerSource = 1, FixedChoices = ["yes", "no"] },
-                new() { Id = "poll-roster", Family = 1, Lang = 1, CategoryId = "places", Level = 5, Prompt = "Poll roster", AnswerSource = 0 },
+                new() { Id = "choice", Family = 0, Lang = 0, CategoryId = "history", Level = 1, Prompt = "Choice", Choices = ["a", "b", "c", "d"], CorrectIndex = 2, MediaUrl = "/media/photo.png", MediaKind = 1, MediaAttribution = "Credit", Explanation = "Choice explanation", Topic = "choice-topic", Status = 1, Source = 1 },
+                new() { Id = "missing-media", Family = 0, Lang = 0, CategoryId = "history", Level = 5, Prompt = "Missing media", Choices = ["a", "b", "c", "d"], CorrectIndex = 0, MediaUrl = "/media/missing.png" },
+                new() { Id = "order", Family = 0, Kind = 1, Lang = 1, CategoryId = "history", Level = 2, Prompt = "Order", Choices = ["a", "b", "c", "d"], Explanation = "Order explanation", Topic = "order-topic", Status = 2, Source = 2 },
+                new() { Id = "map-city", Family = 0, Kind = 2, Lang = 2, CategoryId = "places", Level = 3, Prompt = "Map city", TargetShape = 1, TargetLatitude = 52.3676, TargetLongitude = 4.9041, TargetRadiusKm = 25, BaseLayer = 1 },
+                new() { Id = "map-country", Family = 0, Kind = 2, Lang = 1, CategoryId = "places", Level = 4, Prompt = "Map country", TargetShape = 0, TargetCountryCode = "NL", BaseLayer = 0, MediaUrl = "https://media.example.test/country.png", MediaKind = 1, MediaAttribution = "Remote credit" },
+                new() { Id = "poll-choice", Family = 1, Lang = 0, CategoryId = "history", Prompt = "Poll choice", AnswerSource = 1, FixedChoices = ["yes", "no"], Explanation = "Poll choice explanation", Topic = "poll-choice-topic" },
+                new() { Id = "poll-roster", Family = 1, Lang = 1, CategoryId = "places", Prompt = "Poll roster", AnswerSource = 0, Explanation = "Poll roster explanation", Topic = "poll-roster-topic" },
             ]);
 
             var exported = await BankExportProgram.Main(["--connection", mongoConnection!, "--database", databaseName, "--output", bundle, "--media-root", media]);
             Assert.Equal(0, exported);
+            using var categories = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "categories.json")));
+            foreach (var category in categories.RootElement.EnumerateArray())
+            {
+                using var categoryBody = JsonContent.Create(category);
+                using var categoryResponse = await SendAsync(client, HttpMethod.Post, "/api/admin/categories", cookie, token, categoryBody);
+                Assert.Equal(HttpStatusCode.Created, categoryResponse.StatusCode);
+            }
+            using var settings = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "settings.json")));
+            Assert.Equal(["history", "places"], settings.RootElement.GetProperty("triviaCategorySlugs").EnumerateArray().Select(value => value.GetString()!).ToArray());
+            Assert.Equal(["history"], settings.RootElement.GetProperty("votingCategorySlugs").EnumerateArray().Select(value => value.GetString()!).ToArray());
+            using var report = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "report.json")));
+            Assert.Equal("missing-media", report.RootElement.GetProperty("missingMedia")[0].GetProperty("questionId").GetString());
+            Assert.Equal("/media/missing.png", report.RootElement.GetProperty("missingMedia")[0].GetProperty("path").GetString());
+            using var choiceBundle = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(bundle, "choice.json")));
+            Assert.Equal("media/missing.png", choiceBundle.RootElement[1].GetProperty("mediaUrl").GetString());
+
             var mediaBundle = Zip("media/photo.png", Png());
             foreach (var kind in new[] { "choice", "order", "map_pick", "poll_choice", "poll_roster" })
             {
@@ -201,22 +214,50 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
                 using var dryRunBody = ImportBody(kind, rows, kind + ".json", bundle: mediaBundle);
                 using var dryRun = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, dryRunBody);
                 using var dryRunReport = await ReportAsync(dryRun);
+                if (kind == "choice")
+                {
+                    await using var dryRunCount = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
+                    dryRunCount.Parameters.AddWithValue("tenant", TenantA);
+                    Assert.Equal(0L, (long)(await dryRunCount.ExecuteScalarAsync())!);
+                }
                 using var importBody = ImportBody(kind, rows, kind + ".json", dryRun: false, bundle: mediaBundle);
                 using var imported = await SendAsync(client, HttpMethod.Post, "/api/admin/import", cookie, token, importBody);
                 using var importReport = await ReportAsync(imported);
-                Assert.Equal(["would_import"], Outcomes(dryRunReport));
-                Assert.Equal(["imported"], Outcomes(importReport));
+                var expectedRows = kind switch
+                {
+                    "choice" => new[] { "would_import", "media_bundle_invalid" },
+                    "map_pick" => new[] { "would_import", "would_import" },
+                    _ => new[] { "would_import" },
+                };
+                var expectedImports = expectedRows.Select(outcome => outcome == "would_import" ? "imported" : outcome).ToArray();
+                Assert.Equal(expectedRows, Outcomes(dryRunReport));
+                Assert.Equal(expectedImports, Outcomes(importReport));
             }
             await using var importedCount = new NpgsqlCommand("select count(*) from questions where tenant_id = @tenant", owner);
             importedCount.Parameters.AddWithValue("tenant", TenantA);
-            await using var attribution = new NpgsqlCommand("select m.attribution || ':' || m.kind from questions q join media_assets m on m.tenant_id = q.tenant_id and m.id = q.media_id where q.tenant_id = @tenant and q.prompt = 'Choice'", owner);
-            attribution.Parameters.AddWithValue("tenant", TenantA);
-            await using var importedFields = new NpgsqlCommand("select string_agg(q.kind || ':' || q.lang || ':' || c.slug || ':' || q.level || ':' || q.status || ':' || q.source, ',' order by q.kind) from questions q join categories c on c.tenant_id = q.tenant_id and c.id = q.category_id where q.tenant_id = @tenant", owner);
-            importedFields.Parameters.AddWithValue("tenant", TenantA);
-
-            Assert.Equal(5L, (long)(await importedCount.ExecuteScalarAsync())!);
-            Assert.Equal("Credit:image", await attribution.ExecuteScalarAsync());
-            Assert.Equal("choice:fa:history:1:approved:ai,map_pick:nl:places:3:pending:seed,order:en:history:2:rejected:admin,poll_choice:fa:history:4:pending:seed,poll_roster:en:places:5:pending:seed", await importedFields.ExecuteScalarAsync());
+            Assert.Equal(6L, (long)(await importedCount.ExecuteScalarAsync())!);
+            var importedRows = await ImportedRowsAsync(owner);
+            var choice = importedRows["Choice"];
+            Assert.Equal(["a", "b", "c", "d"], choice.Payload.GetProperty("options").EnumerateArray().Select(option => option.GetString()!).ToArray());
+            Assert.Equal(2, choice.Payload.GetProperty("correctIndex").GetInt32());
+            Assert.Equal("fa:history:1:Choice explanation:choice-topic:approved:ai:Credit:image", choice.Metadata);
+            var order = importedRows["Order"];
+            Assert.Equal(["a", "b", "c", "d"], order.Payload.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("text").GetString()!).ToArray());
+            Assert.Equal("en:history:2:Order explanation:order-topic:rejected:admin::", order.Metadata);
+            var city = importedRows["Map city"].Payload;
+            Assert.Equal("Borders", city.GetProperty("baseLayer").GetString());
+            Assert.Equal(52.3676, city.GetProperty("target").GetProperty("latitude").GetDouble());
+            Assert.Equal(4.9041, city.GetProperty("target").GetProperty("longitude").GetDouble());
+            Assert.Equal(25, city.GetProperty("target").GetProperty("radiusKm").GetDouble());
+            var country = importedRows["Map country"];
+            Assert.Equal("Blank", country.Payload.GetProperty("baseLayer").GetString());
+            Assert.Equal("Country", country.Payload.GetProperty("target").GetProperty("shape").GetString());
+            Assert.Equal("NL", country.Payload.GetProperty("target").GetProperty("countryCode").GetString());
+            Assert.Equal("en:places:4:::pending:seed:Remote credit:image", country.Metadata);
+            Assert.Equal(["yes", "no"], importedRows["Poll choice"].Payload.GetProperty("options").EnumerateArray().Select(option => option.GetProperty("text").GetString()!).ToArray());
+            Assert.Equal("fa:history::Poll choice explanation:poll-choice-topic:pending:seed::", importedRows["Poll choice"].Metadata);
+            Assert.Equal(JsonValueKind.Object, importedRows["Poll roster"].Payload.ValueKind);
+            Assert.Equal("en:places::Poll roster explanation:poll-roster-topic:pending:seed::", importedRows["Poll roster"].Metadata);
         }
         finally
         {
@@ -1485,6 +1526,31 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         return app;
     }
+
+    private static async Task<IReadOnlyDictionary<string, ImportedBankRow>> ImportedRowsAsync(NpgsqlConnection owner)
+    {
+        await using var command = new NpgsqlCommand("""
+            select q.prompt, q.payload::text,
+                coalesce(q.lang, '') || ':' || c.slug || ':' || coalesce(q.level::text, '') || ':' ||
+                coalesce(q.explanation, '') || ':' || coalesce(q.topic, '') || ':' || q.status || ':' || q.source || ':' ||
+                coalesce(m.attribution, '') || ':' || coalesce(m.kind, '')
+            from questions q
+            join categories c on c.tenant_id = q.tenant_id and c.id = q.category_id
+            left join media_assets m on m.tenant_id = q.tenant_id and m.id = q.media_id
+            where q.tenant_id = @tenant
+            """, owner);
+        command.Parameters.AddWithValue("tenant", TenantA);
+        await using var reader = await command.ExecuteReaderAsync();
+        var rows = new Dictionary<string, ImportedBankRow>(StringComparer.Ordinal);
+        while (await reader.ReadAsync())
+        {
+            using var payload = JsonDocument.Parse(reader.GetString(1));
+            rows.Add(reader.GetString(0), new ImportedBankRow(payload.RootElement.Clone(), reader.GetString(2)));
+        }
+        return rows;
+    }
+
+    private sealed record ImportedBankRow(JsonElement Payload, string Metadata);
 
     private static HttpClient Client() => new() { BaseAddress = clientBaseAddress ?? throw new InvalidOperationException("The test application has not started.") };
 

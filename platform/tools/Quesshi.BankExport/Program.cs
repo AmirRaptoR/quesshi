@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 
@@ -56,7 +57,11 @@ public sealed record ExportOptions(string ConnectionString, string DatabaseName,
     }
 }
 
-public sealed class BankExporter(IMongoClient client, ExportOptions options)
+public sealed class BankExporter(
+    IMongoClient client,
+    ExportOptions options,
+    int maximumRowsPerFile = 2_000,
+    int maximumBytesPerFile = 20 * 1024 * 1024)
 {
     public const int MaximumRowsPerFile = 2_000;
     public const int MaximumBytesPerFile = 20 * 1024 * 1024;
@@ -75,7 +80,7 @@ public sealed class BankExporter(IMongoClient client, ExportOptions options)
         var categorySlugs = categories.Where(category => !string.IsNullOrWhiteSpace(category.Id))
             .ToDictionary(category => category.Id, category => category.Id, StringComparer.Ordinal);
         await WriteJsonAsync(Path.Combine(output, "categories.json"), categories.Select(category => new ExportCategory(
-            category.Id, new LocalizedNames(category.NameFa, category.NameEn, category.NameNl), category.Icon, category.Color, category.SortOrder, category.IsActive)).ToArray(), cancellationToken);
+            category.Id, LocalizedNames(category), NullIfWhiteSpace(category.Icon), NullIfWhiteSpace(category.Color), category.SortOrder, category.IsActive)).ToArray(), cancellationToken);
         await WriteJsonAsync(Path.Combine(output, "settings.json"), new ExportSettings(
             ResolveSettings(settings?.TriviaCategoryIds, categorySlugs, "trivia", report),
             ResolveSettings(settings?.VotingCategoryIds, categorySlugs, "voting", report)), cancellationToken);
@@ -115,6 +120,22 @@ public sealed class BankExporter(IMongoClient client, ExportOptions options)
         return resolved;
     }
 
+    private static IReadOnlyDictionary<string, string> LocalizedNames(LegacyCategory category)
+    {
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        AddName(names, "fa", category.NameFa);
+        AddName(names, "en", category.NameEn);
+        AddName(names, "nl", category.NameNl);
+        return names;
+    }
+
+    private static void AddName(IDictionary<string, string> names, string language, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) names[language] = value;
+    }
+
+    private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
     private async Task<ConvertedQuestion?> ConvertAsync(LegacyQuestion question, IReadOnlyDictionary<string, string> categories, string output, string mediaRoot, ExportReport report, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(question.OwnerId) || question.Source == 3)
@@ -133,7 +154,7 @@ public sealed class BankExporter(IMongoClient client, ExportOptions options)
             report.Skipped.Add(new(question.Id, "unsupported_metadata"));
             return null;
         }
-        if (question.Level is not (>= 1 and <= 5) || string.IsNullOrWhiteSpace(question.Prompt))
+        if (string.IsNullOrWhiteSpace(question.Prompt) || (question.Family == 0 && question.Level is not (>= 1 and <= 5)))
         {
             report.Skipped.Add(new(question.Id, "question_invalid"));
             return null;
@@ -142,13 +163,13 @@ public sealed class BankExporter(IMongoClient client, ExportOptions options)
         {
             ["language"] = language,
             ["categorySlug"] = categorySlug,
-            ["level"] = question.Level,
             ["prompt"] = question.Prompt,
             ["explanation"] = question.Explanation,
             ["topic"] = question.Topic,
             ["status"] = status,
             ["source"] = source,
         };
+        if (question.Family == 0) row["level"] = question.Level;
         var kind = AddPayload(question, row, out var reason);
         if (kind is null)
         {
@@ -267,34 +288,51 @@ public sealed class BankExporter(IMongoClient client, ExportOptions options)
         Directory.CreateDirectory(output);
         Directory.CreateDirectory(Path.Combine(output, "media"));
     }
-    private static async Task<IReadOnlyList<ConvertedQuestion>> WriteQuestionPartsAsync(string output, string kind, IReadOnlyList<ConvertedQuestion> rows, ExportReport report, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ConvertedQuestion>> WriteQuestionPartsAsync(string output, string kind, IReadOnlyList<ConvertedQuestion> rows, ExportReport report, CancellationToken cancellationToken)
     {
-        var parts = new List<List<ConvertedQuestion>>();
+        var parts = new List<List<SerializedQuestion>>();
+        List<SerializedQuestion>? part = null;
+        var partBytes = 2;
         var written = new List<ConvertedQuestion>();
         foreach (var question in rows)
         {
-            var row = question.Row;
-            var part = parts.LastOrDefault();
-            if (part is null || part.Count == MaximumRowsPerFile || JsonSerializer.SerializeToUtf8Bytes(part.Append(question).Select(item => item.Row), ExportJson.Options).Length > MaximumBytesPerFile)
+            var serialized = new SerializedQuestion(question, JsonSerializer.SerializeToUtf8Bytes(question.Row, CompactJson.Options));
+            if (serialized.Json.Length + 2 > maximumBytesPerFile)
+            {
+                report.Skipped.Add(new(question.Id, "row_exceeds_import_byte_limit"));
+                continue;
+            }
+            if (part is null ||
+                part.Count == maximumRowsPerFile ||
+                partBytes + (part.Count == 0 ? 0 : 1) + serialized.Json.Length > maximumBytesPerFile)
             {
                 part = [];
                 parts.Add(part);
+                partBytes = 2;
             }
-            if (JsonSerializer.SerializeToUtf8Bytes(new[] { row }, ExportJson.Options).Length > MaximumBytesPerFile)
-            {
-                report.Skipped.Add(new(question.Id, "row_exceeds_import_byte_limit"));
-                parts.Remove(part);
-                continue;
-            }
-            part.Add(question);
+
+            partBytes += (part.Count == 0 ? 0 : 1) + serialized.Json.Length;
+            part.Add(serialized);
             written.Add(question);
         }
         for (var index = 0; index < parts.Count; index++)
         {
             var name = parts.Count == 1 ? $"{kind}.json" : $"{kind}-{index + 1:D3}.json";
-            await WriteJsonAsync(Path.Combine(output, name), parts[index].Select(question => question.Row), cancellationToken);
+            await WriteQuestionPartAsync(Path.Combine(output, name), parts[index], cancellationToken);
         }
         return written;
+    }
+
+    private static async Task WriteQuestionPartAsync(string path, IReadOnlyList<SerializedQuestion> rows, CancellationToken cancellationToken)
+    {
+        await using var stream = File.Create(path);
+        await stream.WriteAsync("["u8.ToArray(), cancellationToken);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (index > 0) await stream.WriteAsync(","u8.ToArray(), cancellationToken);
+            await stream.WriteAsync(rows[index].Json, cancellationToken);
+        }
+        await stream.WriteAsync("]"u8.ToArray(), cancellationToken);
     }
     private static async Task WriteJsonAsync<T>(string path, T value, CancellationToken cancellationToken)
     {
@@ -304,8 +342,14 @@ public sealed class BankExporter(IMongoClient client, ExportOptions options)
 }
 
 public sealed record ConvertedQuestion(string Id, string Kind, Dictionary<string, object?> Row);
-public sealed record LocalizedNames(string? Fa, string? En, string? Nl);
-public sealed record ExportCategory(string Slug, LocalizedNames Names, string? Icon, string? Color, int SortOrder, bool IsActive);
+public sealed record SerializedQuestion(ConvertedQuestion Question, byte[] Json);
+public sealed record ExportCategory(
+    string Slug,
+    IReadOnlyDictionary<string, string> Names,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Icon,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Color,
+    int SortOrder,
+    bool IsActive);
 public sealed record ExportSettings(IReadOnlyList<string> TriviaCategorySlugs, IReadOnlyList<string> VotingCategorySlugs);
 public sealed record ExportReference(string QuestionId, string? Value, string Scope);
 public sealed record SkippedQuestion(string QuestionId, string Reason);
@@ -326,6 +370,10 @@ public sealed class ExportCounts : Dictionary<string, int>
 public static class ExportJson
 {
     public static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
+}
+public static class CompactJson
+{
+    public static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 }
 
 [BsonIgnoreExtraElements]
