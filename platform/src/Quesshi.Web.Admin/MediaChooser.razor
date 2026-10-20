@@ -42,6 +42,7 @@
     private string? error;
     private AdminMediaAsset? asset;
     private Guid? loadedId;
+    private const long MaximumUploadBytes = 25 * 1024 * 1024;
     private bool CanEdit => State?.Session is { MustChangePassword: false } session &&
         (string.Equals(session.Role, "editor", StringComparison.OrdinalIgnoreCase) || string.Equals(session.Role, "owner", StringComparison.OrdinalIgnoreCase));
 
@@ -61,8 +62,21 @@
     {
         if (State is null || change.FileCount != 1) { error = AdminMediaText.Error; return; }
         var file = change.File;
-        var result = await State.MutateContentAsync<AdminMediaAsset>(HttpMethod.Post, "/api/admin/media", () => UploadContent(file, attribution));
-        await SelectAsync(result);
+        if (file.Size > MaximumUploadBytes)
+        {
+            error = "admin.media.media_too_large";
+            return;
+        }
+
+        try
+        {
+            var result = await State.MutateContentAsync<AdminMediaAsset>(HttpMethod.Post, "/api/admin/media", () => UploadContent(file, attribution));
+            await SelectAsync(result);
+        }
+        catch (IOException)
+        {
+            error = "admin.media.media_too_large";
+        }
     }
 
     private async Task FetchAsync()
@@ -85,7 +99,7 @@
     private static MultipartFormDataContent UploadContent(IBrowserFile file, string attribution)
     {
         var body = new MultipartFormDataContent();
-        var content = new StreamContent(file.OpenReadStream(25 * 1024 * 1024 + 1));
+        var content = new StreamContent(file.OpenReadStream(MaximumUploadBytes + 1));
         if (!string.IsNullOrWhiteSpace(file.ContentType))
             content.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
         body.Add(content, "file", file.Name);

@@ -184,6 +184,39 @@ public sealed class ClientRegistryTests
         Assert.False(navigation.IsVisibleTo(new AdminNavigationContext("moderator", IsPlatform: false)));
     }
 
+    public static IEnumerable<object[]> MediaErrorTranslationCases()
+    {
+        foreach (var language in new[] { "en", "fa", "nl" })
+        {
+            foreach (var error in new[]
+            {
+                "invalid_media", "unsupported_media", "media_too_large", "media_type_mismatch",
+                "invalid_media_url", "media_destination_forbidden", "media_redirect_limit",
+                "media_fetch_timeout", "media_fetch_failed",
+            })
+            {
+                yield return new object[] { language, $"admin.media.{error}" };
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(MediaErrorTranslationCases))]
+    public async Task Admin_media_contribution_localizes_each_media_endpoint_error(string language, string key)
+    {
+        var translator = new Translator(new ClientHttp(
+            new HttpClient(new TranslationHandler()) { BaseAddress = new Uri("https://tenant.example/") },
+            new NoopReloader()));
+        var registry = new AdminClientRegistry(
+            new RecordingLoader(typeof(AdminClientEntry).Assembly),
+            translator);
+
+        await registry.LoadAsync();
+        await translator.UseAsync(language);
+
+        Assert.NotEqual(key, translator[key]);
+    }
+
     private static async Task<Translator> LoadContributedTranslatorAsync()
     {
         var translator = new Translator(new ClientHttp(

@@ -43,6 +43,43 @@ public sealed class MediaChooserTests : BunitContext
     }
 
     [Fact]
+    public async Task Editor_upload_larger_than_the_client_limit_shows_a_localized_error_without_posting_or_selecting()
+    {
+        var handler = new Handler(Response(HttpStatusCode.OK, SessionJson("Editor")));
+        var state = await StateAsync(handler);
+        Guid? selected = null;
+        var cut = Render<MediaChooser>(parameters => parameters
+            .AddCascadingValue(state)
+            .Add(component => component.ValueChanged, EventCallback.Factory.Create<Guid?>(this, value => selected = value)));
+
+        cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(new byte[25 * 1024 * 1024 + 1], "movie.mp4", null, "video/mp4"));
+
+        cut.WaitForAssertion(() => Assert.Contains("The media file is too large.", cut.Markup, StringComparison.Ordinal));
+        Assert.Null(selected);
+        Assert.DoesNotContain(handler.Requests, request => request.Method == HttpMethod.Post && request.Path == "/api/admin/media");
+    }
+
+    [Fact]
+    public async Task Editor_upload_rejection_shows_a_localized_error_without_selecting_an_asset()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, SessionJson("Editor")),
+            Response(HttpStatusCode.OK, "{\"token\":\"csrf\"}"),
+            Response(HttpStatusCode.BadRequest, "{\"error\":\"unsupported_media\"}"));
+        var state = await StateAsync(handler);
+        Guid? selected = null;
+        var cut = Render<MediaChooser>(parameters => parameters
+            .AddCascadingValue(state)
+            .Add(component => component.ValueChanged, EventCallback.Factory.Create<Guid?>(this, value => selected = value)));
+
+        cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(PngBytes(), "photo.png", null, "image/png"));
+
+        cut.WaitForAssertion(() => Assert.Contains("That media type is not supported.", cut.Markup, StringComparison.Ordinal));
+        Assert.Null(selected);
+        Assert.Empty(cut.FindAll("[data-testid='selected-media']"));
+    }
+
+    [Fact]
     public async Task Editor_url_fetch_shows_a_localized_error_without_selecting_an_asset()
     {
         var handler = new Handler(
@@ -167,6 +204,7 @@ public sealed class MediaChooserTests : BunitContext
             ["admin.media.url"] = "Media URL",
             ["admin.media.fetch"] = "Fetch media",
             ["admin.media.selected"] = "Selected asset ID",
+            ["admin.media.media_too_large"] = "The media file is too large.",
             ["admin.media.unsupported_media"] = "That media type is not supported.",
             ["admin.media.error"] = "The media could not be saved.",
         };

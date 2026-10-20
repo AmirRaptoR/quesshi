@@ -27,6 +27,10 @@ public sealed class MediaClientEntry : IAdminClientAssemblyEntry
         ["admin.media.media_too_large"] = "The media file is too large.",
         ["admin.media.unsupported_media"] = "That media type is not supported.",
         ["admin.media.media_type_mismatch"] = "The media bytes do not match its type.",
+        ["admin.media.media_redirect_limit"] = "The media URL redirected too many times.",
+        ["admin.media.media_fetch_timeout"] = "Fetching the media timed out.",
+        ["admin.media.media_fetch_failed"] = "The media could not be fetched.",
+        ["admin.media.invalid_media"] = "The upload is not valid media.",
         ["admin.media.error"] = "The media could not be saved.",
     };
 
@@ -44,6 +48,10 @@ public sealed class MediaClientEntry : IAdminClientAssemblyEntry
         ["admin.media.media_too_large"] = "پروندهٔ رسانه بسیار بزرگ است.",
         ["admin.media.unsupported_media"] = "این نوع رسانه پشتیبانی نمی‌شود.",
         ["admin.media.media_type_mismatch"] = "دادهٔ رسانه با نوع آن هم‌خوان نیست.",
+        ["admin.media.media_redirect_limit"] = "نشانی رسانه بیش از اندازه تغییرمسیر داد.",
+        ["admin.media.media_fetch_timeout"] = "زمان دریافت رسانه به پایان رسید.",
+        ["admin.media.media_fetch_failed"] = "دریافت رسانه انجام نشد.",
+        ["admin.media.invalid_media"] = "بارگذاری رسانهٔ معتبر نیست.",
         ["admin.media.error"] = "رسانه ذخیره نشد.",
     };
 
@@ -61,6 +69,10 @@ public sealed class MediaClientEntry : IAdminClientAssemblyEntry
         ["admin.media.media_too_large"] = "Het mediabestand is te groot.",
         ["admin.media.unsupported_media"] = "Dit mediatype wordt niet ondersteund.",
         ["admin.media.media_type_mismatch"] = "De mediabytes komen niet overeen met het type.",
+        ["admin.media.media_redirect_limit"] = "De media-URL heeft te vaak doorgestuurd.",
+        ["admin.media.media_fetch_timeout"] = "Het ophalen van de media duurde te lang.",
+        ["admin.media.media_fetch_failed"] = "De media kon niet worden opgehaald.",
+        ["admin.media.invalid_media"] = "De upload is geen geldig mediabestand.",
         ["admin.media.error"] = "De media kon niet worden opgeslagen.",
     };
 }

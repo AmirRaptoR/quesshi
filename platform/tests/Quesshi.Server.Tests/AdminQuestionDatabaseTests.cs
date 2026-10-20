@@ -1202,7 +1202,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         }
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("editor")]
     [InlineData("owner")]
     public async Task Api_editor_or_owner_fetches_remote_media_with_attribution_and_can_reload_its_asset(string role)
@@ -1228,7 +1228,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         Assert.Equal($"/media/{asset.Hash}", lookup.Url);
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("loopback.example")]
     [InlineData("private.example")]
     [InlineData("link-local.example")]
@@ -1246,6 +1246,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             ["link-local.example"] = IPAddress.Parse("169.254.10.10"),
             ["metadata.example"] = IPAddress.Parse("169.254.169.254"),
         });
+        using var mediaDirectory = new MediaDirectoryScope();
         await using var sources = Sources();
         await using var app = await StartAsync(sources, services => ConfigureMediaFetcher(services, resolver, new ImportMediaTransport(_ => PngResponse())));
         using var client = Client();
@@ -1253,8 +1254,12 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { url = $"https://{host}/image.png", attribution = "Credit" });
         using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/media/fetch", cookie, token, body);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("media_destination_forbidden", error!.Error);
+        Assert.Equal(0L, await MediaAssetCountAsync(owner));
+        Assert.False(Directory.Exists(mediaDirectory.Root));
     }
 
     [SkippableFact]
@@ -1270,6 +1275,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             ["unsafe.example"] = IPAddress.Loopback,
         });
         var transport = new ImportMediaTransport(_ => new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("https://unsafe.example/image.png") } });
+        using var mediaDirectory = new MediaDirectoryScope();
         await using var sources = Sources();
         await using var app = await StartAsync(sources, services => ConfigureMediaFetcher(services, resolver, transport));
         using var client = Client();
@@ -1277,16 +1283,21 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { url = "https://safe.example/image.png", attribution = "Credit" });
         using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/media/fetch", cookie, token, body);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("media_destination_forbidden", error!.Error);
+        Assert.DoesNotContain(transport.RequestedUris, uri => uri.Host == "unsafe.example");
+        Assert.Equal(0L, await MediaAssetCountAsync(owner));
+        Assert.False(Directory.Exists(mediaDirectory.Root));
     }
 
-    [Theory]
-    [InlineData("ftp://media.example/image.png")]
-    [InlineData("https://media.example/oversize.png")]
-    [InlineData("https://media.example/mismatch.png")]
-    [InlineData("https://media.example/unsupported.png")]
-    public async Task Api_media_fetch_refuses_an_unsafe_or_invalid_remote_response(string url)
+    [SkippableTheory]
+    [InlineData("ftp://media.example/image.png", "invalid_media_url")]
+    [InlineData("https://media.example/oversize.png", "media_too_large")]
+    [InlineData("https://media.example/mismatch.png", "media_type_mismatch")]
+    [InlineData("https://media.example/unsupported.png", "unsupported_media")]
+    public async Task Api_media_fetch_refuses_an_unsafe_or_invalid_remote_response(string url, string expectedError)
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
@@ -1299,6 +1310,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
             "/unsupported.png" => UnsupportedPngResponse(),
             _ => PngResponse(),
         });
+        using var mediaDirectory = new MediaDirectoryScope();
         await using var sources = Sources();
         await using var app = await StartAsync(sources, services => ConfigureMediaFetcher(services, new ImportMediaResolver(), transport));
         using var client = Client();
@@ -1306,8 +1318,12 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { url, attribution = "Credit" });
         using var response = await SendAsync(client, HttpMethod.Post, "/api/admin/media/fetch", cookie, token, body);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(expectedError, error!.Error);
+        Assert.Equal(0L, await MediaAssetCountAsync(owner));
+        Assert.False(Directory.Exists(mediaDirectory.Root));
     }
 
     [SkippableFact]
@@ -1671,6 +1687,13 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     private static Task ResetDatabaseAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from auth_sessions; delete from admin_memberships; delete from admins; delete from tenant_languages; delete from tenants");
 
+    private static async Task<long> MediaAssetCountAsync(NpgsqlConnection owner)
+    {
+        await using var command = new NpgsqlCommand("select count(*) from media_assets where tenant_id = @tenant", owner);
+        command.Parameters.AddWithValue("tenant", TenantA);
+        return (long)(await command.ExecuteScalarAsync())!;
+    }
+
     private static async Task<WebApplication> StartAsync(DatabaseSources sources, Action<IServiceCollection>? configureServices = null)
     {
         var app = Quesshi.Server.Program.CreateApplication(sources, 11299, 30299, configureServices: configureServices);
@@ -1861,11 +1884,32 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
     private sealed class ImportMediaTransport(Func<Uri, HttpResponseMessage> response) : IMediaFetchTransport
     {
         public int Calls { get; private set; }
+        public List<Uri> RequestedUris { get; } = [];
 
         public Task<MediaFetchResponse> GetAsync(Uri uri, IPAddress address, CancellationToken cancellationToken = default)
         {
             Calls++;
+            RequestedUris.Add(uri);
             return Task.FromResult(new MediaFetchResponse(new HttpClient(), response(uri)));
+        }
+    }
+
+    private sealed class MediaDirectoryScope : IDisposable
+    {
+        private readonly string? priorRoot = Environment.GetEnvironmentVariable("MEDIA_DIR");
+
+        public MediaDirectoryScope()
+        {
+            Root = Path.Combine(Path.GetTempPath(), "quesshi-media-fetch-rejections", Guid.NewGuid().ToString("N"));
+            Environment.SetEnvironmentVariable("MEDIA_DIR", Root);
+        }
+
+        public string Root { get; }
+
+        public void Dispose()
+        {
+            Environment.SetEnvironmentVariable("MEDIA_DIR", priorRoot);
+            if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
         }
     }
 
