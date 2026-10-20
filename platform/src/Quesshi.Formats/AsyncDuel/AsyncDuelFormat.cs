@@ -57,6 +57,8 @@ public sealed class AsyncDuelFormat : IFormat
         session.SetDeadline(CreatedAt(session.Session) + MatchRules.ForfeitAfter);
     }
 
+    public DateTimeOffset? LobbyDeadline(SessionRow session) => CreatedAt(session) + MatchRules.ForfeitAfter;
+
     public void Apply(ISession session, Command command)
     {
         ArgumentNullException.ThrowIfNull(session);

@@ -59,6 +59,8 @@ public interface IFormat
     void Timeout(ISession session);
     object View(IViewing viewing);
     DateTimeOffset? Deadline(IViewing viewing) => viewing.Session.DueAt;
+    /// <summary>Optional deadline retained while a session is still waiting in its lobby.</summary>
+    DateTimeOffset? LobbyDeadline(SessionRow session) => null;
     /// <summary>How late a timeout may be applied before the engine cancels it as an outage.</summary>
     TimeSpan? MaximumDeadlineLateness => null;
     JsonElement UpgradeState(int from, JsonElement state);

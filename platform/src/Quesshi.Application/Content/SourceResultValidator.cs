@@ -7,7 +7,7 @@ namespace Quesshi.Application.Content;
 /// <summary>Validates source output at the pre-engine boundary while the tenant transaction is open.</summary>
 internal sealed class SourceResultValidator(IContent content, IKindRegistry kinds)
 {
-    public async Task<IReadOnlyList<QuestionEnvelope>> ValidateAsync(
+    public async Task<IReadOnlyList<SourceQuestion>> ValidateAsync(
         ITenantTx transaction,
         Picked picked,
         SourceDrawPlan plan,
@@ -23,7 +23,7 @@ internal sealed class SourceResultValidator(IContent content, IKindRegistry kind
         };
     }
 
-    private async Task<IReadOnlyList<QuestionEnvelope>> ValidateIdsAsync(
+    private async Task<IReadOnlyList<SourceQuestion>> ValidateIdsAsync(
         ITenantTx transaction,
         PickedQuestionIds picked,
         SourceDrawPlan plan,
@@ -32,19 +32,19 @@ internal sealed class SourceResultValidator(IContent content, IKindRegistry kind
         if (picked.Ids.Count != plan.Count || picked.Ids.Distinct().Count() != picked.Ids.Count)
             throw new InvalidSourceResultException("The source returned the wrong number of question ids.");
 
-        var questions = new List<QuestionEnvelope>(picked.Ids.Count);
+        var questions = new List<SourceQuestion>(picked.Ids.Count);
         foreach (var id in picked.Ids)
         {
             var question = await content.GetAsync(transaction, id, cancellationToken)
                 ?? throw new InvalidSourceResultException("The source returned an unavailable question id.");
             await ValidateKindAsync(transaction, question.Kind, question.KindVersion, question.Family, plan, cancellationToken);
-            questions.Add(question);
+            questions.Add(new SourceQuestion(question, null));
         }
 
         return questions;
     }
 
-    private async Task<IReadOnlyList<QuestionEnvelope>> ValidateSnapshotsAsync(
+    private async Task<IReadOnlyList<SourceQuestion>> ValidateSnapshotsAsync(
         ITenantTx transaction,
         PickedSnapshots picked,
         SourceDrawPlan plan,
@@ -53,37 +53,28 @@ internal sealed class SourceResultValidator(IContent content, IKindRegistry kind
         if (picked.Items.Count != plan.Count)
             throw new InvalidSourceResultException("The source returned the wrong number of snapshots.");
 
-        var snapshots = new List<QuestionEnvelope>(picked.Items.Count);
+        var snapshots = new List<SourceQuestion>(picked.Items.Count);
         foreach (var snapshot in picked.Items)
         {
             await ValidateKindAsync(transaction, snapshot.Kind, snapshot.KindVersion, snapshot.Family, plan, cancellationToken);
             if (snapshot.MediaId is not null && !await TenantOwnsMediaAsync(transaction, snapshot.MediaId.Value, cancellationToken))
                 throw new InvalidSourceResultException("The snapshot references unavailable media.");
 
-            var kind = kinds.Get(snapshot.Kind, snapshot.KindVersion);
+            var kind = kinds.GetCurrent(snapshot.Kind);
             try
             {
-                if (kind.Validate(snapshot.Payload, new ValidateEnv(plan.Language)).Count != 0)
+                var payload = kind.Upgrade(snapshot.KindVersion, snapshot.Payload);
+                if (kind.Validate(payload, new ValidateEnv(plan.Language)).Count != 0)
                     throw new InvalidSourceResultException("The snapshot payload is invalid.");
-                _ = kind.Card(snapshot.Payload, snapshot.Resolved);
-                _ = kind.Reveal(snapshot.Payload, snapshot.Resolved);
-                var raw = JsonSerializer.SerializeToElement(new
-                {
-                    card = snapshot.Card,
-                    reveal = snapshot.Reveal,
-                    answers = Array.Empty<JsonElement>(),
-                });
+                var raw = SnapshotJson(snapshot);
                 _ = kind.UpgradeSnapshot(snapshot.KindVersion, raw);
             }
-            catch (JsonException exception)
+            catch (Exception exception) when (exception is JsonException or NotSupportedException)
             {
                 throw new InvalidSourceResultException("The snapshot does not match its kind.", exception);
             }
 
-            snapshots.Add(new QuestionEnvelope(
-                Guid.Empty, snapshot.Kind, snapshot.KindVersion, snapshot.Family, plan.Language,
-                snapshot.CategoryId, snapshot.Level, snapshot.Prompt, snapshot.Payload, null, null,
-                string.Empty, QuestionStatus.Approved, QuestionSource.Seed, null, snapshot.MediaId));
+            snapshots.Add(new SourceQuestion(null, snapshot));
         }
 
         return snapshots;
@@ -112,4 +103,14 @@ internal sealed class SourceResultValidator(IContent content, IKindRegistry kind
 
     private static async Task<bool> TenantOwnsMediaAsync(ITenantTx transaction, Guid mediaId, CancellationToken cancellationToken) =>
         await transaction.QuerySingleOrDefaultAsync<Guid?>("select id from media_assets where id = @mediaId", new { mediaId }, cancellationToken) is not null;
+
+    private static JsonElement SnapshotJson(ReadySnapshot snapshot) => JsonSerializer.SerializeToElement(new
+    {
+        card = snapshot.Card,
+        reveal = snapshot.Reveal,
+        answers = Array.Empty<JsonElement>(),
+    });
 }
+
+/// <summary>A validated source item. Bank questions retain their id; supplied snapshots retain every immutable presentation field.</summary>
+internal sealed record SourceQuestion(QuestionEnvelope? Question, ReadySnapshot? Snapshot);
