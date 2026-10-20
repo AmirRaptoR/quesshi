@@ -85,6 +85,27 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
     public async Task<bool> SetStatusAsync(ITenantTx transaction, Guid id, QuestionStatus status, CancellationToken cancellationToken = default) =>
         await transaction.ExecuteAsync("update questions set status = @status, updated_at = now() where id = @id", new { id, status = StatusValue(status) }, cancellationToken) != 0;
 
+    public async Task<bool> SetStatusAsync(ITenantTx transaction, IReadOnlyList<Guid> ids, QuestionStatus status, CancellationToken cancellationToken = default)
+    {
+        var distinct = ids.Distinct().Order().ToArray();
+        if (distinct.Length == 0) return false;
+        var result = await transaction.QuerySingleOrDefaultAsync<BulkStatusResult>("""
+            with requested as (select distinct unnest(@ids::uuid[]) as id),
+            locked as (
+                select q.id from questions q join requested r on r.id = q.id
+                order by q.id for update),
+            available as (select count(*)::integer as count from locked),
+            updated as (
+                update questions set status = @status, updated_at = now()
+                where id in (select id from locked)
+                  and (select count from available) = (select count(*) from requested)
+                returning id)
+            select (select count(*) from requested)::integer as Requested,
+                   (select count(*) from updated)::integer as Updated
+            """, new { ids = distinct, status = StatusValue(status) }, cancellationToken);
+        return result is { Requested: > 0 } && result.Requested == result.Updated;
+    }
+
     public async Task<IReadOnlyList<QuestionBucketCount>> BucketCountsAsync(ITenantTx transaction, QuestionFilter? filter = null, CancellationToken cancellationToken = default)
     {
         var rows = await transaction.QueryAsync<PersistedBucket>($"""
@@ -250,6 +271,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
     private sealed record NormalizedWrite(string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, JsonElement Payload, string? Explanation, string? Topic, string Fingerprint, QuestionStatus Status, QuestionSource Source, Guid? OwnerId, Guid? MediaId);
     private sealed record PersistedQuestion(Guid Id, string Kind, int KindVersion, string Family, string Language, Guid? CategoryId, int? Level, string Prompt, string PayloadJson, string? Explanation, string? Topic, string Fingerprint, string Status, string Source, Guid? OwnerId, Guid? MediaId);
     private sealed record PersistedBucket(string Language, Guid? CategoryId, int? Level, string Kind, int Approved, int Pending);
+    private sealed record BulkStatusResult(int Requested, int Updated);
 }
 
 [JsonSerializable(typeof(JsonElement))]
