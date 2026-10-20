@@ -23,6 +23,8 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class DiscriminatingSeedTests(PostgresFixture fixture)
 {
+    private const long BankDrawSeed = 336;
+
     [SkippableFact]
     public async Task Tenant_scoped_content_query_excludes_content_seeded_for_another_tenant()
     {
@@ -57,14 +59,14 @@ public sealed class DiscriminatingSeedTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task Bank_selection_excludes_a_question_with_an_ineligible_status()
+    public async Task Bank_selection_excludes_an_ineligible_question_that_sorts_first_in_the_draw()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await using var owner = await PrepareAsync();
         var tenant = await TenantSeed.CreateAsync(owner, "seed-bank-status");
         var category = await CategorySeed.CreateAsync(owner, tenant, "selected");
         var approved = await QuestionSeed.CreateAsync(owner, tenant, category, "approved");
-        _ = await DiscriminatingSeeds.AddIneligibleQuestionAsync(owner, tenant, category);
+        _ = await DiscriminatingSeeds.AddIneligibleQuestionBeforeAsync(owner, tenant, category, approved.Id, BankDrawSeed);
         await EnableBankAsync(owner, tenant, [category.Id]);
 
         var result = await DrawAsync(tenant.Id, new BankParams([category.Id]));
@@ -119,7 +121,7 @@ public sealed class DiscriminatingSeedTests(PostgresFixture fixture)
     {
         await using var sources = Sources();
         var database = new TenantDb(sources);
-        var plan = new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia")], [1], 336);
+        var plan = new SourceDrawPlan(1, "en", [new SourceKind("choice", "trivia")], [1], BankDrawSeed);
         var result = await database.InTenantAsync(tenantId, transaction => new BankSource().PickAsync(transaction, JsonSerializer.SerializeToElement(parameters), plan, Guid.Empty));
         return Assert.IsType<PickedQuestionIds>(result);
     }

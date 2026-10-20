@@ -46,17 +46,17 @@ internal static class CategorySeed
 
 internal static class QuestionSeed
 {
-    public static async Task<SeedQuestion> CreateAsync(NpgsqlConnection connection, SeedTenant tenant, SeedCategory category, string status, CancellationToken cancellationToken = default)
+    public static async Task<SeedQuestion> CreateAsync(NpgsqlConnection connection, SeedTenant tenant, SeedCategory category, string status, CancellationToken cancellationToken = default, Guid? id = null)
     {
-        var id = Guid.NewGuid();
-        var prompt = $"seed-question-{id:N}";
+        var questionId = id ?? Guid.NewGuid();
+        var prompt = $"seed-question-{questionId:N}";
         await SeedSql.ExecuteAsync(connection, """
             insert into questions (tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, fingerprint, status, source)
             values (@tenant, @id, 'choice', 1, 'trivia', 'en', @category, 1, @prompt,
                     '{"options":["one","two","three","four"],"correctIndex":0}'::jsonb,
                     @prompt, @status, 'admin')
-            """, cancellationToken, ("tenant", tenant.Id), ("id", id), ("category", category.Id), ("prompt", prompt), ("status", status));
-        return new SeedQuestion(id);
+            """, cancellationToken, ("tenant", tenant.Id), ("id", questionId), ("category", category.Id), ("prompt", prompt), ("status", status));
+        return new SeedQuestion(questionId);
     }
 }
 
@@ -115,6 +115,18 @@ internal static class DiscriminatingSeeds
     public static Task<SeedQuestion> AddIneligibleQuestionAsync(NpgsqlConnection connection, SeedTenant tenant, SeedCategory category, CancellationToken cancellationToken = default) =>
         QuestionSeed.CreateAsync(connection, tenant, category, "pending", cancellationToken);
 
+    public static async Task<SeedQuestion> AddIneligibleQuestionBeforeAsync(NpgsqlConnection connection, SeedTenant tenant, SeedCategory category, Guid approvedQuestionId, long drawSeed, CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 0; attempt < 64; attempt++)
+        {
+            var id = Guid.NewGuid();
+            if (!await SeedSql.OrdersBeforeAsync(connection, id, approvedQuestionId, drawSeed, cancellationToken)) continue;
+            return await QuestionSeed.CreateAsync(connection, tenant, category, "pending", cancellationToken, id);
+        }
+
+        throw new InvalidOperationException("Could not create an ineligible question that sorts before the approved question.");
+    }
+
     public static Task<SeedFinishedSession> AddFinishedSessionAsync(NpgsqlConnection connection, SeedTenant tenant, DateTimeOffset guestCreatedAt, DateTimeOffset finishedAt, CancellationToken cancellationToken = default) =>
         SessionSeed.CreateFinishedGuestSeatAsync(connection, tenant, guestCreatedAt, finishedAt, cancellationToken);
 
@@ -129,5 +141,17 @@ internal static class SeedSql
         await using var command = new NpgsqlCommand(sql, connection);
         foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public static async Task<bool> OrdersBeforeAsync(NpgsqlConnection connection, Guid candidate, Guid existing, long seed, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            select (hashtextextended(@candidate::text, @seed), @candidate::uuid)
+                 < (hashtextextended(@existing::text, @seed), @existing::uuid)
+            """, connection);
+        command.Parameters.AddWithValue("candidate", candidate);
+        command.Parameters.AddWithValue("existing", existing);
+        command.Parameters.AddWithValue("seed", seed);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? throw new InvalidOperationException("The seed ordering query returned no value."));
     }
 }
