@@ -107,6 +107,27 @@ public sealed class ClientRegistryTests
             registry.Pages.OrderBy(type => type.FullName));
     }
 
+    [Fact]
+    public async Task Admin_client_loads_one_root_and_multiple_independent_page_contributions()
+    {
+        var registry = new AdminClientRegistry(new RecordingLoader(typeof(AdminClientEntry).Assembly, typeof(ContributedAdminEntry).Assembly));
+
+        await registry.LoadAsync();
+
+        Assert.Same(typeof(AdminApp), registry.Root);
+        Assert.Contains(typeof(ContributedAdminPage), registry.Pages);
+    }
+
+    [Fact]
+    public async Task Admin_client_exposes_a_contributed_page_assembly_to_the_router()
+    {
+        var registry = new AdminClientRegistry(new RecordingLoader(typeof(AdminClientEntry).Assembly, typeof(ContributedAdminEntry).Assembly));
+
+        await registry.LoadAsync();
+
+        Assert.Contains(typeof(ContributedAdminPage).Assembly, registry.PageAssemblies);
+    }
+
     private sealed class RecordingLoader(params Assembly[] assemblies) : IClientAssemblyLoader
     {
         public List<string> AssemblyNames { get; } = [];
@@ -134,4 +155,12 @@ public sealed class ClientRegistryTests
     private sealed class PlayV1;
     private sealed class RevealV1;
     private sealed class Editor;
+
+    public sealed class ContributedAdminEntry : IAdminClientAssemblyEntry
+    {
+        public void Register(IAdminClientRegistry registry) => registry.RegisterPage(typeof(ContributedAdminPage));
+    }
+
+    [Route("/admin/contributed")]
+    public sealed class ContributedAdminPage : ComponentBase;
 }

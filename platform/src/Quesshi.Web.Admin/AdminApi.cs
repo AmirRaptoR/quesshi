@@ -56,6 +56,13 @@ public sealed class AdminApi(ClientHttp client)
     public Task<AdminResult<object>> SetMembershipActiveAsync(Guid id, bool active, CancellationToken cancellationToken = default) =>
         ReadMutationAsync(HttpMethod.Post, $"/api/admin/accounts/{id}/membership/active?value={active.ToString().ToLowerInvariant()}", null, cancellationToken);
 
+    public Task<AdminResult<T>> MutateAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return ReadMutationAsync<T>(method, path, body, cancellationToken);
+    }
+
     private async Task<AdminResult<T>> ReadMutationAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
     {
         var result = await SendMutationAsync(method, path, body, cancellationToken);
@@ -118,7 +125,8 @@ public sealed class AdminApi(ClientHttp client)
             try { error = await response.Content.ReadFromJsonAsync<ErrorResponse>(cancellationToken: cancellationToken); }
             catch (System.Text.Json.JsonException) { }
         }
-        return new(false, default, LocalizedError(error?.Code ?? error?.Error, response.StatusCode));
+        var code = error?.Code ?? error?.Error;
+        return new(false, default, LocalizedError(code, response.StatusCode), new AdminFailure(response.StatusCode, code));
     }
 
     private static string LocalizedError(string? error, HttpStatusCode statusCode) => error switch
@@ -140,7 +148,8 @@ public sealed class AdminApi(ClientHttp client)
     private sealed record CreateRequest(string Username, string Email, string Password);
 }
 
-public sealed record AdminResult<T>(bool Success, T? Value, string? Error);
+public sealed record AdminResult<T>(bool Success, T? Value, string? Error, AdminFailure? Failure = null);
+public sealed record AdminFailure(HttpStatusCode StatusCode, string? Code);
 public sealed record LoginResult(bool MustChangePassword);
 public sealed record AdminSession(Guid Id, string? Role, bool IsPlatform, bool MustChangePassword)
 {

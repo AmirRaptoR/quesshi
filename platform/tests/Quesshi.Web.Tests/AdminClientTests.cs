@@ -32,7 +32,7 @@ public sealed class AdminClientTests
 
         var result = await Api(handler).SetMembershipActiveAsync(Guid.Empty, true);
 
-        Assert.Equal(new AdminResult<object>(false, null, "admin.error"), result);
+        Assert.Equal("admin.error", result.Error);
         Assert.Equal(["", "old", "", "fresh"], handler.Tokens);
     }
 
@@ -98,7 +98,44 @@ public sealed class AdminClientTests
         Assert.All(handler.PlayerTokens, Assert.False);
     }
 
+    [Fact]
+    public async Task A_registered_screen_mutation_uses_the_admin_antiforgery_token()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.NoContent));
+
+        var result = await State(handler).MutateAsync<object>(HttpMethod.Post, "/api/admin/content", new { title = "Question" });
+
+        Assert.Equal((true, "csrf"), (result.Success, handler.Tokens[1]));
+    }
+
+    [Fact]
+    public async Task A_registered_screen_mutation_preserves_an_authorization_failure()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.Forbidden, """{"code":"content.forbidden"}"""));
+
+        var result = await State(handler).MutateAsync<object>(HttpMethod.Post, "/api/admin/content", new { title = "Question" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, result.Failure!.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_registered_screen_mutation_preserves_a_validation_failure()
+    {
+        var handler = new Handler(
+            Response(HttpStatusCode.OK, """{"token":"csrf"}"""),
+            Response(HttpStatusCode.BadRequest, """{"code":"content.questions.invalid"}"""));
+
+        var result = await State(handler).MutateAsync<object>(HttpMethod.Post, "/api/admin/content", new { title = "Question" });
+
+        Assert.Equal("content.questions.invalid", result.Failure!.Code);
+    }
+
     private static AdminApi Api(Handler handler) => new(new ClientHttp(new HttpClient(handler) { BaseAddress = new Uri("https://tenant.example/") }, new NullReloader()));
+    private static AdminState State(Handler handler) => new(Api(handler));
     private static HttpResponseMessage Response(HttpStatusCode status, string? json = null) => new(status) { Content = new StringContent(json ?? string.Empty, Encoding.UTF8, "application/json") };
 
     private sealed class Handler(params HttpResponseMessage[] responses) : HttpMessageHandler

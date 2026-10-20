@@ -1,7 +1,8 @@
 @inject ClientHttp Http
+@inject IAdminClientRegistry Registry
 
 <CascadingValue Value="state">
-    <Router AppAssembly="@typeof(AdminApp).Assembly">
+    <Router AppAssembly="@typeof(AdminApp).Assembly" AdditionalAssemblies="@Registry.PageAssemblies">
         <Found Context="routeData"><RouteView RouteData="@routeData" /></Found>
         <NotFound><AdminHome /></NotFound>
     </Router>

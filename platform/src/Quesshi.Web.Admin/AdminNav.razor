@@ -1,5 +1,6 @@
 @inject NavigationManager Navigation
 @inject IClientTranslator Text
+@inject IAdminClientRegistry Registry
 
 @if (State?.Session is { MustChangePassword: false } && State.Status == AdminSessionStatus.SignedIn)
 {
@@ -10,7 +11,10 @@
             {
                 <NavLink class="admin-nav__link" ActiveClass="is-active" href="/admin/accounts">@Text["admin.nav.accounts"]</NavLink>
             }
-            @* Later admin screens add their page links here. *@
+            @foreach (var contribution in Registry.Navigation.Where(contribution => contribution.IsVisibleTo(new AdminNavigationContext(State.Session.Role, State.Session.IsPlatform))))
+            {
+                <NavLink class="admin-nav__link" ActiveClass="is-active" href="@contribution.Href">@Text[contribution.LabelKey]</NavLink>
+            }
         </div>
         <details class="admin-nav__account">
             <summary class="admin-account__summary"><span class="admin-account__avatar" aria-hidden="true">A</span><span>@Text["admin.shell.title"]</span></summary>

@@ -11,9 +11,12 @@ namespace Quesshi.Web.Tests;
 
 public sealed class AdminPageTests : BunitContext
 {
+    private readonly AdminClientRegistry adminRegistry = new(new EmptyLoader());
+
     public AdminPageTests()
     {
         Services.AddSingleton<IClientTranslator>(new TestTranslator());
+        Services.AddSingleton<IAdminClientRegistry>(adminRegistry);
     }
 
     [Fact]
@@ -280,6 +283,74 @@ public sealed class AdminPageTests : BunitContext
     }
 
     [Fact]
+    public async Task Owner_navigation_displays_an_authorized_registered_content_link()
+    {
+        RegisterContentNavigation();
+        var state = await StateAsync(Response(HttpStatusCode.OK, SessionJson(role: "Owner")));
+
+        var cut = Render<AdminNav>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.NotNull(cut.Find(".admin-nav__pages a[href='/admin/content']"));
+    }
+
+    [Fact]
+    public async Task Editor_navigation_displays_an_authorized_registered_content_link()
+    {
+        RegisterContentNavigation();
+        var state = await StateAsync(Response(HttpStatusCode.OK, SessionJson(role: "Editor")));
+
+        var cut = Render<AdminNav>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.NotNull(cut.Find(".admin-nav__pages a[href='/admin/content']"));
+    }
+
+    [Fact]
+    public async Task Navigation_omits_a_registered_content_link_when_it_is_unavailable()
+    {
+        adminRegistry.RegisterNavigation(new AdminNavigation(
+            "/admin/content", "admin.content", new HashSet<string>(["Owner", "Editor"], StringComparer.OrdinalIgnoreCase),
+            _ => false));
+        var state = await StateAsync(Response(HttpStatusCode.OK, SessionJson(role: "Owner")));
+
+        var cut = Render<AdminNav>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.Empty(cut.FindAll(".admin-nav__pages a[href='/admin/content']"));
+    }
+
+    [Fact]
+    public async Task Moderator_navigation_omits_an_unauthorized_registered_content_link()
+    {
+        RegisterContentNavigation();
+        var state = await StateAsync(Response(HttpStatusCode.OK, SessionJson(role: "Moderator")));
+
+        var cut = Render<AdminNav>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.Empty(cut.FindAll(".admin-nav__pages a[href='/admin/content']"));
+    }
+
+    [Fact]
+    public async Task Temporary_password_admin_omits_registered_content_links()
+    {
+        RegisterContentNavigation();
+        var state = await StateAsync(Response(HttpStatusCode.OK, SessionJson(role: "Editor", mustChangePassword: true)));
+
+        var cut = Render<AdminNav>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.Empty(cut.FindAll(".admin-nav__pages a[href='/admin/content']"));
+    }
+
+    [Fact]
+    public async Task Signed_out_admin_omits_registered_content_links()
+    {
+        RegisterContentNavigation();
+        var state = await StateAsync(Response(HttpStatusCode.Unauthorized));
+
+        var cut = Render<AdminNav>(parameters => parameters.AddCascadingValue(state));
+
+        Assert.Empty(cut.FindAll(".admin-nav__pages a[href='/admin/content']"));
+    }
+
+    [Fact]
     public async Task Temporary_password_and_signed_out_admins_do_not_receive_navigation()
     {
         var temporary = await StateAsync(Response(HttpStatusCode.OK, SessionJson(mustChangePassword: true)));
@@ -505,6 +576,9 @@ public sealed class AdminPageTests : BunitContext
         return array ? $"[{account}]" : account;
     }
 
+    private void RegisterContentNavigation() => adminRegistry.RegisterNavigation(
+        new AdminNavigation("/admin/content", "admin.content", new HashSet<string>(["Owner", "Editor"], StringComparer.OrdinalIgnoreCase)));
+
     private static HttpResponseMessage Response(HttpStatusCode status, string? json = null) => new(status)
     {
         Content = new StringContent(json ?? string.Empty, Encoding.UTF8, "application/json")
@@ -529,6 +603,12 @@ public sealed class AdminPageTests : BunitContext
     private sealed class NullReloader : IClientReloader
     {
         public Task ReloadOnceAsync(string buildId) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyLoader : IClientAssemblyLoader
+    {
+        public Task<IReadOnlyList<System.Reflection.Assembly>> LoadAsync(string assemblyName) =>
+            Task.FromResult<IReadOnlyList<System.Reflection.Assembly>>([]);
     }
 
     private sealed class TestTranslator : IClientTranslator
@@ -573,6 +653,7 @@ public sealed class AdminPageTests : BunitContext
             ["admin.nav.accounts"] = "Accounts",
             ["admin.nav.password"] = "Password",
             ["admin.nav.signOut"] = "Sign out",
+            ["admin.content"] = "Content",
             ["admin.shell.title"] = "Administration",
         };
 

@@ -83,6 +83,24 @@ public sealed class ClientShellTests
     }
 
     [Fact]
+    public async Task Tenant_language_selection_preserves_right_to_left_direction_for_the_admin_shell()
+    {
+        var config = new AppConfig(
+            new ClientHttp(new HttpClient(new RecordingHandler(Config("Tenant", 1, "fa", "rtl"))) { BaseAddress = new Uri("https://tenant.example/") }, new RecordingReloader()),
+            new RecordingJs());
+        await config.LoadAsync();
+        var js = new LanguageJs();
+        var translator = new Translator(new ClientHttp(
+            new HttpClient(new RecordingHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") })) { BaseAddress = new Uri("https://tenant.example/") },
+            new RecordingReloader()));
+        var selection = new LanguageSelection(config, translator, js);
+
+        await selection.InitializeAsync();
+
+        Assert.Equal("rtl", js.AppliedDirections.Single());
+    }
+
+    [Fact]
     public void Worker_keeps_tenant_resources_out_of_integrity_assets_and_handles_304_offline()
     {
         var worker = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "service-worker.published.js"));
@@ -118,9 +136,9 @@ public sealed class ClientShellTests
         throw new DirectoryNotFoundException("Could not locate the platform source directory.");
     }
 
-    private static HttpResponseMessage Config(string name, long version) => new(HttpStatusCode.OK)
+    private static HttpResponseMessage Config(string name, long version, string languageCode = "en", string direction = "ltr") => new(HttpStatusCode.OK)
     {
-        Content = new StringContent($$"""{"name":"{{name}}","languages":[{"code":"en","displayName":"English","direction":"ltr"}],"defaultLanguage":"en","capabilities":{},"configVersion":{{version}},"serverBuildId":"test"}""", Encoding.UTF8, "application/json")
+        Content = new StringContent($$"""{"name":"{{name}}","languages":[{"code":"{{languageCode}}","displayName":"Language","direction":"{{direction}}"}],"defaultLanguage":"{{languageCode}}","capabilities":{},"configVersion":{{version}},"serverBuildId":"test"}""", Encoding.UTF8, "application/json")
     };
 
     private sealed class RecordingHandler(params HttpResponseMessage[] responses) : HttpMessageHandler
@@ -151,10 +169,12 @@ public sealed class ClientShellTests
     private sealed class LanguageJs : IJSRuntime
     {
         public List<string> Calls { get; } = [];
+        public List<string?> AppliedDirections { get; } = [];
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => InvokeAsync<TValue>(identifier, default, args);
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
             Calls.Add(identifier);
+            if (identifier == "quesshi.applyLanguage") AppliedDirections.Add(args?[1] as string);
             object? value = identifier switch
             {
                 "quesshi.get" => null,
