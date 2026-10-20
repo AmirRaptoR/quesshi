@@ -162,6 +162,130 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
     }
 
     [SkippableFact]
+    public async Task Api_bank_category_settings_persist_for_the_current_tenant()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var trivia = await AddCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\"}", true, 0);
+        var poll = await AddCategoryAsync(owner, TenantA, "opinion", "{\"en\":\"Opinion\"}", true, 1);
+        await AddBankCapabilityAsync(owner, TenantA);
+        var admin = await InsertAdminAsync(owner, "category-settings-owner", "category-settings-owner@example.test");
+        await MembershipAsync(owner, TenantA, admin, "owner");
+        await using var app = await StartAsync(Sources());
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [trivia], ["poll"] = [poll] } });
+        using var saved = await SendAsync(client, HttpMethod.Put, "/api/admin/categories/bank-settings", cookie, token, body);
+        using var loaded = await SendAsync(client, HttpMethod.Get, "/api/admin/categories/bank-settings", cookie);
+        var settings = await loaded.Content.ReadFromJsonAsync<BankSettingsResponse>();
+
+        Assert.Equal((HttpStatusCode.NoContent, HttpStatusCode.OK, trivia, poll),
+            (saved.StatusCode, loaded.StatusCode, settings!.CategoriesByFamily["trivia"].Single(), settings.CategoriesByFamily["poll"].Single()));
+    }
+
+    [SkippableFact]
+    public async Task Api_bank_category_settings_reject_unknown_categories_without_changing_the_saved_list()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var trivia = await AddCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\"}", true, 0);
+        await AddBankCapabilityAsync(owner, TenantA, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{trivia}\"],\"poll\":[]}}}}");
+        var admin = await InsertAdminAsync(owner, "category-invalid-owner", "category-invalid-owner@example.test");
+        await MembershipAsync(owner, TenantA, admin, "owner");
+        await using var app = await StartAsync(Sources());
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [Guid.NewGuid()], ["poll"] = [] } });
+        using var rejected = await SendAsync(client, HttpMethod.Put, "/api/admin/categories/bank-settings", cookie, token, body);
+        using var loaded = await SendAsync(client, HttpMethod.Get, "/api/admin/categories/bank-settings", cookie);
+        var settings = await loaded.Content.ReadFromJsonAsync<BankSettingsResponse>();
+
+        Assert.Equal((HttpStatusCode.BadRequest, trivia), (rejected.StatusCode, settings!.CategoriesByFamily["trivia"].Single()));
+    }
+
+    [SkippableFact]
+    public async Task Api_bank_category_settings_do_not_cross_tenant_boundaries()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenantACategory = await AddCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\"}", true, 0);
+        var tenantBCategory = await AddCategoryAsync(owner, TenantB, "foreign", "{\"en\":\"Foreign\"}", true, 0);
+        await AddBankCapabilityAsync(owner, TenantA);
+        await AddBankCapabilityAsync(owner, TenantB, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{tenantBCategory}\"],\"poll\":[]}}}}");
+        var admin = await InsertAdminAsync(owner, "category-isolation-owner", "category-isolation-owner@example.test");
+        await MembershipAsync(owner, TenantA, admin, "owner");
+        await using var app = await StartAsync(Sources());
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [tenantACategory], ["poll"] = [] } });
+        using var changed = await SendAsync(client, HttpMethod.Put, "/api/admin/categories/bank-settings", cookie, token, body);
+
+        Assert.Equal((HttpStatusCode.NoContent, tenantBCategory), (changed.StatusCode, await BankCategoryAsync(owner, TenantB, "trivia")));
+    }
+
+    [SkippableFact]
+    public async Task Api_player_categories_filter_the_saved_family_list_and_exclude_inactive_categories()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var visible = await AddCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\",\"fa\":\"تاریخ\"}", true, 2);
+        var inactive = await AddCategoryAsync(owner, TenantA, "retired", "{\"en\":\"Retired\",\"fa\":\"قدیمی\"}", false, 0);
+        await AddCategoryAsync(owner, TenantA, "science", "{\"en\":\"Science\",\"fa\":\"علم\"}", true, 1);
+        await AddBankCapabilityAsync(owner, TenantA, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{visible}\",\"{inactive}\"],\"poll\":[]}}}}");
+        await using var app = await StartAsync(Sources());
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var response = await SendAsync(client, HttpMethod.Get, "/api/categories?family=trivia&language=fa", host: "categories-a.example.test");
+        var categories = await response.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>();
+
+        var category = Assert.Single(categories!);
+
+        Assert.Equal((HttpStatusCode.OK, "history", "تاریخ"), (response.StatusCode, category.Slug, category.Name));
+    }
+
+    [SkippableFact]
+    public async Task Api_player_categories_returns_poll_categories_after_the_editor_changes_the_allow_list()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var trivia = await AddCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\"}", true, 0);
+        var poll = await AddCategoryAsync(owner, TenantA, "opinion", "{\"en\":\"Opinion\"}", true, 1);
+        await AddBankCapabilityAsync(owner, TenantA);
+        var admin = await InsertAdminAsync(owner, "category-refresh-owner", "category-refresh-owner@example.test");
+        await MembershipAsync(owner, TenantA, admin, "owner");
+        await using var app = await StartAsync(Sources());
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
+        var token = await AdminAntiforgeryAsync(client, cookie);
+        using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [trivia], ["poll"] = [poll] } });
+        using var changed = await SendAsync(client, HttpMethod.Put, "/api/admin/categories/bank-settings", cookie, token, body);
+        using var response = await SendAsync(client, HttpMethod.Get, "/api/categories?family=poll", host: "categories-a.example.test");
+        var categories = await response.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>();
+
+        Assert.Equal((HttpStatusCode.NoContent, "opinion"), (changed.StatusCode, Assert.Single(categories!).Slug));
+    }
+
+    [SkippableFact]
+    public async Task Api_player_categories_reject_an_unknown_family_and_isolate_family_lists_by_tenant()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var tenantA = await AddCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\"}", true, 0);
+        var tenantB = await AddCategoryAsync(owner, TenantB, "foreign", "{\"en\":\"Foreign\"}", true, 0);
+        await AddBankCapabilityAsync(owner, TenantA, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{tenantA}\"],\"poll\":[]}}}}");
+        await AddBankCapabilityAsync(owner, TenantB, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{tenantB}\"],\"poll\":[]}}}}");
+        await using var app = await StartAsync(Sources());
+        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var unknown = await SendAsync(client, HttpMethod.Get, "/api/categories?family=unknown", host: "categories-a.example.test");
+        using var tenantBResponse = await SendAsync(client, HttpMethod.Get, "/api/categories?family=trivia", host: "categories-b.example.test");
+        var categories = await tenantBResponse.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>();
+
+        Assert.Equal((HttpStatusCode.BadRequest, "foreign"), (unknown.StatusCode, Assert.Single(categories!).Slug));
+    }
+
+    [SkippableFact]
     public async Task Api_invalid_and_duplicate_category_writes_preserve_data_and_allow_a_foreign_tenant_slug()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -253,6 +377,32 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
     private static Task InsertCategoryAsync(NpgsqlConnection owner, Guid tenant, string slug, string names, bool active, int sortOrder) =>
         ExecuteAsync(owner, "insert into categories (tenant_id, id, slug, names, is_active, sort_order) values (@tenant, @id, @slug, @names::jsonb, @active, @sortOrder)", ("tenant", tenant), ("id", Guid.NewGuid()), ("slug", slug), ("names", names), ("active", active), ("sortOrder", sortOrder));
 
+    private static async Task<Guid> AddCategoryAsync(NpgsqlConnection owner, Guid tenant, string slug, string names, bool active, int sortOrder)
+    {
+        var id = Guid.NewGuid();
+        await ExecuteAsync(owner, "insert into categories (tenant_id, id, slug, names, is_active, sort_order) values (@tenant, @id, @slug, @names::jsonb, @active, @sortOrder)",
+            ("tenant", tenant), ("id", id), ("slug", slug), ("names", names), ("active", active), ("sortOrder", sortOrder));
+        return id;
+    }
+
+    private static Task AddBankCapabilityAsync(NpgsqlConnection owner, Guid tenant, string settings = "{}") =>
+        ExecuteAsync(owner, """
+            insert into tenant_capabilities (tenant_id, type, key, entitled, enabled, settings)
+            values (@tenant, 'source', 'bank', true, true, @settings::jsonb)
+            """, ("tenant", tenant), ("settings", settings));
+
+    private static async Task<Guid> BankCategoryAsync(NpgsqlConnection owner, Guid tenant, string family)
+    {
+        await using var command = new NpgsqlCommand("""
+            select value::uuid
+            from tenant_capabilities, jsonb_array_elements_text(settings -> 'categoriesByFamily' -> @family) as value
+            where tenant_id = @tenant and type = 'source' and key = 'bank'
+            """, owner);
+        command.Parameters.AddWithValue("tenant", tenant);
+        command.Parameters.AddWithValue("family", family);
+        return (Guid)(await command.ExecuteScalarAsync())!;
+    }
+
     private static async Task<(string Slug, string Names, string Icon, string Color, int SortOrder)> CategoryStateAsync(NpgsqlConnection owner, Guid tenant, Guid id)
     {
         await using var command = new NpgsqlCommand("select slug, names::text, icon, color, sort_order from categories where tenant_id = @tenant and id = @id", owner);
@@ -315,4 +465,5 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
     private sealed record CategoryResponse(Guid Id);
     private sealed record CategoryAdminResponse(string Slug, Dictionary<string, string> Names, string Icon, string Color, bool IsActive, int SortOrder);
     private sealed record CategoryDisplayResponse(string Slug, string Name);
+    private sealed record BankSettingsResponse(Dictionary<string, Guid[]> CategoriesByFamily);
 }

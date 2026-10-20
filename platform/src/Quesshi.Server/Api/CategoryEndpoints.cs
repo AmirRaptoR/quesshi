@@ -15,7 +15,9 @@ public sealed class CategoryEndpoints : ICoreRouteModule
 
         var categories = routes.AdminRoutes(AdminRole.Editor).MapGroup("/categories");
         categories.MapGet("", ListAsync);
+        categories.MapGet("/bank-settings", GetBankSettingsAsync);
         categories.MapPost("", CreateAsync).WithMetadata(new AdminAuditMetadata("admin.category.create", "category"));
+        categories.MapPut("/bank-settings", SetBankSettingsAsync).WithMetadata(new AdminAuditMetadata("admin.category.bank_settings.update", "category"));
         categories.MapPut("/{id:guid}", UpdateAsync).WithMetadata(new AdminAuditMetadata("admin.category.update", "category"));
         categories.MapPut("/reorder", ReorderAsync).WithMetadata(new AdminAuditMetadata("admin.category.reorder", "category"));
         categories.MapPost("/{id:guid}/deactivate", DeactivateAsync).WithMetadata(new AdminAuditMetadata("admin.category.deactivate", "category"));
@@ -24,20 +26,39 @@ public sealed class CategoryEndpoints : ICoreRouteModule
 
     private static async Task<IResult> ListActiveAsync(
         HttpContext context,
+        [FromQuery] string? family,
         [FromQuery] string? language,
         [FromServices] ICategoryService categories,
         CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context);
-        return tenant is null
-            ? Results.NotFound()
-            : Results.Ok(await categories.ListActiveAsync(tenant.Id, language, cancellationToken));
+        if (tenant is null) return Results.NotFound();
+        if (family is not null && !BankCategoryFamilies.IsKnown(family))
+            return Error("unknown_family", StatusCodes.Status400BadRequest);
+        return Results.Ok(await categories.ListActiveAsync(tenant.Id, family, language, cancellationToken));
     }
 
     private static async Task<IResult> ListAsync(HttpContext context, [FromServices] ICategoryService categories, CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context);
         return tenant is null ? Results.NotFound() : Results.Ok(await categories.ListAsync(tenant.Id, cancellationToken));
+    }
+
+    private static async Task<IResult> GetBankSettingsAsync(HttpContext context, [FromServices] ICategoryService categories, CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        return tenant is null ? Results.NotFound() : Results.Ok(await categories.GetBankSettingsAsync(tenant.Id, cancellationToken));
+    }
+
+    private static async Task<IResult> SetBankSettingsAsync(
+        HttpContext context,
+        BankCategorySettingsRequest request,
+        [FromServices] ICategoryService categories,
+        CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (tenant is null) return Results.NotFound();
+        return Answer(await categories.SetBankSettingsAsync(tenant.Id, request.ToAllowLists(), cancellationToken));
     }
 
     private static async Task<IResult> CreateAsync(HttpContext context, CategoryWriteRequest request, [FromServices] ICategoryService categories, CancellationToken cancellationToken)
@@ -88,6 +109,14 @@ public sealed class CategoryEndpoints : ICoreRouteModule
         _ => Error("category_change_failed", StatusCodes.Status400BadRequest),
     };
 
+    private static IResult Answer(BankCategorySettingsChangeResult result) => result.Status switch
+    {
+        BankCategorySettingsChangeStatus.Success => Results.NoContent(),
+        BankCategorySettingsChangeStatus.Invalid => Error("invalid_bank_category_settings", StatusCodes.Status400BadRequest),
+        BankCategorySettingsChangeStatus.Missing => Results.NotFound(),
+        _ => Error("bank_category_settings_failed", StatusCodes.Status400BadRequest),
+    };
+
     private static IResult Error(string error, int statusCode) => Results.Json(new { error }, statusCode: statusCode);
 
     private sealed record CategoryWriteRequest(string? Slug, Dictionary<string, string>? Names, string? Icon, string? Color, int SortOrder, bool? IsActive)
@@ -96,4 +125,10 @@ public sealed class CategoryEndpoints : ICoreRouteModule
     }
 
     private sealed record CategoryOrderRequest(Guid[]? Ids);
+
+    private sealed record BankCategorySettingsRequest(Dictionary<string, Guid[]>? CategoriesByFamily)
+    {
+        public IReadOnlyDictionary<string, IReadOnlyList<Guid>>? ToAllowLists() =>
+            CategoriesByFamily?.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<Guid>)pair.Value, StringComparer.Ordinal);
+    }
 }
