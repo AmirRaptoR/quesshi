@@ -24,17 +24,6 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     private const string OtherTenantHost = "security-other.example.test";
 
     [SkippableFact]
-    public async Task Editor_only_route_preserves_the_shared_role_matrix()
-    {
-        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
-        await using var host = new PlatformHttpFixture([new SecurityRoutesFeature()]);
-        await host.StartAsync();
-
-        await RoleMatrix.ForEditorOnlyMutation(host)
-            .AssertAsync(client => client.PostAsync("/api/admin/x/security/editor", null));
-    }
-
-    [SkippableFact]
     public async Task Player_and_open_routes_enforce_identity_capability_origin_and_antiforgery()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -498,6 +487,11 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     public async Task Admin_routes_enforce_roles_antiforgery_and_tenant_scoped_auditing()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var editorOnlyHost = new PlatformHttpFixture([new SecurityRoutesFeature()]);
+        await editorOnlyHost.StartAsync();
+        await RoleMatrix.ForEditorOnlyMutation(editorOnlyHost)
+            .AssertAsync(client => client.PostAsync("/api/admin/x/security/editor", null));
+
         var seeded = await SeedAsync();
         await using var sources = new DatabaseSources(
             fixture.ConnectionStringForRole("quesshi_app"),
@@ -529,8 +523,6 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
                 Assert.Equal(HttpStatusCode.Unauthorized, player.StatusCode);
             using (var editor = await SendAdminAsync(client, TenantHost, HttpMethod.Get, "/api/admin/audit", editorCookie, null, null))
                 Assert.Equal(HttpStatusCode.Forbidden, editor.StatusCode);
-            using (var moderator = await SendAdminAsync(client, TenantHost, HttpMethod.Post, "/api/admin/x/security/editor", moderatorCookie, ownerToken, TenantOrigin))
-                Assert.Equal(HttpStatusCode.Forbidden, moderator.StatusCode);
             using (var moderatorRoute = await SendAdminAsync(client, TenantHost, HttpMethod.Post, "/api/admin/x/security/moderator", moderatorCookie,
                        await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
                 Assert.Equal(HttpStatusCode.OK, moderatorRoute.StatusCode);
@@ -576,7 +568,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
 
             await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
             await owner.OpenAsync();
-            Assert.Equal(10L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.TenantId }));
+            Assert.Equal(9L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.TenantId }));
             Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.OtherTenantId }));
             var auditRows = await owner.QueryAsync<AuditRow>("""
                 select actor_id as ActorId, action as Action, target_type as TargetType, data::text as Data
