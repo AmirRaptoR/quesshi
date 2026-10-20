@@ -185,12 +185,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11174, 30174);
-        app.Urls.Add("http://127.0.0.1:50174");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50174") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var moderatorCookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.ModeratorAdminId);
             var editorCookie = await IssueAdminCookieAsync(sessions, seeded.TenantId, seeded.EditorAdminId);
