@@ -21,9 +21,6 @@ namespace Quesshi.Server.Tests;
 public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisposable
 {
     private const string TenantHost = "platform-http.example.test";
-    private const int FirstFixedHttpTestPort = 50000;
-    private const int LastFixedHttpTestPort = 50999;
-    private static readonly ConcurrentDictionary<int, byte> ReservedPorts = new();
     private readonly PostgresFixture _postgres = new();
     private readonly IReadOnlyList<IFeature> _features = features;
     private readonly List<HttpClient> _clients = [];
@@ -73,9 +70,8 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         await Program.MigrateAsync(_postgres.ConnectionStringForRole("quesshi_owner"), cancellationToken);
         _identities = await SeedAsync(cancellationToken);
 
-        HttpPort = AllocatePort();
-        SiloPort = AllocatePort();
-        GatewayPort = AllocatePort();
+        SiloPort = TestPorts.Allocate();
+        GatewayPort = TestPorts.Allocate();
         var sources = new DatabaseSources(
             _postgres.ConnectionStringForRole("quesshi_app"),
             _postgres.ConnectionStringForRole("quesshi_system"));
@@ -87,13 +83,13 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
                 SiloPort,
                 GatewayPort,
                 configuredFeatures: FeatureRegistry.Create(_features));
-            application.Urls.Add($"http://127.0.0.1:{HttpPort}");
+            application.Urls.Add("http://127.0.0.1:0");
             await application.StartAsync(cancellationToken);
             await application.Services.GetRequiredService<PostgresClock>().StartAsync(cancellationToken);
 
             _application = application;
             var address = new Uri(application.Urls.Single());
-            if (address.Port != HttpPort) throw new InvalidOperationException("The platform host did not bind its allocated HTTP port.");
+            HttpPort = address.Port;
             Anonymous = await CreatePlayerClientAsync(null, cancellationToken);
             Guest = await CreateGuestClientAsync(cancellationToken);
             Player = await CreatePlayerClientAsync(_identities.AccountId, cancellationToken);
@@ -296,23 +292,10 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         return Uri.UnescapeDataString(value[..value.IndexOf(';')]);
     }
 
-    private static int AllocatePort()
-    {
-        while (true)
-        {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            if (port is >= FirstFixedHttpTestPort and <= LastFixedHttpTestPort) continue;
-            if (ReservedPorts.TryAdd(port, 0)) return port;
-        }
-    }
-
     private void ReleasePorts()
     {
-        if (HttpPort != 0) ReservedPorts.TryRemove(HttpPort, out _);
-        if (SiloPort != 0) ReservedPorts.TryRemove(SiloPort, out _);
-        if (GatewayPort != 0) ReservedPorts.TryRemove(GatewayPort, out _);
+        if (SiloPort != 0) TestPorts.Release(SiloPort);
+        if (GatewayPort != 0) TestPorts.Release(GatewayPort);
     }
 
     private sealed class TenantRequestHandler(string host, Uri origin, string? cookie, string token, string cookieName, string antiforgeryHeader) : DelegatingHandler(new HttpClientHandler())

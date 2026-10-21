@@ -31,7 +31,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var disabled = await SeedAsync(entitled: true, enabled: false);
         var unentitled = await SeedAsync(entitled: false, enabled: true);
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11154, 30154);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -64,7 +64,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var tenant = await SeedAsync(entitled: true, enabled: true);
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11155, 30155);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -103,7 +103,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var tenant = await SeedAsync(entitled: true, enabled: true);
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11160, 30160);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -148,7 +148,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         }
 
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11156, 30156);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -195,7 +195,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var email = $"held-{Guid.NewGuid():N}@example.test";
         var accountId = await SeedLiveAccountAsync(tenant, email);
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11158, 30158);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -231,7 +231,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var email = $"held-{Guid.NewGuid():N}@example.test";
         var accountId = await SeedLiveAccountAsync(tenant, email);
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11159, 30159);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -268,7 +268,7 @@ public sealed class GoogleSignInDatabaseTests(PostgresFixture fixture)
         var enabled = await SeedAsync(entitled: true, enabled: true);
         var unentitled = await SeedAsync(entitled: false, enabled: true);
         await using var sources = CreateSources();
-        await using var app = CreateApplication(sources, 11157, 30157);
+        await using var app = CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();

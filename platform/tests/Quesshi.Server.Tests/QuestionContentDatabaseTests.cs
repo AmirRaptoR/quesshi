@@ -606,7 +606,7 @@ public sealed class QuestionContentDatabaseTests(PostgresFixture fixture) : IAsy
     }
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-    private static WebApplication CreateApplication(DatabaseSources sources, IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(sources, 11298, 30298, configuredKinds: kinds);
+    private static WebApplication CreateApplication(DatabaseSources sources, IKindRegistry? kinds = null) => Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate(), configuredKinds: kinds);
     private static Task ResetDatabaseAsync(NpgsqlConnection owner) => ExecuteAsync(owner, "delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from players; delete from tenant_languages; delete from tenants");
     private async Task<NpgsqlConnection> OpenAsync(string role) { var connection = new NpgsqlConnection(fixture.ConnectionStringForRole(role)); await connection.OpenAsync(); return connection; }
     private static QuestionWrite ValidWrite(string prompt = "What is the capital of France?", JsonElement? payload = null, QuestionStatus status = QuestionStatus.Pending, string? topic = null, string kind = "choice", Guid? category = null, int kindVersion = 1, Guid? mediaId = null) => new(kind, kindVersion, "trivia", "en", category, 1, prompt, payload ?? ChoicePayload(1), null, topic, status, QuestionSource.Admin, null, mediaId);

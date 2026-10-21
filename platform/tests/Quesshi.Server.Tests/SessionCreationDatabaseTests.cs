@@ -781,7 +781,7 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
     private WebApplication CreateApplication(ISessionCodeGenerator? codes = null, ISource? source = null, IFormatRegistry? formats = null, IKindRegistry? kinds = null)
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        return Program.CreateApplication(sources, 11920, 31920, configuredFormats: formats, configuredKinds: kinds, configureServices: services =>
+        return Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate(), configuredFormats: formats, configuredKinds: kinds, configureServices: services =>
         {
             services.AddSingleton<IClock>(new TestClock(DateTimeOffset.Parse("2026-10-20T00:00:00Z")));
             if (codes is not null) services.AddSingleton(codes);

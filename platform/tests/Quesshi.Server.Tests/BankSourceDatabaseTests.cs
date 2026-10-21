@@ -300,7 +300,7 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         await EnableKindAsync(owner, TenantA);
         var foreign = await InsertQuestionAsync(owner, TenantB, null, 1, "en", "approved", null, "foreign");
         await using var sources = Sources();
-        await using var app = Program.CreateApplication(sources, 19180, 39180);
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         var database = app.Services.GetRequiredService<ITenantDb>();
         var validator = app.Services.GetRequiredService<SourceResultValidator>();
 
@@ -366,7 +366,7 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         await using var owner = await PrepareAsync();
         await EnableKindAsync(owner, TenantA);
         await using var sources = Sources();
-        await using var app = Program.CreateApplication(sources, 19181, 39181);
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         var database = app.Services.GetRequiredService<ITenantDb>();
         var validator = app.Services.GetRequiredService<SourceResultValidator>();
         var snapshot = new ReadySnapshot("choice", 1, "trivia", 1, null, null, "Prompt", JsonSerializer.SerializeToElement(new { }), JsonSerializer.SerializeToElement(new { }), JsonSerializer.SerializeToElement(new { }), JsonSerializer.SerializeToElement(new { }));
@@ -457,7 +457,7 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
     private async Task AssertInvalidSourceResultAsync(Picked picked, SourceDrawPlan plan)
     {
         await using var sources = Sources();
-        await using var app = Program.CreateApplication(sources, 19182, 39182);
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         var database = app.Services.GetRequiredService<ITenantDb>();
         var validator = app.Services.GetRequiredService<SourceResultValidator>();
 

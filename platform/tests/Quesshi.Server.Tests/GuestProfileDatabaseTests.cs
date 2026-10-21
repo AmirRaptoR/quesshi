@@ -24,7 +24,7 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync(guestsEnabled: false);
         await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50147") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         try
         {
             var anonymousToken = await AntiforgeryAsync(client, seeded.Host, null);
@@ -82,7 +82,7 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync(guestsEnabled: true);
         await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50147") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         try
         {
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
@@ -194,8 +194,8 @@ public sealed class GuestProfileDatabaseTests(PostgresFixture fixture)
     private async Task<WebApplication> StartAsync()
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        var app = Program.CreateApplication(sources, 11147, 30147);
-        app.Urls.Add("http://127.0.0.1:50147");
+        var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         return app;

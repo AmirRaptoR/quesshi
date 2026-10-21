@@ -1894,7 +1894,7 @@ public sealed class AdminQuestionDatabaseTests(PostgresFixture fixture) : IAsync
 
     private static async Task<WebApplication> StartAsync(DatabaseSources sources, Action<IServiceCollection>? configureServices = null)
     {
-        var app = Quesshi.Server.Program.CreateApplication(sources, 11299, 30299, configureServices: configureServices);
+        var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate(), configureServices: configureServices);
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         clientBaseAddress = new Uri(app.Urls.Single());

@@ -137,8 +137,8 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
 
-        await using var first = Program.CreateApplication(CreateSources(), 11123, 30123);
-        await using var second = Program.CreateApplication(CreateSources(), 11124, 30124);
+        await using var first = Program.CreateApplication(CreateSources(), TestPorts.Allocate(), TestPorts.Allocate());
+        await using var second = Program.CreateApplication(CreateSources(), TestPorts.Allocate(), TestPorts.Allocate());
         first.Urls.Add("http://127.0.0.1:0");
         second.Urls.Add("http://127.0.0.1:0");
         await first.StartAsync();
@@ -171,12 +171,12 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
 
-        await using var app = Program.CreateApplication(CreateSources(), 11125, 30125);
-        app.Urls.Add("http://127.0.0.1:50125");
+        await using var app = Program.CreateApplication(CreateSources(), TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50125") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/health")).StatusCode);
 
             await app.Services.GetRequiredService<PostgresClock>().StartAsync();
@@ -217,7 +217,7 @@ public sealed class OrleansMembershipDatabaseTests(PostgresFixture fixture)
         var originalTrustedProxies = Environment.GetEnvironmentVariable("TRUSTED_PROXIES");
         Environment.SetEnvironmentVariable("TRUSTED_PROXIES", "127.0.0.1");
         var logs = new CapturingLoggerProvider();
-        await using var app = Program.CreateApplication(sources, 11126, 30126, logging => logging.AddProvider(logs));
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate(), logging => logging.AddProvider(logs));
         app.MapGet("/tenant-probe", (HttpContext context, ILoggerFactory loggerFactory) =>
         {
             loggerFactory.CreateLogger("tenant-probe").LogInformation("Tenant probe");

@@ -44,7 +44,7 @@ public sealed class StaticAssetManifestTests
         await using var sources = new DatabaseSources(
             "Host=127.0.0.1;Database=quesshi;Username=app;Password=test",
             "Host=127.0.0.1;Database=quesshi;Username=system;Password=test");
-        await using var app = Program.CreateApplication(sources, 11121, 30121);
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
 
         Assert.NotNull(app);
     }
@@ -55,7 +55,7 @@ public sealed class StaticAssetManifestTests
         await using var sources = new DatabaseSources(
             "Host=127.0.0.1;Database=quesshi;Username=app;Password=test",
             "Host=127.0.0.1;Database=quesshi;Username=system;Password=test");
-        await using var app = Program.CreateApplication(sources, 11122, 30122);
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
 
         Assert.True(app.Environment.WebRootFileProvider.GetFileInfo("icon-192.png").Exists);
     }
