@@ -210,8 +210,132 @@ public sealed class ChangedLineCoverageGateTests
         Assert.Equal(0, exitCode);
     }
 
+    [Fact]
+    public void Newest_successful_main_run_with_a_coverage_artifact_is_selected_for_the_baseline()
+    {
+        using var fixture = new CoverageFixture();
+        var runsPath = fixture.WriteWorkflowRuns(
+            (101, "main", "success", "2026-10-20T10:00:00Z"),
+            (102, "main", "success", "2026-10-21T10:00:00Z"),
+            (103, "feature", "success", "2026-10-22T10:00:00Z"));
+        var artifactsPath = fixture.WriteWorkflowRunArtifacts(101, 102, 103);
+
+        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath, artifactsPath);
+
+        Assert.Equal("102", selected);
+    }
+
+    [Fact]
+    public void Historical_main_runs_without_a_coverage_artifact_are_not_baselines()
+    {
+        using var fixture = new CoverageFixture();
+        var runsPath = fixture.WriteWorkflowRuns(
+            (101, "main", "success", "2026-10-20T10:00:00Z"),
+            (102, "main", "success", "2026-10-21T10:00:00Z"));
+        var artifactsPath = fixture.WriteWorkflowRunArtifacts(101);
+
+        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath, artifactsPath);
+
+        Assert.Equal("101", selected);
+    }
+
+    [Fact]
+    public void No_coverage_artifacts_yields_no_main_baseline()
+    {
+        using var fixture = new CoverageFixture();
+        var runsPath = fixture.WriteWorkflowRuns((101, "main", "success", "2026-10-20T10:00:00Z"));
+        var artifactsPath = fixture.WriteWorkflowRunArtifacts();
+
+        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath, artifactsPath);
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
+    public void Coverage_more_than_point_one_percentage_points_below_baseline_fails()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "covered", "newly uncovered");
+        fixture.WriteCoverageTo("baseline.xml", ("platform/src/Quesshi.Domain/Score.cs", 1, 1), ("platform/src/Quesshi.Domain/Score.cs", 2, 1));
+        fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 1), ("platform/src/Quesshi.Domain/Score.cs", 2, 0));
+
+        var exitCode = Program.Main(BaselineArguments(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root));
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
+    public void Coverage_at_the_point_one_percentage_point_boundary_passes()
+    {
+        using var fixture = new CoverageFixture();
+        var lines = Enumerable.Range(1, 1000).Select(line => ("platform/src/Quesshi.Domain/Score.cs", line, 1)).ToArray();
+        fixture.WriteCoverageTo("baseline.xml", lines);
+        lines[^1] = (lines[^1].Item1, lines[^1].Item2, 0);
+        fixture.WriteCoverage(lines);
+
+        var result = BaselineCoverageGate.Evaluate(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root);
+
+        Assert.True(result.Passed);
+    }
+
+    [Fact]
+    public void Omitted_baseline_skips_the_baseline_gate()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 0));
+
+        var result = BaselineCoverageGate.Evaluate(fixture.CoveragePath, null, fixture.Root);
+
+        Assert.True(result.Skipped);
+    }
+
+    [Fact]
+    public void Baseline_check_returns_an_error_when_a_known_baseline_cannot_be_read()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 1));
+
+        var exitCode = Program.Main(BaselineArguments(fixture.CoveragePath, Path.Combine(fixture.Root, "missing.xml"), fixture.Root));
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public void Baseline_failure_lists_newly_uncovered_production_source_before_the_required_advice()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "covered", "newly uncovered");
+        fixture.WriteCoverageTo("baseline.xml", ("platform/src/Quesshi.Domain/Score.cs", 1, 1), ("platform/src/Quesshi.Domain/Score.cs", 2, 1));
+        fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 1, "50% (1/2)"), ("platform/src/Quesshi.Domain/Score.cs", 2, 0, null));
+        using var error = new StringWriter();
+        var originalError = Console.Error;
+        try
+        {
+            Console.SetError(error);
+            Program.Main(BaselineArguments(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+
+        Assert.Equal(string.Join(Environment.NewLine,
+        [
+            "Platform production coverage regressed.",
+            "Newly uncovered production lines:",
+            "platform/src/Quesshi.Domain/Score.cs:2",
+            "  2 | newly uncovered",
+            "Production branches with untested outcomes:",
+            "platform/src/Quesshi.Domain/Score.cs:1: only 1 of 2 outcomes tested",
+            "Test what this code does, or remove it if nothing needs it."
+        ]), error.ToString());
+    }
+
     private static string[] CheckArguments(string coveragePath, string diffPath, string repositoryRoot) =>
     ["check", "--coverage", coveragePath, "--diff", diffPath, "--repository-root", repositoryRoot];
+
+    private static string[] BaselineArguments(string coveragePath, string baselinePath, string repositoryRoot) =>
+    ["baseline", "--coverage", coveragePath, "--baseline", baselinePath, "--repository-root", repositoryRoot];
 }
 
 file sealed class CoverageFixture : IDisposable
@@ -275,6 +399,22 @@ file sealed class CoverageFixture : IDisposable
             $"@@ -0,0 +{group.Min(line => line.Line)},{group.Count()} @@"
         }.Concat(group.OrderBy(line => line.Line).Select(line => $"+{File.ReadLines(Path.Combine(root, line.Path)).ElementAt(line.Line - 1)}"))));
         File.WriteAllText(DiffPath, string.Join("\n", sections));
+    }
+
+    public string WriteWorkflowRuns(params (long Id, string Branch, string Conclusion, string CreatedAt)[] runs)
+    {
+        var path = Path.Combine(root, "workflow-runs.json");
+        var entries = string.Join(',', runs.Select(run => $$"""{"id":{{run.Id}},"head_branch":"{{run.Branch}}","conclusion":"{{run.Conclusion}}","created_at":"{{run.CreatedAt}}"}"""));
+        File.WriteAllText(path, $$"""{"workflow_runs":[{{entries}}]}""");
+        return path;
+    }
+
+    public string WriteWorkflowRunArtifacts(params long[] runIds)
+    {
+        var path = Path.Combine(root, "workflow-run-artifacts.json");
+        var entries = string.Join(',', runIds.Select(id => $"{{\"name\":\"platform-cobertura\",\"expired\":false,\"workflow_run\":{{\"id\":{id}}}}}"));
+        File.WriteAllText(path, $$"""{"artifacts":[{{entries}}]}""");
+        return path;
     }
 
     public void Dispose()
