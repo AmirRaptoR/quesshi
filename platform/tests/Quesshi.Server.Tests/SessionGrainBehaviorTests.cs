@@ -102,10 +102,10 @@ public sealed class SessionGrainBehaviorTests
     public async Task Post_commit_snapshot_reload_failures_discard_the_stale_cached_state()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
-        var grain = CreateGrain(new ThrowingSnapshotLoader(), new MutatingFormat(), new RecordingDeadlines(), now,
+        var grain = CreateGrain(new ThrowingSnapshotLoader(), new SlotMovingFormat(), new RecordingDeadlines(), now,
             database: new SavingDatabase(), initialState: State());
 
-        // A command that is not a deferred answer commits at once and still reloads the durable snapshot.
+        // A command that is not a deferred answer commits at once; moving to another slot reloads the durable snapshot.
         var result = await grain.ExecuteAsync(Command(now, type: "next"));
 
         Assert.Equal("view_unavailable", result.Code);
@@ -287,7 +287,7 @@ public sealed class SessionGrainBehaviorTests
         Assert.Null(StateOf(unknown));
         Assert.Equal(1, unknown.DeactivateCount);
 
-        var reload = CreateGrain(new ThrowingSnapshotLoader(), new TimeoutFormat(), new RecordingDeadlines(), now,
+        var reload = CreateGrain(new ThrowingSnapshotLoader(), new SlotMovingFormat(), new RecordingDeadlines(), now,
             database: new SavingDatabase(), initialState: State(dueAt: due));
 
         await Assert.ThrowsAsync<KnownDatabaseException>(() => reload.TimeoutAsync(due));
@@ -581,6 +581,12 @@ public sealed class SessionGrainBehaviorTests
     private sealed class LatenessFormat(TimeSpan limit) : TimeoutFormat
     {
         public override TimeSpan? MaximumDeadlineLateness => limit;
+    }
+
+    private sealed class SlotMovingFormat : RecordingFormat
+    {
+        public override void Apply(ISession session, Command command) { base.Apply(session, command); session.SetPosition(0, command.At.Slot + 1); }
+        public override void Timeout(ISession session) => session.SetPosition(0, 1);
     }
 
     private sealed class AdvancingFormat : RecordingFormat

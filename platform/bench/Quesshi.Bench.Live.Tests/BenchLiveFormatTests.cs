@@ -66,7 +66,7 @@ public sealed class BenchLiveFormatTests
             (LiveScenario.Cold, "cold"),
             (LiveScenario.Pool10, "pool10")
         };
-        foreach (var players in BenchmarkOptions.PlayerCounts)
+        foreach (var players in BenchmarkOptions.DefaultCounts)
         {
             foreach (var (scenario, scenarioName) in scenarios)
             {
@@ -83,13 +83,13 @@ public sealed class BenchLiveFormatTests
         Assert.True(disposable.DisposablePostgreSql);
 
         var matrix = from scenario in Enum.GetValues<LiveScenario>()
-                     from players in BenchmarkOptions.PlayerCounts
+                     from players in BenchmarkOptions.DefaultCounts
                      select new BenchmarkOptions(players, scenario, null);
-        Assert.Equal(20, matrix.Count());
+        Assert.Equal(5 * BenchmarkOptions.DefaultCounts.Length, matrix.Count());
         Assert.Equal(Enum.GetValues<LiveScenario>(), matrix.Select(run => run.Scenario).Distinct());
         Assert.All(
             matrix.GroupBy(run => run.Scenario),
-            runs => Assert.Equal(BenchmarkOptions.PlayerCounts, runs.Select(run => run.Players)));
+            runs => Assert.Equal(BenchmarkOptions.DefaultCounts, runs.Select(run => run.Players)));
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public sealed class BenchmarkFixtureDatabaseTests(PostgresFixture fixture)
         await using var owner = new Npgsql.NpgsqlConnection(ownerConnection);
         await owner.OpenAsync();
 
-        foreach (var players in BenchmarkOptions.PlayerCounts)
+        foreach (var players in BenchmarkOptions.DefaultCounts)
         {
             var tenant = await BenchmarkFixture.SeedTenantAsync(ownerConnection, $"bench-{players}.test");
             var playerIds = Enumerable.Range(0, players).Select(_ => Guid.NewGuid()).ToArray();

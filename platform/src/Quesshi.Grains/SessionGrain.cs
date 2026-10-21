@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Orleans;
@@ -83,7 +84,7 @@ public class SessionGrain(
     /// <summary>Returns null when the command's answer was deferred into a batch; <paramref name="turn"/> then holds its waiter.</summary>
     private async Task<SessionCommandResult?> ExecuteInGateAsync(SessionCommand request, Turn turn)
     {
-        var started = clock.Now;
+        var started = Stopwatch.GetTimestamp();
         SessionTurnKind? measuredKind = null;
         DateTimeOffset? turnDueAt = null;
         var activated = _state is null;
@@ -161,11 +162,11 @@ public class SessionGrain(
                 // Ordinary answers are graded and scored in memory now and written with their batch (7.4.1).
                 _baseline ??= _state;
                 _state = current;
-                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, clock.Now - started, _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
+                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, Stopwatch.GetElapsedTime(started), _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
                 _pending.Add(waiter);
                 turn.Waiter = waiter;
                 turn.Format = format;
-                if (activated) _turnObserver.Record(new SessionTurnSample(SessionTurnKind.ColdActivation, clock.Now - started, _state.Session.DueAt, clock.Now));
+                if (activated) _turnObserver.Record(new SessionTurnSample(SessionTurnKind.ColdActivation, Stopwatch.GetElapsedTime(started), _state.Session.DueAt, clock.Now));
                 QueueFlush();
                 return null;
             }
@@ -202,8 +203,9 @@ public class SessionGrain(
                 // The write has committed, so retain its candidate only while the durable
                 // read is in flight. Any reload failure below immediately discards it.
                 _state = committed;
-                _state = await snapshots.LoadAsync(_tenantId, _sessionId)
-                    ?? throw new StaleActivationException();
+                if (RequiresReload(format, transition.Initial.Session, current.Session))
+                    _state = await snapshots.LoadAsync(_tenantId, _sessionId)
+                        ?? throw new StaleActivationException();
                 ArmDeadlineTimer();
                 Complete(waiting, _state);
             }
@@ -248,7 +250,7 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, turnDueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), turnDueAt, clock.Now));
             }
         }
     }
@@ -307,7 +309,7 @@ public class SessionGrain(
 
     private async Task TimeoutInGateAsync(DateTimeOffset dueAt)
     {
-        var started = clock.Now;
+        var started = Stopwatch.GetTimestamp();
         SessionTurnKind? measuredKind = null;
         try
         {
@@ -360,8 +362,11 @@ public class SessionGrain(
             _state = committed;
             try
             {
-                _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
-                _state = _state with { Session = _state.Session with { Version = version } };
+                if (RequiresReload(format, transition.Initial.Session, transition.Current.Session))
+                {
+                    _state = await snapshots.LoadAsync(_tenantId, _sessionId) ?? throw new StaleActivationException();
+                    _state = _state with { Session = _state.Session with { Version = version } };
+                }
                 ArmDeadlineTimer();
             }
             finally { Complete(waiting, _state ?? committed); }
@@ -376,7 +381,7 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, dueAt, clock.Now, SessionTurnSource.Timer));
+                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), dueAt, clock.Now, SessionTurnSource.Timer));
             }
         }
     }
@@ -510,6 +515,14 @@ public class SessionGrain(
         ArmDeadlineTimer();
     }
 
+    /// <summary>
+    /// The state just written is what the database holds, so it is kept as it is unless the transition moved to another
+    /// slot (or the format paces seats individually): the loader holds only the answers of the slots that are open, and
+    /// reloading drops the rest.
+    /// </summary>
+    private static bool RequiresReload(IFormat format, SessionRow before, SessionRow after) =>
+        !after.Ended && (format.Spec.Pacing != Pacing.Shared || after.Position?.Slot != before.Position?.Slot);
+
     /// <summary>An ordinary answer changes only answers, scores and format state; anything that moves the session is written at once.</summary>
     private static bool IsOrdinaryAnswer(Command command, SessionRow before, SessionRow after) =>
         command.Type == CommandType.Answer
@@ -519,11 +532,11 @@ public class SessionGrain(
         && after.PositionStartedAt == before.PositionStartedAt
         && after.Status == before.Status;
 
-    private bool AwaitOwnPendingAnswer(Command command, IFormat format, Turn turn, bool activated, DateTimeOffset started)
+    private bool AwaitOwnPendingAnswer(Command command, IFormat format, Turn turn, bool activated, long started)
     {
         if (command.Type != CommandType.Answer
             || !_pending.Any(waiting => waiting.Player == command.Player && waiting.Slot == command.At.Slot)) return false;
-        var follower = new PendingAnswer(command.Player, command.At.Slot, format, clock.Now - started, _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
+        var follower = new PendingAnswer(command.Player, command.At.Slot, format, Stopwatch.GetElapsedTime(started), _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
         _pending.Add(follower);
         turn.Waiter = follower;
         turn.Format = format;

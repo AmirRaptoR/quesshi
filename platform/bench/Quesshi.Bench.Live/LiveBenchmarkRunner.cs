@@ -55,14 +55,15 @@ public sealed class LiveBenchmarkRunner
         }
 
         var runs = options.Matrix
-            ? from scenario in Enum.GetValues<LiveScenario>()
-              from players in BenchmarkOptions.PlayerCounts
-              select options with { Players = players, Scenario = scenario, Matrix = false }
-            : [options];
+            ? (from players in options.MatrixCounts
+               from scenario in Enum.GetValues<LiveScenario>()
+               from repetition in Enumerable.Range(1, options.Repetitions)
+               select (Options: options with { Players = players, Scenario = scenario, Matrix = false }, Repetition: repetition)).ToArray()
+            : Enumerable.Range(1, options.Repetitions).Select(repetition => (Options: options, Repetition: repetition)).ToArray();
 
         var reports = new List<ScenarioReport>();
         string? postgresVersion = null;
-        foreach (var run in runs)
+        foreach (var (run, repetition) in runs)
         {
             ScenarioOutcome outcome;
             try
@@ -75,7 +76,7 @@ public sealed class LiveBenchmarkRunner
                     $"Benchmark scenario {run.Scenario} with {run.Players} players failed: {exception.Message}",
                     exception);
             }
-            reports.Add(outcome.Report);
+            reports.Add(outcome.Report with { Repetition = repetition });
             postgresVersion ??= outcome.PostgreSqlVersion;
         }
 
@@ -84,7 +85,10 @@ public sealed class LiveBenchmarkRunner
             DateTimeOffset.UtcNow,
             CommandLine(options),
             DescribeEnvironment(administrationConnection, postgresVersion),
-            reports);
+            reports)
+        {
+            Selection = options.Matrix ? BudgetClassifier.Select(reports) : null,
+        };
     }
 
     private static async Task<ScenarioOutcome> RunOneAsync(
@@ -105,8 +109,7 @@ public sealed class LiveBenchmarkRunner
         DatabaseSources? secondSources = null;
         WebApplication? first = null;
         WebApplication? second = null;
-        var clients = new List<BenchClient>();
-        var streams = new List<SseSubscription>();
+        LoadWorkerProcess? worker = null;
         try
         {
             var tenant = await BenchmarkFixture.SeedTenantAsync(database.OwnerConnectionString, database.TenantHost, cancellationToken);
@@ -118,23 +121,24 @@ public sealed class LiveBenchmarkRunner
             first = await StartHostAsync(firstSources, firstPorts, formats, kinds, measurements, cancellationToken);
             second = await StartHostAsync(secondSources, secondPorts, formats, kinds, measurements, cancellationToken);
 
-            var endpoints = new[]
-            {
-                new Uri(first.Urls.Single()),
-                new Uri(second.Urls.Single()),
-            };
-            clients = await CreateClientsAsync(options.Players, endpoints, database.TenantHost, cancellationToken);
-            await WarmUpAsync(database.OwnerConnectionString, tenant, options, clients, cancellationToken);
+            worker = LoadWorkerProcess.Start();
+            var setup = await worker.SendAsync(new WorkerRequest(
+                "setup",
+                Endpoints: [first.Urls.Single(), second.Urls.Single()],
+                TenantHost: database.TenantHost,
+                Count: options.Players));
+            var playerIds = setup.PlayerIds!;
+            await WarmUpAsync(database.OwnerConnectionString, tenant, options, worker, playerIds, cancellationToken);
             measurements.Reset();
-            var session = await BenchmarkFixture.SeedSessionAsync(database.OwnerConnectionString, tenant, options, clients.Select(client => client.PlayerId).ToArray(), cancellationToken);
+            var session = await BenchmarkFixture.SeedSessionAsync(database.OwnerConnectionString, tenant, options, playerIds, cancellationToken);
 
             // The first real client command activates the grain and begins the shared
             // countdown. Open the stream cohort during that countdown so setup cannot
             // consume the question window that is under measurement.
-            await SendCommandAsync(clients[0], session.Id, phase: "0", slot: 0, cancellationToken);
+            await worker.SendAsync(new WorkerRequest("first", Session: session.Id));
             if (options.StreamCount > 0)
             {
-                streams = await OpenStreamsAsync(options.StreamCount, clients, session.Id, cancellationToken);
+                await worker.SendAsync(new WorkerRequest("streams", Count: options.StreamCount, Session: session.Id));
             }
             await WaitForPhaseAsync(database.OwnerConnectionString, session.Id, "1", cancellationToken);
 
@@ -145,21 +149,23 @@ public sealed class LiveBenchmarkRunner
                 : [];
             var coldPoolWaits = options.Scenario == LiveScenario.Cold ? measurements.PoolWaits.ToArray() : [];
             measurements.Reset();
+            var gcBefore = (Gen0: GC.CollectionCount(0), Gen1: GC.CollectionCount(1), Gen2: GC.CollectionCount(2), Pause: GC.GetTotalPauseDuration());
             var deadline = await GetDeadlineAsync(database.OwnerConnectionString, session.Id, cancellationToken);
-            var commands = await SubmitAnswersAsync(options, clients, session.Id, deadline, cancellationToken);
-            var final = await CollectResultAsync(database.OwnerConnectionString, session, options, deadline, commands, measurements, coldActivation, coldPoolWaits, streams, cancellationToken);
+            var commands = (await worker.SendAsync(new WorkerRequest("burst", Session: session.Id, Scenario: options.Scenario, Deadline: deadline))).Samples!;
+            var views = (await worker.SendAsync(new WorkerRequest("views"))).Views;
+            var gc = new GcActivity(
+                GC.CollectionCount(0) - gcBefore.Gen0,
+                GC.CollectionCount(1) - gcBefore.Gen1,
+                GC.CollectionCount(2) - gcBefore.Gen2,
+                (GC.GetTotalPauseDuration() - gcBefore.Pause).TotalMilliseconds);
+            var final = await CollectResultAsync(database.OwnerConnectionString, session, options, deadline, commands, measurements, coldActivation, coldPoolWaits, views, gc, cancellationToken);
             return new ScenarioOutcome(final, database.PostgreSqlVersion);
         }
         finally
         {
-            foreach (var stream in streams)
+            if (worker is not null)
             {
-                await stream.DisposeAsync();
-            }
-
-            foreach (var client in clients)
-            {
-                client.Dispose();
+                await worker.DisposeAsync();
             }
 
             if (second is not null)
@@ -196,15 +202,16 @@ public sealed class LiveBenchmarkRunner
         string ownerConnectionString,
         BenchmarkTenant tenant,
         BenchmarkOptions options,
-        IReadOnlyList<BenchClient> clients,
+        LoadWorkerProcess worker,
+        IReadOnlyList<Guid> playerIds,
         CancellationToken cancellationToken)
     {
-        var warm = clients.Take(Math.Min(clients.Count, WarmUpPlayers)).ToArray();
+        var warm = playerIds.Take(Math.Min(playerIds.Count, WarmUpPlayers)).ToArray();
         var warmOptions = options with { Players = warm.Length, Scenario = LiveScenario.Burst };
-        var session = await BenchmarkFixture.SeedSessionAsync(ownerConnectionString, tenant, warmOptions, warm.Select(client => client.PlayerId).ToArray(), cancellationToken);
-        await SendCommandAsync(warm[0], session.Id, phase: "0", slot: 0, cancellationToken);
+        var session = await BenchmarkFixture.SeedSessionAsync(ownerConnectionString, tenant, warmOptions, warm, cancellationToken);
+        await worker.SendAsync(new WorkerRequest("first", Session: session.Id));
         await WaitForPhaseAsync(ownerConnectionString, session.Id, "1", cancellationToken);
-        await Task.WhenAll(warm.Select(client => SendCommandAsync(client, session.Id, phase: "1", slot: 0, cancellationToken)));
+        await worker.SendAsync(new WorkerRequest("answer-all", Count: warm.Length, Session: session.Id));
         await WaitForCompletionAsync(ownerConnectionString, session.Id, cancellationToken);
     }
 
@@ -233,169 +240,6 @@ public sealed class LiveBenchmarkRunner
         return app;
     }
 
-    private static async Task<List<BenchClient>> CreateClientsAsync(
-        int playerCount,
-        IReadOnlyList<Uri> endpoints,
-        string tenantHost,
-        CancellationToken cancellationToken)
-    {
-        var players = new List<BenchClient>(playerCount);
-        for (var index = 0; index < playerCount; index++)
-        {
-            // Streams intentionally stay open throughout the question. Command deadlines
-            // are enforced per request so they cannot also abort an SSE subscription.
-            var http = new HttpClient { BaseAddress = endpoints[index % endpoints.Count], Timeout = Timeout.InfiniteTimeSpan };
-            var token = await GetAntiforgeryTokenAsync(http, tenantHost, cookie: null, cancellationToken);
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/guest")
-            {
-                Content = JsonContent.Create(new { displayName = $"bench-player-{index:D4}" }),
-            };
-            request.Headers.Host = tenantHost;
-            request.Headers.Add("Origin", $"http://{tenantHost}");
-            request.Headers.Add("X-CSRF", token);
-            using var response = await http.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var identity = await response.Content.ReadFromJsonAsync<GuestIdentity>(cancellationToken: cancellationToken)
-                ?? throw new InvalidOperationException("Guest endpoint did not return an identity.");
-            var cookie = response.Headers.GetValues("Set-Cookie").SingleOrDefault(value => value.StartsWith("__Host-qp=", StringComparison.Ordinal))
-                ?? throw new InvalidOperationException("Guest endpoint did not set the profile cookie.");
-            var value = WebUtility.UrlDecode(cookie["__Host-qp=".Length..].Split(';')[0]);
-            var playerToken = await GetAntiforgeryTokenAsync(http, tenantHost, value, cancellationToken);
-            players.Add(new BenchClient(http, tenantHost, value, playerToken, identity.Id));
-        }
-
-        return players;
-    }
-
-    private static async Task<string> GetAntiforgeryTokenAsync(HttpClient client, string tenantHost, string? cookie, CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/antiforgery");
-        request.Headers.Host = tenantHost;
-        if (cookie is not null) request.Headers.Add("Cookie", $"__Host-qp={cookie}");
-        using var response = await client.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-        return document.RootElement.GetProperty("token").GetString()
-            ?? throw new InvalidOperationException("Antiforgery endpoint returned an empty token.");
-    }
-
-    private static async Task SendCommandAsync(BenchClient client, Guid sessionId, string phase, int slot, CancellationToken cancellationToken)
-    {
-        using var request = BuildAnswerRequest(client, sessionId, phase, slot);
-        using var response = await client.Http.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
-
-    private static async Task<List<CommandSample>> SubmitAnswersAsync(
-        BenchmarkOptions options,
-        IReadOnlyList<BenchClient> clients,
-        Guid sessionId,
-        DateTimeOffset deadline,
-        CancellationToken cancellationToken)
-    {
-        var work = clients.Select((client, index) => SubmitOneAsync(client, sessionId, deadline, options.Scenario, index, clients.Count, cancellationToken));
-        return (await Task.WhenAll(work)).ToList();
-    }
-
-    private static async Task<CommandSample> SubmitOneAsync(
-        BenchClient client,
-        Guid sessionId,
-        DateTimeOffset deadline,
-        LiveScenario scenario,
-        int index,
-        int count,
-        CancellationToken cancellationToken)
-    {
-        var target = scenario == LiveScenario.Spread
-            ? deadline.Add(-BenchLiveFormat.Question + TimeSpan.FromMilliseconds(250 + ((BenchLiveFormat.Question.TotalMilliseconds - 500) * index / Math.Max(1, count - 1))))
-            : deadline.AddMilliseconds(-250 + ((200d * index) / Math.Max(1, count - 1)));
-        var delay = target - DateTimeOffset.UtcNow;
-        if (delay > TimeSpan.Zero)
-        {
-            await Task.Delay(delay, cancellationToken);
-        }
-
-        var sentAt = DateTimeOffset.UtcNow;
-        var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            using var request = BuildAnswerRequest(client, sessionId, "1", 0);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
-            using var response = await client.Http.SendAsync(request, timeout.Token);
-            var code = response.Headers.TryGetValues("X-Quesshi-Command-Code", out var values) ? values.SingleOrDefault() : null;
-            var receivedAt = response.Headers.TryGetValues("X-Quesshi-Command-Received-At", out var receivedValues)
-                && DateTimeOffset.TryParse(receivedValues.SingleOrDefault(), out var parsedReceipt)
-                    ? parsedReceipt
-                    : (DateTimeOffset?)null;
-            var outcome = code is null || receivedAt is null
-                ? CommandOutcome.Failed
-                : BenchmarkMeasurementClassifier.ResponseOutcome(code, response.IsSuccessStatusCode);
-            var error = outcome == CommandOutcome.Accepted
-                ? null
-                : code is null
-                    ? $"http:{(int)response.StatusCode}:missing-command-code"
-                    : receivedAt is null
-                        ? $"http:{(int)response.StatusCode}:command:{code}:missing-receipt"
-                        : $"http:{(int)response.StatusCode}:command:{code}";
-            return new CommandSample(client.PlayerId, sentAt, receivedAt, stopwatch.Elapsed, outcome, error);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.TimedOut, "timeout:command-request");
-        }
-        catch (Exception exception)
-        {
-            return new CommandSample(client.PlayerId, sentAt, null, stopwatch.Elapsed, CommandOutcome.Failed, $"exception:{exception.GetType().Name}");
-        }
-    }
-
-    private static HttpRequestMessage BuildAnswerRequest(BenchClient client, Guid sessionId, string phase, int slot)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/sessions/{sessionId:D}/commands")
-        {
-            Content = JsonContent.Create(new
-            {
-                type = "answer",
-                at = new { phase, slot, step = 0 },
-                payload = new { index = 0 },
-            }),
-        };
-        request.Headers.Host = client.TenantHost;
-        request.Headers.Add("Cookie", $"__Host-qp={client.Cookie}");
-        request.Headers.Add("Origin", $"http://{client.TenantHost}");
-        request.Headers.Add("X-CSRF", client.AntiforgeryToken);
-        return request;
-    }
-
-    private static async Task<List<SseSubscription>> OpenStreamsAsync(
-        int streamCount,
-        IReadOnlyList<BenchClient> clients,
-        Guid sessionId,
-        CancellationToken cancellationToken)
-    {
-        var opens = Enumerable.Range(0, streamCount).Select(async index =>
-        {
-            var client = clients[index % clients.Count];
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/stream?session={sessionId:D}");
-            request.Headers.Host = client.TenantHost;
-            request.Headers.Add("Cookie", $"__Host-qp={client.Cookie}");
-            var response = await client.Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            try
-            {
-                response.EnsureSuccessStatusCode();
-                return await SseSubscription.CreateAsync(response, cancellationToken);
-            }
-            catch
-            {
-                response.Dispose();
-                throw;
-            }
-        });
-
-        return [.. await Task.WhenAll(opens)];
-    }
-
     private static async Task<ScenarioReport> CollectResultAsync(
         string ownerConnectionString,
         BenchmarkSession session,
@@ -405,7 +249,8 @@ public sealed class LiveBenchmarkRunner
         BenchmarkMeasurements measurements,
         IReadOnlyList<SessionTurnSample> coldActivation,
         IReadOnlyList<TimeSpan> coldPoolWaits,
-        IReadOnlyList<SseSubscription> streams,
+        int viewsReceived,
+        GcActivity gc,
         CancellationToken cancellationToken)
     {
         if (options.ItemCount == 1)
@@ -413,7 +258,6 @@ public sealed class LiveBenchmarkRunner
             await WaitForCompletionAsync(ownerConnectionString, session.Id, cancellationToken);
         }
 
-        if (Environment.GetEnvironmentVariable("QB_DUMP") == "1") Console.Error.WriteLine("DUMP " + string.Join(" ", measurements.Samples.OrderBy(x => x.CompletedAt).Select(x => $"{x.Kind.ToString()[..3]}:{x.Duration.TotalMilliseconds:F1}")));
         var accepted = await AcceptedPlayersAsync(ownerConnectionString, session.Id, cancellationToken);
         var reconciledCommands = commands.Select(command =>
             command.Outcome == CommandOutcome.Accepted && !accepted.Contains(command.PlayerId)
@@ -421,14 +265,16 @@ public sealed class LiveBenchmarkRunner
                 : command).ToArray();
         return BenchmarkReportAssembler.Build(
             options,
-            streams.Sum(stream => stream.ViewsReceived),
+            viewsReceived,
             questionDeadline,
             reconciledCommands,
             measurements.Samples,
             measurements.TimerLags,
             measurements.PoolWaits,
             coldActivation,
-            coldPoolWaits);
+            coldPoolWaits,
+            measurements.AnswerCommits,
+            gc);
     }
 
     private static async Task WaitForPhaseAsync(string ownerConnectionString, Guid sessionId, string phase, CancellationToken cancellationToken)
@@ -455,7 +301,7 @@ public sealed class LiveBenchmarkRunner
                 return;
             }
 
-            await Task.Delay(50, timeout.Token);
+            try { await Task.Delay(50, timeout.Token); } catch (OperationCanceledException) { throw new TimeoutException($"Timed out waiting for: {sql}"); }
         }
     }
 
@@ -527,31 +373,26 @@ public sealed class LiveBenchmarkRunner
 
     private static string CommandLine(BenchmarkOptions options)
         => options.Matrix
-            ? "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix --allow-disposable-postgres"
-            : $"dotnet run --project platform/bench/Quesshi.Bench.Live -- --players {options.Players} --scenario {options.Scenario.CliName()}{(options.DisposablePostgreSql ? " --allow-disposable-postgres" : "")}";
+            ? "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix"
+              + (options.Counts is null ? "" : $" --counts {string.Join(",", options.Counts)}")
+              + (options.Repetitions == 1 ? "" : $" --repetitions {options.Repetitions}")
+              + " --allow-disposable-postgres"
+            : $"dotnet run --project platform/bench/Quesshi.Bench.Live -- --players {options.Players} --scenario {options.Scenario.CliName()}{(options.Repetitions == 1 ? "" : $" --repetitions {options.Repetitions}")}{(options.DisposablePostgreSql ? " --allow-disposable-postgres" : "")}";
 
-    private sealed record GuestIdentity(Guid Id);
     private sealed record ScenarioOutcome(ScenarioReport Report, string PostgreSqlVersion);
-
-    private sealed class BenchClient(HttpClient http, string tenantHost, string cookie, string antiforgeryToken, Guid playerId) : IDisposable
-    {
-        public HttpClient Http { get; } = http;
-        public string TenantHost { get; } = tenantHost;
-        public string Cookie { get; } = cookie;
-        public string AntiforgeryToken { get; } = antiforgeryToken;
-        public Guid PlayerId { get; } = playerId;
-        public void Dispose() => Http.Dispose();
-    }
 
     private sealed class BenchmarkMeasurements : ISessionTurnObserver, IDatabasePoolObserver
     {
         private readonly ConcurrentQueue<SessionTurnSample> _samples = [];
         private readonly ConcurrentQueue<TimeSpan> _timerLags = [];
         private readonly ConcurrentQueue<TimeSpan> _poolWaits = [];
+        private readonly ConcurrentQueue<TimeSpan> _answerCommits = [];
 
         public IReadOnlyCollection<SessionTurnSample> Samples => _samples.ToArray();
         public IReadOnlyCollection<TimeSpan> TimerLags => _timerLags.ToArray();
         public IReadOnlyCollection<TimeSpan> PoolWaits => _poolWaits.ToArray();
+        public IReadOnlyCollection<TimeSpan> AnswerCommits => _answerCommits.ToArray();
+        public void RecordAnswerCommit(TimeSpan elapsed) => _answerCommits.Enqueue(elapsed);
         public void Record(SessionTurnSample sample) => _samples.Enqueue(sample);
         public void RecordTimerLag(TimeSpan lag) => _timerLags.Enqueue(lag);
         public void RecordApplicationPoolWait(TimeSpan elapsed) => _poolWaits.Enqueue(elapsed);
@@ -560,68 +401,7 @@ public sealed class LiveBenchmarkRunner
             while (_samples.TryDequeue(out _)) { }
             while (_timerLags.TryDequeue(out _)) { }
             while (_poolWaits.TryDequeue(out _)) { }
-        }
-    }
-
-    private sealed class SseSubscription : IAsyncDisposable
-    {
-        private readonly HttpResponseMessage _response;
-        private readonly CancellationTokenSource _stopping = new();
-        private readonly Task _pump;
-        private int _viewsReceived;
-
-        private SseSubscription(HttpResponseMessage response)
-        {
-            _response = response;
-            _pump = PumpAsync();
-        }
-
-        public int ViewsReceived => Volatile.Read(ref _viewsReceived);
-
-        public static async Task<SseSubscription> CreateAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-        {
-            var subscription = new SseSubscription(response);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            while (subscription.ViewsReceived == 0)
-            {
-                await Task.Delay(10, timeout.Token);
-            }
-
-            return subscription;
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await _stopping.CancelAsync();
-            _response.Dispose();
-            try
-            {
-                await _pump;
-            }
-            catch (OperationCanceledException)
-            {
-                // Closing an SSE response is the expected way to end its read loop.
-            }
-            catch (IOException)
-            {
-                // The response can be cut off after the client has disposed it.
-            }
-
-            _stopping.Dispose();
-        }
-
-        private async Task PumpAsync()
-        {
-            await using var stream = await _response.Content.ReadAsStreamAsync(_stopping.Token);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            while (await reader.ReadLineAsync(_stopping.Token) is { } line)
-            {
-                if (line.Equals("event: view", StringComparison.Ordinal))
-                {
-                    Interlocked.Increment(ref _viewsReceived);
-                }
-            }
+            while (_answerCommits.TryDequeue(out _)) { }
         }
     }
 

@@ -196,7 +196,9 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
         _ => "active",
     };
 
+    // Records are immutable and a transition copies unchanged entries by reference, so identity settles most comparisons.
     private static bool AnswerEquals(AnswerRecord left, AnswerRecord right) =>
+        ReferenceEquals(left, right) ||
         left.IsGraded == right.IsGraded
         && left.Credit == right.Credit
         && left.Points == right.Points
@@ -208,6 +210,7 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
         && JsonEquals(left.Stored, right.Stored);
 
     private static bool SeatEquals(Seat left, Seat right) =>
+        ReferenceEquals(left, right) ||
         left.Player == right.Player
         && left.Role == right.Role
         && left.Position == right.Position
