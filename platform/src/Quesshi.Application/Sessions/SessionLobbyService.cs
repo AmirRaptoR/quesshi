@@ -79,7 +79,7 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
         if (session is null) return LobbyOutcome.Error("not_found");
         if (session.Status == "cancelled") return LobbyOutcome.Error("cancelled");
         if (session.Status != "lobby") return LobbyOutcome.Error("not_in_lobby");
-        if (session.OwnerId == playerId) return LobbyOutcome.Error("owner_must_cancel");
+        if (session.Owner == playerId.ToString()) return LobbyOutcome.Error("owner_must_cancel");
         var changed = await tx.ExecuteAsync("""
             update session_participants set status = 'left', eligible = false, ranked = false
             where session_id = @sessionId and player_id = @playerId and status = 'active'
@@ -95,14 +95,14 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
         if (session is null) return LobbyOutcome.Error("not_found");
         if (session.Status == "cancelled") return LobbyOutcome.Error("cancelled");
         if (session.Status != "lobby") return LobbyOutcome.Error("not_in_lobby");
-        if (session.OwnerId != playerId) return LobbyOutcome.Error("not_owner");
+        if (session.Owner != playerId.ToString()) return LobbyOutcome.Error("not_owner");
         if (!formats.TryGet(session.Format ?? "", out var format) || format is null) return LobbyOutcome.Error("format_unavailable");
         JsonElement rules;
         SessionContent content;
         try
         {
-            rules = format.ReadRules(rulesJson is null ? Json(session.Rules) : Json(rulesJson));
-            content = contentJson is null ? JsonSerializer.Deserialize(session.Content, SessionJsonContext.Default.SessionContent)!
+            rules = format.ReadRules(rulesJson is null ? session.Rules!.Value : Json(rulesJson));
+            content = contentJson is null ? JsonSerializer.Deserialize(session.Content!.Value.GetRawText(), SessionJsonContext.Default.SessionContent)!
                 : JsonSerializer.Deserialize(contentJson, SessionJsonContext.Default.SessionContent)!;
             var plan = format.Plan(new ContentSpec(content.Source, content.Parameters, content.Count), rules);
             if (plan.Count != content.Count) return LobbyOutcome.Error("invalid_rules");
@@ -182,7 +182,7 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
         var session = await LoadAsync(tenantId, sessionId, cancellationToken);
         if (session is null) return LobbyOutcome.Error("not_found");
         if (session.Status == "cancelled") return LobbyOutcome.Error("cancelled");
-        if (session.OwnerId != playerId) return LobbyOutcome.Error("not_owner");
+        if (session.Owner != playerId.ToString()) return LobbyOutcome.Error("not_owner");
         await store.EndCoreAsync(tenantId, sessionId, CoreEndReason.Owner, cancellationToken);
         return new LobbyOutcome("cancelled");
     }

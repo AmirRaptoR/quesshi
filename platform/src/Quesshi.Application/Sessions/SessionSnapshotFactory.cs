@@ -3,6 +3,7 @@ using Dapper;
 using Quesshi.Application.Content;
 using Quesshi.Engine.Contracts;
 using Quesshi.Plugin.Api;
+using Quesshi.Shared;
 
 namespace Quesshi.Application.Sessions;
 

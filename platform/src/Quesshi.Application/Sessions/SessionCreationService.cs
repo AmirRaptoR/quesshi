@@ -11,6 +11,7 @@ namespace Quesshi.Application.Sessions;
 /// <summary>Creates an idempotent session and its initial durable snapshot in one tenant transaction.</summary>
 internal sealed class SessionCreationService(
     IFormatRegistry formats,
+    IKindRegistry kinds,
     ISourceRegistry sources,
     SessionSnapshotFactory snapshots,
     IClock clock,
