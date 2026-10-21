@@ -117,14 +117,13 @@ internal static class DiscriminatingSeeds
 
     public static async Task<SeedQuestion> AddIneligibleQuestionBeforeAsync(NpgsqlConnection connection, SeedTenant tenant, SeedCategory category, Guid approvedQuestionId, long drawSeed, CancellationToken cancellationToken = default)
     {
-        for (var attempt = 0; attempt < 64; attempt++)
+        while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var id = Guid.NewGuid();
             if (!await SeedSql.OrdersBeforeAsync(connection, id, approvedQuestionId, drawSeed, cancellationToken)) continue;
             return await QuestionSeed.CreateAsync(connection, tenant, category, "pending", cancellationToken, id);
         }
-
-        throw new InvalidOperationException("Could not create an ineligible question that sorts before the approved question.");
     }
 
     public static Task<SeedFinishedSession> AddFinishedSessionAsync(NpgsqlConnection connection, SeedTenant tenant, DateTimeOffset guestCreatedAt, DateTimeOffset finishedAt, CancellationToken cancellationToken = default) =>
