@@ -109,7 +109,7 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
                 GatewayPort,
                 configuredFeatures: FeatureRegistry.Create(_features),
                 configuredFormats: Formats);
-            application.Urls.Add($"http://127.0.0.1:{HttpPort}");
+            application.Urls.Add("http://127.0.0.1:0");
             await application.StartAsync(cancellationToken);
             await application.Services.GetRequiredService<PostgresClock>().StartAsync(cancellationToken);
 
