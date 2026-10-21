@@ -20,7 +20,8 @@ public class SessionGrain(
     IViewRenderer views,
     ISessionDeadlineReconciler deadlines,
     ILogger<SessionGrain> logger,
-    ISessionTurnObserver? turnObserver = null) : Grain, ISessionGrain
+    ISessionTurnObserver? turnObserver = null,
+    ISessionLobby? lobby = null) : Grain, ISessionGrain
 {
     private readonly ISessionTurnObserver _turnObserver = turnObserver ?? NullSessionTurnObserver.Instance;
     private SessionState? _state;
@@ -182,6 +183,44 @@ public class SessionGrain(
         }
     }
 
+    public async Task<LobbyCommandResult> ExecuteLobbyAsync(LobbyCommand request)
+    {
+        if (lobby is null) return LobbyCommandResult.Error("lobby_unavailable");
+        if (!Guid.TryParse(request.Player, out var playerId) || string.IsNullOrWhiteSpace(request.Type))
+            return LobbyCommandResult.Error("invalid_request");
+        _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
+        if (_state is null) return LobbyCommandResult.Error("not_found");
+        ArmDeadlineTimer();
+        if (_state.Session.Ended) return LobbyCommandResult.Error(_state.Session.Status == "cancelled" ? "cancelled" : "terminal");
+        if (await ReconcileAsync()) return LobbyCommandResult.Error("expired");
+        LobbyOutcome outcome;
+        try
+        {
+            outcome = request.Type.ToLowerInvariant() switch
+            {
+                "join" => await lobby.JoinAsync(_tenantId, _sessionId, playerId),
+                "leave" when string.Equals(_state.Session.Owner, request.Player, StringComparison.Ordinal) =>
+                    await lobby.CancelAsync(_tenantId, _sessionId, playerId, store),
+                "leave" => await lobby.LeaveAsync(_tenantId, _sessionId, playerId),
+                "cancel" => await lobby.CancelAsync(_tenantId, _sessionId, playerId, store),
+                "settings" => await lobby.ConfigureAsync(_tenantId, _sessionId, playerId, request.RulesJson, request.ContentJson, request.Capacity),
+                "start" => await lobby.StartAsync(_tenantId, _sessionId, playerId),
+                _ => LobbyOutcome.Error("invalid_request"),
+            };
+            if (outcome.Version is not null || outcome.Code == "ended")
+            {
+                _state = await snapshots.LoadAsync(_tenantId, _sessionId);
+                ArmDeadlineTimer();
+            }
+        }
+        catch (StaleActivationException)
+        {
+            DropState();
+            return LobbyCommandResult.Error("stale_activation");
+        }
+        return new LobbyCommandResult(outcome.Code, outcome.Version);
+    }
+
     public async Task TimeoutAsync(DateTimeOffset dueAt)
     {
         var started = clock.Now;
@@ -263,7 +302,11 @@ public class SessionGrain(
     }
 
     private bool ShouldExpire(SessionState state) => state.Session.StartedAt is { } started && clock.Now >= started.AddDays(90)
-        || state.Session.Status == "lobby" && state.Session.DueAt is { } lobbyDue && lobbyDue <= clock.Now;
+        || state.Session.Status == "lobby" && state.Session.DueAt is { } lobbyDue && lobbyDue <= clock.Now && !HasFormatLobbyDeadline(state.Session);
+
+    // A format that declares its own lobby deadline decides how that deadline ends the lobby; every other lobby expires through the core ending.
+    private bool HasFormatLobbyDeadline(SessionRow session) =>
+        formats.TryGet(session.Format ?? "", out var format) && format is not null && format.LobbyDeadline(session) is not null;
 
     private async Task RecordFaultAsync(Exception exception)
     {

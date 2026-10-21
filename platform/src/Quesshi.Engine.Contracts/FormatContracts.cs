@@ -117,7 +117,11 @@ public sealed record SessionRow(
     JsonElement? Content = null,
     JsonElement? Rules = null,
     long ConfigVersion = 0,
-    short FaultCount = 0);
+    short FaultCount = 0,
+    string? Owner = null,
+    int Capacity = 0,
+    string? Language = null,
+    string? CreationShape = null);
 
 public sealed record Seat(
     string Player,

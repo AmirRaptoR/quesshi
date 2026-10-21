@@ -217,6 +217,7 @@ public static class Program
         builder.Services.AddSingleton<ICategoryService, CategoryService>();
         builder.Services.AddSingleton<IContent, ContentService>();
         builder.Services.AddSingleton<SourceResultValidator>();
+        builder.Services.AddSingleton<SessionSnapshotFactory>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
         builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
         builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
@@ -230,6 +231,7 @@ public static class Program
         builder.Services.AddHttpClient<GoogleIdTokenValidator>(client => client.Timeout = TimeSpan.FromSeconds(10));
         builder.Services.AddSingleton<GoogleKeySetCache>();
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
+        builder.Services.AddSingleton<ISessionLobby, SessionLobbyService>();
         builder.Services.AddSingleton<ISessionCodeGenerator, SessionCodeGenerator>();
         builder.Services.AddSingleton<ISessions, SessionCreationService>();
         builder.Services.AddSingleton<SessionStateStore>();

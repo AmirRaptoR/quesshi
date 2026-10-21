@@ -73,6 +73,16 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
                 receivedAt = answer.Received
             }, cancellationToken);
         }
+        await WriteSeatsAsync(tx, tenantId, sessionId, initial, current, cancellationToken);
+        if (!initial.Session.Ended && session.Ended && events is not null)
+            await events.EmitAsync(tx, new SessionEnded(sessionId), cancellationToken);
+        await NotifyAsync(tx, tenantId, sessionId, version.Value, session.Position?.Phase.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "lobby", cancellationToken);
+        return version.Value;
+    }
+
+    /// <summary>Writes every seat a transition changed, exactly as a command or timeout transition does.</summary>
+    internal static async Task WriteSeatsAsync(ITenantTx tx, Guid tenantId, Guid sessionId, SessionState initial, SessionState current, CancellationToken cancellationToken)
+    {
         foreach (var seat in current.Seats.Values.Where(seat =>
                      !initial.Seats.TryGetValue(seat.Player, out var previous) || !SeatEquals(previous, seat)))
         {
@@ -100,12 +110,10 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
                 result = JsonSerializer.Serialize(seat.Result ?? JsonSerializer.SerializeToElement(new { }))
             }, cancellationToken);
         }
-        if (!initial.Session.Ended && session.Ended && events is not null)
-            await events.EmitAsync(tx, new SessionEnded(sessionId), cancellationToken);
-        var phase = session.Position?.Phase.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "lobby";
-        await tx.ExecuteAsync("select pg_notify('quesshi_session', @message)", new { message = $"{tenantId}:{sessionId}:{version.Value}:{phase}" }, cancellationToken);
-        return version.Value;
     }
+
+    internal static Task NotifyAsync(ITenantTx tx, Guid tenantId, Guid sessionId, long version, string phase, CancellationToken cancellationToken) =>
+         tx.ExecuteAsync("select pg_notify('quesshi_session', @message)", new { message = $"{tenantId}:{sessionId}:{version}:{phase}" }, cancellationToken);
 
     private static string? FormatEndReason(EndReason? reason) => reason switch
     {
