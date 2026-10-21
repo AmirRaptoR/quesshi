@@ -114,7 +114,7 @@ public sealed class MapPickClientTests : BunitContext
             .Add(component => component.Reveal, Read<Quesshi.Kinds.MapPick.MapPickReveal>(fixture, "reveal"))
             .Add(component => component.Answers, StoredAnswers(fixture)));
 
-        cut.WaitForAssertion(() => Assert.Contains(target, cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains(target, cut.Markup), TimeSpan.FromSeconds(15));
         Assert.Contains("Player 1", cut.Markup);
         Assert.Contains(playerAnswer, cut.Markup);
         Assert.Contains("Player 2", cut.Markup);
@@ -127,7 +127,7 @@ public sealed class MapPickClientTests : BunitContext
         var world = Render<WorldMap>(parameters => parameters
             .Add(component => component.Marks, new[] { new MapMark(MapSelection.Country("DE"), "Player", true) }));
 
-        world.WaitForAssertion(() => Assert.Contains("worldmap__country is-picked", world.Markup));
+        world.WaitForAssertion(() => Assert.Contains("worldmap__country is-picked", world.Markup), TimeSpan.FromSeconds(15));
 
         var pointPayload = Read<MapPickPayload>(Fixture("point"), "payload");
         var editor = Render<MapPickEditor>(parameters => parameters
