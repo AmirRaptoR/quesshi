@@ -6,6 +6,7 @@ using Quesshi.Features.Sources.Bank;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
+using Quesshi.Server.Tests.TestSeeds;
 using Quesshi.Testing;
 using Xunit.Sdk;
 
@@ -216,11 +217,10 @@ public sealed class BankSourceDatabaseTests(PostgresFixture fixture)
         await using var owner = await PrepareAsync();
         var first = await InsertCategoryAsync(owner, TenantA, "first", true);
         var second = await InsertCategoryAsync(owner, TenantA, "second", true);
-        var unselected = await InsertCategoryAsync(owner, TenantA, "unselected", true);
-        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [first, second, unselected] }));
+        var unselected = await DiscriminatingSeeds.AddUnselectedCategoryWithEligibleQuestionAsync(owner, new SeedTenant(TenantA, "bank-a"));
+        await EnableBankAsync(owner, TenantA, new BankSettings(new Dictionary<string, IReadOnlyList<Guid>> { ["trivia"] = [first, second, unselected.Category.Id] }));
         _ = await InsertQuestionAsync(owner, TenantA, second, 2, "en", "approved", null, "fallback-one");
         _ = await InsertQuestionAsync(owner, TenantA, second, 2, "en", "approved", null, "fallback-two");
-        _ = await InsertQuestionAsync(owner, TenantA, unselected, 1, "en", "approved", null, "outside-selection");
 
         var result = await DrawAsync(new BankParams([first, second]), new SourceDrawPlan(2, "en", [new SourceKind("choice", "trivia")], [1, 2], 9));
 

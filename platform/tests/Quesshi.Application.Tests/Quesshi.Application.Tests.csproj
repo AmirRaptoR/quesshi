@@ -2,6 +2,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../src/Quesshi.Application/Quesshi.Application.csproj" />
+    <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
   </ItemGroup>
   <Import Project="../TestProject.props" />
 </Project>

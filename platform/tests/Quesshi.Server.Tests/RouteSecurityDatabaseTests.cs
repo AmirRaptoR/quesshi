@@ -285,12 +285,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11176, 30176);
-        app.Urls.Add("http://127.0.0.1:50176");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50176") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var playerSessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var adminSessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var guestContext = new DefaultHttpContext();
@@ -446,12 +446,12 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
             fixture.ConnectionStringForRole("quesshi_app"),
             fixture.ConnectionStringForRole("quesshi_system"));
         await using var app = Program.CreateApplication(sources, 11146, 30146);
-        app.Urls.Add("http://127.0.0.1:50146");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50146") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IPlayerSessionIssuer>();
             var accountContext = new DefaultHttpContext();
             await sessions.IssueAccountAsync(accountContext, seeded.TenantId, seeded.AccountId);
@@ -487,6 +487,11 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
     public async Task Admin_routes_enforce_roles_antiforgery_and_tenant_scoped_auditing()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var editorOnlyHost = new PlatformHttpFixture([new SecurityRoutesFeature()]);
+        await editorOnlyHost.StartAsync();
+        await RoleMatrix.ForEditorOnlyMutation(editorOnlyHost)
+            .AssertAsync(client => client.PostAsync("/api/admin/x/security/editor", null));
+
         var seeded = await SeedAsync();
         await using var sources = new DatabaseSources(
             fixture.ConnectionStringForRole("quesshi_app"),
@@ -518,8 +523,6 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
                 Assert.Equal(HttpStatusCode.Unauthorized, player.StatusCode);
             using (var editor = await SendAdminAsync(client, TenantHost, HttpMethod.Get, "/api/admin/audit", editorCookie, null, null))
                 Assert.Equal(HttpStatusCode.Forbidden, editor.StatusCode);
-            using (var moderator = await SendAdminAsync(client, TenantHost, HttpMethod.Post, "/api/admin/x/security/editor", moderatorCookie, ownerToken, TenantOrigin))
-                Assert.Equal(HttpStatusCode.Forbidden, moderator.StatusCode);
             using (var moderatorRoute = await SendAdminAsync(client, TenantHost, HttpMethod.Post, "/api/admin/x/security/moderator", moderatorCookie,
                        await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
                 Assert.Equal(HttpStatusCode.OK, moderatorRoute.StatusCode);
@@ -565,7 +568,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
 
             await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
             await owner.OpenAsync();
-            Assert.Equal(10L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.TenantId }));
+            Assert.Equal(9L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.TenantId }));
             Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId", new { tenantId = seeded.OtherTenantId }));
             var auditRows = await owner.QueryAsync<AuditRow>("""
                 select actor_id as ActorId, action as Action, target_type as TargetType, data::text as Data
