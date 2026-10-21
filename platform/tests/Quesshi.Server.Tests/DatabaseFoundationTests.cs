@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Npgsql;
 using Quesshi.Application;
+using Quesshi.Features;
 using Quesshi.Infrastructure.Migrations;
 using Quesshi.Server;
 using Quesshi.Testing;
@@ -70,17 +71,17 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
                 migration => Assert.Equal("20990101T0005_ai_generation_before.sql", migration.Name),
                 migration => Assert.Equal("20990101T0010_core_after.sql", migration.Name));
 
-            var scripts = CoreScripts().Concat(discovered).ToArray();
+            var scripts = CoreScripts().Concat(FeatureScripts()).Concat(discovered).ToArray();
             await RunAsync(scripts);
             await RunAsync(scripts);
             await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
             await owner.OpenAsync();
             Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from schema_migrations where name = '20990101T0005_ai_generation_before.sql' and owner = 'ai_generation'"));
-            Assert.Equal(CoreScripts().Count + discovered.Count, await ScalarAsync<long>(owner, "select count(*) from schema_migrations"));
+            Assert.Equal(CoreScripts().Count + FeatureScripts().Count + discovered.Count, await ScalarAsync<long>(owner, "select count(*) from schema_migrations"));
 
             var changed = new MigrationScript("20990101T0005_ai_generation_before.sql", "ai_generation", "create table changed_bytes (id int);"u8.ToArray());
             var later = Script("20990101T0020_core_later", "create table runner_later (id integer primary key);");
-            var checksumFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([.. CoreScripts(), changed, discovered[1], later]));
+            var checksumFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([.. CoreScripts(), .. FeatureScripts(), changed, discovered[1], later]));
             Assert.Contains(changed.Name, checksumFailure.Message);
             Assert.False(await ScalarAsync<bool>(owner, "select to_regclass('runner_later') is not null"));
 
@@ -221,6 +222,8 @@ public sealed class DatabaseFoundationTests(PostgresFixture fixture)
     }
 
     private static IReadOnlyList<MigrationScript> CoreScripts() => MigrationRunner.Discover(typeof(ApplicationMarker).Assembly);
+
+    private static IReadOnlyList<MigrationScript> FeatureScripts() => MigrationRunner.Discover(typeof(FeaturesMarker).Assembly);
 
     private async Task RunAsync(IEnumerable<MigrationScript> scripts)
     {
