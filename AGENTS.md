@@ -202,6 +202,9 @@ These rules are enforced, and you must never work around them:
     behaviour is observable from outside.
   - `SessionGrainBehaviorTests.cs` and `SessionCommandEndpointTests.cs` still reach private
     members by reflection. That is debt to remove. Never copy the pattern.
+- **Coverage of changed code.** Changed production code that no test exercises signals a missing
+  behavior case. Add or extend a test that exercises that behavior and asserts its real outcome;
+  never add a test solely to raise coverage.
 - **One assertion per case.** When an acceptance criterion lists several cases (outcomes,
   error codes, roles, races), each case gets its own test or assertion. Criteria that say "in
   Platform CI" mean a test that runs in the `Platform` workflow; database criteria need tests
