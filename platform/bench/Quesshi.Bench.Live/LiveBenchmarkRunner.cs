@@ -664,12 +664,35 @@ public sealed class LiveBenchmarkRunner
 
     private readonly record struct HostPorts(int Silo, int Gateway)
     {
+        // Ports are reserved with an exclusive per-port file lock so concurrent benchmark or test
+        // processes cannot be handed the same OS-assigned port; the locks last until process exit.
+        private static readonly List<FileStream> Reservations = [];
+
         public static HostPorts Allocate() => new(AllocatePort(), AllocatePort());
+
         private static int AllocatePort()
         {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
+            while (true)
+            {
+                using var listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                try
+                {
+                    var reservation = new FileStream(
+                        Path.Combine(Path.GetTempPath(), $"quesshi-test-port-{port}.lock"),
+                        FileMode.OpenOrCreate,
+                        FileAccess.ReadWrite,
+                        FileShare.None,
+                        1,
+                        FileOptions.DeleteOnClose);
+                    lock (Reservations) Reservations.Add(reservation);
+                    return port;
+                }
+                catch (IOException)
+                {
+                }
+            }
         }
     }
 }

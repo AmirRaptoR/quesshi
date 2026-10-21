@@ -20,6 +20,7 @@ public sealed class FixedPortBoundaryTests
     [InlineData("app.Urls.Add(\"http://127.0.0.1:50145\");")]
     [InlineData("builder.WebHost.UseUrls(\"http://localhost:5000\");")]
     [InlineData("app.Urls.Add(\"http://*:8080\");")]
+    [InlineData("builder.WebHost.UseUrls($\"http://127.0.0.1:{port}\");")]
     public void Http_server_bound_to_a_literal_port_is_detected(string source)
     {
         Assert.Single(FixedPortBoundary.FindViolations([("fixture.cs", source)]));
@@ -62,7 +63,7 @@ public sealed class FixedPortBoundaryTests
 internal static class FixedPortBoundary
 {
     private static readonly Regex ServerUrl = new(
-        @"(?:Urls\.Add|UseUrls)\(\s*""[^""]*:[1-9]\d*""",
+        @"(?:Urls\.Add|UseUrls)\(\s*\$?""[^""]*:(?!//)(?!0"")[^""]*""",
         RegexOptions.CultureInvariant);
 
     private static readonly Regex LoopbackClient = new(

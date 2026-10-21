@@ -23,11 +23,10 @@ public sealed class SessionCommandEndpointTests
     [Fact]
     public async Task Mapped_route_applies_tenant_resolution_and_returns_stable_input_errors()
     {
-        var port = AvailablePort();
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var grains = DispatchProxy.Create<IGrainFactory, GrainFactoryProxy>();
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
         builder.Services.AddSingleton(grains);
         builder.Services.AddSingleton<IClock>(new TestClock(DateTimeOffset.UnixEpoch));
@@ -37,7 +36,7 @@ public sealed class SessionCommandEndpointTests
         await app.StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var malformed = new HttpRequestMessage(HttpMethod.Post, $"/api/sessions/{Guid.NewGuid()}/commands")
             {
                 Content = new StringContent("{", Encoding.UTF8, "application/json"),
@@ -108,7 +107,6 @@ public sealed class SessionCommandEndpointTests
     [Fact]
     public async Task Mapped_route_accepts_test_identity_only_in_the_test_build()
     {
-        var port = AvailablePort();
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var clock = new TestClock(DateTimeOffset.UnixEpoch);
         var grain = DispatchProxy.Create<ISessionGrain, SessionGrainProxy>();
@@ -116,7 +114,7 @@ public sealed class SessionCommandEndpointTests
         var factory = DispatchProxy.Create<IGrainFactory, GrainFactoryProxy>();
         ((GrainFactoryProxy)(object)factory).Grain = grain;
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
         builder.Services.AddSingleton(factory);
         builder.Services.AddSingleton<IClock>(clock);
@@ -127,7 +125,7 @@ public sealed class SessionCommandEndpointTests
         try
         {
             var player = Guid.NewGuid();
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var request = CommandRequest("""{"type":"answer","at":{"phase":"0","slot":0,"step":0}}""", player);
             using var response = await client.SendAsync(request);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -140,7 +138,6 @@ public sealed class SessionCommandEndpointTests
     [Fact]
     public async Task Mapped_route_maps_grain_errors_uses_the_resolved_tenant_and_accepts_an_exact_bounded_body()
     {
-        var port = AvailablePort();
         var firstTenant = new Tenant(Guid.NewGuid(), "first", "First", "en");
         var secondTenant = new Tenant(Guid.NewGuid(), "second", "Second", "en");
         var clock = new TestClock(DateTimeOffset.UnixEpoch);
@@ -150,7 +147,7 @@ public sealed class SessionCommandEndpointTests
         var factoryProxy = (GrainFactoryProxy)(object)factory;
         factoryProxy.Grain = grain;
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new MultipleTenants(firstTenant, secondTenant));
         builder.Services.AddSingleton(factory);
         builder.Services.AddSingleton<IClock>(clock);
@@ -162,7 +159,7 @@ public sealed class SessionCommandEndpointTests
         {
             var player = Guid.NewGuid();
             var session = Guid.NewGuid();
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             grainProxy.Result = SessionCommandResult.Error("not_found");
             using var missing = CommandRequest(CommandBody, player, session, "first.example.test");
             await AssertErrorAsync(await client.SendAsync(missing), HttpStatusCode.NotFound, "not_found");
@@ -203,7 +200,6 @@ public sealed class SessionCommandEndpointTests
     [Fact]
     public async Task Mapped_route_stamps_receipt_after_a_chunked_body_finishes()
     {
-        var port = AvailablePort();
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var clock = new TestClock(DateTimeOffset.UnixEpoch);
         var grain = DispatchProxy.Create<ISessionGrain, SessionGrainProxy>();
@@ -211,7 +207,7 @@ public sealed class SessionCommandEndpointTests
         var factory = DispatchProxy.Create<IGrainFactory, GrainFactoryProxy>();
         ((GrainFactoryProxy)(object)factory).Grain = grain;
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
         builder.Services.AddSingleton(factory);
         builder.Services.AddSingleton<IClock>(clock);
@@ -229,7 +225,7 @@ public sealed class SessionCommandEndpointTests
                 Headers = { Host = "tenant.example.test" },
             };
             request.Headers.Add("X-Quesshi-Test-Player", player.ToString());
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
 
             Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
             Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(2), grainProxy.Command!.ReceivedAt);
@@ -315,13 +311,6 @@ public sealed class SessionCommandEndpointTests
         Assert.Equal(status, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(code, document.RootElement.GetProperty("error").GetString());
-    }
-
-    private static int AvailablePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
     private sealed class SingleTenant(Tenant tenant) : ITenants
