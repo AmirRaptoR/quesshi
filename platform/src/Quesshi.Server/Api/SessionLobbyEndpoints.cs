@@ -28,7 +28,10 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         if (player is null) return Error("identity_required", 401);
         if (tenant is null) return Error("not_found", 404);
         var id = await database.InTenantAsync(tenant.Id, transaction => transaction.QuerySingleOrDefaultAsync<Guid?>(
-            "select id from sessions where code = @code", new { code = body.Code.Trim() }, cancellationToken), cancellationToken: cancellationToken);
+            """
+            select id from sessions where code = @code
+            order by status in ('lobby', 'running') desc, created_at desc limit 1
+            """, new { code = body.Code.Trim().ToUpperInvariant() }, cancellationToken), cancellationToken: cancellationToken);
         if (id is null) return Error("not_found", 404);
         return Result(await grains.GetGrain<ISessionGrain>($"{tenant.Id}/{id}").ExecuteLobbyAsync(new(player.PlayerId.ToString(), "join")));
     }
@@ -67,7 +70,7 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         "joined" or "configured" or "left" or "ended" or "started" => Results.Json(new { code = result.Code, version = result.Version }),
         "not_found" => Error(result.Code, 404),
         "not_owner" or "absent_seat" or "guest_not_allowed" => Error(result.Code, 403),
-        "session_full" or "late_join_not_allowed" or "expired" or "cancelled" or "not_in_lobby" or "not_enough_players" => Error(result.Code, 409),
+        "session_full" or "stale_activation" or "late_join_not_allowed" or "expired" or "cancelled" or "not_in_lobby" or "not_enough_players" => Error(result.Code, 409),
         "source_unavailable" => Error(result.Code, 503),
         "not_enough_questions" => Error(result.Code, 422),
         _ => Error(result.Code, 400),

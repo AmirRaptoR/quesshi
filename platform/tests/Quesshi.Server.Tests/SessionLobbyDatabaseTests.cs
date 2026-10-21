@@ -394,6 +394,35 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
     }
 
     [SkippableFact]
+    public async Task Starting_a_personal_lobby_persists_the_cards_the_format_served_to_each_seat()
+    {
+        var (second, _) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var lobby = await CreateAsync(Personal);
+        _ = await JoinAsync(second, lobby.Code);
+
+        var started = await host.Fixture.Player.PostAsync($"/api/sessions/{lobby.Id}/start", null);
+
+        var seat = (await host.Fixture.QueryOwnerAsync<int>(
+            "select count(*)::int from session_participants where session_id = @id and player_id = @player and slot = 0 and phase <> 'idle'",
+            new { id = lobby.Id, player = host.Fixture.PlayerId })).Single();
+        Assert.Equal((HttpStatusCode.OK, 1), (started.StatusCode, seat));
+    }
+
+    [SkippableFact]
+    public async Task A_code_shared_by_an_ended_session_and_a_live_lobby_joins_the_live_lobby_in_any_case()
+    {
+        var (second, secondId) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var ended = await CreateAsync(Shared);
+        _ = await host.Fixture.Player.PostAsync($"/api/sessions/{ended.Id}/leave", null);
+        var live = await CreateAsync(Shared);
+        await host.Fixture.ExecuteOwnerAsync("update sessions set code = @code where id = @id", new { code = ended.Code, id = live.Id });
+
+        var joined = await JoinAsync(second, ended.Code.ToLowerInvariant());
+
+        Assert.Equal((HttpStatusCode.OK, "joined", 1), (joined.Status, joined.Code, await ActiveSeatsAsync(live.Id, secondId)));
+    }
+
+    [SkippableFact]
     public async Task A_personal_guest_who_upgrades_before_the_first_card_is_eligible()
     {
         var (guest, guestId) = await host.Fixture.CreateAnotherGuestClientAsync();

@@ -21,26 +21,26 @@ public interface ISessionLobby
 internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock) : ISessionLobby
 {
     public Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
-        database.InTenantAsync(tenantId, tx => JoinAsync(tx, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+        database.InTenantAsync(tenantId, tx => JoinAsync(tx, tenantId, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
 
     public Task<LobbyOutcome> LeaveAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
-        database.InTenantAsync(tenantId, tx => LeaveAsync(tx, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+        database.InTenantAsync(tenantId, tx => LeaveAsync(tx, tenantId, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
 
     public Task<LobbyOutcome> ConfigureAsync(Guid tenantId, Guid sessionId, Guid playerId, string? rulesJson, string? contentJson, int? capacity, CancellationToken cancellationToken = default) =>
-        database.InTenantAsync(tenantId, tx => ConfigureAsync(tx, sessionId, playerId, rulesJson, contentJson, capacity, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+        database.InTenantAsync(tenantId, tx => ConfigureAsync(tx, tenantId, sessionId, playerId, rulesJson, contentJson, capacity, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
 
     public async Task<LobbyOutcome> StartAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default)
     {
         try
         {
-            return await database.InTenantAsync(tenantId, tx => StartAsync(tx, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+            return await database.InTenantAsync(tenantId, tx => StartAsync(tx, tenantId, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
         }
         catch (NotEnoughQuestionsException) { return LobbyOutcome.Error("not_enough_questions"); }
         catch (SourceUnavailableException) { return LobbyOutcome.Error("source_unavailable"); }
         catch (InvalidSourceResultException) { return LobbyOutcome.Error("source_unavailable"); }
     }
 
-    private async Task<LobbyOutcome> JoinAsync(ITenantTx tx, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
+    private async Task<LobbyOutcome> JoinAsync(ITenantTx tx, Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
     {
         var session = await LoadAsync(tx, sessionId, cancellationToken);
         if (session is null) return LobbyOutcome.Error("not_found");
@@ -65,6 +65,7 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
             select count(*) from session_participants where session_id = @sessionId and status = 'active' and role = 'player'
             """, new { sessionId }, cancellationToken);
         if (activePlayers >= session.Capacity) return LobbyOutcome.Error("session_full");
+        var version = await BumpAsync(tx, tenantId, sessionId, session.Version, cancellationToken);
         if (existing is not null)
         {
             await tx.ExecuteAsync("""
@@ -79,27 +80,27 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
                 values (app_tenant(), @sessionId, @playerId, @seat, 'player', @eligible, 'idle', -1, 0)
                 """, new { sessionId, playerId, seat, eligible = session.Status == "running" && format.Spec.Pacing == Pacing.Shared && !player.IsGuest }, cancellationToken);
         }
-        var version = await BumpAsync(tx, sessionId, session.Version, cancellationToken);
-        return version is null ? LobbyOutcome.Error("stale_activation") : new LobbyOutcome("joined", version);
+        return new LobbyOutcome("joined", version);
     }
 
-    private async Task<LobbyOutcome> LeaveAsync(ITenantTx tx, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
+    private async Task<LobbyOutcome> LeaveAsync(ITenantTx tx, Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
     {
         var session = await LoadAsync(tx, sessionId, cancellationToken);
         if (session is null) return LobbyOutcome.Error("not_found");
         if (session.Status == "cancelled") return LobbyOutcome.Error("cancelled");
         if (session.Status != "lobby") return LobbyOutcome.Error("not_in_lobby");
         if (session.Owner == playerId.ToString()) return LobbyOutcome.Error("owner_must_cancel");
-        var changed = await tx.ExecuteAsync("""
+        var present = await tx.QuerySingleOrDefaultAsync<int>("select count(*) from session_participants where session_id = @sessionId and player_id = @playerId and status = 'active'", new { sessionId, playerId }, cancellationToken);
+        if (present == 0) return LobbyOutcome.Error("absent_seat");
+        var version = await BumpAsync(tx, tenantId, sessionId, session.Version, cancellationToken);
+        await tx.ExecuteAsync("""
             update session_participants set status = 'left', eligible = false, ranked = false
             where session_id = @sessionId and player_id = @playerId and status = 'active'
             """, new { sessionId, playerId }, cancellationToken);
-        if (changed == 0) return LobbyOutcome.Error("absent_seat");
-        var version = await BumpAsync(tx, sessionId, session.Version, cancellationToken);
-        return version is null ? LobbyOutcome.Error("stale_activation") : new LobbyOutcome("left", version);
+        return new LobbyOutcome("left", version);
     }
 
-    private async Task<LobbyOutcome> ConfigureAsync(ITenantTx tx, Guid sessionId, Guid playerId, string? rulesJson, string? contentJson, int? capacity, CancellationToken cancellationToken)
+    private async Task<LobbyOutcome> ConfigureAsync(ITenantTx tx, Guid tenantId, Guid sessionId, Guid playerId, string? rulesJson, string? contentJson, int? capacity, CancellationToken cancellationToken)
     {
         var session = await LoadAsync(tx, sessionId, cancellationToken);
         if (session is null) return LobbyOutcome.Error("not_found");
@@ -136,10 +137,12 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
             update sessions set rules = @rules, content = @content, capacity = @requestedCapacity, version = version + 1
             where id = @sessionId and version = @version returning version
             """, new { sessionId, version = session.Version, rules = new Jsonb<JsonElement>(rules, SessionJsonContext.Default.JsonElement), content = new Jsonb<SessionContent>(content, SessionJsonContext.Default.SessionContent), requestedCapacity }, cancellationToken);
-        return version is null ? LobbyOutcome.Error("stale_activation") : new LobbyOutcome("configured", version);
+        if (version is null) throw new StaleActivationException();
+        await SessionStateStore.NotifyAsync(tx, tenantId, sessionId, version.Value, "lobby", cancellationToken);
+        return new LobbyOutcome("configured", version);
     }
 
-    private async Task<LobbyOutcome> StartAsync(ITenantTx tx, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
+    private async Task<LobbyOutcome> StartAsync(ITenantTx tx, Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
     {
         var session = await LoadAsync(tx, sessionId, cancellationToken);
         if (session is null) return LobbyOutcome.Error("not_found");
@@ -175,15 +178,13 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
                 phase_started_at = @phaseStartedAt, state = @state, state_version = @stateVersion, version = version + 1
             where id = @sessionId and version = @expectedVersion returning version
             """, new { sessionId, expectedVersion = session.Version, status = current.Session.Status, startedAt = current.Session.StartedAt,
-                dueAt = current.Session.DueAt, phase = current.Session.Position?.Phase.ToString() ?? "idle", slot = current.Session.Position?.Slot ?? -1,
+                dueAt = current.Session.DueAt, phase = current.Session.Position?.Phase.ToString() ?? "lobby", slot = current.Session.Position?.Slot ?? -1,
                 step = current.Session.Position?.Step ?? 0, phaseStartedAt = current.Session.PositionStartedAt,
                 state = new Jsonb<JsonElement>(current.FormatState, SessionJsonContext.Default.JsonElement), stateVersion = format.Versions.State }, cancellationToken);
-        if (version is null) return LobbyOutcome.Error("stale_activation");
+        if (version is null) throw new StaleActivationException();
         await SessionSnapshotFactory.PersistAsync(tx, sessionId, items, cancellationToken);
-        foreach (var seat in current.Seats.Values)
-            await tx.ExecuteAsync("""
-                update session_participants set eligible = @eligible where session_id = @sessionId and player_id = @playerId
-                """, new { sessionId, playerId = Guid.Parse(seat.Player), eligible = seat.Eligible }, cancellationToken);
+        await SessionStateStore.WriteSeatsAsync(tx, tenantId, sessionId, transition.Initial, current, cancellationToken);
+        await SessionStateStore.NotifyAsync(tx, tenantId, sessionId, version.Value, current.Session.Position?.Phase.ToString() ?? "lobby", cancellationToken);
         return new LobbyOutcome("started", version);
     }
 
@@ -212,8 +213,14 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
             Version: row.Version, Content: Json(row.Content), Rules: Json(row.Rules), Owner: row.OwnerId.ToString(), Capacity: row.Capacity, CreationShape: row.CreationShape);
     }
 
-    private static Task<long?> BumpAsync(ITenantTx tx, Guid sessionId, long version, CancellationToken cancellationToken) =>
-        tx.QuerySingleOrDefaultAsync<long?>("update sessions set version = version + 1 where id = @sessionId and version = @version returning version", new { sessionId, version }, cancellationToken);
+    /// <summary>The version-guarded first write of a lobby transition; a stale activation rolls the whole transition back.</summary>
+    private static async Task<long> BumpAsync(ITenantTx tx, Guid tenantId, Guid sessionId, long version, CancellationToken cancellationToken)
+    {
+        var next = await tx.QuerySingleOrDefaultAsync<long?>("update sessions set version = version + 1 where id = @sessionId and version = @version returning version", new { sessionId, version }, cancellationToken)
+            ?? throw new StaleActivationException();
+        await SessionStateStore.NotifyAsync(tx, tenantId, sessionId, next, "lobby", cancellationToken);
+        return next;
+    }
 
     private static async Task<bool> EnabledAsync(ITenantTx tx, string source, CancellationToken cancellationToken) =>
         await tx.QuerySingleOrDefaultAsync<bool?>("select entitled and enabled from tenant_capabilities where type = 'source' and key = @source", new { source }, cancellationToken) == true;
