@@ -41,7 +41,8 @@ public sealed class CapabilityRegistryTests
 
         Assert.Collection(definitions.OrderBy(definition => definition.Key, StringComparer.Ordinal),
             definition => Assert.Equal((CapabilityType.Switch, "custom_questions"), (definition.Type, definition.Key)),
-            definition => Assert.Equal((CapabilityType.Switch, "guests"), (definition.Type, definition.Key)));
+            definition => Assert.Equal((CapabilityType.Switch, "guests"), (definition.Type, definition.Key)),
+            definition => Assert.Equal((CapabilityType.Switch, "sessions"), (definition.Type, definition.Key)));
     }
 
     private sealed record DemoSettings(bool Enabled)

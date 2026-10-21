@@ -137,6 +137,7 @@ internal sealed class CapabilityRegistry
 internal sealed record GuestsSettings;
 
 internal sealed record CustomQuestionsSettings;
+internal sealed record SessionSettings(int Capacity = 20);
 
 internal static class CoreCapabilities
 {
@@ -145,6 +146,7 @@ internal static class CoreCapabilities
         var registry = new CapabilityRegistry();
         registry.Register(CapabilityType.Switch, "guests", new GuestsSettings(), _ => []);
         registry.Register(CapabilityType.Switch, "custom_questions", new CustomQuestionsSettings(), _ => []);
+        registry.Register(CapabilityType.Switch, "sessions", new SessionSettings(), settings => settings.Capacity is >= 1 and <= 500 ? [] : ["Capacity must be between 1 and 500."]);
         return registry;
     }
 }

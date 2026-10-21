@@ -26,15 +26,15 @@ public sealed class CapabilitySyncDatabaseTests(PostgresFixture fixture)
         await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
         var command = new CapabilitySyncCommand(new SystemDb(sources), registry);
 
-        Assert.Equal(3, await command.ExecuteAsync());
+        Assert.Equal(5, await command.ExecuteAsync());
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where slug = 'a'"));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where slug = 'b'"));
         Assert.Equal(0, await command.ExecuteAsync());
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where slug = 'a'"));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where slug = 'b'"));
-        Assert.Equal(4L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities"));
+        Assert.Equal(6L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities"));
         Assert.True(await ScalarAsync<bool>(owner, "select entitled and enabled from tenant_capabilities where type = 'switch' and key = 'guests' and tenant_id = (select id from tenants where slug = 'a')"));
-        Assert.Equal(3L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where not entitled and not enabled"));
+        Assert.Equal(5L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where not entitled and not enabled"));
     }
 
     private static async Task SeedAsync(NpgsqlConnection owner, string slug)

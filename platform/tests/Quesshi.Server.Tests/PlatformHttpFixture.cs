@@ -38,10 +38,31 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     public HttpClient Owner { get; private set; } = null!;
     public HttpClient PlatformAdministrator { get; private set; } = null!;
     public string DatabaseName => _postgres.DatabaseName ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its database.");
+    public Guid TenantId => _identities?.TenantId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
+    public Guid PlayerId => _identities?.PlayerId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
     public int HttpPort { get; private set; }
     public int SiloPort { get; private set; }
     public int GatewayPort { get; private set; }
     public Uri TenantOrigin => new($"http://{TenantHost}");
+
+    public async Task SetCapabilityAsync(string type, string key, bool enabled, CancellationToken cancellationToken = default)
+    {
+        await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        await owner.ExecuteAsync(new CommandDefinition("""
+            insert into tenant_capabilities(tenant_id, type, key, entitled, enabled)
+            values (@tenantId, @type, @key, true, @enabled)
+            on conflict (tenant_id, type, key) do update set entitled = true, enabled = excluded.enabled
+            """, new { tenantId = TenantId, type, key, enabled }, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>Executes setup SQL as the database owner for a hosted route test.</summary>
+    public async Task ExecuteOwnerAsync(string sql, object parameters, CancellationToken cancellationToken = default)
+    {
+        await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        await owner.ExecuteAsync(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -114,30 +135,65 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         }
     }
 
+    /// <summary>Creates an authenticated player in an isolated tenant for tenant-bound route tests.</summary>
+    public async Task<HttpClient> CreateOtherTenantPlayerClientAsync(CancellationToken cancellationToken = default)
+    {
+        var tenantId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
+        var host = $"other-{tenantId:N}.example.test";
+        await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        await owner.ExecuteAsync(new CommandDefinition("""
+            insert into tenants(id, slug, name, default_language)
+            values (@tenantId, @slug, 'Other HTTP fixture', 'en');
+            insert into tenant_hosts(tenant_id, host) values (@tenantId, @host);
+            insert into accounts(id, email) values (@accountId, @email);
+            insert into players(tenant_id, id, account_id, display_name, avatar_seed, lang)
+            values (@tenantId, @playerId, @accountId, 'Other fixture player', 'other', 'en');
+            """, new
+        {
+            tenantId,
+            slug = $"other-{tenantId:N}",
+            host,
+            accountId,
+            email = $"other-{accountId:N}@example.test",
+            playerId,
+        }, cancellationToken: cancellationToken));
+        return await CreatePlayerClientAsync(tenantId, accountId, host, cancellationToken);
+    }
+
     private async Task<HttpClient> CreatePlayerClientAsync(Guid? accountId, CancellationToken cancellationToken)
     {
-        var cookie = accountId is null ? null : await IssueAccountCookieAsync(accountId.Value, cancellationToken);
-        var token = await AntiforgeryAsync("/api/antiforgery", cookie, "__Host-qp", cancellationToken);
-        return AddClient(cookie, token, "__Host-qp", "X-CSRF");
+        var cookie = accountId is null ? null : await IssueAccountCookieAsync(_identities!.TenantId, accountId.Value, cancellationToken);
+        var token = await AntiforgeryAsync("/api/antiforgery", cookie, "__Host-qp", TenantHost, cancellationToken);
+        return AddClient(cookie, token, "__Host-qp", "X-CSRF", TenantHost);
+    }
+
+    private async Task<HttpClient> CreatePlayerClientAsync(Guid tenantId, Guid accountId, string host, CancellationToken cancellationToken)
+    {
+        var cookie = await IssueAccountCookieAsync(tenantId, accountId, cancellationToken);
+        var token = await AntiforgeryAsync("/api/antiforgery", cookie, "__Host-qp", host, cancellationToken);
+        return AddClient(cookie, token, "__Host-qp", "X-CSRF", host);
     }
 
     private async Task<HttpClient> CreateGuestClientAsync(CancellationToken cancellationToken)
     {
         var cookie = await IssueGuestCookieAsync(_identities!.GuestId, cancellationToken);
-        var token = await AntiforgeryAsync("/api/antiforgery", cookie, "__Host-qp", cancellationToken);
-        return AddClient(cookie, token, "__Host-qp", "X-CSRF");
+        var token = await AntiforgeryAsync("/api/antiforgery", cookie, "__Host-qp", TenantHost, cancellationToken);
+        return AddClient(cookie, token, "__Host-qp", "X-CSRF", TenantHost);
     }
 
     private async Task<HttpClient> CreateAdminClientAsync(Guid adminId, CancellationToken cancellationToken)
     {
         var cookie = await IssueAdminCookieAsync(adminId, cancellationToken);
-        var token = await AntiforgeryAsync("/api/admin/antiforgery", cookie, "__Host-qa", cancellationToken);
-        return AddClient(cookie, token, "__Host-qa", "X-CSRF-Admin");
+        var token = await AntiforgeryAsync("/api/admin/antiforgery", cookie, "__Host-qa", TenantHost, cancellationToken);
+        return AddClient(cookie, token, "__Host-qa", "X-CSRF-Admin", TenantHost);
     }
 
-    private HttpClient AddClient(string? cookie, string token, string cookieName, string antiforgeryHeader)
+    private HttpClient AddClient(string? cookie, string token, string cookieName, string antiforgeryHeader, string host)
     {
-        var client = new HttpClient(new TenantRequestHandler(TenantHost, TenantOrigin, cookie, token, cookieName, antiforgeryHeader))
+        var client = new HttpClient(new TenantRequestHandler(host, new Uri($"http://{host}"), cookie, token, cookieName, antiforgeryHeader))
         {
             BaseAddress = new Uri($"http://127.0.0.1:{HttpPort}"),
         };
@@ -145,11 +201,11 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         return client;
     }
 
-    private async Task<string> AntiforgeryAsync(string path, string? cookie, string cookieName, CancellationToken cancellationToken)
+    private async Task<string> AntiforgeryAsync(string path, string? cookie, string cookieName, string host, CancellationToken cancellationToken)
     {
         using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{HttpPort}") };
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
-        request.Headers.Host = TenantHost;
+        request.Headers.Host = host;
         if (cookie is not null) request.Headers.TryAddWithoutValidation("Cookie", $"{cookieName}={cookie}");
         using var response = await client.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -157,11 +213,11 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
             ?? throw new InvalidOperationException("The platform host returned no antiforgery token.");
     }
 
-    private async Task<string> IssueAccountCookieAsync(Guid accountId, CancellationToken cancellationToken)
+    private async Task<string> IssueAccountCookieAsync(Guid tenantId, Guid accountId, CancellationToken cancellationToken)
     {
         var context = new DefaultHttpContext();
         await _application!.Services.GetRequiredService<IPlayerSessionIssuer>()
-            .IssueAccountAsync(context, _identities!.TenantId, accountId, cancellationToken);
+            .IssueAccountAsync(context, tenantId, accountId, cancellationToken);
         return CookieValue(context, "__Host-qp");
     }
 

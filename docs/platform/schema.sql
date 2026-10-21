@@ -367,6 +367,9 @@ create table sessions (
   capacity         int not null check (capacity >= 1),
   content          jsonb not null check (jsonb_typeof(content) = 'object'),   -- ContentSpec
   rules            jsonb not null default '{}' check (jsonb_typeof(rules) = 'object'),
+  -- Immutable request identity used to make the caller-provided id safe to retry after the session changes.
+  creation_shape   text not null default 'lobby' check (creation_shape in ('lobby', 'started', 'open')),
+  creation_roster  jsonb not null default '[]' check (jsonb_typeof(creation_roster) = 'array'),
   rules_version    smallint not null default 1 check (rules_version > 0),
   -- Position: what the format is waiting for. A command must name the position it was issued at.
   phase            text not null default 'lobby',
