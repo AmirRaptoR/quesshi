@@ -124,6 +124,8 @@ public sealed class LiveBenchmarkRunner
                 new Uri(second.Urls.Single()),
             };
             clients = await CreateClientsAsync(options.Players, endpoints, database.TenantHost, cancellationToken);
+            await WarmUpAsync(database.OwnerConnectionString, tenant, options, clients, cancellationToken);
+            measurements.Reset();
             var session = await BenchmarkFixture.SeedSessionAsync(database.OwnerConnectionString, tenant, options, clients.Select(client => client.PlayerId).ToArray(), cancellationToken);
 
             // The first real client command activates the grain and begins the shared
@@ -185,6 +187,28 @@ public sealed class LiveBenchmarkRunner
             Environment.SetEnvironmentVariable("Jobs__Enabled", priorJobs);
         }
     }
+
+    /// <summary>
+    /// Plays one complete throw-away session through the same silos so JIT compilation, connection setup and statement
+    /// preparation are not charged to the measured session. The measurements are reset afterwards.
+    /// </summary>
+    private static async Task WarmUpAsync(
+        string ownerConnectionString,
+        BenchmarkTenant tenant,
+        BenchmarkOptions options,
+        IReadOnlyList<BenchClient> clients,
+        CancellationToken cancellationToken)
+    {
+        var warm = clients.Take(Math.Min(clients.Count, WarmUpPlayers)).ToArray();
+        var warmOptions = options with { Players = warm.Length, Scenario = LiveScenario.Burst };
+        var session = await BenchmarkFixture.SeedSessionAsync(ownerConnectionString, tenant, warmOptions, warm.Select(client => client.PlayerId).ToArray(), cancellationToken);
+        await SendCommandAsync(warm[0], session.Id, phase: "0", slot: 0, cancellationToken);
+        await WaitForPhaseAsync(ownerConnectionString, session.Id, "1", cancellationToken);
+        await Task.WhenAll(warm.Select(client => SendCommandAsync(client, session.Id, phase: "1", slot: 0, cancellationToken)));
+        await WaitForCompletionAsync(ownerConnectionString, session.Id, cancellationToken);
+    }
+
+    private const int WarmUpPlayers = 25;
 
     private static async Task<WebApplication> StartHostAsync(
         DatabaseSources sources,
@@ -389,6 +413,7 @@ public sealed class LiveBenchmarkRunner
             await WaitForCompletionAsync(ownerConnectionString, session.Id, cancellationToken);
         }
 
+        if (Environment.GetEnvironmentVariable("QB_DUMP") == "1") Console.Error.WriteLine("DUMP " + string.Join(" ", measurements.Samples.OrderBy(x => x.CompletedAt).Select(x => $"{x.Kind.ToString()[..3]}:{x.Duration.TotalMilliseconds:F1}")));
         var accepted = await AcceptedPlayersAsync(ownerConnectionString, session.Id, cancellationToken);
         var reconciledCommands = commands.Select(command =>
             command.Outcome == CommandOutcome.Accepted && !accepted.Contains(command.PlayerId)

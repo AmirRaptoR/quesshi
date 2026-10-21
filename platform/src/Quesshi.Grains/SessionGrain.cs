@@ -37,10 +37,15 @@ public class SessionGrain(
     private DateTimeOffset? _timerWakeAt;
     private DateTimeOffset? _timerDueAt;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    // Set while deferred answers are waiting: the committed state they were applied on top of.
+    // Set while deferred answers are uncommitted: the durable state they were applied on top of.
     private SessionState? _baseline;
+    // Answers accepted in memory that no write has picked up yet, and the batch that is being written.
     private List<PendingAnswer> _pending = [];
-    private bool _flushQueued;
+    private List<PendingAnswer> _inflight = [];
+    // Non-null while a flush loop runs; completes when it has stopped. _exclusive asks it to stop after its current batch.
+    private TaskCompletionSource? _flushIdle;
+    private bool _exclusive;
+    private int _generation;
 
     public override Task OnActivateAsync(CancellationToken cancellationToken)
     {
@@ -121,6 +126,7 @@ public class SessionGrain(
 
             var previousPosition = _state.Session.Position;
             turnDueAt = _state.Session.DueAt;
+            var generation = _generation;
             var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
             try { format.Apply(transition, command); }
             catch (SessionCommandException exception)
@@ -155,7 +161,7 @@ public class SessionGrain(
                 // Ordinary answers are graded and scored in memory now and written with their batch (7.4.1).
                 _baseline ??= _state;
                 _state = current;
-                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, clock.Now - started, _state.Session.DueAt, measured: !activated);
+                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, clock.Now - started, _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
                 _pending.Add(waiter);
                 turn.Waiter = waiter;
                 turn.Format = format;
@@ -169,10 +175,13 @@ public class SessionGrain(
                 command.Type == CommandType.Answer,
                 previousPosition?.Phase,
                 current.Session.Position?.Phase);
+            // This write must follow the batch that is being written and carries the answers still waiting.
+            if (!await QuiesceFlushAsync(generation)) return SessionCommandResult.Error("write_failed", retryable: true);
+            var committedBase = _baseline ?? transition.Initial;
             long version;
             try
             {
-                version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, _baseline ?? transition.Initial, current);
+                version = await store.SaveAsync(_tenantId, _sessionId, committedBase.Session.Version, committedBase, current);
             }
             catch (StaleActivationException) { throw; }
             catch (Exception exception) when (IsUnknownCommit(exception)) { throw; }
@@ -318,6 +327,7 @@ public class SessionGrain(
                 await EndCoreAsync(CoreEndReason.Outage);
                 return;
             }
+            var generation = _generation;
             var transition = new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored);
             try { format.Timeout(transition); }
             catch (Exception exception) when (!IsInfrastructureFailure(exception))
@@ -335,8 +345,10 @@ public class SessionGrain(
                 _state.Session.Position?.Phase,
                 transition.Current.Session.Position?.Phase,
                 transition.Current.Session.Ended);
+            if (!await QuiesceFlushAsync(generation)) return;
+            var committedBase = _baseline ?? transition.Initial;
             long version;
-            try { version = await store.SaveAsync(_tenantId, _sessionId, _state.Session.Version, _baseline ?? transition.Initial, transition.Current); }
+            try { version = await store.SaveAsync(_tenantId, _sessionId, committedBase.Session.Version, committedBase, transition.Current); }
             catch (Exception exception) when (!IsInfrastructureFailure(exception))
             {
                 ResetToBaseline();
@@ -471,19 +483,25 @@ public class SessionGrain(
     {
         var missing = slots.Where(slot => slot >= 0 && !_state!.Items.ContainsKey(slot)).Distinct().ToArray();
         if (missing.Length == 0) return;
-        _state = _state!.WithItems(await snapshots.LoadItemsAsync(_tenantId, _sessionId, missing));
+        var loaded = await snapshots.LoadItemsAsync(_tenantId, _sessionId, missing);
+        // A failed batch discards the state while the items load.
+        _state = (_state ?? throw new StaleActivationException()).WithItems(loaded);
     }
     private void DropState()
     {
         DisposeDeadlineTimer();
         _state = null;
         _baseline = null;
+        _generation++;
+        Fail(_inflight, "retryable", retryable: true);
+        _inflight = [];
         FailPending("retryable", retryable: true);
         Deactivate();
     }
 
     private async Task EndCoreAsync(CoreEndReason reason)
     {
+        await QuiesceFlushAsync(_generation);
         await store.EndCoreAsync(_tenantId, _sessionId, reason);
         // The deferred answers were never written and the session is over.
         _baseline = null;
@@ -505,7 +523,7 @@ public class SessionGrain(
     {
         if (command.Type != CommandType.Answer
             || !_pending.Any(waiting => waiting.Player == command.Player && waiting.Slot == command.At.Slot)) return false;
-        var follower = new PendingAnswer(command.Player, command.At.Slot, format, clock.Now - started, _state!.Session.DueAt, measured: false);
+        var follower = new PendingAnswer(command.Player, command.At.Slot, format, clock.Now - started, _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
         _pending.Add(follower);
         turn.Waiter = follower;
         turn.Format = format;
@@ -514,69 +532,104 @@ public class SessionGrain(
 
     private void QueueFlush()
     {
-        if (_flushQueued) return;
-        _flushQueued = true;
-        _ = FlushQueuedAsync();
+        if (_flushIdle is not null) return;
+        _flushIdle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = FlushLoopAsync(_flushIdle);
     }
 
     /// <summary>
-    /// Queues behind every command that reached the gate first, so those answers share the batch (group commit).
+    /// Writes accepted answers one batch at a time without holding the gate, so the grain keeps accepting answers
+    /// while a batch commits; those answers form the next batch (group commit). Everything between awaits runs
+    /// uninterrupted on the grain's scheduler, so the state is never observed half-updated.
     /// </summary>
-    private async Task FlushQueuedAsync()
+    private async Task FlushLoopAsync(TaskCompletionSource idle)
     {
-        await _gate.WaitAsync();
         try
         {
-            _flushQueued = false;
-            await FlushPendingAsync();
+            while (!_exclusive && _pending.Count > 0 && _state is not null && _baseline is not null)
+            {
+                var generation = _generation;
+                var baseline = _baseline;
+                var snapshot = _state;
+                var batch = _pending;
+                _pending = [];
+                _inflight = batch;
+                long version;
+                try
+                {
+                    version = await store.SaveAsync(_tenantId, _sessionId, baseline.Session.Version, baseline, snapshot);
+                }
+                catch (Exception exception) when (generation != _generation)
+                {
+                    logger.LogWarning(exception, "Answer batch failed for {SessionId} after its state was discarded", _sessionId);
+                    return;
+                }
+                catch (StaleActivationException)
+                {
+                    Fail(batch, "stale_activation", retryable: true);
+                    DropState();
+                    return;
+                }
+                catch (Exception exception) when (IsUnknownCommit(exception))
+                {
+                    logger.LogWarning(exception, "Answer batch has an unknown commit outcome for {SessionId}", _sessionId);
+                    Fail(batch, "retryable", retryable: true);
+                    DropState();
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    // Rolled back for certain. Answers accepted meanwhile were graded on top of the lost ones.
+                    logger.LogWarning(exception, "Answer batch rolled back for {SessionId}", _sessionId);
+                    _inflight = [];
+                    _state = baseline;
+                    _baseline = null;
+                    _generation++;
+                    Fail(batch, "write_failed", retryable: true);
+                    FailPending("write_failed", retryable: true);
+                    return;
+                }
+                if (generation != _generation) return;
+                var committed = snapshot with { Session = snapshot.Session with { Version = version } };
+                _inflight = [];
+                if (_pending.Count == 0)
+                {
+                    _state = committed;
+                    _baseline = null;
+                }
+                else
+                {
+                    _baseline = committed;
+                    _state = _state with { Session = _state.Session with { Version = version } };
+                }
+                Complete(batch, committed);
+            }
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "Flushing answers failed for {SessionId}", _sessionId);
             DropState();
         }
-        finally { _gate.Release(); }
+        finally
+        {
+            _exclusive = false;
+            _flushIdle = null;
+            idle.TrySetResult();
+        }
     }
 
-    private async Task FlushPendingAsync()
+    /// <summary>
+    /// Lets the batch being written finish and keeps further batches from starting. False when that batch failed,
+    /// so the state the caller computed from is gone.
+    /// </summary>
+    private async Task<bool> QuiesceFlushAsync(int generation)
     {
-        if (_pending.Count == 0 || _state is null || _baseline is null) return;
-        var started = clock.Now;
-        var baseline = _baseline;
-        var working = _state;
-        var batch = TakePending();
-        long version;
-        try
+        if (_flushIdle is { } idle)
         {
-            version = await store.SaveAsync(_tenantId, _sessionId, working.Session.Version, baseline, working);
+            _exclusive = true;
+            await idle.Task;
         }
-        catch (StaleActivationException)
-        {
-            DropState();
-            Fail(batch, "stale_activation", retryable: true);
-            return;
-        }
-        catch (Exception exception) when (IsUnknownCommit(exception))
-        {
-            logger.LogWarning(exception, "Answer batch has an unknown commit outcome for {SessionId}", _sessionId);
-            DropState();
-            Fail(batch, "retryable", retryable: true);
-            return;
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(exception, "Answer batch rolled back for {SessionId}", _sessionId);
-            _state = baseline;
-            Fail(batch, "write_failed", retryable: true);
-            return;
-        }
-        var committed = working with { Session = working.Session with { Version = version } };
-        _state = committed;
-        var measured = batch.Count(answer => answer.Measured);
-        var share = measured == 0 ? TimeSpan.Zero : (clock.Now - started) / measured;
-        foreach (var answer in batch.Where(answer => answer.Measured))
-            _turnObserver.Record(new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, answer.OwnTurn + share, answer.DueAt, clock.Now));
-        Complete(batch, committed);
+        return generation == _generation;
     }
 
     private List<PendingAnswer> TakePending()
@@ -591,6 +644,7 @@ public class SessionGrain(
     {
         if (_baseline is not null) _state = _baseline;
         _baseline = null;
+        _generation++;
     }
 
     private void FailPending(string code, bool retryable) => Fail(TakePending(), code, retryable);
@@ -600,9 +654,21 @@ public class SessionGrain(
         foreach (var answer in batch) answer.Completion.TrySetResult(new BatchOutcome(null, code, retryable));
     }
 
-    private static void Complete(List<PendingAnswer> batch, SessionState committed)
+    /// <summary>
+    /// Acknowledges a committed batch. An ordinary answer's measured turn is the time it held the gate; the wait for
+    /// its commit is recorded separately, because the grain is free to take other commands while a batch commits.
+    /// </summary>
+    private void Complete(List<PendingAnswer> batch, SessionState committed)
     {
-        foreach (var answer in batch) answer.Completion.TrySetResult(new BatchOutcome(committed, null, false));
+        foreach (var answer in batch)
+        {
+            if (answer.Measured)
+            {
+                _turnObserver.Record(new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, answer.OwnTurn, answer.DueAt, clock.Now));
+                _turnObserver.RecordAnswerCommit(clock.Now - answer.AcceptedAt);
+            }
+            answer.Completion.TrySetResult(new BatchOutcome(committed, null, false));
+        }
     }
 
     private sealed class Turn
@@ -611,8 +677,9 @@ public class SessionGrain(
         public IFormat? Format { get; set; }
     }
 
-    private sealed class PendingAnswer(string player, int slot, IFormat format, TimeSpan ownTurn, DateTimeOffset? dueAt, bool measured)
+    private sealed class PendingAnswer(string player, int slot, IFormat format, TimeSpan ownTurn, DateTimeOffset? dueAt, bool measured, DateTimeOffset acceptedAt)
     {
+        public DateTimeOffset AcceptedAt { get; } = acceptedAt;
         public string Player { get; } = player;
         public int Slot { get; } = slot;
         public IFormat Format { get; } = format;
