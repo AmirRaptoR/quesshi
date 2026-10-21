@@ -11,10 +11,8 @@ namespace Quesshi.Application.Sessions;
 /// <summary>Creates an idempotent session and its initial durable snapshot in one tenant transaction.</summary>
 internal sealed class SessionCreationService(
     IFormatRegistry formats,
-    IKindRegistry kinds,
     ISourceRegistry sources,
-    SourceResultValidator sourceResults,
-    ILocks locks,
+    SessionSnapshotFactory snapshots,
     IClock clock,
     ISessionCodeGenerator codes) : ISessions
 {
@@ -57,7 +55,7 @@ internal sealed class SessionCreationService(
         if (request.Shape == SessionShape.Started && (playing < format.Spec.MinPlayers || playing > format.Spec.MaxPlayers))
             return Invalid("invalid_roster");
 
-        await locks.PlayersAsync(transaction, roster.Select(x => x.PlayerId), cancellationToken);
+        await snapshots.LockPlayersAsync(transaction, roster.Select(x => x.PlayerId), cancellationToken);
         var players = (await transaction.QueryAsync<PlayerData>("""
             select id as Id, lang as Language, account_id is null as IsGuest
             from players where id = any(@ids) and banned_at is null and deleted_at is null
@@ -67,7 +65,7 @@ internal sealed class SessionCreationService(
         var now = clock.Now;
         var seatValues = roster.Select((participant, number) => new Seat(
             participant.PlayerId.ToString(), participant.Role, Number: number, IsGuest: players[participant.PlayerId].IsGuest)).ToArray();
-        var items = Array.Empty<PersistedItem>();
+        var items = Array.Empty<PersistedSessionItem>();
 
         try
         {
@@ -78,12 +76,8 @@ internal sealed class SessionCreationService(
                     return new(SessionCreateStatus.SourceUnavailable, Error: "source_unavailable");
                 if (!await source!.AuthorizeAsync(transaction, request.Content.Parameters, creatorId, cancellationToken))
                     return new(SessionCreateStatus.SourceUnavailable, Error: "source_unavailable");
-                var sourcePlan = new SourceDrawPlan(plan.Count, creator.Language,
-                    plan.AcceptedKinds.Select(id => new SourceKind(id, kinds.GetCurrent(id).Family)).ToArray(), plan.Levels, Seed(request.Id));
-                var picked = await source.PickAsync(transaction, request.Content.Parameters, sourcePlan, creatorId, cancellationToken);
-                if (picked is PickedQuestionIds ids) await locks.ContentAsync(transaction, ids.Ids, cancellationToken);
-                var questions = await sourceResults.ValidateAsync(transaction, picked, sourcePlan, cancellationToken);
-                items = await CreateItemsAsync(transaction, request.Id, questions, seatValues, cancellationToken);
+                var sourcePlan = snapshots.Plan(plan, creator.Language, request.Id);
+                items = await snapshots.DrawAsync(transaction, request.Id, source, request.Content.Parameters, sourcePlan, creatorId, seatValues, cancellationToken);
             }
 
             var session = new SessionRow(request.Id.ToString(), request.Shape == SessionShape.Lobby ? null : now, null, null,
@@ -109,7 +103,7 @@ internal sealed class SessionCreationService(
             }
             state = state with { Session = state.Session with { Code = created } };
             await PersistSeatsAsync(transaction, request.Id, state.Seats.Values, cancellationToken);
-            await PersistItemsAsync(transaction, request.Id, items, cancellationToken);
+            await SessionSnapshotFactory.PersistAsync(transaction, request.Id, items, cancellationToken);
             await PersistSessionAsync(transaction, request.Id, state, format.Versions, cancellationToken);
             return new(SessionCreateStatus.Created, request.Id, created);
         }
@@ -176,34 +170,6 @@ internal sealed class SessionCreationService(
                     phase = seat.Position?.Phase.ToString() ?? "idle", slot = seat.Position?.Slot ?? -1, step = seat.Position?.Step ?? 0 }, cancellationToken);
     }
 
-    private static async Task PersistItemsAsync(ITenantTx transaction, Guid sessionId, IEnumerable<PersistedItem> items, CancellationToken cancellationToken)
-    {
-        foreach (var item in items)
-        {
-            var parameters = new DynamicParameters();
-            parameters.Add("sessionId", sessionId);
-            parameters.Add("slot", item.Value.Metadata.Slot);
-            parameters.Add("questionId", item.QuestionId);
-            parameters.Add("kind", item.Value.Metadata.Kind);
-            parameters.Add("kindVersion", item.Value.Metadata.KindVersion);
-            parameters.Add("prompt", item.Prompt);
-            parameters.Add("payload", new Jsonb<JsonElement>(item.Value.Payload, SessionJsonContext.Default.JsonElement));
-            parameters.Add("resolved", new Jsonb<JsonElement>(item.Value.Resolved, SessionJsonContext.Default.JsonElement));
-            parameters.Add("card", new Jsonb<JsonElement>(item.Value.Card, SessionJsonContext.Default.JsonElement));
-            parameters.Add("reveal", new Jsonb<JsonElement>(item.Value.Reveal, SessionJsonContext.Default.JsonElement));
-            parameters.Add("mediaId", item.MediaId);
-            parameters.Add("level", item.Value.Metadata.Level);
-            parameters.Add("categoryId", item.CategoryId);
-            parameters.Add("category", item.Category is { } category
-                ? new Jsonb<JsonElement>(category, SessionJsonContext.Default.JsonElement)
-                : null);
-            await transaction.ExecuteAsync("""
-                insert into session_items (tenant_id, session_id, slot, question_id, kind, kind_version, prompt, payload, resolved, card, reveal, media_id, level, category_id, category)
-                values (app_tenant(), @sessionId, @slot, @questionId, @kind, @kindVersion, @prompt, @payload, @resolved, @card, @reveal, @mediaId, @level, @categoryId, @category)
-                """, parameters, cancellationToken);
-        }
-    }
-
     private static Task PersistSessionAsync(ITenantTx transaction, Guid sessionId, SessionState state, FormatVersions versions, CancellationToken cancellationToken) =>
         transaction.ExecuteAsync("""
             update sessions set status = @status, due_at = @dueAt, phase = @phase, slot = @slot, step = @step,
@@ -212,61 +178,6 @@ internal sealed class SessionCreationService(
             """, new { sessionId, status = state.Session.Status, dueAt = state.Session.DueAt, phase = state.Session.Position?.Phase.ToString() ?? "lobby",
                 slot = state.Session.Position?.Slot ?? -1, step = state.Session.Position?.Step ?? 0, phaseStartedAt = state.Session.PositionStartedAt,
                 state = new Jsonb<JsonElement>(state.FormatState, SessionJsonContext.Default.JsonElement), stateVersion = versions.State }, cancellationToken);
-
-    private async Task<PersistedItem[]> CreateItemsAsync(ITenantTx transaction, Guid sessionId, IReadOnlyList<SourceQuestion> questions, IReadOnlyList<Seat> seats, CancellationToken cancellationToken)
-    {
-        var values = new List<PersistedItem>(questions.Count);
-        for (var slot = 0; slot < questions.Count; slot++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var sourceItem = questions[slot];
-            var question = sourceItem.Question;
-            var snapshot = sourceItem.Snapshot;
-            if (question is null && snapshot is null) throw new InvalidSourceResultException("A source question must contain a question or ready snapshot.");
-
-            var kindId = question is null ? snapshot!.Kind : question.Kind;
-            var kindVersion = question is null ? snapshot!.KindVersion : question.KindVersion;
-            var payloadSource = question is null ? snapshot!.Payload : question.Payload;
-            var level = question is null ? snapshot!.Level : question.Level;
-            var categoryId = question is null ? snapshot!.CategoryId : question.CategoryId;
-            var kind = kinds.GetCurrent(kindId);
-            var payload = kind.Upgrade(kindVersion, payloadSource);
-            JsonElement resolved;
-            JsonElement card;
-            JsonElement reveal;
-            if (snapshot is null)
-            {
-                var roster = seats.Select(seat => new RosterSeat(seat.Number, seat.Role, "active", seat.Player)).ToArray();
-                resolved = kind.Resolve(payload, new ResolveContext(sessionId.ToString(), slot, roster));
-                card = kind.Card(payload, resolved);
-                reveal = kind.Reveal(payload, resolved);
-            }
-            else
-            {
-                resolved = snapshot.Resolved.Clone();
-                var upgraded = kind.UpgradeSnapshot(kindVersion, SnapshotJson(snapshot));
-                card = upgraded.GetProperty("card").Clone();
-                reveal = upgraded.GetProperty("reveal").Clone();
-                _ = kind.Card(payload, resolved);
-                _ = kind.Reveal(payload, resolved);
-            }
-            var category = await CategoryAsync(transaction, categoryId, cancellationToken);
-            var prompt = question is null ? snapshot!.Prompt : question.Prompt;
-            var mediaId = question is null ? snapshot!.MediaId : question.MediaId;
-            values.Add(new PersistedItem(SessionItemState.Create(new SessionItem(slot, kind.Id, kind.Version, level, categoryId?.ToString()), payload, resolved, card, reveal), question?.Id, prompt, mediaId, categoryId, category));
-        }
-        return values.ToArray();
-    }
-
-    private static async Task<JsonElement?> CategoryAsync(ITenantTx transaction, Guid? categoryId, CancellationToken cancellationToken)
-    {
-        if (categoryId is null) return null;
-        var category = await transaction.QuerySingleOrDefaultAsync<string>("""
-            select jsonb_build_object('id', id, 'slug', slug, 'names', names, 'icon', icon, 'color', color)::text
-            from categories where id = @categoryId
-            """, new { categoryId }, cancellationToken);
-        return category is null ? null : JsonDocument.Parse(category).RootElement.Clone();
-    }
 
     private async Task<int> TenantCapacityAsync(ITenantTx transaction, CancellationToken cancellationToken) => Math.Clamp(
         await transaction.QuerySingleOrDefaultAsync<int?>("""
@@ -284,18 +195,10 @@ internal sealed class SessionCreationService(
         return exists is null ? null : new(SessionCreateStatus.IdConflict, Error: "id_conflict");
     }
     private static JsonElement ContentElement(SessionContent content) => JsonSerializer.SerializeToElement(content, SessionJsonContext.Default.SessionContent);
-    private static JsonElement SnapshotJson(ReadySnapshot snapshot) => JsonSerializer.SerializeToElement(new
-    {
-        card = snapshot.Card,
-        reveal = snapshot.Reveal,
-        answers = Array.Empty<JsonElement>(),
-    });
     private static SessionCreateResult Invalid(string error) => new(SessionCreateStatus.Invalid, Error: error);
-    private static long Seed(Guid id) => BitConverter.ToInt64(id.ToByteArray());
     private static readonly JsonElement Empty = JsonDocument.Parse("{}").RootElement.Clone();
     private sealed record PlayerData(Guid Id, string Language, bool IsGuest);
     private sealed record ReplayRow(string Code);
-    private sealed record PersistedItem(SessionItemState Value, Guid? QuestionId, string Prompt, Guid? MediaId, Guid? CategoryId, JsonElement? Category);
 }
 
 [JsonSerializable(typeof(JsonElement))]

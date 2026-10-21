@@ -6,6 +6,7 @@ namespace Quesshi.Grains.Abstractions;
 public interface ISessionGrain : IGrainWithStringKey
 {
     Task<SessionCommandResult> ExecuteAsync(SessionCommand command);
+    Task<LobbyCommandResult> ExecuteLobbyAsync(LobbyCommand command);
     Task TimeoutAsync(DateTimeOffset dueAt);
 }
 
@@ -30,4 +31,22 @@ public sealed record SessionCommandResult(
     [property: Id(3)] string? ViewJson)
 {
     public static SessionCommandResult Error(string code, bool retryable = false) => new(code, retryable, null, null);
+}
+
+/// <summary>Authenticated lobby operation addressed to a tenant-scoped session grain.</summary>
+[GenerateSerializer]
+public sealed record LobbyCommand(
+    [property: Id(0)] string Player,
+    [property: Id(1)] string Type,
+    [property: Id(2)] string? RulesJson = null,
+    [property: Id(3)] string? ContentJson = null,
+    [property: Id(4)] int? Capacity = null);
+
+/// <summary>Stable outcome returned by lobby operations before a session is running.</summary>
+[GenerateSerializer]
+public sealed record LobbyCommandResult(
+    [property: Id(0)] string Code,
+    [property: Id(1)] long? Version = null)
+{
+    public static LobbyCommandResult Error(string code) => new(code);
 }

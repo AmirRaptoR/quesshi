@@ -42,7 +42,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
             select id as Id, code as Code, format as Format, status as Status, phase as Phase, slot as Slot, step as Step,
                    started_at as StartedAt, due_at as DueAt, retry_at as RetryAt, fault_count as FaultCount, version as Version,
                    state::text as State, result::text as Result, content::text as Content, rules::text as Rules, end_reason as EndReason,
-                   phase_started_at as PositionStartedAt, created_at as CreatedAt,
+                   phase_started_at as PositionStartedAt, created_at as CreatedAt, owner_id::text as Owner, capacity as Capacity, lang as Language, creation_shape as CreationShape,
                    (select config_version from tenants where id = sessions.tenant_id) as ConfigVersion,
                    (select count(*) from session_items where session_id = sessions.id) as ItemCount
             from sessions where id = @sessionId
@@ -76,7 +76,8 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
 
         var session = new SessionRow(row.Id.ToString(), row.StartedAt, row.DueAt, Position(row.Phase, row.Slot, row.Step),
             row.Status is "finished" or "cancelled", ParseEndReason(row.EndReason), Json(row.Result), row.PositionStartedAt,
-            row.CreatedAt, row.Format, row.Version, row.RetryAt, row.Status, row.Code, Json(row.Content), Json(row.Rules), row.ConfigVersion, row.FaultCount);
+            row.CreatedAt, row.Format, row.Version, row.RetryAt, row.Status, row.Code, Json(row.Content), Json(row.Rules), row.ConfigVersion, row.FaultCount,
+            row.Owner, row.Capacity, row.Language, row.CreationShape);
         var state = SessionState.Create(session, Json(row.State), seats.Select(ToSeat), items.Select(ToItem), row.ItemCount);
         var mappedAnswers = answers.ToDictionary(
             answer => new AnswerKey(answer.Player, answer.Slot),
@@ -174,6 +175,10 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         public string? EndReason { get; init; }
         public DateTimeOffset? PositionStartedAt { get; init; }
         public DateTimeOffset CreatedAt { get; init; }
+        public string Owner { get; init; } = "";
+        public int Capacity { get; init; }
+        public string Language { get; init; } = "";
+        public string CreationShape { get; init; } = "";
         public int ItemCount { get; init; }
     }
     private sealed class SeatData

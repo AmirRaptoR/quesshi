@@ -5,7 +5,7 @@ using Quesshi.Shared;
 namespace Quesshi.Application.Content;
 
 /// <summary>Validates source output at the pre-engine boundary while the tenant transaction is open.</summary>
-internal sealed class SourceResultValidator(IContent content, IKindRegistry kinds)
+public sealed class SourceResultValidator(IContent content, IKindRegistry kinds)
 {
     public async Task<IReadOnlyList<SourceQuestion>> ValidateAsync(
         ITenantTx transaction,
@@ -115,4 +115,4 @@ internal sealed class SourceResultValidator(IContent content, IKindRegistry kind
 }
 
 /// <summary>A validated source item. Bank questions retain their id; supplied snapshots retain every immutable presentation field.</summary>
-internal sealed record SourceQuestion(QuestionEnvelope? Question, ReadySnapshot? Snapshot);
+public sealed record SourceQuestion(QuestionEnvelope? Question, ReadySnapshot? Snapshot);
