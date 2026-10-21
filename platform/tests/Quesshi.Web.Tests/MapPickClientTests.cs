@@ -43,6 +43,7 @@ public sealed class MapPickClientTests : BunitContext
     public async Task Play_emits_a_normalizable_answer_for_each_fixture(string fixtureName, string expected)
     {
         var fixture = Fixture(fixtureName);
+        await LoadWorldMapAsync();
         var payload = Read<MapPickPayload>(fixture, "payload");
         var card = Read<MapPickCard>(fixture, "card");
         object? emitted = null;
@@ -66,6 +67,7 @@ public sealed class MapPickClientTests : BunitContext
     [InlineData("point")]
     public async Task Disabled_play_does_not_emit_another_answer(string fixtureName)
     {
+        await LoadWorldMapAsync();
         var card = Read<MapPickCard>(Fixture(fixtureName), "card");
         var emissions = 0;
         var cut = Render<MapPickPlay>(parameters => parameters
@@ -83,6 +85,7 @@ public sealed class MapPickClientTests : BunitContext
     [Fact]
     public async Task Play_discards_a_selection_when_the_host_moves_to_a_new_card()
     {
+        await LoadWorldMapAsync();
         var countryCard = Read<MapPickCard>(Fixture("basic"), "card");
         var pointCard = Read<MapPickCard>(Fixture("point"), "card");
         var emissions = new List<object?>();
@@ -102,27 +105,29 @@ public sealed class MapPickClientTests : BunitContext
     [Theory]
     [InlineData("basic", "Germany", "Netherlands")]
     [InlineData("point", "0°, 179.9°", "0°, -179.9°")]
-    public void Reveal_renders_the_target_and_two_stored_fixture_answers(string fixtureName, string target, string playerAnswer)
+    public async Task Reveal_renders_the_target_and_two_stored_fixture_answers(string fixtureName, string target, string playerAnswer)
     {
+        await LoadWorldMapAsync();
         var fixture = Fixture(fixtureName);
         var cut = Render<MapPickRevealComponent>(parameters => parameters
             .Add(component => component.Card, Read<MapPickCard>(fixture, "card"))
             .Add(component => component.Reveal, Read<Quesshi.Kinds.MapPick.MapPickReveal>(fixture, "reveal"))
             .Add(component => component.Answers, StoredAnswers(fixture)));
 
-        Assert.Contains(target, cut.Markup);
+        cut.WaitForAssertion(() => Assert.Contains(target, cut.Markup));
         Assert.Contains("Player 1", cut.Markup);
         Assert.Contains(playerAnswer, cut.Markup);
         Assert.Contains("Player 2", cut.Markup);
     }
 
     [Fact]
-    public void World_map_keeps_successful_country_marks_and_editor_point_tolerance_visible()
+    public async Task World_map_keeps_successful_country_marks_and_editor_point_tolerance_visible()
     {
+        await LoadWorldMapAsync();
         var world = Render<WorldMap>(parameters => parameters
             .Add(component => component.Marks, new[] { new MapMark(MapSelection.Country("DE"), "Player", true) }));
 
-        Assert.Contains("worldmap__country is-picked", world.Markup);
+        world.WaitForAssertion(() => Assert.Contains("worldmap__country is-picked", world.Markup));
 
         var pointPayload = Read<MapPickPayload>(Fixture("point"), "payload");
         var editor = Render<MapPickEditor>(parameters => parameters
@@ -135,8 +140,9 @@ public sealed class MapPickClientTests : BunitContext
     }
 
     [Fact]
-    public void World_map_wraps_point_overlays_and_miss_lines_at_the_antimeridian()
+    public async Task World_map_wraps_point_overlays_and_miss_lines_at_the_antimeridian()
     {
+        await LoadWorldMapAsync();
         var world = Render<WorldMap>(parameters => parameters
             .Add(component => component.Target, MapSelection.Point(0, 179.9))
             .Add(component => component.TargetRadiusKm, 50d)
@@ -204,6 +210,7 @@ public sealed class MapPickClientTests : BunitContext
     [Fact]
     public async Task Map_text_editor_and_svg_attributes_remain_invariant_on_a_persian_thread()
     {
+        await LoadWorldMapAsync();
         var before = CultureInfo.CurrentCulture;
         try
         {
@@ -256,6 +263,7 @@ public sealed class MapPickClientTests : BunitContext
     [InlineData("point")]
     public async Task Editor_round_trips_a_fixture_payload_unchanged(string fixtureName)
     {
+        await LoadWorldMapAsync();
         var payload = Read<MapPickPayload>(Fixture(fixtureName), "payload");
         var writes = new List<object?>();
 
@@ -282,6 +290,7 @@ public sealed class MapPickClientTests : BunitContext
     [InlineData("point", "91", "between -90 and 90")]
     public async Task Editor_uses_kind_validation_and_shows_inline_problems(string fixtureName, string value, string problem)
     {
+        await LoadWorldMapAsync();
         var payload = Read<MapPickPayload>(Fixture(fixtureName), "payload");
         var invalidTarget = payload.Target!.Shape == MapTargetKind.Country
             ? payload.Target with { CountryCode = value }
@@ -304,6 +313,7 @@ public sealed class MapPickClientTests : BunitContext
         var registry = new ClientRegistry(new NoopLoader());
         new MapPickClientEntry().Register(registry);
         Services.AddSingleton<IClientRegistry>(registry);
+        await LoadWorldMapAsync();
 
         foreach (var fixtureName in new[] { "basic", "point" })
         {
@@ -327,6 +337,9 @@ public sealed class MapPickClientTests : BunitContext
             Assert.Single(editor.FindComponents<MapPickEditor>());
         }
     }
+
+    private Task LoadWorldMapAsync() =>
+        new WorldMapAsset(Services.GetRequiredService<HttpClient>()).LoadAsync();
 
     private static JsonElement Fixture(string name)
     {

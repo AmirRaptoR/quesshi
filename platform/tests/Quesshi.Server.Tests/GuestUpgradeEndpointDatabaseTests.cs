@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Plugin.Api;
 using Quesshi.Server;
 using Quesshi.Server.Security;
 using Quesshi.Testing;
@@ -71,43 +72,30 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
     public async Task Failed_codes_do_not_attach_or_revoke_the_guest_session()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
-        var seeded = await SeedAsync();
-        await CreateTenantAccountAsync(seeded.TenantId, "failed-route@example.test");
-        await CreateTenantAccountAsync(seeded.TenantId, "expired-route@example.test");
-        await InsertCodeAsync("failed-route@example.test", "123456");
-        await using var app = await StartAsync();
-        using var client = new HttpClient { BaseAddress = LocalAddress(app) };
-        try
-        {
-            var context = new DefaultHttpContext();
-            await app.Services.GetRequiredService<IPlayerSessionIssuer>().IssueGuestAsync(context, seeded.TenantId, seeded.GuestId);
-            var cookie = CookieValue(context);
-            var csrf = await AntiforgeryAsync(client, seeded.Host, cookie);
+        await using var host = new PlatformHttpFixture([new GuestUpgradeHostFeature()]);
+        await host.StartAsync();
+        await using var owner = await OwnerAsync(host.DatabaseName);
+        var tenantId = await owner.QuerySingleAsync<Guid>("select tenant_id from players where account_id is null and display_name = 'Fixture guest'");
+        var guestId = await owner.QuerySingleAsync<Guid>("select id from players where account_id is null and display_name = 'Fixture guest'");
+        await CreateTenantAccountAsync(owner, tenantId, "failed-route@example.test");
+        await CreateTenantAccountAsync(owner, tenantId, "expired-route@example.test");
+        await InsertCodeAsync(owner, "failed-route@example.test", "123456");
 
-            for (var attempt = 0; attempt < 5; attempt++)
-            {
-                using var failed = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/me/upgrade", cookie, csrf, seeded.Origin,
-                    JsonContent.Create(new { email = "failed-route@example.test", code = "000000" }));
-                Assert.Equal(HttpStatusCode.Unauthorized, failed.StatusCode);
-            }
-            using (var exhausted = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/me/upgrade", cookie, csrf, seeded.Origin,
-                       JsonContent.Create(new { email = "failed-route@example.test", code = "123456" })))
-                Assert.Equal(HttpStatusCode.Unauthorized, exhausted.StatusCode);
-            await InsertCodeAsync("expired-route@example.test", "123456", DateTimeOffset.UtcNow.AddMinutes(-1));
-            using (var expired = await SendAsync(client, seeded.Host, HttpMethod.Post, "/api/me/upgrade", cookie, csrf, seeded.Origin,
-                       JsonContent.Create(new { email = "expired-route@example.test", code = "123456" })))
-                Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
-            using (var stillGuest = await SendAsync(client, seeded.Host, HttpMethod.Get, "/api/me", cookie, null, null))
-                Assert.Equal(HttpStatusCode.OK, stillGuest.StatusCode);
-
-            await using var owner = await OwnerAsync();
-            Assert.Null(await owner.QuerySingleAsync<Guid?>("select account_id from players where tenant_id = @tenant and id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
-            Assert.Equal(1L, await owner.QuerySingleAsync<long>("select count(*) from auth_sessions where tenant_id = @tenant and guest_id = @guest", new { tenant = seeded.TenantId, guest = seeded.GuestId }));
-        }
-        finally
+        for (var attempt = 0; attempt < 5; attempt++)
         {
-            await app.StopAsync();
+            using var failed = await host.Guest.PostAsJsonAsync("/api/me/upgrade", new { email = "failed-route@example.test", code = "000000" });
+            Assert.Equal(HttpStatusCode.Unauthorized, failed.StatusCode);
         }
+        using (var exhausted = await host.Guest.PostAsJsonAsync("/api/me/upgrade", new { email = "failed-route@example.test", code = "123456" }))
+            Assert.Equal(HttpStatusCode.Unauthorized, exhausted.StatusCode);
+        await InsertCodeAsync(owner, "expired-route@example.test", "123456", DateTimeOffset.UtcNow.AddMinutes(-1));
+        using (var expired = await host.Guest.PostAsJsonAsync("/api/me/upgrade", new { email = "expired-route@example.test", code = "123456" }))
+            Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
+        using (var stillGuest = await host.Guest.GetAsync("/api/me"))
+            Assert.Equal(HttpStatusCode.OK, stillGuest.StatusCode);
+
+        Assert.Null(await owner.QuerySingleAsync<Guid?>("select account_id from players where tenant_id = @tenant and id = @guest", new { tenant = tenantId, guest = guestId }));
+        Assert.Equal(1L, await owner.QuerySingleAsync<long>("select count(*) from auth_sessions where tenant_id = @tenant and guest_id = @guest", new { tenant = tenantId, guest = guestId }));
     }
 
     [SkippableFact]
@@ -207,14 +195,24 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
     private async Task InsertCodeAsync(string email, string code, DateTimeOffset? expiresAt = null)
     {
         await using var owner = await OwnerAsync();
+        await InsertCodeAsync(owner, email, code, expiresAt);
+    }
+
+    private static async Task InsertCodeAsync(NpgsqlConnection owner, string email, string code, DateTimeOffset? expiresAt = null)
+    {
         var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes("platform-test-email-auth-secret"), Encoding.UTF8.GetBytes(code));
         await owner.ExecuteAsync("insert into login_codes (email, code_hash, expires_at) values (@email, @hash, @expiresAt)", new { email, hash, expiresAt = expiresAt ?? DateTimeOffset.UtcNow.AddMinutes(10) });
     }
 
     private async Task<Guid> CreateTenantAccountAsync(Guid tenant, string email)
     {
-        var account = Guid.NewGuid();
         await using var owner = await OwnerAsync();
+        return await CreateTenantAccountAsync(owner, tenant, email);
+    }
+
+    private static async Task<Guid> CreateTenantAccountAsync(NpgsqlConnection owner, Guid tenant, string email)
+    {
+        var account = Guid.NewGuid();
         await owner.ExecuteAsync("""
             insert into accounts (id, email) values (@account, @email);
             insert into players (tenant_id, id, account_id, display_name, avatar_seed, lang)
@@ -246,9 +244,15 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         }
     }
 
-    private async Task<NpgsqlConnection> OwnerAsync()
+    private async Task<NpgsqlConnection> OwnerAsync(string? databaseName = null)
     {
-        var connection = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        var connectionStringBuilder = new NpgsqlConnectionStringBuilder(fixture.ConnectionStringForRole("quesshi_owner"));
+        if (databaseName is not null)
+        {
+            connectionStringBuilder.Database = databaseName;
+        }
+
+        var connection = new NpgsqlConnection(connectionStringBuilder.ConnectionString);
         await connection.OpenAsync();
         return connection;
     }
@@ -288,4 +292,17 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
     private sealed record StatusResponse(string Status);
     private sealed record ErrorResponse(string Error);
     private sealed record ProfileResponse(Guid Id, string DisplayName, string AvatarSeed, string Lang);
+
+    private sealed class GuestUpgradeHostFeature : IFeature
+    {
+        public string Id => "guest_upgrade_host";
+
+        public FeatureSettings Settings => FeatureSettings.Create(new GuestUpgradeHostSettings(), _ => []);
+
+        public void Configure(IFeatureBuilder feature)
+        {
+        }
+    }
+
+    private sealed record GuestUpgradeHostSettings;
 }

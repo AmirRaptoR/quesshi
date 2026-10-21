@@ -37,5 +37,7 @@
   <Folder Name="/tools/">
     <Project Path="tools/Quesshi.BankExport/Quesshi.BankExport.csproj" />
     <Project Path="tools/Quesshi.BankExport.Tests/Quesshi.BankExport.Tests.csproj" />
+    <Project Path="tools/Quesshi.Coverage/Quesshi.Coverage.csproj" />
+    <Project Path="tools/Quesshi.Coverage.Tests/Quesshi.Coverage.Tests.csproj" />
   </Folder>
 </Solution>
