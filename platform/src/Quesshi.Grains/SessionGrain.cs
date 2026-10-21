@@ -204,7 +204,7 @@ public class SessionGrain(
             "start" => await lobby.StartAsync(_tenantId, _sessionId, playerId),
             _ => LobbyOutcome.Error("invalid_request"),
         };
-        if (outcome.Version is not null || outcome.Code == "cancelled")
+        if (outcome.Version is not null || outcome.Code == "ended")
         {
             _state = await snapshots.LoadAsync(_tenantId, _sessionId);
             ArmDeadlineTimer();

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quesshi.Application;
+using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Plugin.Api;
@@ -37,6 +38,9 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     public string DatabaseName => _postgres.DatabaseName ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its database.");
     public Guid TenantId => _identities?.TenantId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
     public Guid PlayerId => _identities?.PlayerId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
+    /// <summary>Optional format registry that replaces the production formats for a hosted route test.</summary>
+    public IFormatRegistry? Formats { get; init; }
+    public IServiceProvider Services => _application?.Services ?? throw new InvalidOperationException("The platform HTTP fixture has not started.");
     public int HttpPort { get; private set; }
     public int SiloPort { get; private set; }
     public int GatewayPort { get; private set; }
@@ -51,6 +55,27 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
             values (@tenantId, @type, @key, true, @enabled)
             on conflict (tenant_id, type, key) do update set entitled = true, enabled = excluded.enabled
             """, new { tenantId = TenantId, type, key, enabled }, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>Reads state as the database owner for a hosted route test.</summary>
+    public async Task<IReadOnlyList<T>> QueryOwnerAsync<T>(string sql, object parameters, CancellationToken cancellationToken = default)
+    {
+        await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        return (await owner.QueryAsync<T>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken))).ToArray();
+    }
+
+    /// <summary>Creates another guest in the fixture tenant.</summary>
+    public async Task<(HttpClient Client, Guid PlayerId)> CreateAnotherGuestClientAsync(CancellationToken cancellationToken = default)
+    {
+        var playerId = Guid.NewGuid();
+        await ExecuteOwnerAsync("""
+            insert into players(tenant_id, id, account_id, display_name, avatar_seed, lang)
+            values (@tenantId, @playerId, null, 'Another fixture guest', 'guest', 'en');
+            """, new { tenantId = TenantId, playerId }, cancellationToken);
+        var cookie = await IssueGuestCookieAsync(playerId, cancellationToken);
+        var token = await AntiforgeryAsync("/api/antiforgery", cookie, "__Host-qp", TenantHost, cancellationToken);
+        return (AddClient(cookie, token, "__Host-qp", "X-CSRF", TenantHost), playerId);
     }
 
     /// <summary>Executes setup SQL as the database owner for a hosted route test.</summary>
@@ -82,7 +107,8 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
                 sources,
                 SiloPort,
                 GatewayPort,
-                configuredFeatures: FeatureRegistry.Create(_features));
+                configuredFeatures: FeatureRegistry.Create(_features),
+                configuredFormats: Formats);
             application.Urls.Add($"http://127.0.0.1:{HttpPort}");
             await application.StartAsync(cancellationToken);
             await application.Services.GetRequiredService<PostgresClock>().StartAsync(cancellationToken);
@@ -129,6 +155,19 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         {
             ReleasePorts();
         }
+    }
+
+    /// <summary>Creates another signed-in player in the fixture tenant.</summary>
+    public async Task<(HttpClient Client, Guid PlayerId)> CreateSecondPlayerClientAsync(CancellationToken cancellationToken = default)
+    {
+        var accountId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
+        await ExecuteOwnerAsync("""
+            insert into accounts(id, email) values (@accountId, @email);
+            insert into players(tenant_id, id, account_id, display_name, avatar_seed, lang)
+            values (@tenantId, @playerId, @accountId, 'Second fixture player', 'second', 'en');
+            """, new { tenantId = TenantId, accountId, playerId, email = $"second-{accountId:N}@example.test" }, cancellationToken);
+        return (await CreatePlayerClientAsync(accountId, cancellationToken), playerId);
     }
 
     /// <summary>Creates an authenticated player in an isolated tenant for tenant-bound route tests.</summary>

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Dapper;
-using Microsoft.AspNetCore.Mvc;
 using Orleans;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Plugin.Api;
@@ -20,8 +19,9 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/leave", LeaveAsync).AllowGuests();
     }
 
-    private static async Task<IResult> JoinAsync([FromBody] JoinBody? body, HttpContext context, ITenantDb database, IGrainFactory grains, CancellationToken cancellationToken)
+    private static async Task<IResult> JoinAsync(HttpContext context, ITenantDb database, IGrainFactory grains, CancellationToken cancellationToken)
     {
+        var body = await ReadBodyAsync<JoinBody>(context, cancellationToken);
         if (body is null || string.IsNullOrWhiteSpace(body.Code) || body.Code.Length > 64) return Error("invalid_request", 400);
         var player = context.Player();
         var tenant = TenantResolutionMiddleware.GetTenant(context);
@@ -33,8 +33,18 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         return Result(await grains.GetGrain<ISessionGrain>($"{tenant.Id}/{id}").ExecuteLobbyAsync(new(player.PlayerId.ToString(), "join")));
     }
 
-    private static Task<IResult> SettingsAsync(Guid id, [FromBody] SettingsBody? body, HttpContext context, IGrainFactory grains) =>
-        ExecuteAsync(id, body is null ? null : new LobbyCommand(context.Player()?.PlayerId.ToString() ?? "", "settings", body.Rules?.GetRawText(), body.Content?.GetRawText(), body.Capacity), context, grains);
+    private static async Task<IResult> SettingsAsync(Guid id, HttpContext context, IGrainFactory grains, CancellationToken cancellationToken)
+    {
+        var body = await ReadBodyAsync<SettingsBody>(context, cancellationToken);
+        if (body is null) return Error("invalid_request", 400);
+        return await ExecuteAsync(id, new LobbyCommand("", "settings", body.Rules?.GetRawText(), body.Content?.GetRawText(), body.Capacity), context, grains);
+    }
+
+    private static async Task<T?> ReadBodyAsync<T>(HttpContext context, CancellationToken cancellationToken) where T : class
+    {
+        try { return await context.Request.ReadFromJsonAsync<T>(cancellationToken); }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or BadHttpRequestException) { return null; }
+    }
 
     private static Task<IResult> StartAsync(Guid id, HttpContext context, IGrainFactory grains) =>
         ExecuteAsync(id, new LobbyCommand(context.Player()?.PlayerId.ToString() ?? "", "start"), context, grains);
@@ -54,7 +64,7 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
 
     private static IResult Result(LobbyCommandResult result) => result.Code switch
     {
-        "joined" or "configured" or "left" or "cancelled" or "started" => Results.Json(new { code = result.Code, version = result.Version }),
+        "joined" or "configured" or "left" or "ended" or "started" => Results.Json(new { code = result.Code, version = result.Version }),
         "not_found" => Error(result.Code, 404),
         "not_owner" or "absent_seat" or "guest_not_allowed" => Error(result.Code, 403),
         "session_full" or "late_join_not_allowed" or "expired" or "cancelled" or "not_in_lobby" or "not_enough_players" => Error(result.Code, 409),

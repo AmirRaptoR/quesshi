@@ -103,7 +103,7 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
         {
             rules = format.ReadRules(rulesJson is null ? session.Rules!.Value : Json(rulesJson));
             content = contentJson is null ? JsonSerializer.Deserialize(session.Content!.Value.GetRawText(), SessionJsonContext.Default.SessionContent)!
-                : JsonSerializer.Deserialize(contentJson, SessionJsonContext.Default.SessionContent)!;
+                : ReadContent(contentJson);
             var plan = format.Plan(new ContentSpec(content.Source, content.Parameters, content.Count), rules);
             if (plan.Count != content.Count) return LobbyOutcome.Error("invalid_rules");
         }
@@ -173,7 +173,7 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
         foreach (var seat in current.Seats.Values)
             await tx.ExecuteAsync("""
                 update session_participants set eligible = @eligible where session_id = @sessionId and player_id = @playerId
-                """, new { sessionId, playerId = Guid.Parse(seat.Player), eligible = format.Spec.Pacing == Pacing.Shared && !seat.IsGuest }, cancellationToken);
+                """, new { sessionId, playerId = Guid.Parse(seat.Player), eligible = seat.Eligible }, cancellationToken);
         return new LobbyOutcome("started", version);
     }
 
@@ -182,9 +182,10 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
         var session = await LoadAsync(tenantId, sessionId, cancellationToken);
         if (session is null) return LobbyOutcome.Error("not_found");
         if (session.Status == "cancelled") return LobbyOutcome.Error("cancelled");
+        if (session.Status != "lobby") return LobbyOutcome.Error("not_in_lobby");
         if (session.Owner != playerId.ToString()) return LobbyOutcome.Error("not_owner");
         await store.EndCoreAsync(tenantId, sessionId, CoreEndReason.Owner, cancellationToken);
-        return new LobbyOutcome("cancelled");
+        return new LobbyOutcome("ended");
     }
 
     private Task<SessionRow?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken) =>
@@ -206,6 +207,16 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
 
     private static async Task<bool> EnabledAsync(ITenantTx tx, string source, CancellationToken cancellationToken) =>
         await tx.QuerySingleOrDefaultAsync<bool?>("select entitled and enabled from tenant_capabilities where type = 'source' and key = @source", new { source }, cancellationToken) == true;
+    private static SessionContent ReadContent(string json)
+    {
+        var document = JsonSerializer.Deserialize<ContentDocument>(json, ContentOptions) ?? throw new JsonException("Content is required.");
+        if (string.IsNullOrWhiteSpace(document.Source) || document.Parameters.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Content needs a source and object parameters.");
+        return new SessionContent(document.Source, document.Parameters.Clone(), document.Count);
+    }
+
+    private static readonly JsonSerializerOptions ContentOptions = new(JsonSerializerDefaults.Web);
+    private sealed record ContentDocument(string? Source, JsonElement Parameters, int Count);
     private static JsonElement Json(string value) => JsonDocument.Parse(value).RootElement.Clone();
 
     private sealed class SessionData

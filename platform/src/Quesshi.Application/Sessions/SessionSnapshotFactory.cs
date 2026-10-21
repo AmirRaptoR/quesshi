@@ -31,9 +31,9 @@ public sealed class SessionSnapshotFactory(IKindRegistry kinds, SourceResultVali
             var question = sourceItem.Question;
             var snapshot = sourceItem.Snapshot;
             if (question is null && snapshot is null) throw new InvalidSourceResultException("A source question must contain a question or ready snapshot.");
-            var kind = kinds.GetCurrent(question?.Kind ?? snapshot!.Kind);
-            var version = question?.KindVersion ?? snapshot!.KindVersion;
-            var payload = kind.Upgrade(version, question?.Payload ?? snapshot!.Payload);
+            var kind = kinds.GetCurrent(question is null ? snapshot!.Kind : question.Kind);
+            var version = question is null ? snapshot!.KindVersion : question.KindVersion;
+            var payload = kind.Upgrade(version, question is null ? snapshot!.Payload : question.Payload);
             JsonElement resolved;
             JsonElement card;
             JsonElement reveal;
@@ -53,10 +53,13 @@ public sealed class SessionSnapshotFactory(IKindRegistry kinds, SourceResultVali
                 _ = kind.Card(payload, resolved);
                 _ = kind.Reveal(payload, resolved);
             }
-            var categoryId = question?.CategoryId ?? snapshot!.CategoryId;
+            var categoryId = question is null ? snapshot!.CategoryId : question.CategoryId;
+            var level = question is null ? snapshot!.Level : question.Level;
+            var prompt = question is null ? snapshot!.Prompt : question.Prompt;
+            var mediaId = question is null ? snapshot!.MediaId : question.MediaId;
             var category = await CategoryAsync(transaction, categoryId, cancellationToken);
-            values.Add(new PersistedSessionItem(SessionItemState.Create(new SessionItem(slot, kind.Id, kind.Version, question?.Level ?? snapshot!.Level, categoryId?.ToString()), payload, resolved, card, reveal),
-                question?.Id, question?.Prompt ?? snapshot!.Prompt, question?.MediaId ?? snapshot!.MediaId, categoryId, category));
+            values.Add(new PersistedSessionItem(SessionItemState.Create(new SessionItem(slot, kind.Id, kind.Version, level, categoryId?.ToString()), payload, resolved, card, reveal),
+                question?.Id, prompt, mediaId, categoryId, category));
         }
         return values.ToArray();
     }
