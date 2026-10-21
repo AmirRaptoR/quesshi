@@ -4,6 +4,13 @@ Platform integration tests use the shared helpers. They exercise the migrated
 PostgreSQL database and the real ASP.NET host; do not replace either boundary
 with a mock, an in-memory database, or a manually assembled HTTP request.
 
+`Quesshi.Testing` owns `PostgresFixture` and `MediaSamples`, which test
+projects may reference. `Quesshi.Server.Tests` owns `PlatformHttpFixture`,
+the internal `RoleMatrix`, `DiscriminatingSeeds`, and the other `TestSeeds`.
+HTTP, role-matrix, and discriminating-seed tests therefore belong in
+`Quesshi.Server.Tests`; do not try to reference those test-local helpers from
+another test project.
+
 `QUESSHI_TEST_POSTGRES` is an administrator connection string. Database tests
 skip locally when it is absent, but it is required when `CI=true`; a locally
 skipped test is not evidence for a database criterion.
@@ -22,7 +29,7 @@ and assert its observed result. Do not prove a database behavior by issuing a
 second, hand-written query that duplicates the production SQL.
 
 ```csharp
-public sealed class CategoryDatabaseTests(PostgresFixture postgres)
+public sealed class ContentRepositoryDatabaseTests(PostgresFixture postgres)
     : IClassFixture<PostgresFixture>
 {
     [SkippableFact]
@@ -34,7 +41,10 @@ public sealed class CategoryDatabaseTests(PostgresFixture postgres)
         await using var sources = new DatabaseSources(
             postgres.ConnectionStringForRole("quesshi_app"),
             postgres.ConnectionStringForRole("quesshi_system"));
-        await using var app = Program.CreateApplication(sources, siloPort: 11337, gatewayPort: 30337);
+        await using var app = Program.CreateApplication(
+            sources,
+            siloPort: uniqueSiloPort,
+            gatewayPort: uniqueGatewayPort);
         await using var owner = new NpgsqlConnection(postgres.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
         var tenant = await TenantSeed.CreateAsync(owner, "category-test");
@@ -51,6 +61,12 @@ public sealed class CategoryDatabaseTests(PostgresFixture postgres)
     }
 }
 ```
+
+`uniqueSiloPort` and `uniqueGatewayPort` are deliberately placeholders: if a
+database test starts `Program.CreateApplication`, choose a silo/gateway pair
+that no other test uses. First search `platform/tests` for the proposed
+numbers and reserve a distinct pair for the class. Prefer `PlatformHttpFixture`
+for a hosted endpoint test; it allocates every host port dynamically.
 
 Use the application's seed helpers to prepare state and the same role-specific
 connection string that production uses: `quesshi_owner` for setup/migrations,
@@ -71,14 +87,16 @@ another tenant for isolation cases. Do not add these headers or issue tokens in
 the test itself.
 
 ```csharp
-[Collection("PostgreSQL")]
-public sealed class ExampleEndpointTests(PostgresFixture postgres) : IAsyncLifetime
+public sealed class ExampleEndpointTests : IAsyncLifetime
 {
     private PlatformHttpFixture? _host;
+    private static readonly bool IsPostgresConfigured = PostgresFixture.IsConfigured(
+        Environment.GetEnvironmentVariable(PostgresFixture.AdminConnectionStringEnvironmentVariable),
+        string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase));
 
     public async Task InitializeAsync()
     {
-        if (postgres.ConnectionString is null) return;
+        if (!IsPostgresConfigured) return;
         _host = new PlatformHttpFixture([new ExampleEndpointFeature()]);
         await _host.StartAsync();
     }
@@ -91,7 +109,7 @@ public sealed class ExampleEndpointTests(PostgresFixture postgres) : IAsyncLifet
     [SkippableFact]
     public async Task Editor_can_update_the_example()
     {
-        Skip.If(postgres.ConnectionString is null, "PostgreSQL is not configured.");
+        Skip.If(!IsPostgresConfigured, "PostgreSQL is not configured.");
 
         using var response = await Host.Editor.PostAsync("/api/admin/x/example", null);
 

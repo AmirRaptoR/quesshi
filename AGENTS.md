@@ -163,9 +163,11 @@ These rules are enforced, and you must never work around them:
 
 - Framework: **xUnit 2**, `Xunit.SkippableFact` for database tests, **bUnit** for Blazor
   components (`Quesshi.Web.Tests`).
-- Test project per source area: `platform/tests/Quesshi.<Area>.Tests`. Shared fixtures are in
-  `platform/tests/Quesshi.Testing` (`PostgresFixture`); see `platform/tests/README.md` before
-  adding an integration test.
+- Test project per source area: `platform/tests/Quesshi.<Area>.Tests`. `Quesshi.Testing` owns
+  shared `PostgresFixture` and `MediaSamples`; `Quesshi.Server.Tests` owns `PlatformHttpFixture`,
+  its internal `RoleMatrix`, `DiscriminatingSeeds`, and the other `TestSeeds`. HTTP, role-matrix,
+  and discriminating-seed tests belong in `Quesshi.Server.Tests`; see `platform/tests/README.md`
+  before adding an integration test.
 - **Test names are sentences in snake case** that state the behaviour:
   `Guest_upgrade_rejects_an_expired_code`, not `Test1` or `UpgradeTest`.
 - **New database tests require an isolated `PostgresFixture`.** Reference `Quesshi.Testing` and
@@ -190,13 +192,18 @@ These rules are enforced, and you must never work around them:
   Existing collection-based tests keep the legacy collection declaration:
   `[CollectionDefinition("PostgreSQL", DisableParallelization = true)]` and
   `ICollectionFixture<PostgresFixture>`; do not convert or extend it incidentally.
+  A database test that starts `Program.CreateApplication` must use a silo/gateway
+  port pair no other test uses: search `platform/tests` for the proposed numbers
+  first and reserve a distinct pair for that class. Use `PlatformHttpFixture`
+  instead when testing a hosted endpoint, because it allocates its ports dynamically.
 - **New HTTP behaviour tests require `PlatformHttpFixture`.** It starts the real migrated host
   with dynamically allocated HTTP, silo, and gateway ports, an isolated database, and clients
   with the correct seeded identity, tenant host/Origin, and antiforgery token. Use its role
   clients (`Anonymous`, `Guest`, `Player`, `Moderator`, `Editor`, `Owner`, and
   `PlatformAdministrator`) instead of constructing `HttpClient`, cookies, headers, or tokens.
   Use `CreateOtherTenantPlayerClientAsync` for tenant-isolation cases and `RoleMatrix` for a
-  complete endpoint permission contract.
+  complete endpoint permission contract. These helpers are owned by
+  `Quesshi.Server.Tests`, so HTTP and role-matrix tests belong in that project.
 - **Selection and isolation tests need discriminating data.** Seed an excluded but otherwise
   plausible row (for example through `DiscriminatingSeeds`) and assert that the real application
   does not return it. This is required for a query, filter, or tenant-isolation claim.
