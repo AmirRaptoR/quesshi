@@ -807,7 +807,9 @@ current view.
 | Finish | Writes places and results for every seat with set-based statements, emits `SessionEnded` | under 100 ms |
 
 An answer that happens to be the last one of a round also performs the close, and is measured as a
-close. The only plugin code in any of them is the format and the kind, which are pure; no feature
+close. An ordinary answer is measured as its own in-memory turn plus an equal share of the batch
+transaction that made it durable (7.4.1), so the sum of the measured turns is the time the grain
+was occupied. The only plugin code in any of them is the format and the kind, which are pure; no feature
 plugin runs here.
 
 **This is the riskiest number in the design, so it is measured first.** At 2 ms each, 500 answers
@@ -820,6 +822,72 @@ answers arriving in the last 250 ms before the deadline, a full burst against th
 of: the design stands; the player limit for `live` is lowered (today's default is 20, and the
 platform maximum is 500); or answers are written in batches, which would then be designed before
 the engine is built.
+
+#### 7.4.1 Batched answers
+
+The benchmark of 19.2 showed that one transaction per answer cannot meet the ordinary-answer
+budget with 100 or more seats, so answers are made durable in **batches**. Nothing else in 7.4
+changes: the grain is still the session's only writer, every write is inside the tenant
+transaction as `quesshi_app`, the session version fences it, and no feature plugin runs in any of
+these turns (only the format and the kind, which are pure).
+
+**One gate instead of non-reentrancy.** `SessionGrain` is reentrant so a command that is waiting
+for its batch to commit does not stop the grain from taking the next one. All state changes and
+all writes still happen one at a time inside a single first-in, first-out gate: every entry point
+(command, lobby command, timeout) takes the gate before it reads or changes the working state.
+The only thing done outside the gate is waiting for a batch to commit, and rendering the view
+from the committed snapshot the batch returned.
+
+**Working and committed state.** The grain keeps the *committed* state (what the database holds,
+at the version it last wrote) and the *working* state (committed state plus the answers accepted
+but not yet written). A transition is always computed from the working state. The next write
+stores the difference between the two.
+
+**An answer is deferred only when it is ordinary.** After the format has applied an `answer`
+command, the grain defers it if the session is not ended and the transition changed neither the
+session's position, deadline, status nor result. Such an answer is validated, graded, scored and
+added to the working state in memory, and its caller waits. Everything else (a close, a finish,
+a timeout, a change of position or deadline, any other command type) is written at once by the
+turn that made it. That write carries every deferred answer in front of it, so a close sees them
+all and records misses only for seats that have not answered.
+
+**Group commit.** The first deferred answer after a write queues a *flush turn* on the gate. Because
+the gate is first in, first out, every answer that arrived before the flush turn is applied in
+memory first and rides in the same batch; answers that arrive while the batch is being written
+queue behind it and form the next batch. A batch is written as one transaction:
+
+1. the fencing update of 7.4 step 5, which is still the first statement, raises the session
+   version **once for the whole batch**;
+2. the answer rows and the seats' scores in **set-based** statements (one statement per table,
+   not one per row), then the event jobs and `pg_notify`.
+
+**Durable acknowledgement.** A caller is told `ok` only after the transaction that holds its
+answer has committed. It then receives the view rendered from the state that transaction wrote.
+Until then nothing reports the answer as accepted, and a view or stream never shows an answer
+that is not committed.
+
+**Failure.** A batch is one unit. If its transaction rolls back for certain, the working state is
+reset to the committed state and every caller in the batch gets the retryable `write_failed`. If
+the fencing update matches no row (stale activation) or the commit outcome is unknown, the grain
+does what 7.4 step 6 says: it drops everything, deactivates and every caller in the batch gets a
+retryable error. A caller that retries finds its answer already stored (the commit did happen) and
+gets the current view without being scored twice, or finds none and answers again. The retry is
+judged by its new receipt time, so an answer that was not made durable before the format grace
+ended is refused as late.
+
+**Deadline, grace and timeout.** Eligibility is decided when the turn starts, from the receipt
+time and the grace, exactly as before; being in a batch does not extend or shorten it. A deferred
+answer is part of the working state, so a timeout turn that runs while it waits sees it: the close
+and the batch commit in the same transaction and the answer is acknowledged as part of that
+commit. An answer whose receipt time is after the deadline plus grace is refused with
+`late_answer` and never enters a batch. A round closes once, because a close moves the
+position and every later command for the old position is stale. The finish writes the standings
+and emits `SessionEnded` once, in the transaction that ends the session.
+
+**Budgets.** The *ordinary answer* budget is the answer's own in-memory turn plus its equal share
+of the batch transaction (batch time divided by the answers in it). The *round close* and *finish*
+budgets are the whole turn, including the write of every deferred answer ahead of it, and the
+set-based writes of misses, seats and results.
 
 ### 7.5 Time, deadlines and timers
 
