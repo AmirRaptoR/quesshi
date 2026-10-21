@@ -77,7 +77,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api "/repos/${GITHUB_REPOSITORY}/actions/workflows/platform.yml/runs?branch=main&status=success&per_page=100" > platform/artifacts/coverage/main-runs.json
-          run_id="$(dotnet run --project platform/tools/Quesshi.Coverage/Quesshi.Coverage.csproj --no-build --configuration Release -- select-baseline --workflow-runs platform/artifacts/coverage/main-runs.json)"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=platform-cobertura&per_page=100" > platform/artifacts/coverage/main-artifacts.json
+          run_id="$(dotnet run --project platform/tools/Quesshi.Coverage/Quesshi.Coverage.csproj --no-build --configuration Release -- select-baseline --workflow-runs platform/artifacts/coverage/main-runs.json --artifacts platform/artifacts/coverage/main-artifacts.json)"
           printf 'run-id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
       - name: Download the selected main coverage baseline
         if: github.event_name == 'pull_request' && steps.baseline.outputs.run-id != ''

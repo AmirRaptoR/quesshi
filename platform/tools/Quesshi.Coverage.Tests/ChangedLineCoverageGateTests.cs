@@ -211,17 +211,44 @@ public sealed class ChangedLineCoverageGateTests
     }
 
     [Fact]
-    public void Newest_successful_main_run_is_selected_for_the_baseline()
+    public void Newest_successful_main_run_with_a_coverage_artifact_is_selected_for_the_baseline()
     {
         using var fixture = new CoverageFixture();
         var runsPath = fixture.WriteWorkflowRuns(
             (101, "main", "success", "2026-10-20T10:00:00Z"),
             (102, "main", "success", "2026-10-21T10:00:00Z"),
             (103, "feature", "success", "2026-10-22T10:00:00Z"));
+        var artifactsPath = fixture.WriteWorkflowRunArtifacts(101, 102, 103);
 
-        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath);
+        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath, artifactsPath);
 
         Assert.Equal("102", selected);
+    }
+
+    [Fact]
+    public void Historical_main_runs_without_a_coverage_artifact_are_not_baselines()
+    {
+        using var fixture = new CoverageFixture();
+        var runsPath = fixture.WriteWorkflowRuns(
+            (101, "main", "success", "2026-10-20T10:00:00Z"),
+            (102, "main", "success", "2026-10-21T10:00:00Z"));
+        var artifactsPath = fixture.WriteWorkflowRunArtifacts(101);
+
+        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath, artifactsPath);
+
+        Assert.Equal("101", selected);
+    }
+
+    [Fact]
+    public void No_coverage_artifacts_yields_no_main_baseline()
+    {
+        using var fixture = new CoverageFixture();
+        var runsPath = fixture.WriteWorkflowRuns((101, "main", "success", "2026-10-20T10:00:00Z"));
+        var artifactsPath = fixture.WriteWorkflowRunArtifacts();
+
+        var selected = BaselineRunSelector.SelectNewestSuccessfulMainRun(runsPath, artifactsPath);
+
+        Assert.Null(selected);
     }
 
     [Fact]
@@ -370,6 +397,14 @@ file sealed class CoverageFixture : IDisposable
         var path = Path.Combine(root, "workflow-runs.json");
         var entries = string.Join(',', runs.Select(run => $$"""{"id":{{run.Id}},"head_branch":"{{run.Branch}}","conclusion":"{{run.Conclusion}}","created_at":"{{run.CreatedAt}}"}"""));
         File.WriteAllText(path, $$"""{"workflow_runs":[{{entries}}]}""");
+        return path;
+    }
+
+    public string WriteWorkflowRunArtifacts(params long[] runIds)
+    {
+        var path = Path.Combine(root, "workflow-run-artifacts.json");
+        var entries = string.Join(',', runIds.Select(id => $"{{\"name\":\"platform-cobertura\",\"expired\":false,\"workflow_run\":{{\"id\":{id}}}}}"));
+        File.WriteAllText(path, $$"""{"artifacts":[{{entries}}]}""");
         return path;
     }
 

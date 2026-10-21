@@ -56,7 +56,7 @@ public static class Program
 
     private static int SelectBaseline(string[] args)
     {
-        var runId = BaselineRunSelector.SelectNewestSuccessfulMainRun(Value(args, "--workflow-runs"));
+        var runId = BaselineRunSelector.SelectNewestSuccessfulMainRun(Value(args, "--workflow-runs"), Value(args, "--artifacts"));
         if (runId is not null)
         {
             Console.Write(runId);
@@ -105,7 +105,7 @@ public static class Program
 
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: coverage merge --output <path> --input-directory <path> [...] | coverage check --coverage <path> --diff <path> --repository-root <path> | coverage baseline --coverage <path> [--baseline <path>] --repository-root <path> | coverage select-baseline --workflow-runs <path>");
+        Console.Error.WriteLine("Usage: coverage merge --output <path> --input-directory <path> [...] | coverage check --coverage <path> --diff <path> --repository-root <path> | coverage baseline --coverage <path> [--baseline <path>] --repository-root <path> | coverage select-baseline --workflow-runs <path> --artifacts <path>");
         return 2;
     }
 }
