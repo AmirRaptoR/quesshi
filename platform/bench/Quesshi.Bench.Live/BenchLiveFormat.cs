@@ -26,6 +26,8 @@ public sealed class BenchLiveFormat : IFormat
     public void Apply(ISession session, Command command)
     {
         if (command.Type != CommandType.Answer || session.Session.Position is not { Phase: QuestionPhase } position) return;
+        // A repeat of an answer changes nothing, so a retry after a lost acknowledgement is safe.
+        if (session.Answer(command.Player, position.Slot) is not null) return;
         session.Record(session.Grade(command), 1);
         if (session.Seats.Count(seat => seat.Role == "player") == session.Seats.Count(seat => seat.Role == "player" && session.Answer(seat.Player, position.Slot) is not null)) Close(session, position.Slot);
     }

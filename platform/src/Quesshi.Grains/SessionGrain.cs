@@ -178,7 +178,7 @@ public class SessionGrain(
                 current.Session.Position?.Phase);
             // This write must follow the batch that is being written and carries the answers still waiting.
             if (!await QuiesceFlushAsync(generation)) return SessionCommandResult.Error("write_failed", retryable: true);
-            var committedBase = _baseline ?? transition.Initial;
+            var committedBase = _baseline ?? _state!; // the committed state, which a batch that just finished may have advanced
             long version;
             try
             {
@@ -348,7 +348,7 @@ public class SessionGrain(
                 transition.Current.Session.Position?.Phase,
                 transition.Current.Session.Ended);
             if (!await QuiesceFlushAsync(generation)) return;
-            var committedBase = _baseline ?? transition.Initial;
+            var committedBase = _baseline ?? _state!; // the committed state, which a batch that just finished may have advanced
             long version;
             try { version = await store.SaveAsync(_tenantId, _sessionId, committedBase.Session.Version, committedBase, transition.Current); }
             catch (Exception exception) when (!IsInfrastructureFailure(exception))

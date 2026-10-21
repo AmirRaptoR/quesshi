@@ -149,6 +149,8 @@ public sealed class LiveBenchmarkRunner
                 : [];
             var coldPoolWaits = options.Scenario == LiveScenario.Cold ? measurements.PoolWaits.ToArray() : [];
             measurements.Reset();
+            // Start the window from a clean heap so a collection of the setup's garbage is not charged to the first answers.
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
             var gcBefore = (Gen0: GC.CollectionCount(0), Gen1: GC.CollectionCount(1), Gen2: GC.CollectionCount(2), Pause: GC.GetTotalPauseDuration());
             var deadline = await GetDeadlineAsync(database.OwnerConnectionString, session.Id, cancellationToken);
             var commands = (await worker.SendAsync(new WorkerRequest("burst", Session: session.Id, Scenario: options.Scenario, Deadline: deadline))).Samples!;
@@ -502,7 +504,7 @@ public sealed class LiveBenchmarkRunner
     }
 }
 
-internal static class LiveScenarioNames
+public static class LiveScenarioNames
 {
     public static string CliName(this LiveScenario scenario) => scenario switch
     {
