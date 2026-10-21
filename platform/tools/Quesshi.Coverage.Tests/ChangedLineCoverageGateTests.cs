@@ -22,7 +22,7 @@ public sealed class ChangedLineCoverageGateTests
     public void Eligible_changed_lines_include_only_coverable_production_sources()
     {
         using var fixture = new CoverageFixture();
-        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "one", "two");
+        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "one", "two", "// non-coverable comment");
         fixture.WriteSource("platform/tools/Quesshi.BankExport/Export.cs", "one");
         fixture.WriteSource("platform/tests/Quesshi.Domain.Tests/ScoreTests.cs", "one");
         fixture.WriteSource("platform/src/Quesshi.Domain/Migrations/Seed.cs", "one");
@@ -37,6 +37,7 @@ public sealed class ChangedLineCoverageGateTests
         fixture.WriteDiff(
             ("platform/src/Quesshi.Domain/Score.cs", 1),
             ("platform/src/Quesshi.Domain/Score.cs", 2),
+            ("platform/src/Quesshi.Domain/Score.cs", 3),
             ("platform/tools/Quesshi.BankExport/Export.cs", 1),
             ("platform/tests/Quesshi.Domain.Tests/ScoreTests.cs", 1),
             ("platform/src/Quesshi.Domain/Migrations/Seed.cs", 1),
@@ -45,6 +46,23 @@ public sealed class ChangedLineCoverageGateTests
         var result = ChangedLineCoverageGate.Evaluate(fixture.CoveragePath, fixture.DiffPath, fixture.Root);
 
         Assert.Equal(3, result.EligibleLineCount);
+    }
+
+    [Fact]
+    public void Added_lines_beginning_with_double_plus_keep_later_line_numbers()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "++count;", "uncovered");
+        fixture.WriteCoverage(
+            ("platform/src/Quesshi.Domain/Score.cs", 1, 1),
+            ("platform/src/Quesshi.Domain/Score.cs", 2, 0));
+        fixture.WriteDiff(
+            ("platform/src/Quesshi.Domain/Score.cs", 1),
+            ("platform/src/Quesshi.Domain/Score.cs", 2));
+
+        var result = ChangedLineCoverageGate.Evaluate(fixture.CoveragePath, fixture.DiffPath, fixture.Root);
+
+        Assert.Equal([new ChangedLine("platform/src/Quesshi.Domain/Score.cs", 2, "uncovered")], result.UncoveredLines);
     }
 
     [Fact]
@@ -134,6 +152,66 @@ public sealed class ChangedLineCoverageGateTests
 
         Assert.EndsWith("Test what this code does, or remove it if nothing needs it.", output, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Check_returns_one_when_changed_line_coverage_is_below_threshold()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "missing");
+        fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 0));
+        fixture.WriteDiff(("platform/src/Quesshi.Domain/Score.cs", 1));
+
+        var exitCode = Program.Main(CheckArguments(fixture.CoveragePath, fixture.DiffPath, fixture.Root));
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
+    public void Check_writes_complete_failure_diagnostics_to_standard_error()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "missing");
+        fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 0, "50% (1/2)"));
+        fixture.WriteDiff(("platform/src/Quesshi.Domain/Score.cs", 1));
+        using var error = new StringWriter();
+        var originalError = Console.Error;
+        try
+        {
+            Console.SetError(error);
+            Program.Main(CheckArguments(fixture.CoveragePath, fixture.DiffPath, fixture.Root));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+
+        Assert.Equal(string.Join(Environment.NewLine,
+        [
+            "Changed code contains untested eligible lines.",
+            "Uncovered changed lines:",
+            "platform/src/Quesshi.Domain/Score.cs:1",
+            "  1 | missing",
+            "Changed branches with untested outcomes:",
+            "platform/src/Quesshi.Domain/Score.cs:1: only 1 of 2 outcomes tested",
+            "Test what this code does, or remove it if nothing needs it."
+        ]), error.ToString());
+    }
+
+    [Fact]
+    public void Check_returns_zero_when_the_diff_has_no_eligible_lines()
+    {
+        using var fixture = new CoverageFixture();
+        fixture.WriteSource("platform/tests/Quesshi.Domain.Tests/ScoreTests.cs", "missing");
+        fixture.WriteCoverage(("platform/tests/Quesshi.Domain.Tests/ScoreTests.cs", 1, 0));
+        fixture.WriteDiff(("platform/tests/Quesshi.Domain.Tests/ScoreTests.cs", 1));
+
+        var exitCode = Program.Main(CheckArguments(fixture.CoveragePath, fixture.DiffPath, fixture.Root));
+
+        Assert.Equal(0, exitCode);
+    }
+
+    private static string[] CheckArguments(string coveragePath, string diffPath, string repositoryRoot) =>
+    ["check", "--coverage", coveragePath, "--diff", diffPath, "--repository-root", repositoryRoot];
 }
 
 file sealed class CoverageFixture : IDisposable

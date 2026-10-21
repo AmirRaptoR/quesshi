@@ -56,9 +56,17 @@ public static partial class ChangedLineCoverageGate
     {
         string? currentPath = null;
         var currentLine = 0;
+        var inHunk = false;
         foreach (var line in File.ReadLines(diffPath))
         {
-            if (line.StartsWith("+++ ", StringComparison.Ordinal))
+            if (line.StartsWith("diff --git ", StringComparison.Ordinal))
+            {
+                currentPath = null;
+                inHunk = false;
+                continue;
+            }
+
+            if (!inHunk && line.StartsWith("+++ ", StringComparison.Ordinal))
             {
                 currentPath = line[4..] == "/dev/null" ? null : NormalizeDiffPath(line[4..]);
                 continue;
@@ -68,10 +76,11 @@ public static partial class ChangedLineCoverageGate
             if (hunk.Success)
             {
                 currentLine = ParseInteger(hunk.Groups[1].Value);
+                inHunk = true;
                 continue;
             }
 
-            if (currentPath is null || line.StartsWith("+++", StringComparison.Ordinal) || line.StartsWith("---", StringComparison.Ordinal))
+            if (currentPath is null || !inHunk)
             {
                 continue;
             }
