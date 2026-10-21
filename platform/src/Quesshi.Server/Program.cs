@@ -231,7 +231,7 @@ public static class Program
         builder.Services.AddHttpClient<GoogleIdTokenValidator>(client => client.Timeout = TimeSpan.FromSeconds(10));
         builder.Services.AddSingleton<GoogleKeySetCache>();
         builder.Services.AddSingleton<ISessionSnapshotLoader, SessionSnapshotLoader>();
-        builder.Services.AddSingleton<SessionLobbyService>();
+        builder.Services.AddSingleton<ISessionLobby, SessionLobbyService>();
         builder.Services.AddSingleton<ISessionCodeGenerator, SessionCodeGenerator>();
         builder.Services.AddSingleton<ISessions, SessionCreationService>();
         builder.Services.AddSingleton<SessionStateStore>();

@@ -8,7 +8,17 @@ using Quesshi.Shared;
 namespace Quesshi.Application.Sessions;
 
 /// <summary>Durable lobby membership and rule changes. Calls are serialized by the session grain.</summary>
-internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock)
+/// <summary>Durable lobby transitions invoked by the session grain, which serializes them per session.</summary>
+public interface ISessionLobby
+{
+    Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
+    Task<LobbyOutcome> LeaveAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
+    Task<LobbyOutcome> ConfigureAsync(Guid tenantId, Guid sessionId, Guid playerId, string? rulesJson, string? contentJson, int? capacity, CancellationToken cancellationToken = default);
+    Task<LobbyOutcome> StartAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
+    Task<LobbyOutcome> CancelAsync(Guid tenantId, Guid sessionId, Guid playerId, SessionStateStore store, CancellationToken cancellationToken = default);
+}
+
+internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock) : ISessionLobby
 {
     public Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
         database.InTenantAsync(tenantId, tx => JoinAsync(tx, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
@@ -238,7 +248,7 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
     private static readonly JsonElement Empty = JsonDocument.Parse("{}").RootElement.Clone();
 }
 
-internal sealed record LobbyOutcome(string Code, long? Version = null)
+public sealed record LobbyOutcome(string Code, long? Version = null)
 {
     public static LobbyOutcome Error(string code) => new(code);
 }

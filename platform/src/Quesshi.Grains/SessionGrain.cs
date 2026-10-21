@@ -21,7 +21,7 @@ public class SessionGrain(
     ISessionDeadlineReconciler deadlines,
     ILogger<SessionGrain> logger,
     ISessionTurnObserver? turnObserver = null,
-    SessionLobbyService? lobby = null) : Grain, ISessionGrain
+    ISessionLobby? lobby = null) : Grain, ISessionGrain
 {
     private readonly ISessionTurnObserver _turnObserver = turnObserver ?? NullSessionTurnObserver.Instance;
     private SessionState? _state;
