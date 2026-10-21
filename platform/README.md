@@ -17,8 +17,12 @@ dotnet test platform/Quesshi.Platform.slnx --no-build --configuration Release
 ```
 
 Database tests use an admin PostgreSQL connection string from
-`QUESSHI_TEST_POSTGRES`. The fixture creates a distinct temporary database for
-each test collection and drops it after the collection finishes.
+`QUESSHI_TEST_POSTGRES`. For new database tests, the default is a
+class-isolated `IClassFixture<PostgresFixture>`: the fixture creates a distinct
+temporary database for that test class and drops it when the class finishes.
+The `PostgreSQL` collection remains only for existing legacy collection-based
+tests; new tests should not join it merely to obtain a database. See
+[`tests/README.md`](tests/README.md) for the integration-test patterns.
 
 Without that variable, database tests are skipped during local development.
 When `CI=true`, the variable is required and a missing value fails the test run.
