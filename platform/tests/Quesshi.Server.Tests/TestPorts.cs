@@ -4,13 +4,21 @@ using System.Net.Sockets;
 
 namespace Quesshi.Server.Tests;
 
-/// <summary>Hands out OS-assigned loopback ports so concurrent test runs never share a fixed port.</summary>
+/// <summary>
+/// Hands out loopback ports that the OS confirms are free and that no concurrent test run holds. Ports come
+/// from below the OS ephemeral range, so another process's outgoing connection can never be given the port
+/// between allocation and the host binding it.
+/// </summary>
 internal static class TestPorts
 {
+    private const int PoolStart = 20000;
+    private const int FallbackPoolEnd = 32768;
+
     private static readonly ConcurrentDictionary<int, FileStream> Reserved = new();
+    private static readonly int PoolEnd = ReadEphemeralStart();
 
     /// <summary>
-    /// Returns a port the OS assigned and that no other caller, in this process or in a concurrent
+    /// Returns a port the OS confirmed bindable and that no other caller, in this process or in a concurrent
     /// test process on the machine, holds. The reservation is an exclusive lock on a per-port file
     /// that lasts until <see cref="Release"/> (or process exit).
     /// </summary>
@@ -18,13 +26,38 @@ internal static class TestPorts
     {
         while (true)
         {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            var port = Random.Shared.Next(PoolStart, PoolEnd);
             var reservation = TryReserve(port);
             if (reservation is null) continue;
-            if (Reserved.TryAdd(port, reservation)) return port;
+            if (IsBindable(port) && Reserved.TryAdd(port, reservation)) return port;
             reservation.Dispose();
+        }
+    }
+
+    private static int ReadEphemeralStart()
+    {
+        try
+        {
+            var low = int.Parse(File.ReadAllText("/proc/sys/net/ipv4/ip_local_port_range").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0]);
+            return low > PoolStart + 1000 ? low : FallbackPoolEnd;
+        }
+        catch (Exception)
+        {
+            return FallbackPoolEnd;
+        }
+    }
+
+    private static bool IsBindable(int port)
+    {
+        try
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
         }
     }
 
