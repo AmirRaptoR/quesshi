@@ -7,6 +7,11 @@ using Npgsql;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Kinds.Choice;
+using Quesshi.Kinds.MapPick;
+using Quesshi.Kinds.Order;
+using Quesshi.Kinds.PollChoice;
+using Quesshi.Kinds.PollRoster;
 using Quesshi.Plugin.Api;
 using Quesshi.Shared;
 using Quesshi.Server;
@@ -459,6 +464,29 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Creation_generates_unique_six_character_codes_from_the_legacy_alphabet()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var app = CreateApplication();
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+
+        var created = await Task.WhenAll(
+            database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, Request(Guid.NewGuid()))),
+            database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, Request(Guid.NewGuid()))));
+        var storedCodes = await database.InTenantAsync(seeded.TenantA, tx => tx.QueryAsync<(Guid Id, string Code)>(
+            "select id, code from sessions where id = any(@ids)", new { ids = created.Select(result => result.SessionId!.Value).ToArray() }));
+
+        Assert.All(created, result =>
+        {
+            Assert.Matches("^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$", result.Code);
+            Assert.Equal(result.Code, storedCodes.Single(row => row.Id == result.SessionId).Code);
+        });
+        Assert.NotEqual(created[0].Code, created[1].Code);
+    }
+
+    [SkippableFact]
     public async Task Open_creation_starts_async_play_and_persists_ready_snapshots()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -527,6 +555,39 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
+    public async Task Creation_upgrades_a_drawn_question_to_the_current_kind_version()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ids"), ("kind", "choice"));
+        var questionIds = await InsertVersionOneChoiceQuestionsAsync(seeded.TenantA, 10);
+        await using var app = CreateApplication(source: new FixedSource(new PickedQuestionIds(questionIds), "ids"), kinds: VersionedChoiceKinds());
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            new SessionCreateRequest(Guid.NewGuid(), "async_duel", new("ids", Json("{}"), 10), Json("{}"), 2, SessionShape.Open)));
+        var item = await ItemUpgradeValuesAsync(database, seeded.TenantA, created.SessionId!.Value);
+
+        Assert.Equal((2, "upgraded", "{}", "upgraded", "upgraded"), item);
+    }
+
+    [SkippableFact]
+    public async Task Creation_upgrades_a_ready_snapshot_to_the_current_kind_version()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ready"), ("kind", "choice"));
+        await using var app = CreateApplication(source: new FixedSource(VersionOneChoiceSnapshots(10)), kinds: VersionedChoiceKinds());
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA,
+            new SessionCreateRequest(Guid.NewGuid(), "async_duel", new("ready", Json("{}"), 10), Json("{}"), 2, SessionShape.Open)));
+        var item = await ItemUpgradeValuesAsync(database, seeded.TenantA, created.SessionId!.Value);
+
+        Assert.Equal((2, "upgraded", "upgraded", "upgraded", "upgraded"), item);
+    }
+
+    [SkippableFact]
     public async Task Started_shared_pacing_marks_account_players_eligible_at_start()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
@@ -566,6 +627,24 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         var eligible = await database.InTenantAsync(seeded.TenantA, tx => tx.QueryAsync<bool>("select eligible from session_participants where session_id = @id order by seat", new { id = created.SessionId }));
 
         Assert.Equal([true, false], eligible);
+    }
+
+    [SkippableFact]
+    public async Task Started_personal_pacing_keeps_account_players_ineligible_until_the_first_card()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await EnableAsync(seeded.TenantA, ("source", "ready"), ("kind", "choice"));
+        await using var app = CreateApplication(source: new FixedSource(ChoiceSnapshots(10)));
+        var sessions = app.Services.GetRequiredService<ISessions>();
+        var database = app.Services.GetRequiredService<ITenantDb>();
+        var request = new SessionCreateRequest(Guid.NewGuid(), "async_duel", new("ready", Json("{}"), 10), Json("{}"), 2, SessionShape.Started,
+            [new(seeded.CreatorA), new(seeded.OtherA)]);
+
+        var created = await database.InTenantAsync(seeded.TenantA, tx => sessions.CreateAsync(tx, seeded.CreatorA, request));
+        var eligible = await database.InTenantAsync(seeded.TenantA, tx => tx.QueryAsync<bool>("select eligible from session_participants where session_id = @id order by seat", new { id = created.SessionId }));
+
+        Assert.Equal([false, false], eligible);
     }
 
     [SkippableFact]
@@ -670,6 +749,20 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         return ids;
     }
 
+    private async Task<IReadOnlyList<Guid>> InsertVersionOneChoiceQuestionsAsync(Guid tenantId, int count)
+    {
+        await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync();
+        var ids = Enumerable.Range(0, count).Select(_ => Guid.NewGuid()).ToArray();
+        foreach (var (id, index) in ids.Select((id, index) => (id, index)))
+            await owner.ExecuteAsync("""
+                insert into questions(tenant_id, id, kind, kind_version, family, lang, level, prompt, payload, fingerprint, status, source)
+                values (@tenantId, @id, 'choice', 1, 'trivia', 'en', 1, @prompt,
+                        '{"choices":["upgraded","b","c","d"],"correctIndex":0}'::jsonb, @prompt, 'approved', 'admin')
+                """, new { tenantId, id, prompt = $"Version one prompt {index}" });
+        return ids;
+    }
+
     private async Task ChangeThenDeleteQuestionsAsync(Guid tenantId, IReadOnlyList<Guid> questionIds)
     {
         await using var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
@@ -685,10 +778,10 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         return await owner.QuerySingleAsync<string?>("select category::text from session_items where tenant_id = @tenantId and session_id = @sessionId and slot = 0", new { tenantId, sessionId });
     }
 
-    private WebApplication CreateApplication(ISessionCodeGenerator? codes = null, ISource? source = null, IFormatRegistry? formats = null)
+    private WebApplication CreateApplication(ISessionCodeGenerator? codes = null, ISource? source = null, IFormatRegistry? formats = null, IKindRegistry? kinds = null)
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        return Program.CreateApplication(sources, 11920, 31920, configuredFormats: formats, configureServices: services =>
+        return Program.CreateApplication(sources, 11920, 31920, configuredFormats: formats, configuredKinds: kinds, configureServices: services =>
         {
             services.AddSingleton<IClock>(new TestClock(DateTimeOffset.Parse("2026-10-20T00:00:00Z")));
             if (codes is not null) services.AddSingleton(codes);
@@ -718,11 +811,59 @@ public sealed class SessionCreationDatabaseTests(PostgresFixture fixture)
         };
     }
 
+    private sealed class VersionTwoChoiceKind : ChoiceKind
+    {
+        public override int Version => 2;
+
+        public override ChoicePayload Upgrade(int from, JsonElement payload)
+        {
+            if (from == 1)
+            {
+                if (!payload.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array
+                    || !payload.TryGetProperty("correctIndex", out var correctIndex) || !correctIndex.TryGetInt32(out var index))
+                    throw new JsonException("Choice v1 payload is invalid.");
+                return new ChoicePayload(choices.EnumerateArray().Select(option => option.GetString() ?? throw new JsonException("Choice options are invalid.")).ToArray(), index);
+            }
+            if (from != Version) throw new NotSupportedException($"choice v{from} cannot be upgraded by choice v{Version}.");
+            return JsonSerializer.Deserialize(payload, ChoiceJsonContext.Default.ChoicePayload)
+                ?? throw new JsonException("Choice payload is invalid.");
+        }
+
+        public override Snapshot<ChoiceCard, ChoiceReveal, ChoiceStored> UpgradeSnapshot(int from, RawSnapshot old)
+        {
+            if (from != 1) return base.UpgradeSnapshot(from, old);
+            return new(new ChoiceCard(["upgraded", "b", "c", "d"]), new ChoiceReveal(0, "upgraded"), []);
+        }
+    }
+
     private static Picked ChoiceSnapshots(int count) => new PickedSnapshots(Enumerable.Range(0, count).Select(index => new ReadySnapshot(
         "choice", 1, "trivia", 1, null, null, $"Prompt {index}",
         Json("{\"options\":[\"A\",\"B\",\"C\",\"D\"],\"correctIndex\":0}"),
         Json("{}"), Json("{\"options\":[\"A\",\"B\",\"C\",\"D\"]}"),
         Json("{\"correctIndex\":0,\"correctOption\":\"A\"}"))).ToArray());
+
+    private static Picked VersionOneChoiceSnapshots(int count) => new PickedSnapshots(Enumerable.Range(0, count).Select(index => new ReadySnapshot(
+        "choice", 1, "trivia", 1, null, null, $"Version one prompt {index}",
+        Json("{\"choices\":[\"upgraded\",\"b\",\"c\",\"d\"],\"correctIndex\":0}"),
+        Json("{\"source\":\"upgraded\"}"), Json("{\"options\":[\"old\",\"b\",\"c\",\"d\"]}"),
+        Json("{\"correctIndex\":0,\"correctOption\":\"old\"}"))).ToArray());
+
+    private static IKindRegistry VersionedChoiceKinds() => new KindRegistry([
+        new ChoiceKind(),
+        new VersionTwoChoiceKind(),
+        new OrderKind(),
+        new MapPickKind(),
+        new PollChoiceKind(),
+        new PollRosterKind()
+    ]);
+
+    private static async Task<(int KindVersion, string PayloadOption, string ResolvedSource, string CardOption, string RevealOption)> ItemUpgradeValuesAsync(ITenantDb database, Guid tenantId, Guid sessionId) =>
+        await database.InTenantAsync(tenantId, async tx => (await tx.QueryAsync<(int KindVersion, string PayloadOption, string ResolvedSource, string CardOption, string RevealOption)>("""
+            select kind_version as KindVersion, payload -> 'options' ->> 0 as PayloadOption,
+                   coalesce(resolved ->> 'source', '{}') as ResolvedSource, card -> 'options' ->> 0 as CardOption,
+                   reveal ->> 'correctOption' as RevealOption
+            from session_items where session_id = @sessionId and slot = 0
+            """, new { sessionId })).Single());
 
     private static Picked PollSnapshots(int count) => new PickedSnapshots(Enumerable.Range(0, count).Select(index => new ReadySnapshot(
         "poll_choice", 1, "poll", null, null, null, $"Poll {index}",
