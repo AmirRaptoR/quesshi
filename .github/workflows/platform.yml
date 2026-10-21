@@ -67,6 +67,24 @@ jobs:
       - run: dotnet test platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --configuration Release -p:QuesshiTestIdentity=true --results-directory platform/artifacts/coverage/identity --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
         env:
           QUESSHI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      - name: Run two complete Server.Tests runs concurrently
+        run: |
+          dotnet build platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --no-restore --configuration Release
+          mkdir -p platform/artifacts/concurrent
+          for run in a b; do
+            dotnet test platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --no-build --configuration Release --results-directory platform/artifacts/concurrent/$run --logger "trx;LogFileName=results.trx" > platform/artifacts/concurrent/$run.log 2>&1 &
+            pids="$pids $!"
+          done
+          status=0
+          for pid in $pids; do wait "$pid" || status=1; done
+          tail -n 5 platform/artifacts/concurrent/a.log platform/artifacts/concurrent/b.log
+          for run in a b; do
+            grep -q 'notExecuted="0"' platform/artifacts/concurrent/$run/results.trx || { echo "Run $run skipped tests, so PostgreSQL tests did not all execute."; status=1; }
+          done
+          exit $status
+        env:
+          QUESSHI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
+          QUESSHI_TEST_MONGO: mongodb://127.0.0.1:27017
       - run: dotnet run --project platform/tools/Quesshi.Coverage/Quesshi.Coverage.csproj --no-build --configuration Release -- merge --output platform/artifacts/coverage/cobertura.xml --input-directory platform/artifacts/coverage/normal --input-directory platform/artifacts/coverage/identity
       - run: git diff --unified=0 origin/main...HEAD -- platform > platform/artifacts/coverage/changed.diff
       - run: dotnet run --project platform/tools/Quesshi.Coverage/Quesshi.Coverage.csproj --no-build --configuration Release -- check --coverage platform/artifacts/coverage/cobertura.xml --diff platform/artifacts/coverage/changed.diff --repository-root .

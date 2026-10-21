@@ -144,5 +144,5 @@ public sealed class DiscriminatingSeedTests(PostgresFixture fixture)
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
 
-    private static WebApplication CreateApplication(DatabaseSources sources) => Program.CreateApplication(sources, 11336, 30336);
+    private static WebApplication CreateApplication(DatabaseSources sources) => Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
 }

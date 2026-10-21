@@ -69,7 +69,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         await MembershipAsync(owner, TenantA, tenantOwner, "owner");
         await MembershipAsync(owner, TenantA, editor, "editor");
         await using var app = await StartAsync(sources);
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
         var ownerCookie = await IssueCookieAsync(sessions, TenantA, tenantOwner);
         var editorCookie = await IssueCookieAsync(sessions, TenantA, editor);
@@ -111,7 +111,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var moderator = await InsertAdminAsync(owner, "category-moderator", "category-moderator@example.test");
         await MembershipAsync(owner, TenantA, moderator, "moderator");
         await using var app = await StartAsync(sources);
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, moderator);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var moderatorBody = JsonContent.Create(new { slug = "forbidden", names = new Dictionary<string, string> { ["en"] = "Forbidden" }, icon = "x", color = "#000000", sortOrder = 0 });
@@ -135,7 +135,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var moderator = await InsertAdminAsync(owner, "category-settings-moderator", "category-settings-moderator@example.test");
         await MembershipAsync(owner, TenantA, moderator, "moderator");
         await using var app = await StartAsync(sources);
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, moderator);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var moderatorGet = await SendAsync(client, HttpMethod.Get, "/api/admin/categories/bank-settings", cookie);
@@ -159,7 +159,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         await InsertCategoryAsync(owner, TenantB, "foreign", "{\"en\":\"Foreign\"}", true, 0);
         await using var sources = Sources();
         await using var app = await StartAsync(sources);
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var response = await SendAsync(client, HttpMethod.Get, "/api/categories?language=nl", host: "categories-a.example.test");
         var categories = await response.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>()
             ?? throw new InvalidOperationException("The category response was empty.");
@@ -178,7 +178,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         await InsertCategoryAsync(owner, TenantA, "history", "{\"en\":\"History\",\"fa\":\"تاریخ\"}", true, 0);
         await using var sources = Sources();
         await using var app = await StartAsync(sources);
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var response = await SendAsync(client, HttpMethod.Get, "/api/categories?language=fa", host: "categories-a.example.test");
         var categories = await response.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>()
             ?? throw new InvalidOperationException("The category response was empty.");
@@ -197,7 +197,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var admin = await InsertAdminAsync(owner, "category-settings-owner", "category-settings-owner@example.test");
         await MembershipAsync(owner, TenantA, admin, "owner");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [trivia], ["poll"] = [poll] } });
@@ -219,7 +219,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var admin = await InsertAdminAsync(owner, "category-invalid-owner", "category-invalid-owner@example.test");
         await MembershipAsync(owner, TenantA, admin, "owner");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [Guid.NewGuid()], ["poll"] = [] } });
@@ -245,7 +245,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var admin = await InsertAdminAsync(owner, "category-foreign-owner", "category-foreign-owner@example.test");
         await MembershipAsync(owner, TenantA, admin, "owner");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [tenantBTrivia], ["poll"] = [tenantAChangedPoll] } });
@@ -268,7 +268,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var admin = await InsertAdminAsync(owner, "category-isolation-owner", "category-isolation-owner@example.test");
         await MembershipAsync(owner, TenantA, admin, "owner");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [tenantACategory], ["poll"] = [] } });
@@ -287,7 +287,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         await AddCategoryAsync(owner, TenantA, "science", "{\"en\":\"Science\",\"fa\":\"علم\"}", true, 1);
         await AddBankCapabilityAsync(owner, TenantA, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{visible}\",\"{inactive}\"],\"poll\":[]}}}}");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var response = await SendAsync(client, HttpMethod.Get, "/api/categories?family=trivia&language=fa", host: "categories-a.example.test");
         var categories = await response.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>();
 
@@ -307,7 +307,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         var admin = await InsertAdminAsync(owner, "category-refresh-owner", "category-refresh-owner@example.test");
         await MembershipAsync(owner, TenantA, admin, "owner");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var cookie = await IssueCookieAsync(app.Services.GetRequiredService<IAdminSessionIssuer>(), TenantA, admin);
         var token = await AdminAntiforgeryAsync(client, cookie);
         using var body = JsonContent.Create(new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [trivia], ["poll"] = [poll] } });
@@ -328,7 +328,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         await AddBankCapabilityAsync(owner, TenantA, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{tenantA}\"],\"poll\":[]}}}}");
         await AddBankCapabilityAsync(owner, TenantB, $"{{\"categoriesByFamily\":{{\"trivia\":[\"{tenantB}\"],\"poll\":[]}}}}");
         await using var app = await StartAsync(Sources());
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var unknown = await SendAsync(client, HttpMethod.Get, "/api/categories?family=unknown", host: "categories-a.example.test");
         using var tenantBResponse = await SendAsync(client, HttpMethod.Get, "/api/categories?family=trivia", host: "categories-b.example.test");
         var categories = await tenantBResponse.Content.ReadFromJsonAsync<CategoryDisplayResponse[]>();
@@ -347,7 +347,7 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
         await MembershipAsync(owner, TenantA, ownerA, "owner");
         await MembershipAsync(owner, TenantB, ownerB, "owner");
         await using var app = await StartAsync(sources);
-        using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50297") };
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
         var cookieA = await IssueCookieAsync(sessions, TenantA, ownerA);
         var cookieB = await IssueCookieAsync(sessions, TenantB, ownerB);
@@ -407,8 +407,8 @@ public sealed class CategoryDatabaseTests(PostgresFixture fixture) : IAsyncLifet
 
     private static async Task<WebApplication> StartAsync(DatabaseSources sources)
     {
-        var app = Quesshi.Server.Program.CreateApplication(sources, 11297, 30297);
-        app.Urls.Add("http://127.0.0.1:50297");
+        var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         return app;

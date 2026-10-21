@@ -37,13 +37,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, moderator, "moderator");
         await MembershipAsync(owner, TenantB, foreign, "owner");
         await ExecuteAsync(owner, "update admins set locked_until = @locked where id = @admin", ("locked", new DateTimeOffset(2026, 10, 16, 0, 0, 0, TimeSpan.Zero)), ("admin", editor));
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var ownerCookie = await IssueCookieAsync(sessions, TenantA, tenantOwner);
             var editorCookie = await IssueCookieAsync(sessions, TenantA, editor);
@@ -196,13 +196,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await using var sources = Sources();
         var actor = await InsertAdminAsync(owner, "creation-owner", "creation-owner@example.test");
         await MembershipAsync(owner, TenantA, actor, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var cookie = await IssueCookieAsync(sessions, TenantA, actor);
             var token = await AdminAntiforgeryAsync(client, cookie);
@@ -233,13 +233,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         var inactive = await InsertAdminAsync(owner, "inactive-existing", "inactive-existing@example.test");
         await MembershipAsync(owner, TenantA, tenantOwner, "owner");
         await ExecuteAsync(owner, "update admins set is_active = false where id = @admin", ("admin", inactive));
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var ownerCookie = await IssueCookieAsync(sessions, TenantA, tenantOwner);
             var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
@@ -298,13 +298,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         var foreign = await InsertAdminAsync(owner, "role-foreign", "role-foreign@example.test");
         await MembershipAsync(owner, TenantA, actor, "owner");
         await MembershipAsync(owner, TenantB, foreign, "editor");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var cookie = await IssueCookieAsync(sessions, TenantA, actor);
             var token = await AdminAntiforgeryAsync(client, cookie);
@@ -333,13 +333,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, actor, "owner");
         await MembershipAsync(owner, TenantA, target, "editor");
         await MembershipAsync(owner, TenantB, target, "editor");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var actorCookie = await IssueCookieAsync(sessions, TenantA, actor);
             var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
@@ -379,13 +379,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, actor, "owner");
         await MembershipAsync(owner, TenantA, target, "editor");
         await MembershipAsync(owner, TenantB, target, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var actorCookie = await IssueCookieAsync(sessions, TenantA, actor);
             var targetTenantACookie = await IssueCookieAsync(sessions, TenantA, target);
@@ -443,13 +443,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, target, "editor");
         await MembershipAsync(owner, TenantA, platform, "owner");
         await MembershipAsync(owner, TenantB, foreign, "editor");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var editorCookie = await IssueCookieAsync(sessions, TenantA, editor);
             var moderatorCookie = await IssueCookieAsync(sessions, TenantA, moderator);
@@ -491,13 +491,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         var platform = await InsertAdminAsync(owner, "activity-guard-platform", "activity-guard-platform@example.test", isPlatform: true);
         var target = await InsertAdminAsync(owner, "activity-guard-owner", "activity-guard-owner@example.test");
         await MembershipAsync(owner, TenantA, target, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var targetCookie = await IssueCookieAsync(sessions, TenantA, target);
             var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
@@ -529,13 +529,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         var second = await InsertAdminAsync(owner, "activity-concurrent-second", "activity-concurrent-second@example.test");
         await MembershipAsync(owner, TenantA, first, "owner");
         await MembershipAsync(owner, TenantA, second, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var firstCookie = await IssueCookieAsync(sessions, TenantA, first);
             var secondCookie = await IssueCookieAsync(sessions, TenantA, second);
@@ -590,13 +590,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, actor, "owner");
         await MembershipAsync(owner, TenantA, target, "editor");
         await MembershipAsync(owner, TenantB, target, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var cookie = await IssueCookieAsync(sessions, TenantA, actor);
             var targetTenantACookie = await IssueCookieAsync(sessions, TenantA, target);
@@ -655,13 +655,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, tenantABackup, "owner");
         await MembershipAsync(owner, TenantB, target, "owner");
         await MembershipAsync(owner, TenantB, tenantBBackup, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var actorCookie = await IssueCookieAsync(sessions, TenantA, actor);
             var targetTenantACookie = await IssueCookieAsync(sessions, TenantA, target);
@@ -772,13 +772,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, tenantOwner, "owner");
         await MembershipAsync(owner, TenantA, target, "owner");
         await MembershipAsync(owner, TenantA, backup, "owner");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var ownerCookie = await IssueCookieAsync(sessions, TenantA, tenantOwner);
             var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
@@ -813,13 +813,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         var refusedGlobalTarget = await InsertAdminAsync(owner, "audit-forbidden", "audit-forbidden@example.test");
         await MembershipAsync(owner, TenantA, tenantOwner, "owner");
         await MembershipAsync(owner, TenantA, member, "editor");
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var ownerCookie = await IssueCookieAsync(sessions, TenantA, tenantOwner);
             var platformCookie = await IssueCookieAsync(sessions, TenantA, platform);
@@ -872,13 +872,13 @@ public sealed class AdminAccountManagementDatabaseTests(PostgresFixture fixture)
         await MembershipAsync(owner, TenantA, target, "editor");
         await MembershipAsync(owner, TenantA, tenantOwner, "owner");
         await SessionAsync(owner, TenantA, target);
-        await using var app = Quesshi.Server.Program.CreateApplication(sources, 11157, 30157);
-        app.Urls.Add("http://127.0.0.1:50157");
+        await using var app = Quesshi.Server.Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<Quesshi.Infrastructure.Clock.PostgresClock>().StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50157") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             var sessions = app.Services.GetRequiredService<IAdminSessionIssuer>();
             var cookie = await IssueCookieAsync(sessions, TenantA, actor);
             var token = await AdminAntiforgeryAsync(client, cookie);

@@ -207,7 +207,7 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
                     "Host=127.0.0.1;Database=quesshi;Username=quesshi_system")
                 : Sources();
             Environment.SetEnvironmentVariable("Jobs__Enabled", null);
-            await using (var enabled = Program.CreateApplication(sources, 11127, 30127))
+            await using (var enabled = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate()))
             {
                 Assert.Contains(enabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobWorkerService");
                 Assert.Contains(enabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobScheduleService");
@@ -219,7 +219,7 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
             }
 
             Environment.SetEnvironmentVariable("Jobs__Enabled", "false");
-            await using var disabled = Program.CreateApplication(sources, 11128, 30128);
+            await using var disabled = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
             Assert.DoesNotContain(disabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobWorkerService");
             Assert.DoesNotContain(disabled.Services.GetServices<IHostedService>(), service => service.GetType().Name == "JobScheduleService");
         }

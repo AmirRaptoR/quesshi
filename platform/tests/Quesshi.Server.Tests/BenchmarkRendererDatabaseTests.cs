@@ -33,7 +33,7 @@ public sealed class BenchmarkRendererDatabaseTests(PostgresFixture fixture)
 
             await using var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
             var state = Assert.IsType<SessionState>(await new SessionSnapshotLoader(new TenantDb(sources)).LoadAsync(tenant.Id, session.Id));
-            await using var app = Program.CreateApplication(sources, 11220, 30220);
+            await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
             var renderer = app.Services.GetRequiredService<IViewRenderer>();
 
             Assert.Equal(benchmarkItem.Prompt, persistedPrompt);

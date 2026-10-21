@@ -26,13 +26,12 @@ public sealed class StreamingEndpointTests
     [Fact]
     public async Task Authenticated_app_wide_http_stream_opens_without_a_watched_session_and_reads_config()
     {
-        var port = AvailablePort();
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var notifications = new Notifications();
         var hub = new StreamHub(null!, null!, null!, null!, notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
         builder.Services.AddSingleton(hub);
         await using var app = builder.Build();
@@ -41,7 +40,7 @@ public sealed class StreamingEndpointTests
         await app.StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var request = new HttpRequestMessage(HttpMethod.Get, "/api/stream");
             request.Headers.Host = "tenant.example.test";
             request.Headers.Add("X-Quesshi-Test-Player", Guid.NewGuid().ToString());
@@ -69,13 +68,12 @@ public sealed class StreamingEndpointTests
     [Fact]
     public async Task Ordinary_http_disconnect_releases_its_subscription_before_host_shutdown()
     {
-        var port = AvailablePort();
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var notifications = new Notifications();
         var hub = new StreamHub(null!, null!, null!, null!, notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new SingleTenant(tenant));
         builder.Services.AddSingleton(hub);
         await using var app = builder.Build();
@@ -86,7 +84,7 @@ public sealed class StreamingEndpointTests
         {
             using var client = new TcpClient();
             client.Client.LingerState = new LingerOption(true, 0);
-            await client.ConnectAsync(IPAddress.Loopback, port);
+            await client.ConnectAsync(IPAddress.Loopback, new Uri(app.Urls.Single()).Port);
             await using var stream = client.GetStream();
             await stream.WriteAsync(Encoding.ASCII.GetBytes($"GET /api/stream HTTP/1.1\r\nHost: tenant.example.test\r\nX-Quesshi-Test-Player: {Guid.NewGuid()}\r\n\r\n"));
             await WaitForAsync(() => hub.SubscriptionCount == 1);
@@ -108,7 +106,6 @@ public sealed class StreamingEndpointTests
     [Fact]
     public async Task Hosted_stream_writes_config_initial_changed_gone_and_keep_alive_frames_with_tenant_bound_access()
     {
-        var port = AvailablePort();
         var first = new Tenant(Guid.NewGuid(), "first", "First", "en");
         var second = new Tenant(Guid.NewGuid(), "second", "Second", "en");
         var viewer = Guid.NewGuid();
@@ -118,7 +115,7 @@ public sealed class StreamingEndpointTests
         var hub = new StreamHub(loader, new NormalRenderer(), new FormatRegistry([new TestFormat()]), null!, notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<ITenants>(new MultipleTenants(first, second));
         builder.Services.AddSingleton(hub);
         await using var app = builder.Build();
@@ -127,7 +124,7 @@ public sealed class StreamingEndpointTests
         await app.StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
             using var watched = await OpenAsync(client, $"/api/stream?session={session}", viewer, "first.example.test");
             Assert.Contains("event: view", await ReadFrameAsync(watched));
 
@@ -416,13 +413,6 @@ public sealed class StreamingEndpointTests
         }
     }
 #endif
-
-    private static int AvailablePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
 
     private static async Task WaitForAsync(Func<bool> condition)
     {

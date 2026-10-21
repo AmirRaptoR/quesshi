@@ -44,12 +44,12 @@ public sealed class TenantResourcesDatabaseTests(PostgresFixture fixture)
         }
 
         await using var sources = CreateSources();
-        await using var app = Program.CreateApplication(sources, 11129, 30129);
-        app.Urls.Add("http://127.0.0.1:50129");
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+        app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:50129") };
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
 
             var firstConfig = await SendAsync(client, "/api/config", "first.example.test");
             Assert.Equal(HttpStatusCode.OK, firstConfig.StatusCode);

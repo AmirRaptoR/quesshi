@@ -19,9 +19,6 @@ namespace Quesshi.Server.Tests;
 [Collection("PostgreSQL")]
 public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
 {
-    // 10161-10164 and 30161-30164 are reserved for this class.
-    private static int nextSiloPort = 10160;
-
     [SkippableFact]
     public async Task Upgrade_rotates_every_guest_session_and_keeps_the_same_player()
     {
@@ -221,15 +218,12 @@ public sealed class GuestUpgradeEndpointDatabaseTests(PostgresFixture fixture)
         return account;
     }
 
-    private static int NextSiloPort() => Interlocked.Increment(ref nextSiloPort);
-
     private static Uri LocalAddress(WebApplication app) => new(app.Urls.Single());
 
     private async Task<WebApplication> StartAsync()
     {
-        var siloPort = NextSiloPort();
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
-        var app = Program.CreateApplication(sources, siloPort, siloPort + 20000);
+        var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         try
         {

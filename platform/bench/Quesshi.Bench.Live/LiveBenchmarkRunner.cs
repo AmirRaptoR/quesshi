@@ -98,8 +98,6 @@ public sealed class LiveBenchmarkRunner
         var kinds = new KindRegistry([new ChoiceKind()]);
         var firstPorts = HostPorts.Allocate();
         var secondPorts = HostPorts.Allocate();
-        var firstHttp = HostPorts.AllocateHttp();
-        var secondHttp = HostPorts.AllocateHttp();
         var priorJobs = Environment.GetEnvironmentVariable("Jobs__Enabled");
         Environment.SetEnvironmentVariable("Jobs__Enabled", "false");
 
@@ -117,13 +115,13 @@ public sealed class LiveBenchmarkRunner
             // Both silos share one application data source so the pool-10 scenario is
             // genuinely capped at ten connections across the complete live path.
             secondSources = firstSources;
-            first = await StartHostAsync(firstSources, firstPorts, firstHttp, formats, kinds, measurements, cancellationToken);
-            second = await StartHostAsync(secondSources, secondPorts, secondHttp, formats, kinds, measurements, cancellationToken);
+            first = await StartHostAsync(firstSources, firstPorts, formats, kinds, measurements, cancellationToken);
+            second = await StartHostAsync(secondSources, secondPorts, formats, kinds, measurements, cancellationToken);
 
             var endpoints = new[]
             {
-                new Uri($"http://127.0.0.1:{firstHttp}"),
-                new Uri($"http://127.0.0.1:{secondHttp}"),
+                new Uri(first.Urls.Single()),
+                new Uri(second.Urls.Single()),
             };
             clients = await CreateClientsAsync(options.Players, endpoints, database.TenantHost, cancellationToken);
             var session = await BenchmarkFixture.SeedSessionAsync(database.OwnerConnectionString, tenant, options, clients.Select(client => client.PlayerId).ToArray(), cancellationToken);
@@ -191,7 +189,6 @@ public sealed class LiveBenchmarkRunner
     private static async Task<WebApplication> StartHostAsync(
         DatabaseSources sources,
         HostPorts ports,
-        int httpPort,
         IFormatRegistry formats,
         IKindRegistry kinds,
         ISessionTurnObserver measurements,
@@ -206,7 +203,7 @@ public sealed class LiveBenchmarkRunner
             configuredKinds: kinds,
             turnObserver: measurements,
             environmentName: "Development");
-        app.Urls.Add($"http://127.0.0.1:{httpPort}");
+        app.Urls.Add("http://127.0.0.1:0");
         await app.Services.GetRequiredService<PostgresClock>().StartAsync(cancellationToken);
         await app.StartAsync(cancellationToken);
         return app;
@@ -667,13 +664,35 @@ public sealed class LiveBenchmarkRunner
 
     private readonly record struct HostPorts(int Silo, int Gateway)
     {
+        // Ports are reserved with an exclusive per-port file lock so concurrent benchmark or test
+        // processes cannot be handed the same OS-assigned port; the locks last until process exit.
+        private static readonly List<FileStream> Reservations = [];
+
         public static HostPorts Allocate() => new(AllocatePort(), AllocatePort());
-        public static int AllocateHttp() => AllocatePort();
+
         private static int AllocatePort()
         {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
+            while (true)
+            {
+                using var listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                try
+                {
+                    var reservation = new FileStream(
+                        Path.Combine(Path.GetTempPath(), $"quesshi-test-port-{port}.lock"),
+                        FileMode.OpenOrCreate,
+                        FileAccess.ReadWrite,
+                        FileShare.None,
+                        1,
+                        FileOptions.DeleteOnClose);
+                    lock (Reservations) Reservations.Add(reservation);
+                    return port;
+                }
+                catch (IOException)
+                {
+                }
+            }
         }
     }
 }

@@ -194,7 +194,7 @@ public sealed class PlayerSessionDatabaseTests(PostgresFixture fixture)
     {
         for (var attempt = 0; attempt < 50; attempt++)
         {
-            await using var command = new NpgsqlCommand("select count(*) from pg_locks where not granted", connection, transaction);
+            await using var command = new NpgsqlCommand("select count(*) from pg_locks where not granted and locktype = 'transactionid' and transactionid = pg_current_xact_id()::xid", connection, transaction);
             if ((long)(await command.ExecuteScalarAsync())! > 0) return;
             await Task.Delay(10);
         }

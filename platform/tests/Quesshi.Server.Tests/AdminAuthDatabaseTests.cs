@@ -373,7 +373,7 @@ public sealed class AdminAuthDatabaseTests(PostgresFixture fixture) : IAsyncLife
 
     private async Task<WebApplication> StartAsync()
     {
-        var app = Program.CreateApplication(Sources(), 11149, 30149);
+        var app = Program.CreateApplication(Sources(), TestPorts.Allocate(), TestPorts.Allocate());
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
         await app.Services.GetRequiredService<PostgresClock>().StartAsync();
