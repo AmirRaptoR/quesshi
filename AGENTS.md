@@ -164,33 +164,42 @@ These rules are enforced, and you must never work around them:
 - Framework: **xUnit 2**, `Xunit.SkippableFact` for database tests, **bUnit** for Blazor
   components (`Quesshi.Web.Tests`).
 - Test project per source area: `platform/tests/Quesshi.<Area>.Tests`. Shared fixtures are in
-  `platform/tests/Quesshi.Testing` (`PostgresFixture`).
+  `platform/tests/Quesshi.Testing` (`PostgresFixture`); see `platform/tests/README.md` before
+  adding an integration test.
 - **Test names are sentences in snake case** that state the behaviour:
   `Guest_upgrade_rejects_an_expired_code`, not `Test1` or `UpgradeTest`.
-- **Database tests** belong to the `PostgreSQL` collection and skip when PostgreSQL is not
-  configured. Follow this shape:
+- **New database tests require an isolated `PostgresFixture`.** Reference `Quesshi.Testing` and
+  use `IClassFixture<PostgresFixture>` so every test class gets its own temporary database; do
+  not add new tests to the legacy `PostgreSQL` collection. They skip when PostgreSQL is not
+  configured, migrate that database, and then verify a real production service/repository path:
 
   ```csharp
-  [Collection("PostgreSQL")]
   public sealed class GuestPurgeDatabaseTests(PostgresFixture fixture)
+      : IClassFixture<PostgresFixture>
   {
       [SkippableFact]
       public async Task Purge_keeps_a_guest_with_a_seat_in_an_unfinished_session()
       {
           Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
-          // connect with fixture.ConnectionStringForRole("quesshi_app") or ("quesshi_system")
+          await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
+          // Exercise the production path using quesshi_app or quesshi_system as appropriate.
       }
   }
   ```
 
-  Each test project that needs PostgreSQL declares the collection once with
+  Existing collection-based tests keep the legacy collection declaration:
   `[CollectionDefinition("PostgreSQL", DisableParallelization = true)]` and
-  `ICollectionFixture<PostgresFixture>`; reuse the existing definition in that project.
-- **HTTP behaviour is tested through the real application.** Start it with
-  `Program.CreateApplication(sources, siloPort, gatewayPort, ...)`, add a URL with
-  `app.Urls.Add("http://127.0.0.1:<port>")`, `StartAsync()` it and call it with `HttpClient`
-  (see `RouteSecurityDatabaseTests`). Pick silo, gateway and HTTP ports that no other test uses;
-  search the test projects for the numbers first.
+  `ICollectionFixture<PostgresFixture>`; do not convert or extend it incidentally.
+- **New HTTP behaviour tests require `PlatformHttpFixture`.** It starts the real migrated host
+  with dynamically allocated HTTP, silo, and gateway ports, an isolated database, and clients
+  with the correct seeded identity, tenant host/Origin, and antiforgery token. Use its role
+  clients (`Anonymous`, `Guest`, `Player`, `Moderator`, `Editor`, `Owner`, and
+  `PlatformAdministrator`) instead of constructing `HttpClient`, cookies, headers, or tokens.
+  Use `CreateOtherTenantPlayerClientAsync` for tenant-isolation cases and `RoleMatrix` for a
+  complete endpoint permission contract.
+- **Selection and isolation tests need discriminating data.** Seed an excluded but otherwise
+  plausible row (for example through `DiscriminatingSeeds`) and assert that the real application
+  does not return it. This is required for a query, filter, or tenant-isolation claim.
 - **Tests must exercise the real code path.**
   - Never call `private` members through reflection (`GetMethod`, `GetField`,
     `BindingFlags.NonPublic`), never widen visibility for a test, and never add test-only
