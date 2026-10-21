@@ -105,7 +105,8 @@ public sealed class SessionGrainBehaviorTests
         var grain = CreateGrain(new ThrowingSnapshotLoader(), new MutatingFormat(), new RecordingDeadlines(), now,
             database: new SavingDatabase(), initialState: State());
 
-        var result = await grain.ExecuteAsync(Command(now));
+        // A command that is not a deferred answer commits at once and still reloads the durable snapshot.
+        var result = await grain.ExecuteAsync(Command(now, type: "next"));
 
         Assert.Equal("view_unavailable", result.Code);
         Assert.True(result.Retryable);
