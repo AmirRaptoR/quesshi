@@ -8,7 +8,7 @@ using Quesshi.Shared;
 namespace Quesshi.Application.Sessions;
 
 /// <summary>Durable lobby membership and rule changes. Calls are serialized by the session grain.</summary>
-public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock)
+internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock)
 {
     public Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
         database.InTenantAsync(tenantId, tx => JoinAsync(tx, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
@@ -238,7 +238,7 @@ public sealed class SessionLobbyService(ITenantDb database, IFormatRegistry form
     private static readonly JsonElement Empty = JsonDocument.Parse("{}").RootElement.Clone();
 }
 
-public sealed record LobbyOutcome(string Code, long? Version = null)
+internal sealed record LobbyOutcome(string Code, long? Version = null)
 {
     public static LobbyOutcome Error(string code) => new(code);
 }

@@ -8,7 +8,7 @@ using Quesshi.Shared;
 namespace Quesshi.Application.Sessions;
 
 /// <summary>Creates the immutable item snapshots shared by creation and the lobby start transition.</summary>
-public sealed class SessionSnapshotFactory(IKindRegistry kinds, SourceResultValidator sourceResults, ILocks locks)
+internal sealed class SessionSnapshotFactory(IKindRegistry kinds, SourceResultValidator sourceResults, ILocks locks)
 {
     public SourceDrawPlan Plan(DrawPlan plan, string language, Guid sessionId) => new(plan.Count, language,
         plan.AcceptedKinds.Select(id => new SourceKind(id, kinds.GetCurrent(id).Family)).ToArray(), plan.Levels,
@@ -94,4 +94,4 @@ public sealed class SessionSnapshotFactory(IKindRegistry kinds, SourceResultVali
     }
 }
 
-public sealed record PersistedSessionItem(SessionItemState Value, Guid? QuestionId, string Prompt, Guid? MediaId, Guid? CategoryId, JsonElement? Category);
+internal sealed record PersistedSessionItem(SessionItemState Value, Guid? QuestionId, string Prompt, Guid? MediaId, Guid? CategoryId, JsonElement? Category);
