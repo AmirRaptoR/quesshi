@@ -259,9 +259,9 @@ public sealed class ChangedLineCoverageGateTests
         fixture.WriteCoverageTo("baseline.xml", ("platform/src/Quesshi.Domain/Score.cs", 1, 1), ("platform/src/Quesshi.Domain/Score.cs", 2, 1));
         fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 1), ("platform/src/Quesshi.Domain/Score.cs", 2, 0));
 
-        var result = BaselineCoverageGate.Evaluate(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root);
+        var exitCode = Program.Main(BaselineArguments(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root));
 
-        Assert.False(result.Passed);
+        Assert.Equal(1, exitCode);
     }
 
     [Fact]
@@ -307,8 +307,17 @@ public sealed class ChangedLineCoverageGateTests
         fixture.WriteSource("platform/src/Quesshi.Domain/Score.cs", "covered", "newly uncovered");
         fixture.WriteCoverageTo("baseline.xml", ("platform/src/Quesshi.Domain/Score.cs", 1, 1), ("platform/src/Quesshi.Domain/Score.cs", 2, 1));
         fixture.WriteCoverage(("platform/src/Quesshi.Domain/Score.cs", 1, 1, "50% (1/2)"), ("platform/src/Quesshi.Domain/Score.cs", 2, 0, null));
-
-        var output = BaselineCoverageGate.Evaluate(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root).FailureOutput();
+        using var error = new StringWriter();
+        var originalError = Console.Error;
+        try
+        {
+            Console.SetError(error);
+            Program.Main(BaselineArguments(fixture.CoveragePath, Path.Combine(fixture.Root, "baseline.xml"), fixture.Root));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
 
         Assert.Equal(string.Join(Environment.NewLine,
         [
@@ -319,7 +328,7 @@ public sealed class ChangedLineCoverageGateTests
             "Production branches with untested outcomes:",
             "platform/src/Quesshi.Domain/Score.cs:1: only 1 of 2 outcomes tested",
             "Test what this code does, or remove it if nothing needs it."
-        ]), output);
+        ]), error.ToString());
     }
 
     private static string[] CheckArguments(string coveragePath, string diffPath, string repositoryRoot) =>
