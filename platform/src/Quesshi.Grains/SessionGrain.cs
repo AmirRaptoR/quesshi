@@ -177,6 +177,16 @@ public class SessionGrain(
                 current.Session.Position?.Phase);
             // This write must follow the batch that is being written and carries the answers still waiting.
             if (!await QuiesceFlushAsync(generation)) return SessionCommandResult.Error("write_failed", retryable: true);
+            // The reentrant gate was yielded while the batch drained. A timeout or another command may have
+            // committed (or extended the grace deadline) in that interval, so never persist a transition
+            // calculated from the old working snapshot over that newer state.
+            if (!ReferenceEquals(transition.Initial, _state))
+            {
+                // The retried command owns the observable turn measurement. Recording this discarded
+                // transition as well would double-count a close or finish that was never persisted.
+                measuredKind = null;
+                return await ExecuteInGateAsync(request, turn);
+            }
             var committedBase = _baseline ?? _state!; // the committed state, which a batch that just finished may have advanced
             long version;
             try
@@ -347,6 +357,16 @@ public class SessionGrain(
                 transition.Current.Session.Position?.Phase,
                 transition.Current.Session.Ended);
             if (!await QuiesceFlushAsync(generation)) return;
+            // Quiescing yields the reentrant gate. Re-evaluate the delivery when the drained batch or a
+            // concurrent command replaced the snapshot so this timeout cannot overwrite a newer transition.
+            if (!ReferenceEquals(transition.Initial, _state))
+            {
+                // This delivery did not persist its transition. The recursive delivery below owns the
+                // timer sample, so do not count this stale attempt as a second close or finish.
+                measuredKind = null;
+                await TimeoutInGateAsync(dueAt);
+                return;
+            }
             var committedBase = _baseline ?? _state!; // the committed state, which a batch that just finished may have advanced
             long version;
             try { version = await store.SaveAsync(_tenantId, _sessionId, committedBase.Session.Version, committedBase, transition.Current); }
