@@ -45,6 +45,10 @@ public class SessionGrain(
     // Non-null while a flush loop runs; completes when it has stopped. _exclusive asks it to stop after its current batch.
     private TaskCompletionSource? _flushIdle;
     private bool _exclusive;
+    // A reentrant caller can load a snapshot while Orleans is scheduling the prior discard.
+    // Request deactivation once for this activation even if that caller also detects an
+    // indeterminate write before the activation is removed.
+    private bool _discardRequested;
     private int _generation;
 
     public override Task OnActivateAsync(CancellationToken cancellationToken)
@@ -521,6 +525,8 @@ public class SessionGrain(
         Fail(_inflight, pendingErrorCode, pendingRetryable);
         _inflight = [];
         FailPending(pendingErrorCode, pendingRetryable);
+        if (_discardRequested) return;
+        _discardRequested = true;
         Deactivate();
     }
 

@@ -115,26 +115,41 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
-    public async Task Stale_and_unknown_commit_outcomes_discard_the_cached_snapshot()
+    public async Task Stale_commit_outcomes_discard_the_cached_snapshot_before_retry()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
-        var stale = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now, database: new FailingDatabase(new StaleActivationException()));
+        var loader = new ToggleSnapshotLoader { State = State() };
+        var stale = CreateGrain(loader, new MutatingFormat(), new RecordingDeadlines(), now, database: new FailingDatabase(new StaleActivationException()));
 
         var staleResult = await stale.ExecuteAsync(Command(now));
 
         Assert.Equal("stale_activation", staleResult.Code);
         Assert.True(staleResult.Retryable);
-        Assert.Null(StateOf(stale));
         Assert.Equal(1, stale.DeactivateCount);
 
-        var unknown = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now,
+        loader.State = State(ended: true);
+        var retry = await stale.ExecuteAsync(Command(now));
+
+        Assert.Equal("terminal", retry.Code);
+        Assert.Equal(2, loader.LoadCount);
+    }
+
+    [Fact]
+    public async Task Repeated_unknown_commit_outcomes_request_deactivation_once()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var loader = new ToggleSnapshotLoader { State = State() };
+        var unknown = CreateGrain(loader, new MutatingFormat(), new RecordingDeadlines(), now,
             database: new FailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost"))));
 
         var unknownResult = await unknown.ExecuteAsync(Command(now));
+        var retry = await unknown.ExecuteAsync(Command(now));
 
         Assert.Equal("retryable", unknownResult.Code);
         Assert.True(unknownResult.Retryable);
-        Assert.Null(StateOf(unknown));
+        Assert.Equal("retryable", retry.Code);
+        Assert.True(retry.Retryable);
+        Assert.Equal(2, loader.LoadCount);
         Assert.Equal(1, unknown.DeactivateCount);
     }
 
