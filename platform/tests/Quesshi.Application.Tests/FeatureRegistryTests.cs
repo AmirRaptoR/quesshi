@@ -120,6 +120,63 @@ public sealed class FeatureRegistryTests
         Assert.Equal(("sample", "refresh"), (scheduled.Schedule.Owner, scheduled.Schedule.Kind));
     }
 
+    [Fact]
+    public async Task Registered_inbox_handler_contributes_items_for_the_requested_player()
+    {
+        var registry = CreateRegistry();
+        registry.Register(new InboxFeature());
+        var transaction = new QueryTransaction(enabled: true);
+        var playerId = Guid.NewGuid();
+
+        var items = await registry.GetInboxItemsAsync(transaction, playerId, CancellationToken.None);
+
+        var item = Assert.Single(items);
+        Assert.Equal(("sample.notice", playerId), (item.Type, item.Payload.GetProperty("playerId").GetGuid()));
+    }
+
+    [Fact]
+    public async Task Declared_consumer_invokes_an_enabled_typed_named_query_through_the_public_contract()
+    {
+        var registry = CreateRegistry();
+        var provider = new QueryProviderFeature();
+        registry.Register(provider);
+        var consumer = new QueryConsumerFeature(registry);
+        registry.Register(consumer);
+        var transaction = new QueryTransaction(enabled: true);
+        var playerId = Guid.NewGuid();
+
+        var result = await consumer.GetValueAsync(transaction, playerId, CancellationToken.None);
+
+        Assert.Equal(
+            (new NamedQueryResult<QueryValue>(true, new QueryValue(playerId)), (ITenantTx?)transaction),
+            (result, provider.ReceivedTransaction));
+    }
+
+    [Fact]
+    public async Task Declared_consumer_receives_an_unavailable_result_through_the_public_contract_when_the_provider_is_disabled()
+    {
+        var registry = CreateRegistry();
+        registry.Register(new QueryProviderFeature());
+        var consumer = new QueryConsumerFeature(registry);
+        registry.Register(consumer);
+
+        var result = await consumer.GetValueAsync(new QueryTransaction(enabled: false), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(NamedQueryResult<QueryValue>.Unavailable, result);
+    }
+
+    [Fact]
+    public async Task Declared_consumer_receives_an_unavailable_result_through_the_public_contract_when_no_provider_is_registered()
+    {
+        var registry = CreateRegistry();
+        var consumer = new QueryConsumerFeature(registry);
+        registry.Register(consumer);
+
+        var result = await consumer.GetValueAsync(new QueryTransaction(enabled: true), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(NamedQueryResult<QueryValue>.Unavailable, result);
+    }
+
     private static FeatureRegistry CreateRegistry()
     {
         var jobs = new JobHandlerRegistry();
@@ -209,6 +266,59 @@ public sealed class FeatureRegistryTests
             feature.PlayerRoutes(_ => { });
             feature.OpenRoutes(_ => { });
         }
+    }
+
+    private sealed class InboxFeature : IFeature
+    {
+        public string Id => "inbox";
+        public FeatureSettings Settings => FeatureSettings.Create(new SampleSettings("default"), _ => []);
+
+        public void Configure(IFeatureBuilder feature) => feature.Inbox(async (_, playerId, cancellationToken) =>
+        {
+            await Task.CompletedTask.WaitAsync(cancellationToken);
+            return [new InboxItem("sample.notice", JsonSerializer.SerializeToElement(new { playerId }))];
+        });
+    }
+
+    private sealed record QueryValue(Guid PlayerId);
+
+    private sealed class QueryProviderFeature : IFeature
+    {
+        public string Id => "provider";
+        public FeatureSettings Settings => FeatureSettings.Create(new SampleSettings("default"), _ => []);
+
+        public ITenantTx? ReceivedTransaction { get; private set; }
+
+        public void Configure(IFeatureBuilder feature) => feature.Provides<QueryValue>("provider.value", (transaction, playerId, cancellationToken) =>
+        {
+            ReceivedTransaction = transaction;
+            return Task.FromResult(new QueryValue(playerId));
+        });
+    }
+
+    private sealed class QueryConsumerFeature(INamedQueries queries) : IFeature
+    {
+        public string Id => "consumer";
+        public FeatureSettings Settings => FeatureSettings.Create(new SampleSettings("default"), _ => []);
+
+        public void Configure(IFeatureBuilder feature) => feature.Uses("provider.value");
+
+        public Task<NamedQueryResult<QueryValue>> GetValueAsync(
+            ITenantTx transaction,
+            Guid playerId,
+            CancellationToken cancellationToken) =>
+            queries.InvokeAsync<QueryValue>(Id, "provider.value", transaction, playerId, cancellationToken);
+    }
+
+    private sealed class QueryTransaction(bool enabled) : ITenantTx
+    {
+        public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<T>>([]);
+
+        public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(typeof(T) == typeof(bool?) ? (T?)(object?)(bool?)enabled : default);
     }
 
     private static LeasedJob Lease(long id, Guid tenantId, string owner, string kind) =>

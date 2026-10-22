@@ -72,7 +72,7 @@ jobs:
           dotnet build platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --no-restore --configuration Release
           mkdir -p platform/artifacts/concurrent
           for run in a b; do
-            dotnet test platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --no-build --configuration Release --results-directory platform/artifacts/concurrent/$run --logger "trx;LogFileName=results.trx" > platform/artifacts/concurrent/$run.log 2>&1 &
+            MEDIA_DIR="$PWD/platform/artifacts/concurrent/$run/media" dotnet test platform/tests/Quesshi.Server.Tests/Quesshi.Server.Tests.csproj --no-build --configuration Release --results-directory platform/artifacts/concurrent/$run --logger "trx;LogFileName=results.trx" > platform/artifacts/concurrent/$run.log 2>&1 &
             pids="$pids $!"
           done
           status=0
