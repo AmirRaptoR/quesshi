@@ -22,8 +22,7 @@ namespace Quesshi.Server.Tests;
 /// Batched live answers against PostgreSQL and real Orleans silos (architecture 7.4.1): durable acknowledgement,
 /// exactly-once scoring, one close and one finish, and the format grace.
 /// </summary>
-[Collection("PostgreSQL")]
-public sealed class SessionBatchDatabaseTests(PostgresFixture fixture)
+public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
     private static readonly TimeSpan Question = BenchLiveFormat.Question;
     private static readonly TimeSpan Grace = BenchLiveFormat.Grace;
