@@ -90,16 +90,16 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
     }
 
     [SkippableFact]
-    public async Task Joining_a_lobby_expired_by_the_deadline_dispatcher_is_refused()
+    public async Task Joining_an_expired_lobby_is_refused()
     {
         var lobby = await CreateAsync(Shared);
-        await host.Fixture.ExecuteOwnerAsync("update sessions set due_at = now() - interval '1 minute' where id = @id", new { id = lobby.Id });
-        var due = (await StateAsync(lobby.Id)).DueAt!.Value;
-        await Grain(lobby.Id).TimeoutAsync(due);
+        await host.Fixture.ExecuteOwnerAsync(
+            "update sessions set due_at = now() - interval '1 minute', retry_at = now() + interval '5 minutes' where id = @id",
+            new { id = lobby.Id });
 
         var refused = await JoinAsync(host.Fixture.Guest, lobby.Code);
 
-        Assert.Equal((HttpStatusCode.Conflict, "cancelled"), (refused.Status, refused.Code));
+        Assert.Equal((HttpStatusCode.Conflict, "expired"), (refused.Status, refused.Code));
     }
 
     [SkippableFact]
