@@ -9,7 +9,7 @@ using Quesshi.Server.Security;
 
 namespace Quesshi.Server.Streaming;
 
-internal enum StreamMessageKind { View, Config, Gone }
+internal enum StreamMessageKind { View, Config, Inbox, Gone }
 
 internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null);
 
@@ -33,6 +33,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public long LastSentVersion { get; private set; } = -1;
     public long LastQueuedVersion { get; private set; } = -1;
     public long LastConfigVersion { get; private set; }
+    public long LastInboxVersion { get; private set; } = -1;
 
     public void QueueView(RenderedSessionView view)
     {
@@ -52,6 +53,17 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
             // periodic reconcile will retry this config after that view has been sent.
             if (_terminal || version <= LastConfigVersion || LastQueuedVersion > LastSentVersion) return;
             _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Config, version));
+        }
+    }
+
+    public void QueueInbox(long version)
+    {
+        lock (_gate)
+        {
+            // Preserve the convergence-critical view already in the one-slot buffer. The
+            // periodic reconcile will retry this inbox version after that view has been sent.
+            if (_terminal || version <= LastInboxVersion || LastQueuedVersion > LastSentVersion) return;
+            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Inbox, version));
         }
     }
 
@@ -80,6 +92,11 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
             {
                 if (message.Version <= LastConfigVersion) return false;
                 LastConfigVersion = message.Version;
+            }
+            if (message.Kind == StreamMessageKind.Inbox)
+            {
+                if (message.Version <= LastInboxVersion) return false;
+                LastInboxVersion = message.Version;
             }
             return true;
         }
@@ -177,8 +194,17 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         }
     }
 
-    public Task RenderInitialAsync(StreamSubscription subscription, CancellationToken cancellationToken) =>
-        subscription.SessionId is { } sessionId ? RenderSessionAsync(subscription.TenantId, sessionId, cancellationToken) : Task.CompletedTask;
+    public async Task RenderInitialAsync(StreamSubscription subscription, CancellationToken cancellationToken)
+    {
+        if (subscription.SessionId is { } sessionId) await RenderSessionAsync(subscription.TenantId, sessionId, cancellationToken);
+        if (!Guid.TryParse(subscription.PlayerId, out var playerId)) return;
+        var version = await database.InTenantAsync(subscription.TenantId, transaction => transaction.QuerySingleOrDefaultAsync<long?>("""
+            select version
+            from player_inbox
+            where player_id = @playerId
+            """, new { playerId }, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
+        if (version is { } current) subscription.QueueInbox(current);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -232,9 +258,16 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                         from players
                         where id = any(@playerIds) and deleted_at is null and banned_at is null
                         """, new { playerIds = players }, cancellationToken);
+                var inboxVersions = players.Length == 0
+                    ? []
+                    : await transaction.QueryAsync<InboxVersion>("""
+                        select player_id as PlayerId, version as Version
+                        from player_inbox
+                        where player_id = any(@playerIds)
+                        """, new { playerIds = players }, cancellationToken);
                 var configVersion = await transaction.QuerySingleOrDefaultAsync<long?>(
                     "select config_version from tenants where id = @tenantId", new { tenantId = tenant.Key }, cancellationToken);
-                return new ReconciliationState(sessionVersions, livePlayers, configVersion);
+                return new ReconciliationState(sessionVersions, livePlayers, inboxVersions, configVersion);
             }, cancellationToken: cancellationToken, readOnly: true);
 
             var versions = state.SessionVersions.ToDictionary(version => version.SessionId);
@@ -254,12 +287,15 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                     await RenderSessionAsync(tenant.Key, sessionId, cancellationToken);
                 }
             }
+            foreach (var inbox in state.InboxVersions) BroadcastInbox(tenant.Key, inbox.PlayerId, inbox.Version);
             if (state.ConfigVersion is { } current) BroadcastConfig(tenant.Key, current);
         }
     }
 
     internal sealed record SessionVersion(Guid SessionId, long Version);
-    private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<Guid> LivePlayers, long? ConfigVersion);
+    internal sealed record InboxVersion(Guid PlayerId, long Version);
+    private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<Guid> LivePlayers,
+        IReadOnlyList<InboxVersion> InboxVersions, long? ConfigVersion);
 
     private void OnNotification(StreamNotification notification)
     {
@@ -273,6 +309,9 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 break;
             case StreamNotification.Config config:
                 BroadcastConfig(config.TenantId, config.Version);
+                break;
+            case StreamNotification.Inbox inbox:
+                BroadcastInbox(inbox.TenantId, inbox.PlayerId, inbox.Version);
                 break;
             case StreamNotification.Player player:
                 Deleted([new AccountDeletionPlayer(player.TenantId, player.PlayerId)]);
@@ -467,6 +506,17 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private void BroadcastConfig(Guid tenantId, long version)
     {
         foreach (var subscription in _subscriptions.Values.Where(subscription => subscription.TenantId == tenantId)) subscription.QueueConfig(version);
+    }
+
+    private void BroadcastInbox(Guid tenantId, Guid playerId, long version)
+    {
+        foreach (var subscription in _subscriptions.Values.Where(subscription =>
+                     subscription.TenantId == tenantId
+                     && Guid.TryParse(subscription.PlayerId, out var subscribedPlayerId)
+                     && subscribedPlayerId == playerId))
+        {
+            subscription.QueueInbox(version);
+        }
     }
 
     public override void Dispose()

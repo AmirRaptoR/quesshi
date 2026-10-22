@@ -12,7 +12,13 @@ public sealed class PlayerInboxBumpSink : IInboxBumpSink
 {
     public Task ApplyAsync(ITenantTx transaction, Guid playerId, CancellationToken cancellationToken = default) =>
         transaction.ExecuteAsync(
-            "update player_inbox set version = version + 1 where tenant_id = current_setting('app.tenant_id')::uuid and player_id = @playerId",
+            "with bumped as (" +
+            "  insert into player_inbox (tenant_id, player_id, version) " +
+            "  values (current_setting('app.tenant_id')::uuid, @playerId, 1) " +
+            "  on conflict (tenant_id, player_id) do update set version = player_inbox.version + 1 " +
+            "  returning version" +
+            ") " +
+            "select pg_notify('quesshi_inbox', format('inbox:%s:%s:%s', current_setting('app.tenant_id'), @playerId, version)) from bumped",
             new { playerId },
             cancellationToken);
 }

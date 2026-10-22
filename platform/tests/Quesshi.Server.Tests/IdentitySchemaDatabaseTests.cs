@@ -12,6 +12,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     private const string QuestionsMigrationName = "20261018T0100_core_questions.sql";
     private const string MediaMigrationName = "20261019T0100_core_media_assets.sql";
     private const string SessionCreationMigrationName = "20261020T0100_core_session_creation_identity.sql";
+    private const string InboxMigrationName = "20261022T0100_core_inbox.sql";
     private static readonly Guid TenantA = Guid.Parse("c66dbf5d-a7e8-42a0-9215-7c87b00bc13e");
     private static readonly Guid TenantB = Guid.Parse("b2461b37-f799-4a3b-96b3-ff5446c64d95");
 
@@ -63,6 +64,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
             await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
+            await RewindInboxMigrationAsync(owner);
             await RewindSessionCreationMigrationAsync(owner);
             await RewindQuestionsMigrationAsync(owner);
             await ExecuteAsync(owner, "alter table admin_memberships drop column if exists is_active; delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql'; insert into admin_memberships (tenant_id, admin_id, role) values (@tenant, @admin, 'editor')", ("tenant", tenant), ("admin", admin));
@@ -210,6 +212,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
+        await RewindInboxMigrationAsync(owner);
         await RewindSessionCreationMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
 
@@ -265,6 +268,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     {
         return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; drop table ai_calls; drop table ai_budgets; drop table generation_runs; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}', '20261020T2300_ai_generation_budgets.sql')");
     }
+
+    private static Task RewindInboxMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, $"drop table session_invites; drop table player_inbox; delete from schema_migrations where name = '{InboxMigrationName}'");
 
     private static Task RewindSessionCreationMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name = '{SessionCreationMigrationName}'");

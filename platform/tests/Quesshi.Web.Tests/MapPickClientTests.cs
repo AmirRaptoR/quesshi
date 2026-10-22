@@ -187,6 +187,24 @@ public sealed class MapPickClientTests : BunitContext
         });
     }
 
+    [Fact]
+    public async Task World_map_asset_uses_a_distinct_cache_for_each_http_client()
+    {
+        using var germanyClient = new HttpClient(new WorldMapHandler("<svg><path id=\"DE\" d=\"M0,0\"><title>Germany</title></path></svg>"))
+        {
+            BaseAddress = new Uri("https://germany.example/"),
+        };
+        using var netherlandsClient = new HttpClient(new WorldMapHandler("<svg><path id=\"NL\" d=\"M0,0\"><title>Netherlands</title></path></svg>"))
+        {
+            BaseAddress = new Uri("https://netherlands.example/"),
+        };
+
+        await new WorldMapAsset(germanyClient).LoadAsync();
+        var countries = await new WorldMapAsset(netherlandsClient).LoadAsync();
+
+        Assert.Equal(["NL"], countries.Select(country => country.Iso));
+    }
+
     [Theory]
     [InlineData("IR", "Iran")]
     [InlineData("NL", "Netherlands")]
@@ -376,12 +394,12 @@ public sealed class MapPickClientTests : BunitContext
             .Take(2)
             .ToArray();
 
-    private sealed class WorldMapHandler : HttpMessageHandler
+    private sealed class WorldMapHandler(string svg = "<svg><path id=\"DE\" d=\"M0,0\"><title>Germany</title></path><path id=\"NL\" d=\"M1,1\"><title>Netherlands</title></path></svg>") : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("<svg><path id=\"DE\" d=\"M0,0\"><title>Germany</title></path><path id=\"NL\" d=\"M1,1\"><title>Netherlands</title></path></svg>", Encoding.UTF8, "image/svg+xml"),
+                Content = new StringContent(svg, Encoding.UTF8, "image/svg+xml"),
             });
     }
 

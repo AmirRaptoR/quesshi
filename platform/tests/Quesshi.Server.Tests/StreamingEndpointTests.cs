@@ -14,6 +14,7 @@ using Quesshi.Application.Tenancy;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
+using Quesshi.Plugin.Api;
 using Quesshi.Server.Security;
 using Quesshi.Server.Streaming;
 using Quesshi.Server.Tenants;
@@ -28,7 +29,7 @@ public sealed class StreamingEndpointTests
     {
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var notifications = new Notifications();
-        var hub = new StreamHub(null!, null!, null!, null!, notifications,
+        var hub = new StreamHub(null!, null!, null!, new EmptyTenantDb(), notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -70,7 +71,7 @@ public sealed class StreamingEndpointTests
     {
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var notifications = new Notifications();
-        var hub = new StreamHub(null!, null!, null!, null!, notifications,
+        var hub = new StreamHub(null!, null!, null!, new EmptyTenantDb(), notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -112,7 +113,7 @@ public sealed class StreamingEndpointTests
         var session = Guid.NewGuid();
         var loader = new TenantBoundSnapshotLoader(first.Id, State(session, 1, viewer));
         var notifications = new Notifications();
-        var hub = new StreamHub(loader, new NormalRenderer(), new FormatRegistry([new TestFormat()]), null!, notifications,
+        var hub = new StreamHub(loader, new NormalRenderer(), new FormatRegistry([new TestFormat()]), new EmptyTenantDb(), notifications,
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -164,7 +165,7 @@ public sealed class StreamingEndpointTests
 #endif
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
+        var hub = new StreamHub(null!, null!, null!, new EmptyTenantDb(), new Notifications(),
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, null, cancellation.Token);
@@ -183,7 +184,7 @@ public sealed class StreamingEndpointTests
         var context = AuthenticatedContext(tenant);
         var body = new TrackingResponseBodyFeature();
         context.Features.Set<IHttpResponseBodyFeature>(body);
-        var hub = new StreamHub(new MissingSnapshotLoader(), null!, null!, null!, new Notifications(),
+        var hub = new StreamHub(new MissingSnapshotLoader(), null!, null!, new EmptyTenantDb(), new Notifications(),
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, Guid.NewGuid(), CancellationToken.None);
@@ -206,7 +207,7 @@ public sealed class StreamingEndpointTests
         context.Features.Set<IHttpResponseBodyFeature>(body);
         var state = SessionState.Create(new SessionRow(session.ToString(), null, null, new Position(0, 0), Format: "test", Version: 1),
             Json("{}"), [new Seat(player.ToString(), "player")], []);
-        var hub = new StreamHub(new StaticSnapshotLoader(state), new OversizedRenderer(), new FormatRegistry([new TestFormat()]), null!,
+        var hub = new StreamHub(new StaticSnapshotLoader(state), new OversizedRenderer(), new FormatRegistry([new TestFormat()]), new EmptyTenantDb(),
             new Notifications(), new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, session, CancellationToken.None);
@@ -244,7 +245,7 @@ public sealed class StreamingEndpointTests
         context.Response.Body = new StalledWriteStream();
         var state = SessionState.Create(new SessionRow(session.ToString(), null, null, new Position(0, 0), Format: "test", Version: 1),
             Json("{}"), [new Seat(player.ToString(), "player")], []);
-        var hub = new StreamHub(new StaticSnapshotLoader(state), new NormalRenderer(), new FormatRegistry([new TestFormat()]), null!,
+        var hub = new StreamHub(new StaticSnapshotLoader(state), new NormalRenderer(), new FormatRegistry([new TestFormat()]), new EmptyTenantDb(),
             new Notifications(), new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, session, CancellationToken.None);
@@ -259,7 +260,7 @@ public sealed class StreamingEndpointTests
         var tenant = new Tenant(Guid.NewGuid(), "tenant", "Tenant", "en");
         var context = new DefaultHttpContext();
         context.Items[typeof(Tenant)] = tenant;
-        var hub = new StreamHub(null!, null!, null!, null!, new Notifications(),
+        var hub = new StreamHub(null!, null!, null!, new EmptyTenantDb(), new Notifications(),
             new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
 
         await StreamEndpoints.StreamAsync(context, hub, NullLogger<StreamHub>.Instance, null, CancellationToken.None);
@@ -295,6 +296,28 @@ public sealed class StreamingEndpointTests
         public event Action<StreamNotification>? Received;
 
         public void Publish(StreamNotification notification) => Received?.Invoke(notification);
+    }
+
+    private sealed class EmptyTenantDb : ITenantDb
+    {
+        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback,
+            System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted,
+            CancellationToken cancellationToken = default, bool readOnly = false) =>
+            callback(EmptyTenantTx.Instance);
+    }
+
+    private sealed class EmptyTenantTx : ITenantTx
+    {
+        public static EmptyTenantTx Instance { get; } = new();
+
+        public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<T>>([]);
+
+        public Task<int> ExecuteAsync(string sql, object? parameters = null,
+            CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null,
+            CancellationToken cancellationToken = default) => Task.FromResult<T?>(default);
     }
 
     private sealed class MissingSnapshotLoader : ISessionSnapshotLoader
