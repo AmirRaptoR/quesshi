@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Orleans;
@@ -84,7 +83,7 @@ public class SessionGrain(
     /// <summary>Returns null when the command's answer was deferred into a batch; <paramref name="turn"/> then holds its waiter.</summary>
     private async Task<SessionCommandResult?> ExecuteInGateAsync(SessionCommand request, Turn turn)
     {
-        var started = Stopwatch.GetTimestamp();
+        var started = clock.Now;
         SessionTurnKind? measuredKind = null;
         DateTimeOffset? turnDueAt = null;
         var activated = _state is null;
@@ -162,11 +161,11 @@ public class SessionGrain(
                 // Ordinary answers are graded and scored in memory now and written with their batch (7.4.1).
                 _baseline ??= _state;
                 _state = current;
-                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, Stopwatch.GetElapsedTime(started), _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
+                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, clock.Now - started, _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
                 _pending.Add(waiter);
                 turn.Waiter = waiter;
                 turn.Format = format;
-                if (activated) _turnObserver.Record(new SessionTurnSample(SessionTurnKind.ColdActivation, Stopwatch.GetElapsedTime(started), _state.Session.DueAt, clock.Now));
+                if (activated) _turnObserver.Record(new SessionTurnSample(SessionTurnKind.ColdActivation, clock.Now - started, _state.Session.DueAt, clock.Now));
                 QueueFlush();
                 return null;
             }
@@ -250,7 +249,7 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), turnDueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, turnDueAt, clock.Now));
             }
         }
     }
@@ -309,7 +308,7 @@ public class SessionGrain(
 
     private async Task TimeoutInGateAsync(DateTimeOffset dueAt)
     {
-        var started = Stopwatch.GetTimestamp();
+        var started = clock.Now;
         SessionTurnKind? measuredKind = null;
         try
         {
@@ -381,7 +380,7 @@ public class SessionGrain(
         {
             if (measuredKind is { } kind)
             {
-                _turnObserver.Record(new SessionTurnSample(kind, Stopwatch.GetElapsedTime(started), dueAt, clock.Now, SessionTurnSource.Timer));
+                _turnObserver.Record(new SessionTurnSample(kind, clock.Now - started, dueAt, clock.Now, SessionTurnSource.Timer));
             }
         }
     }
@@ -532,11 +531,11 @@ public class SessionGrain(
         && after.PositionStartedAt == before.PositionStartedAt
         && after.Status == before.Status;
 
-    private bool AwaitOwnPendingAnswer(Command command, IFormat format, Turn turn, bool activated, long started)
+    private bool AwaitOwnPendingAnswer(Command command, IFormat format, Turn turn, bool activated, DateTimeOffset started)
     {
         if (command.Type != CommandType.Answer
             || !_pending.Any(waiting => waiting.Player == command.Player && waiting.Slot == command.At.Slot)) return false;
-        var follower = new PendingAnswer(command.Player, command.At.Slot, format, Stopwatch.GetElapsedTime(started), _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
+        var follower = new PendingAnswer(command.Player, command.At.Slot, format, clock.Now - started, _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
         _pending.Add(follower);
         turn.Waiter = follower;
         turn.Format = format;
