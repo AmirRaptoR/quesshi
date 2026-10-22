@@ -178,12 +178,20 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     public async Task<HttpResponseMessage> OpenPlayerStreamAsync(CancellationToken cancellationToken = default)
     {
         var identities = _identities ?? throw new InvalidOperationException("The platform HTTP host did not start.");
+#if QUESSHI_TEST_IDENTITY
+        var playerId = identities.PlayerId;
+#else
         var cookie = await IssueAccountCookieAsync(identities.TenantId, identities.AccountId, cancellationToken);
+#endif
         var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{HttpPort}") };
         _clients.Add(client);
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/stream");
         request.Headers.Host = TenantHost;
+#if QUESSHI_TEST_IDENTITY
+        request.Headers.Add("X-Quesshi-Test-Player", playerId.ToString());
+#else
         request.Headers.TryAddWithoutValidation("Cookie", $"{PlayerSessionService.CookieName}={cookie}");
+#endif
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
