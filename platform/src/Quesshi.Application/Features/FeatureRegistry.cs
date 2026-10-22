@@ -9,7 +9,7 @@ namespace Quesshi.Application;
 internal sealed class FeatureRegistry(
     CapabilityRegistry capabilities,
     JobHandlerRegistry jobs,
-    JobScheduleRegistry schedules) : INamedQueries
+    JobScheduleRegistry schedules) : IInboxItems, INamedQueries
 {
     private readonly Dictionary<string, RegisteredFeature> _features = new(StringComparer.Ordinal);
     private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _eventHandlers = [];
@@ -170,8 +170,14 @@ internal sealed class FeatureRegistry(
         ArgumentNullException.ThrowIfNull(transaction);
 
         var items = new List<InboxItem>();
-        foreach (var handler in _inboxHandlers.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Value))
+        foreach (var (featureId, handler) in _inboxHandlers.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
+            var enabled = await transaction.QuerySingleOrDefaultAsync<bool?>(
+                "select entitled and enabled from tenant_capabilities where type = 'feature' and key = @featureId",
+                new { featureId },
+                cancellationToken);
+            if (enabled != true) continue;
+
             var contributed = await handler(transaction, playerId, cancellationToken);
             ArgumentNullException.ThrowIfNull(contributed);
             items.AddRange(contributed);

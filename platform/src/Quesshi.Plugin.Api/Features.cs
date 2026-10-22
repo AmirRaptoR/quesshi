@@ -89,6 +89,15 @@ public delegate Task<IReadOnlyList<InboxItem>> InboxHandler(
 /// <summary>A feature-owned item to be rendered in a player's inbox.</summary>
 public sealed record InboxItem(string Type, JsonElement Payload);
 
+/// <summary>Invokes enabled feature inbox handlers inside a tenant transaction.</summary>
+public interface IInboxItems
+{
+    Task<IReadOnlyList<InboxItem>> GetInboxItemsAsync(
+        ITenantTx transaction,
+        Guid playerId,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>Runs a named, typed, read-only feature query inside the caller's tenant transaction.</summary>
 public delegate Task<TResult> NamedQueryHandler<TResult>(
     ITenantTx transaction,
