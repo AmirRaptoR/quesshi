@@ -43,7 +43,7 @@ internal sealed class CapabilityManagementService(CapabilityRegistry registry, I
 
         var messages = definition.ValidateObject(value);
         if (messages.Count > 0) return new CapabilityManagementResult(CapabilityManagementStatus.Invalid, messages);
-        var serialized = definition.SerializeObject(value);
+            var serialized = definition.SerializeObject(value);
 
         return await database.InTenantAsync(tenantId, async transaction =>
         {
