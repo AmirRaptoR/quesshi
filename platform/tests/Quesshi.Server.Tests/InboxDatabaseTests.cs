@@ -1,10 +1,13 @@
 using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
+using Quesshi.Server.Security;
+using Quesshi.Server.Streaming;
 using Quesshi.Testing;
 
 namespace Quesshi.Server.Tests;
@@ -140,7 +143,7 @@ public sealed class InboxDatabaseTests(PostgresFixture fixture) : IClassFixture<
     }
 
     [SkippableFact]
-    public async Task Committed_inbox_change_emits_a_durable_inbox_notification()
+    public async Task Committed_inbox_change_delivers_a_durable_inbox_stream_message_to_the_affected_player()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         var seeded = await SeedAsync();
@@ -149,31 +152,89 @@ public sealed class InboxDatabaseTests(PostgresFixture fixture) : IClassFixture<
         IInbox inbox = new TenantInbox();
         var listener = new PostgresStreamNotificationListener(sources, NullLogger<PostgresStreamNotificationListener>.Instance);
         var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var received = new TaskCompletionSource<StreamNotification.Inbox>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var hub = new StreamHub(null!, null!, null!, database, listener, new TestClock(DateTimeOffset.UnixEpoch),
+            NullLogger<StreamHub>.Instance, new StreamSessionLiveness(sources));
         listener.Received += notification =>
         {
             if (notification is StreamNotification.Reconnected) reconnected.TrySetResult();
-            if (notification is StreamNotification.Inbox inboxNotification) received.TrySetResult(inboxNotification);
         };
 
         await listener.StartAsync(CancellationToken.None);
         try
         {
             await reconnected.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var stream = hub.Subscribe(seeded.TenantId, seeded.FirstPlayerId.ToString(), null);
             await database.InTenantAsync(seeded.TenantId, transaction =>
             {
                 inbox.Changed(transaction, seeded.FirstPlayerId);
                 return Task.FromResult(0);
             });
 
-            var notification = await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var message = await stream.Messages.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.Equal((seeded.TenantId, seeded.FirstPlayerId, 1L), (notification.TenantId, notification.PlayerId, notification.Version));
+            Assert.Equal((StreamMessageKind.Inbox, 1L), (message.Kind, message.Version));
         }
         finally
         {
+            hub.Dispose();
             await listener.StopAsync(CancellationToken.None);
             listener.Dispose();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Stream_sends_the_current_inbox_version_when_a_player_connects()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await InsertVersionAsync(database, seeded.TenantId, seeded.FirstPlayerId, 4);
+        var hub = new StreamHub(null!, null!, null!, database, new SilentNotifications(), new TestClock(DateTimeOffset.UnixEpoch),
+            NullLogger<StreamHub>.Instance, new StreamSessionLiveness(sources));
+        try
+        {
+            var stream = hub.Subscribe(seeded.TenantId, seeded.FirstPlayerId.ToString(), null);
+
+            await hub.RenderInitialAsync(stream, CancellationToken.None);
+
+            var message = await stream.Messages.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal((StreamMessageKind.Inbox, 4L), (message.Kind, message.Version));
+        }
+        finally
+        {
+            hub.Dispose();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Stream_reconciliation_repairs_a_lost_inbox_notification()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var seeded = await SeedAsync();
+        await using var sources = Sources();
+        var database = new TenantDb(sources);
+        await InsertVersionAsync(database, seeded.TenantId, seeded.FirstPlayerId, 1);
+        var hub = new StreamHub(null!, null!, null!, database, new SilentNotifications(), new TestClock(DateTimeOffset.UnixEpoch),
+            NullLogger<StreamHub>.Instance, new StreamSessionLiveness(sources));
+        try
+        {
+            var stream = hub.Subscribe(seeded.TenantId, seeded.FirstPlayerId.ToString(), null);
+            await hub.RenderInitialAsync(stream, CancellationToken.None);
+            var initial = await stream.Messages.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(stream.MarkSent(initial));
+            await database.InTenantAsync(seeded.TenantId, transaction => transaction.ExecuteAsync(
+                "update player_inbox set version = 2 where tenant_id = current_setting('app.tenant_id')::uuid and player_id = @playerId",
+                new { playerId = seeded.FirstPlayerId }));
+
+            await hub.ReconcileAsync();
+
+            var repaired = await stream.Messages.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal((StreamMessageKind.Inbox, 2L), (repaired.Kind, repaired.Version));
+        }
+        finally
+        {
+            hub.Dispose();
         }
     }
 
@@ -234,4 +295,13 @@ public sealed class InboxDatabaseTests(PostgresFixture fixture) : IClassFixture<
     private sealed record InboxSeed(Guid TenantId, Guid FirstPlayerId, Guid SecondPlayerId, Guid? SessionId);
 
     private sealed record InboxWrite(long Sequence, Guid? PlayerId, string Kind);
+
+    private sealed class SilentNotifications : IStreamNotificationSource
+    {
+        public event Action<StreamNotification>? Received
+        {
+            add { }
+            remove { }
+        }
+    }
 }

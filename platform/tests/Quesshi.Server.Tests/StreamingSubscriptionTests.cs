@@ -100,6 +100,25 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public async Task Inbox_notifications_are_delivered_only_to_the_affected_player()
+    {
+        var tenant = Guid.NewGuid();
+        var player = Guid.NewGuid();
+        var notifications = new Notifications();
+        var hub = new StreamHub(null!, null!, null!, null!, notifications,
+            new TestClock(DateTimeOffset.UnixEpoch), NullLogger<StreamHub>.Instance, TestSessionLiveness.Instance);
+        var affected = hub.Subscribe(tenant, player.ToString(), null);
+        var unaffected = hub.Subscribe(tenant, Guid.NewGuid().ToString(), null);
+
+        notifications.Publish(new StreamNotification.Inbox(tenant, player, 3));
+
+        var message = await ReadAsync(affected);
+        Assert.Equal((StreamMessageKind.Inbox, 3L), (message.Kind, message.Version));
+        Assert.False(unaffected.Messages.TryRead(out _));
+        hub.Dispose();
+    }
+
+    [Fact]
     public async Task Reconnect_reconciles_watched_sessions_without_another_notification()
     {
         var tenant = Guid.NewGuid();
