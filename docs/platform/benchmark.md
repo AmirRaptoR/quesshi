@@ -8,11 +8,11 @@ on-time refusals, failure causes, and per-scenario budget assessment. Its schema
 and budget classification are validated by `BudgetClassificationTests` in
 `platform/bench/Quesshi.Bench.Live.Tests`.
 
-Selected live maximum: **20** players.
+Selected live maximum: **2** players.
 
 ## Reproducing the run
 
-Source revision `f4d0dc6e00c39d262dbe9eb97015da6bd6c986ea`, run on 2026-10-24 UTC.
+Source revision `3762fd713fe8127887123045b79e5c828806eee2`, run on 2026-10-24 UTC.
 That revision is an ancestor of this report and includes the current server and
 SSE implementation exercised by `burst-streams`; the report and its analysis are
 the only later changes.
@@ -44,15 +44,15 @@ before it). `—` means no applicable burst drain.
 
 | Players | Ordinary max | Commit wait max | Close max | Finish max | Drain max | On-time refusals | No receipt | Result |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 2 | 1.553 | 15.928 | 16.576 | 30.583 | -21.583 | 0 | 0 | pass |
-| 20 | 1.116 | 46.679 | 24.248 | 15.503 | -14.006 | 0 | 0 | pass |
-| 50 | 3.161 | 104.046 | 19.665 | 19.230 | -2.086 | 0 | 0 | fail |
-| 100 | 28.792 | 99.135 | 24.141 | 17.902 | 16.309 | 0 | 0 | fail |
-| 150 | 22.133 | 122.305 | 55.735 | 26.924 | 78.029 | 0 | 0 | fail |
-| 200 | 111.849 | 222.591 | 134.094 | 39.302 | 159.123 | 0 | 0 | fail |
-| 250 | 157.663 | 272.668 | 172.162 | 35.803 | 199.150 | 0 | 0 | fail |
-| 350 | 262.298 | 356.002 | 77.178 | 63.228 | 460.962 | 0 | 0 | fail |
-| 500 | 399.464 | 544.325 | 73.717 | 61.033 | 915.819 | 0 | 0 | fail |
+| 2 | 0.747 | 28.409 | 21.318 | 11.973 | -12.979 | 0 | 0 | pass |
+| 20 | 1.309 | 151.466 | 87.556 | 15.060 | 116.278 | 0 | 0 | fail |
+| 50 | 1.648 | 70.359 | 37.379 | 26.658 | 10.748 | 0 | 0 | pass |
+| 100 | 31.028 | 119.639 | 38.122 | 30.472 | 51.518 | 0 | 0 | fail |
+| 150 | 18.615 | 140.406 | 42.555 | 28.589 | 57.414 | 0 | 0 | fail |
+| 200 | 80.286 | 200.433 | 119.033 | 29.891 | 131.173 | 0 | 0 | fail |
+| 250 | 180.070 | 282.580 | 132.078 | 40.794 | 221.985 | 0 | 0 | fail |
+| 350 | 280.196 | 357.694 | 241.439 | 40.263 | 425.926 | 0 | 0 | fail |
+| 500 | 324.746 | 446.446 | 76.079 | 69.734 | 756.210 | 0 | 0 | fail |
 
 Budgets are ordinary answer < 2 ms, commit wait < 2000 ms, round close < 50 ms,
 finish < 100 ms, drain <= 2000 ms, zero on-time refusals, and zero commands
@@ -64,21 +64,22 @@ classification.
 
 Every command in every run was accepted: no count produced an on-time refusal, a
 timeout, a command without a receipt, or a recorded failure cause. The largest
-burst drain was 915.819 ms and the largest commit wait was 544.325 ms, both below
+burst drain was 756.210 ms and the largest commit wait was 446.446 ms, both below
 their 2000 ms budgets. The drain, commit-wait, refusal, receipt, and finish
 budgets pass at every tested count.
 
 The limiting checks are the per-turn ordinary-answer maximum (< 2 ms) and
 round-close maximum (< 50 ms). Both are within budget in every scenario and
-repetition at 2 and 20 players. At 50 players, `burst` and `burst-streams`
-exceeded the ordinary-answer maximum. Every larger tested count has at least one
+repetition at 2 players. At 20 players, `cold` exceeded the round-close maximum;
+50 players passed independently but cannot establish a cap because the smaller
+tested count 20 failed. Every tested count above 50 has at least one
 ordinary-answer or round-close maximum over budget.
 
 The ordinary-answer measure does not include a share of batch commit time because
 the grain is free during a group commit. The separate commit-wait budget bounds
 the durable acknowledgement path.
 
-**20 is the selected maximum**: the largest tested count that, together with
+**2 is the selected maximum**: the largest tested count that, together with
 every smaller tested count, met every applicable budget in every scenario and
 repetition, with zero on-time refusals. The tested counts above it were rejected
 for these checks:
@@ -86,13 +87,13 @@ for these checks:
 | Players | Passed | Failed checks |
 | ---: | --- | --- |
 | 2 | yes | — |
-| 20 | yes | — |
-| 50 | no | burst-streams:ordinary_answer_max, burst:ordinary_answer_max |
-| 100 | no | burst-streams:ordinary_answer_max, burst:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, spread:ordinary_answer_max |
-| 150 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max |
-| 200 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
+| 20 | no | cold:round_close_max |
+| 50 | independently yes; not selectable after 20 fails | — |
+| 100 | no | burst-streams:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, spread:ordinary_answer_max |
+| 150 | no | burst-streams:ordinary_answer_max, burst:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max |
+| 200 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, pool10:round_close_max |
 | 250 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
-| 350 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
+| 350 | no | burst-streams:ordinary_answer_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
 | 500 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
 
 Counts between the tested ones were not measured and are not claimed. The maximum
