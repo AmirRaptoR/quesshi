@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Quesshi.Engine.Contracts;
@@ -236,6 +237,18 @@ public sealed class InboxDatabaseTests(PostgresFixture fixture) : IClassFixture<
         {
             hub.Dispose();
         }
+    }
+
+    [SkippableFact]
+    public async Task Host_registers_the_durable_inbox_contract_for_sibling_plugins()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var sources = Sources();
+        await using var app = Program.CreateApplication(sources, TestPorts.Allocate(), TestPorts.Allocate());
+
+        var inbox = app.Services.GetRequiredService<IInbox>();
+
+        Assert.IsType<TenantInbox>(inbox);
     }
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));

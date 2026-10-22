@@ -207,6 +207,7 @@ public static class Program
         builder.Services.AddPlayerSecurity();
         builder.Services.AddAdminServices();
         builder.Services.TryAddSingleton<ITenantDb, TenantDb>();
+        builder.Services.TryAddSingleton<IInbox, TenantInbox>();
         builder.Services.AddSingleton<IMediaStore, LocalMediaStore>();
         builder.Services.AddSingleton<IHostAddressResolver, DnsHostAddressResolver>();
         builder.Services.AddSingleton<IMediaFetcher, MediaFetcher>();
