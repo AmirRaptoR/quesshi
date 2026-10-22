@@ -165,7 +165,8 @@ public class SessionGrain(
                 // Ordinary answers are graded and scored in memory now and written with their batch (7.4.1).
                 _baseline ??= _state;
                 _state = current;
-                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, format, clock.Now - started, _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
+                var waiter = new PendingAnswer(request.PlayerId, command.At.Slot, command.Revision, PendingAnswerValue(command, format), format,
+                    clock.Now - started, _state.Session.DueAt, measured: !activated, acceptedAt: clock.Now);
                 _pending.Add(waiter);
                 turn.Waiter = waiter;
                 turn.Format = format;
@@ -560,8 +561,16 @@ public class SessionGrain(
 
     private bool AwaitOwnPendingAnswer(Command command, IFormat format, Turn turn, bool activated, DateTimeOffset started)
     {
-        if (command.Type != CommandType.Answer) return false;
-        bool Own(PendingAnswer waiting) => waiting.Player == command.Player && waiting.Slot == command.At.Slot;
+        if (command.Type != CommandType.Answer || _state is null) return false;
+        var stored = PendingAnswerValue(command, format);
+
+        // A retry can wait only for the same normalized answer and revision. In particular, an
+        // equal-revision conflict must reach the format error path rather than inherit another
+        // pending answer's acknowledgement.
+        bool Own(PendingAnswer waiting) => waiting.Player == command.Player
+            && waiting.Slot == command.At.Slot
+            && waiting.Revision == command.Revision
+            && SameStoredAnswer(waiting.Stored, stored);
         // A repeat of an answer whose batch is being written waits for that batch's outcome, never for a later one.
         if (_inflight.FirstOrDefault(Own) is { } writing)
         {
@@ -570,11 +579,28 @@ public class SessionGrain(
             return true;
         }
         if (!_pending.Any(Own)) return false;
-        var follower = new PendingAnswer(command.Player, command.At.Slot, format, clock.Now - started, _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
+        var follower = new PendingAnswer(command.Player, command.At.Slot, command.Revision, stored, format,
+            clock.Now - started, _state.Session.DueAt, measured: false, acceptedAt: clock.Now);
         _pending.Add(follower);
         turn.Waiter = follower;
         turn.Format = format;
         return true;
+    }
+
+    private static bool SameStoredAnswer(JsonElement? left, JsonElement? right) => left is { } first
+        ? right is { } second && JsonElement.DeepEquals(first, second)
+        : right is null;
+
+    private JsonElement? PendingAnswerValue(Command command, IFormat format)
+    {
+        if (_state is null) return command.Payload;
+        try
+        {
+            return new SessionTransition(_state, kinds, clock, format.Spec.Grace, format.Spec.Scored).Grade(command).Stored;
+        }
+        catch (MalformedAnswer) { return command.Payload; }
+        catch (JsonException) { return command.Payload; }
+        catch (KeyNotFoundException) { return command.Payload; }
     }
 
     private void QueueFlush()
@@ -778,11 +804,14 @@ public class SessionGrain(
         public IFormat? Format { get; set; }
     }
 
-    private sealed class PendingAnswer(string player, int slot, IFormat format, TimeSpan ownTurn, DateTimeOffset? dueAt, bool measured, DateTimeOffset acceptedAt)
+    private sealed class PendingAnswer(string player, int slot, int revision, JsonElement? stored, IFormat format,
+        TimeSpan ownTurn, DateTimeOffset? dueAt, bool measured, DateTimeOffset acceptedAt)
     {
         public DateTimeOffset AcceptedAt { get; } = acceptedAt;
         public string Player { get; } = player;
         public int Slot { get; } = slot;
+        public int Revision { get; } = revision;
+        public JsonElement? Stored { get; } = stored;
         public IFormat Format { get; } = format;
         public TimeSpan OwnTurn { get; } = ownTurn;
         public DateTimeOffset? DueAt { get; } = dueAt;

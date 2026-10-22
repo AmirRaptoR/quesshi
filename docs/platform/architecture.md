@@ -870,7 +870,10 @@ queue behind it and form the next batch. A batch is written as one transaction:
 **Durable acknowledgement.** A caller is told `ok` only after the transaction that holds its
 answer has committed. It then receives the view rendered from the state that transaction wrote.
 Until then nothing reports the answer as accepted, and a view or stream never shows an answer
-that is not committed.
+that is not committed. A retry can wait on an in-flight or pending batch only when its player,
+slot, revision, and normalized stored answer all match the accepted answer; a different payload
+or revision is applied independently and receives its own format outcome rather than another
+answer's acknowledgement.
 
 **Failure.** A batch is one unit. If its transaction rolls back for certain, the working state is
 reset to the committed state and every caller in the batch gets the retryable `write_failed`. If
