@@ -85,10 +85,13 @@ public sealed class AdminDeadJobEndpointTests : IAsyncLifetime
         using var rerunResponse = await _host.Owner.PostAsync($"{DeadJobsPath}/{_tenantJobId}/rerun", content: null);
         rerunResponse.EnsureSuccessStatusCode();
         var completed = await WaitForDoneAsync(_tenantJobId);
+        var jobsBeforeSecondRequest = await GetTenantJobStatesAsync();
 
         using var secondResponse = await _host.Owner.PostAsync($"{DeadJobsPath}/{_tenantJobId}/rerun", content: null);
+        var jobsAfterSecondRequest = await GetTenantJobStatesAsync();
 
         Assert.Equal((HttpStatusCode.NotFound, "done", 1), (secondResponse.StatusCode, completed.Status, completed.Attempts));
+        Assert.Equal(jobsBeforeSecondRequest, jobsAfterSecondRequest);
     }
 
     [SkippableFact]
@@ -109,6 +112,11 @@ public sealed class AdminDeadJobEndpointTests : IAsyncLifetime
         return await response.Content.ReadFromJsonAsync<IReadOnlyList<DeadJobResponse>>()
             ?? throw new InvalidOperationException("Dead-jobs endpoint returned no body.");
     }
+
+    private Task<IReadOnlyList<DeadJobState>> GetTenantJobStatesAsync() =>
+        _host.QueryOwnerAsync<DeadJobState>(
+            "select id, status, attempts from jobs where tenant_id = @tenantId order by id",
+            new { tenantId = _host.TenantId });
 
     private async Task<DeadJobResponse> WaitForDoneAsync(long jobId)
     {
@@ -149,6 +157,8 @@ public sealed class AdminDeadJobEndpointTests : IAsyncLifetime
         string? LastError,
         DateTimeOffset? OccurredAt,
         string Status);
+
+    private sealed record DeadJobState(long Id, string Status, int Attempts);
 
     private sealed class DeadJobsHttpFeature : IFeature
     {
