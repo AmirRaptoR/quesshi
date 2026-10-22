@@ -200,7 +200,10 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
                 Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var editor = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", editorCookie,
                        await AdminAntiforgeryAsync(client, TenantHost, editorCookie), TenantOrigin))
-                Assert.Equal(HttpStatusCode.NoContent, editor.StatusCode);
+                Assert.Equal(HttpStatusCode.Forbidden, editor.StatusCode);
+            using (var moderator = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", moderatorCookie,
+                       await AdminAntiforgeryAsync(client, TenantHost, moderatorCookie), TenantOrigin))
+                Assert.Equal(HttpStatusCode.NoContent, moderator.StatusCode);
             using (var forced = await SendAdminAsync(client, TenantHost, HttpMethod.Post, $"/api/admin/players/{seeded.PlayerId}/ban", forcedCookie,
                        await AdminAntiforgeryAsync(client, TenantHost, forcedCookie), TenantOrigin))
                 Assert.Equal(HttpStatusCode.Forbidden, forced.StatusCode);
@@ -218,7 +221,7 @@ public sealed class RouteSecurityDatabaseTests(PostgresFixture fixture)
 
             Assert.False(await owner.ExecuteScalarAsync<bool>("select banned_at is not null from players where tenant_id = @tenantId and id = @playerId", new { tenantId = seeded.TenantId, playerId = seeded.PlayerId }));
             Assert.False(await owner.ExecuteScalarAsync<bool>("select banned_at is not null from players where tenant_id = @tenantId and id = @playerId", new { tenantId = seeded.OtherTenantId, playerId = seeded.OtherPlayerId }));
-            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId and actor_id = @actorId and action = 'admin.player.ban' and target_type = 'player' and target_id = @playerId", new { tenantId = seeded.TenantId, actorId = seeded.EditorAdminId, playerId = seeded.PlayerId }));
+            Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId and actor_id = @actorId and action = 'admin.player.ban' and target_type = 'player' and target_id = @playerId", new { tenantId = seeded.TenantId, actorId = seeded.ModeratorAdminId, playerId = seeded.PlayerId }));
             Assert.Equal(1L, await owner.ExecuteScalarAsync<long>("select count(*) from audit_log where tenant_id = @tenantId and actor_id = @actorId and action = 'admin.player.unban' and target_type = 'player' and target_id = @playerId", new { tenantId = seeded.TenantId, actorId = seeded.ModeratorAdminId, playerId = seeded.PlayerId }));
         }
         finally
