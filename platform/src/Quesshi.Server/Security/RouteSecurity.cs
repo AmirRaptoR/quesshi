@@ -33,9 +33,12 @@ public sealed class CoreRouteBuilder
 
     /// <summary>Creates a role-protected core administration route group below <c>/api/admin</c>.</summary>
     public RouteGroupBuilder AdminRoutes(AdminRole minimumRole) => RouteSecurity.SecureAdminRoutes(_adminRoutes.MapGroup(string.Empty), minimumRole);
+
+    /// <summary>Creates a player-operations route group below <c>/api/admin</c>.</summary>
+    public RouteGroupBuilder PlayerOperationRoutes() => RouteSecurity.SecurePlayerOperationRoutes(_adminRoutes.MapGroup(string.Empty));
 }
 
-internal sealed record AdminRouteSecurityMetadata(AdminRole MinimumRole);
+internal sealed record AdminRouteSecurityMetadata(AdminRole MinimumRole, bool RequiresPlayerOperationCapability = false);
 
 internal sealed class AdminRouteSecurityMiddleware(RequestDelegate next)
 {
@@ -60,7 +63,8 @@ internal sealed class AdminRouteSecurityMiddleware(RequestDelegate next)
             await audit.WriteRequestAsync(context, context.RequestAborted);
         }
 
-        if (admin.MustChangePassword || !admin.HasRole(policy.MinimumRole))
+        if (admin.MustChangePassword
+            || (policy.RequiresPlayerOperationCapability ? !admin.CanManagePlayers : !admin.HasRole(policy.MinimumRole)))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return;
@@ -168,6 +172,12 @@ internal static class RouteSecurity
     {
         if (!Enum.IsDefined(minimumRole)) throw new ArgumentOutOfRangeException(nameof(minimumRole));
         group.WithMetadata(new AdminRouteSecurityMetadata(minimumRole));
+        return group;
+    }
+
+    internal static RouteGroupBuilder SecurePlayerOperationRoutes(RouteGroupBuilder group)
+    {
+        group.WithMetadata(new AdminRouteSecurityMetadata(AdminRole.Moderator, RequiresPlayerOperationCapability: true));
         return group;
     }
 

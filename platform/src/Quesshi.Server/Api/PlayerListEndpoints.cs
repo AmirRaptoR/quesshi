@@ -12,7 +12,7 @@ public sealed class PlayerListEndpoints : ICoreRouteModule
     private const int MaximumPageSize = 100;
 
     public void Map(CoreRouteBuilder routes) =>
-        routes.AdminRoutes(AdminRole.Moderator).MapGet("/players", ListAsync);
+        routes.PlayerOperationRoutes().MapGet("/players", ListAsync);
 
     private static async Task<IResult> ListAsync(
         HttpContext context,

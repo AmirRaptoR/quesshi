@@ -19,8 +19,9 @@ public sealed record AdminIdentity(Guid TenantId, Guid AdminId, bool MustChangeP
 {
     public string Subject => $"admin:{AdminId:N}";
 
-    public bool HasRole(AdminRole requiredRole) =>
-        IsPlatform || Role is AdminRole.Owner || Role == requiredRole;
+    public bool HasRole(AdminRole minimumRole) => IsPlatform || Role >= minimumRole;
+
+    public bool CanManagePlayers => IsPlatform || Role is AdminRole.Moderator or AdminRole.Owner;
 }
 
 internal interface IAdminSessionIssuer
