@@ -894,7 +894,7 @@ budgets are the whole turn, including the write of every deferred answer ahead o
 set-based writes of misses, seats and results.
 
 **Measured maximum.** With this path the two-silo PostgreSQL matrix of [the benchmark](benchmark.md)
-selects **2** as the live player maximum: the largest tested count that met every budget above with
+selects **20** as the live player maximum: the largest tested count that met every budget above with
 zero on-time refusals in every scenario. Larger tested counts exceeded the ordinary-answer or round-close
 budget on the shared test host; the reasons and the run-to-run noise are in the benchmark report.
 
