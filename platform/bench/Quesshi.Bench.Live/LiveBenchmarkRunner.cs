@@ -70,6 +70,18 @@ public sealed class LiveBenchmarkRunner
             {
                 outcome = await RunOneAsync(run, administrationConnection, cancellationToken);
             }
+            catch (Exception exception) when (IsPortConflict(exception))
+            {
+                // A reserved port was taken by another socket before the host bound it (the load process
+                // opens many ephemeral connections). Nothing was measured, so the run is repeated once.
+                try { outcome = await RunOneAsync(run, administrationConnection, cancellationToken); }
+                catch (Exception retried)
+                {
+                    throw new InvalidOperationException(
+                        $"Benchmark scenario {run.Scenario} with {run.Players} players failed: {retried.Message}",
+                        retried);
+                }
+            }
             catch (Exception exception)
             {
                 throw new InvalidOperationException(
@@ -90,6 +102,12 @@ public sealed class LiveBenchmarkRunner
             Selection = options.Matrix ? BudgetClassifier.Select(reports) : null,
         };
     }
+
+    private static bool IsPortConflict(Exception exception) =>
+        exception is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse }
+        || exception.InnerException is { } inner && IsPortConflict(inner)
+        || exception is AggregateException aggregate && aggregate.InnerExceptions.Any(IsPortConflict)
+        || exception.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<ScenarioOutcome> RunOneAsync(
         BenchmarkOptions options,
