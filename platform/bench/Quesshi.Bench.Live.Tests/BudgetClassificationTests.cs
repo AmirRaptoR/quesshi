@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Quesshi.Application.Sessions;
 
@@ -134,6 +135,7 @@ public sealed class BudgetClassificationTests
 
         Assert.Equal(BenchmarkReport.CurrentSchema, report.Schema);
         Assert.Matches("^[0-9a-f]{40}$", report.SourceRevision);
+        Assert.True(IsAncestorOfHead(report.SourceRevision), $"The report source revision {report.SourceRevision} is not an ancestor of HEAD.");
         Assert.NotEmpty(report.Command);
         Assert.Equal("anonymized", report.Environment.HostClass);
         Assert.DoesNotContain("\"Hostname\"", JsonSerializer.Serialize(report.Environment), StringComparison.Ordinal);
@@ -234,5 +236,16 @@ public sealed class BudgetClassificationTests
             if (File.Exists(candidate)) return candidate;
         }
         throw new FileNotFoundException($"{relative} was not found above {AppContext.BaseDirectory}.");
+    }
+
+    private static bool IsAncestorOfHead(string revision)
+    {
+        var repository = Path.GetDirectoryName(RepositoryFile("docs/platform/benchmark.raw.json"))!;
+        using var process = Process.Start(new ProcessStartInfo("git", $"-C {repository} merge-base --is-ancestor {revision} HEAD")
+        {
+            UseShellExecute = false
+        });
+
+        return process is not null && process.WaitForExit(5_000) && process.ExitCode == 0;
     }
 }
