@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Quesshi.Shared;
 
@@ -33,18 +34,18 @@ public static class MapText
     private static string Degrees(double value) => value.ToString("0.##", CultureInfo.InvariantCulture) + "°";
 }
 
-/// <summary>Loads and parses the map's static asset; the task is shared by every lazy map component.</summary>
+/// <summary>Loads and parses the map's static asset; the task is shared by lazy map components using the same HTTP client.</summary>
 public sealed partial class WorldMapAsset(HttpClient http)
 {
     public const string Url = "_content/Quesshi.Kinds.MapPick.Client/maps/world.svg";
-    private static Task<IReadOnlyList<MapCountry>>? loading;
+    private static readonly ConditionalWeakTable<HttpClient, Task<IReadOnlyList<MapCountry>>> Loading = new();
 
-    public Task<IReadOnlyList<MapCountry>> LoadAsync() => loading ??= FetchAsync();
+    public Task<IReadOnlyList<MapCountry>> LoadAsync() => Loading.GetValue(http, FetchAsync);
 
-    private async Task<IReadOnlyList<MapCountry>> FetchAsync()
+    private static async Task<IReadOnlyList<MapCountry>> FetchAsync(HttpClient http)
     {
         try { return Parse(await http.GetStringAsync(Url)); }
-        catch { loading = null; return []; }
+        catch { Loading.Remove(http); return []; }
     }
 
     public static IReadOnlyList<MapCountry> Parse(string svg) =>
