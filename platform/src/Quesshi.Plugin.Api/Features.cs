@@ -69,6 +69,36 @@ public interface IFeatureBuilder
     void Job(string kind, Func<JobContext, CancellationToken, Task> handler, WhenDisabled whenDisabled = WhenDisabled.Complete);
 
     void Every(TimeSpan interval, string kind);
+
+    /// <summary>Adds items to a requested player's inbox.</summary>
+    void Inbox(InboxHandler handler);
+
+    /// <summary>Provides a named, typed, read-only query to other declared feature consumers.</summary>
+    void Provides<TResult>(string name, NamedQueryHandler<TResult> handler);
+
+    /// <summary>Declares a named query this feature may consume.</summary>
+    void Uses(string name);
+}
+
+/// <summary>Builds feature-provided inbox items for one player inside the caller's tenant transaction.</summary>
+public delegate Task<IReadOnlyList<InboxItem>> InboxHandler(
+    ITenantTx transaction,
+    Guid playerId,
+    CancellationToken cancellationToken);
+
+/// <summary>A feature-owned item to be rendered in a player's inbox.</summary>
+public sealed record InboxItem(string Type, JsonElement Payload);
+
+/// <summary>Runs a named, typed, read-only feature query inside the caller's tenant transaction.</summary>
+public delegate Task<TResult> NamedQueryHandler<TResult>(
+    ITenantTx transaction,
+    Guid playerId,
+    CancellationToken cancellationToken);
+
+/// <summary>The result of invoking a named feature query.</summary>
+public sealed record NamedQueryResult<TResult>(bool Available, TResult? Value)
+{
+    public static NamedQueryResult<TResult> Unavailable { get; } = new(false, default);
 }
 
 /// <summary>The tenant role required to use an administration route.</summary>
