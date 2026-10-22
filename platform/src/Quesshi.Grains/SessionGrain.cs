@@ -512,15 +512,15 @@ public class SessionGrain(
         // A failed batch discards the state while the items load.
         _state = (_state ?? throw new StaleActivationException()).WithItems(loaded);
     }
-    private void DropState()
+    private void DropState(string pendingErrorCode = "retryable", bool pendingRetryable = true)
     {
         DisposeDeadlineTimer();
         _state = null;
         _baseline = null;
         _generation++;
-        Fail(_inflight, "retryable", retryable: true);
+        Fail(_inflight, pendingErrorCode, pendingRetryable);
         _inflight = [];
-        FailPending("retryable", retryable: true);
+        FailPending(pendingErrorCode, pendingRetryable);
         Deactivate();
     }
 
@@ -633,14 +633,12 @@ public class SessionGrain(
                         }
                         if (writeFailure is StaleActivationException)
                         {
-                            Fail(batch, "stale_activation", retryable: true);
-                            DropState();
+                            DropState("stale_activation", pendingRetryable: true);
                             return;
                         }
                         if (IsUnknownCommit(writeFailure))
                         {
                             logger.LogWarning(writeFailure, "Answer batch has an unknown commit outcome for {SessionId}", _sessionId);
-                            Fail(batch, "retryable", retryable: true);
                             DropState();
                             return;
                         }
