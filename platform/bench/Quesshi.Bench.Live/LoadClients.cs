@@ -249,4 +249,3 @@ internal sealed class SseSubscription : IAsyncDisposable
         }
     }
 }
-
