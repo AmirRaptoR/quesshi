@@ -63,6 +63,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
             await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
+            await RewindStatsMigrationAsync(owner);
             await RewindSessionCreationMigrationAsync(owner);
             await RewindQuestionsMigrationAsync(owner);
             await ExecuteAsync(owner, "alter table admin_memberships drop column if exists is_active; delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql'; insert into admin_memberships (tenant_id, admin_id, role) values (@tenant, @admin, 'editor')", ("tenant", tenant), ("admin", admin));
@@ -210,6 +211,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
+        await RewindStatsMigrationAsync(owner);
         await RewindSessionCreationMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
 
@@ -265,6 +267,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     {
         return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; drop table ai_calls; drop table ai_budgets; drop table generation_runs; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}', '20261020T2300_ai_generation_budgets.sql')");
     }
+
+    private static Task RewindStatsMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists player_results; drop table if exists player_stats; drop table if exists player_category_stats; drop table if exists question_stats; delete from schema_migrations where name = '20261022T1800_stats_projection.sql'");
 
     private static Task RewindSessionCreationMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name = '{SessionCreationMigrationName}'");
