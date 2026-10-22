@@ -14,7 +14,7 @@ public sealed class BudgetClassificationTests
 
         Assert.True(assessment.Passed);
         Assert.Equal(
-            ["ordinary_answer_max", "round_close_max", "finish_max", "burst_drain", "on_time_refusals", "receipt_coverage"],
+            ["ordinary_answer_max", "answer_commit_wait_max", "round_close_max", "finish_max", "burst_drain", "on_time_refusals", "receipt_coverage"],
             assessment.Checks.Select(check => check.Name));
         Assert.All(assessment.Checks, check => Assert.True(check.Applicable && check.Passed));
     }
@@ -30,6 +30,18 @@ public sealed class BudgetClassificationTests
 
         Assert.False(assessment.Passed);
         Assert.Equal([failed], assessment.Checks.Where(check => check.Applicable && !check.Passed).Select(check => check.Name));
+    }
+
+    [Theory]
+    [InlineData(LiveScenario.Burst)]
+    [InlineData(LiveScenario.Spread)]
+    public void An_answer_commit_wait_at_its_limit_fails_in_every_scenario_including_spread(LiveScenario scenario)
+    {
+        var assessment = Report(scenario, 100, commitWait: 2000).Assessment!;
+
+        Assert.Equal(["answer_commit_wait_max"], assessment.Checks.Where(check => check.Applicable && !check.Passed).Select(check => check.Name));
+        Assert.True(Report(scenario, 100, commitWait: 1999).Assessment!.Passed);
+        Assert.False(Report(scenario, 100, commitWait: null).Assessment!.Passed);
     }
 
     [Fact]
@@ -181,7 +193,8 @@ public sealed class BudgetClassificationTests
         double? finish = 10,
         double? drain = 500,
         int onTimeRefusals = 0,
-        int withoutReceipt = 0)
+        int withoutReceipt = 0,
+        double? commitWait = 5)
     {
         var completed = drain is { } milliseconds ? Deadline.AddMilliseconds(milliseconds) : (DateTimeOffset?)null;
         var turns = new List<SessionTurnSample>();
@@ -206,7 +219,8 @@ public sealed class BudgetClassificationTests
             [],
             [],
             [],
-            []);
+            [],
+            commitWait is { } wait ? [TimeSpan.FromMilliseconds(wait)] : []);
     }
 
     private static string RepositoryFile(string relative)

@@ -576,7 +576,6 @@ public class SessionGrain(
                 _pending = [];
                 _inflight = batch;
                 long version;
-                var writeStarted = clock.Now;
                 try
                 {
                     version = await store.SaveAsync(_tenantId, _sessionId, baseline.Session.Version, baseline, snapshot);
@@ -624,7 +623,7 @@ public class SessionGrain(
                     _baseline = committed;
                     _state = _state with { Session = _state.Session with { Version = version } };
                 }
-                Complete(batch, committed, clock.Now - writeStarted);
+                Complete(batch, committed);
             }
         }
         catch (Exception exception)
@@ -677,17 +676,16 @@ public class SessionGrain(
     }
 
     /// <summary>
-    /// Acknowledges a committed batch. An ordinary answer's measured turn is its own in-memory turn plus an equal share
-    /// of the batch transaction (§7.4.1); the wait from acceptance to commit is recorded separately.
+    /// Acknowledges a committed batch. An ordinary answer's measured turn is the time it held the gate; the wait for
+    /// its commit is recorded separately, because the grain is free to take other commands while a batch commits (§7.4.1).
     /// </summary>
-    private void Complete(List<PendingAnswer> batch, SessionState committed, TimeSpan writeTime = default)
+    private void Complete(List<PendingAnswer> batch, SessionState committed)
     {
-        var share = batch.Count == 0 ? TimeSpan.Zero : writeTime / batch.Count;
         foreach (var answer in batch)
         {
             if (answer.Measured)
             {
-                _turnObserver.Record(new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, answer.OwnTurn + share, answer.DueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, answer.OwnTurn, answer.DueAt, clock.Now));
                 _turnObserver.RecordAnswerCommit(clock.Now - answer.AcceptedAt);
             }
             answer.Completion.TrySetResult(new BatchOutcome(committed, null, false));

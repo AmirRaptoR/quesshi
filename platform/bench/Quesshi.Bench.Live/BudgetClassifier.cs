@@ -8,6 +8,8 @@ public static class LiveBudgets
     public const double FinishMs = 100;
     /// <summary>The last accepted burst answer must be committed within this long after the question deadline.</summary>
     public const double BurstDrainMs = 2000;
+    /// <summary>An accepted ordinary answer is acknowledged, durably committed, within this long of its acceptance.</summary>
+    public const double AnswerCommitWaitMs = 2000;
 }
 
 /// <param name="Name">A stable identifier of the check.</param>
@@ -30,6 +32,7 @@ public static class BudgetClassifier
         var checks = new List<BudgetCheck>
         {
             Turn("ordinary_answer_max", true, LiveBudgets.OrdinaryAnswerMs, report.OrdinaryAnswerBusy),
+            Turn("answer_commit_wait_max", true, LiveBudgets.AnswerCommitWaitMs, report.AnswerCommit),
             Turn("round_close_max", true, LiveBudgets.RoundCloseMs, report.RoundCloseBusy),
             Turn("finish_max", finishes, LiveBudgets.FinishMs, report.FinishBusy),
             Drain(burst, report),

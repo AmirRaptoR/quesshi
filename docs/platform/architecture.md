@@ -802,14 +802,14 @@ current view.
 
 | Transition | What it does | Budget |
 |---|---|---|
-| Ordinary answer | In memory: validate, grade, score. One transaction: one answer row, the seat's score, the session row | under 2 ms |
+| Ordinary answer | In memory: validate, grade, score. Made durable by a group commit (7.4.1) | under 2 ms |
 | Round close | Records misses and eliminations with set-based statements, moves the position | under 50 ms |
 | Finish | Writes places and results for every seat with set-based statements, emits `SessionEnded` | under 100 ms |
 
 An answer that happens to be the last one of a round also performs the close, and is measured as a
-close. An ordinary answer is measured as its own in-memory turn plus an equal share of the batch
-transaction that made it durable (7.4.1), so the sum of the measured turns is the time the grain
-was occupied. The only plugin code in any of them is the format and the kind, which are pure; no feature
+close. With batching (7.4.1) an ordinary answer's turn is the in-memory work only: its database
+write is a group commit that runs while the grain accepts other commands, so the write is not grain
+time. It is bounded separately by the answer commit wait (7.4.1). The only plugin code in any of them is the format and the kind, which are pure; no feature
 plugin runs here.
 
 **This is the riskiest number in the design, so it is measured first.** At 2 ms each, 500 answers
@@ -884,8 +884,12 @@ commit. An answer whose receipt time is after the deadline plus grace is refused
 position and every later command for the old position is stale. The finish writes the standings
 and emits `SessionEnded` once, in the transaction that ends the session.
 
-**Budgets.** The *ordinary answer* budget is the answer's own in-memory turn plus its equal share
-of the batch transaction (batch time divided by the answers in it). The *round close* and *finish*
+**Budgets.** The *ordinary answer* budget is the time the grain is busy with the answer: its
+in-memory turn. The batch transaction is not part of it because the grain is not occupied while a
+batch is written. Instead the *answer commit wait*, from the moment an answer is accepted until its
+batch has committed and it is acknowledged, is bounded to under 2 seconds in every scenario (including
+a spread of answers over the whole question, where no burst drain applies); a burst must also drain
+within 2 seconds of the deadline. The *round close* and *finish*
 budgets are the whole turn, including the write of every deferred answer ahead of it, and the
 set-based writes of misses, seats and results.
 
