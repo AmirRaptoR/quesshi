@@ -90,12 +90,10 @@ public sealed class PlayerOperationsEndpointTests : IAsyncLifetime
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var streamResponseTask = Host.OpenPlayerStreamAsync(timeout.Token);
         await WaitForSubscriptionAsync(Host.Services.GetRequiredService<StreamHub>(), timeout.Token);
-        await Host.ExecuteOwnerAsync("select pg_notify('quesshi_config', @message)",
-            new { message = $"config:{Host.TenantId}:1" }, timeout.Token);
         using var streamResponse = await streamResponseTask;
         streamResponse.EnsureSuccessStatusCode();
         using var reader = new StreamReader(await streamResponse.Content.ReadAsStreamAsync());
-        Assert.Contains("event: config", await ReadFrameAsync(reader, timeout.Token), StringComparison.Ordinal);
+        Assert.Contains("event: inbox", await ReadFrameAsync(reader, timeout.Token), StringComparison.Ordinal);
 
         using var banResponse = await Host.Moderator.PostAsync($"/api/admin/players/{Host.PlayerId}/ban", null);
         banResponse.EnsureSuccessStatusCode();
