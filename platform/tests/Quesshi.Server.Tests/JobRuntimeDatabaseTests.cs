@@ -316,6 +316,9 @@ public sealed class JobRuntimeDatabaseTests(PostgresFixture fixture)
         public Task<bool> CancelAsync(long id, Guid lockedBy, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<IReadOnlyList<DeadJob>> ListDeadAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<DeadJob>>([]);
         public Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<IReadOnlyList<TenantJob>> ListDeadForTenantAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<TenantJob>>([]);
+        public Task<TenantJob?> GetForTenantAsync(Guid tenantId, long id, CancellationToken cancellationToken = default) => Task.FromResult<TenantJob?>(null);
+        public Task<TenantJob?> RerunDeadForTenantAsync(Guid tenantId, long id, CancellationToken cancellationToken = default) => Task.FromResult<TenantJob?>(null);
     }
 
     private sealed class RecordingJobLogger : ILogger<JobWorker>

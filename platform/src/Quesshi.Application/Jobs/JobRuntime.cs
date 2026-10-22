@@ -46,6 +46,8 @@ internal sealed record LeasedJob(
 
 internal sealed record DeadJob(long Id, Guid? TenantId, string Owner, string Kind, int Attempts, string? LastError);
 
+internal sealed record TenantJob(long Id, string Kind, int Attempts, string? LastError, DateTimeOffset? OccurredAt, string Status);
+
 /// <summary>System-role durable-job state transitions. It is intentionally not part of Plugin.Api.</summary>
 internal interface IJobStore
 {
@@ -55,6 +57,9 @@ internal interface IJobStore
     Task<bool> CancelAsync(long id, Guid lockedBy, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DeadJob>> ListDeadAsync(CancellationToken cancellationToken = default);
     Task<bool> RerunDeadAsync(long id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TenantJob>> ListDeadForTenantAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<TenantJob?> GetForTenantAsync(Guid tenantId, long id, CancellationToken cancellationToken = default);
+    Task<TenantJob?> RerunDeadForTenantAsync(Guid tenantId, long id, CancellationToken cancellationToken = default);
 }
 
 internal sealed class JobWorker(
