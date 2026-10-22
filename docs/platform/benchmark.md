@@ -12,7 +12,7 @@ Selected live maximum: **2** players.
 
 ## Reproducing the run
 
-Source revision `3762fd713fe8127887123045b79e5c828806eee2`, run on 2026-10-24 UTC.
+Source revision `8ef0547ded62854752408b583dc2e678e216d188`, run on 2026-10-24 UTC.
 That revision is an ancestor of this report and includes the current server and
 SSE implementation exercised by `burst-streams`; the report and its analysis are
 the only later changes.
@@ -44,15 +44,15 @@ before it). `—` means no applicable burst drain.
 
 | Players | Ordinary max | Commit wait max | Close max | Finish max | Drain max | On-time refusals | No receipt | Result |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 2 | 0.747 | 28.409 | 21.318 | 11.973 | -12.979 | 0 | 0 | pass |
-| 20 | 1.309 | 151.466 | 87.556 | 15.060 | 116.278 | 0 | 0 | fail |
-| 50 | 1.648 | 70.359 | 37.379 | 26.658 | 10.748 | 0 | 0 | pass |
-| 100 | 31.028 | 119.639 | 38.122 | 30.472 | 51.518 | 0 | 0 | fail |
-| 150 | 18.615 | 140.406 | 42.555 | 28.589 | 57.414 | 0 | 0 | fail |
-| 200 | 80.286 | 200.433 | 119.033 | 29.891 | 131.173 | 0 | 0 | fail |
-| 250 | 180.070 | 282.580 | 132.078 | 40.794 | 221.985 | 0 | 0 | fail |
-| 350 | 280.196 | 357.694 | 241.439 | 40.263 | 425.926 | 0 | 0 | fail |
-| 500 | 324.746 | 446.446 | 76.079 | 69.734 | 756.210 | 0 | 0 | fail |
+| 2 | 0.668 | 55.093 | 25.244 | 24.153 | -7.158 | 0 | 0 | pass |
+| 20 | 2.992 | 57.318 | 33.725 | 19.648 | -2.750 | 0 | 0 | fail |
+| 50 | 2.412 | 78.599 | 23.531 | 21.682 | 5.560 | 0 | 0 | fail |
+| 100 | 129.806 | 199.853 | 53.619 | 48.370 | 396.211 | 0 | 0 | fail |
+| 150 | 62.037 | 150.737 | 64.403 | 35.254 | 87.402 | 0 | 0 | fail |
+| 200 | 112.112 | 211.400 | 154.174 | 30.867 | 188.725 | 0 | 0 | fail |
+| 250 | 165.521 | 287.851 | 161.566 | 48.218 | 261.592 | 0 | 0 | fail |
+| 350 | 240.610 | 351.861 | 118.749 | 65.884 | 403.523 | 0 | 0 | fail |
+| 500 | 306.562 | 515.664 | 82.989 | 73.490 | 804.446 | 0 | 0 | fail |
 
 Budgets are ordinary answer < 2 ms, commit wait < 2000 ms, round close < 50 ms,
 finish < 100 ms, drain <= 2000 ms, zero on-time refusals, and zero commands
@@ -64,15 +64,14 @@ classification.
 
 Every command in every run was accepted: no count produced an on-time refusal, a
 timeout, a command without a receipt, or a recorded failure cause. The largest
-burst drain was 756.210 ms and the largest commit wait was 446.446 ms, both below
+burst drain was 804.446 ms and the largest commit wait was 515.664 ms, both below
 their 2000 ms budgets. The drain, commit-wait, refusal, receipt, and finish
 budgets pass at every tested count.
 
 The limiting checks are the per-turn ordinary-answer maximum (< 2 ms) and
 round-close maximum (< 50 ms). Both are within budget in every scenario and
-repetition at 2 players. At 20 players, `cold` exceeded the round-close maximum;
-50 players passed independently but cannot establish a cap because the smaller
-tested count 20 failed. Every tested count above 50 has at least one
+repetition at 2 players. At 20 players, `burst-streams` exceeded the
+ordinary-answer maximum. Every tested count above 20 has at least one
 ordinary-answer or round-close maximum over budget.
 
 The ordinary-answer measure does not include a share of batch commit time because
@@ -87,14 +86,14 @@ for these checks:
 | Players | Passed | Failed checks |
 | ---: | --- | --- |
 | 2 | yes | — |
-| 20 | no | cold:round_close_max |
-| 50 | independently yes; not selectable after 20 fails | — |
-| 100 | no | burst-streams:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, spread:ordinary_answer_max |
-| 150 | no | burst-streams:ordinary_answer_max, burst:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max |
-| 200 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, pool10:round_close_max |
-| 250 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
-| 350 | no | burst-streams:ordinary_answer_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
-| 500 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
+| 20 | no | burst-streams:ordinary_answer_max |
+| 50 | no | pool10:ordinary_answer_max |
+| 100 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, cold:ordinary_answer_max, pool10:ordinary_answer_max |
+| 150 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, spread:ordinary_answer_max |
+| 200 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
+| 250 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max |
+| 350 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
+| 500 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max |
 
 Counts between the tested ones were not measured and are not claimed. The maximum
 is a result for this host, not a guarantee for other hardware. A higher cap needs
