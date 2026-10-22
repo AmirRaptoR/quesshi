@@ -105,6 +105,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static async Task ResetNewContractAsync(NpgsqlConnection owner)
     {
+        await RewindStatsMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
         await ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name in ('{SessionCreationMigrationName}', '{MigrationName}', '{LaterMigrationName}', '{CategoryMigrationName}', '20261016T0100_core_player_bans.sql', '{MembershipActivityMigrationName}'); drop table categories; drop function revoke_player_sessions(uuid); alter table auth_sessions drop column revoked_at; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
         await ExecuteAsync(owner, "delete from tenants where id in (@a, @b)", ("a", TenantA), ("b", TenantB));
@@ -114,6 +115,9 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     {
         return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; drop table ai_calls; drop table ai_budgets; drop table generation_runs; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}', '20261020T2300_ai_generation_budgets.sql')");
     }
+
+    private static Task RewindStatsMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists player_results; drop table if exists player_stats; drop table if exists player_category_stats; drop table if exists question_stats; delete from schema_migrations where name = '20261022T1800_stats_projection.sql'");
 
     private static Task InsertTenantsAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'admin-a', 'Admin A', 'en'), (@b, 'admin-b', 'Admin B', 'en')", ("a", TenantA), ("b", TenantB));
