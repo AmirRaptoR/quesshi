@@ -68,7 +68,7 @@ public sealed class BudgetClassificationTests
         Assert.False(noClose.Passed);
         Assert.Contains(noClose.Checks, check => check.Name == "round_close_max" && !check.Passed && check.Observed is null);
 
-        var noAnswersCommitted = Report(LiveScenario.Burst, 100, drain: null).Assessment!;
+        var noAnswersCommitted = Report(LiveScenario.Burst, 100, close: null, drain: null).Assessment!;
         Assert.Contains(noAnswersCommitted.Checks, check => check.Name == "burst_drain" && !check.Passed);
     }
 
