@@ -51,58 +51,58 @@ cold stops after the first slot).
 
 | Players | Scenario | Runs | Ordinary max | Commit wait max | Close max | Finish max | Drain | On-time refusals | No receipt | Accepted (min) | Budgets |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 2 | burst | 2 | 1.1 | 17.8 | 20.6 | 24.3 | 5.5 | 0 | 0 | 2/2 | pass |
-| 2 | burst-streams | 2 | 0.4 | 10.2 | 21.2 | 25.8 | -2.7 | 0 | 0 | 2/2 | pass |
-| 2 | cold | 2 | 0.8 | 17.1 | 18.2 | — | -2.0 | 0 | 0 | 2/2 | pass |
-| 2 | pool10 | 2 | 0.8 | 21.1 | 15.5 | 11.7 | 26.7 | 0 | 0 | 2/2 | pass |
-| 2 | spread | 2 | 0.3 | 9.1 | 21.7 | 22.2 | — | 0 | 0 | 2/2 | pass |
-| 20 | burst | 2 | 3.3 | 81.5 | 17.4 | 30.9 | -24.0 | 0 | 0 | 20/20 | FAIL |
-| 20 | burst-streams | 2 | 0.4 | 51.7 | 22.9 | 9.8 | -12.7 | 0 | 0 | 20/20 | pass |
-| 20 | cold | 2 | 0.8 | 67.9 | 48.3 | — | 19.4 | 0 | 0 | 20/20 | pass |
-| 20 | pool10 | 2 | 0.3 | 36.9 | 15.2 | 11.7 | -27.2 | 0 | 0 | 20/20 | pass |
-| 20 | spread | 2 | 0.4 | 72.0 | 24.0 | 21.7 | — | 0 | 0 | 20/20 | pass |
-| 50 | burst | 2 | 1.2 | 81.0 | 27.0 | 15.0 | -15.1 | 0 | 0 | 50/50 | pass |
-| 50 | burst-streams | 2 | 2.5 | 114.6 | 53.2 | 18.2 | 23.2 | 0 | 0 | 50/50 | FAIL |
-| 50 | cold | 2 | 7.6 | 112.1 | 51.0 | — | 47.1 | 0 | 0 | 50/50 | FAIL |
-| 50 | pool10 | 2 | 2.2 | 55.0 | 37.1 | 11.5 | -4.2 | 0 | 0 | 50/50 | FAIL |
-| 50 | spread | 2 | 0.4 | 40.8 | 30.3 | 18.7 | — | 0 | 0 | 50/50 | pass |
-| 100 | burst | 2 | 1.6 | 64.7 | 28.6 | 52.1 | 17.9 | 0 | 0 | 100/100 | pass |
-| 100 | burst-streams | 2 | 3.5 | 122.0 | 56.1 | 30.8 | 44.3 | 0 | 0 | 100/100 | FAIL |
-| 100 | cold | 2 | 2.1 | 103.6 | 75.5 | — | 28.8 | 0 | 0 | 100/100 | FAIL |
-| 100 | pool10 | 2 | 8.8 | 123.8 | 85.7 | 20.6 | 78.7 | 0 | 0 | 100/100 | FAIL |
-| 100 | spread | 2 | 26.5 | 81.2 | 31.6 | 31.6 | — | 0 | 0 | 100/100 | FAIL |
-| 150 | burst | 2 | 157.6 | 267.2 | 76.1 | 24.0 | 295.1 | 0 | 0 | 150/150 | FAIL |
-| 150 | burst-streams | 2 | 143.1 | 212.7 | 55.4 | 41.5 | 213.1 | 0 | 0 | 150/150 | FAIL |
-| 150 | cold | 2 | 46.9 | 223.8 | 69.4 | — | 106.4 | 0 | 0 | 150/150 | FAIL |
-| 150 | pool10 | 2 | 8.3 | 163.0 | 74.5 | 38.7 | 63.4 | 0 | 0 | 150/150 | FAIL |
-| 150 | spread | 2 | 9.1 | 117.9 | 52.9 | 26.3 | — | 0 | 0 | 150/150 | FAIL |
-| 200 | burst | 2 | 58.3 | 183.4 | 35.3 | 31.2 | 128.4 | 0 | 0 | 200/200 | FAIL |
-| 200 | burst-streams | 2 | 53.6 | 249.8 | 71.0 | 31.0 | 309.3 | 0 | 0 | 200/200 | FAIL |
-| 200 | cold | 2 | 25.2 | 197.7 | 54.6 | — | 155.3 | 0 | 0 | 200/200 | FAIL |
-| 200 | pool10 | 2 | 71.9 | 227.9 | 63.8 | 38.9 | 130.6 | 0 | 0 | 200/200 | FAIL |
-| 200 | spread | 2 | 2.0 | 70.4 | 26.1 | 21.3 | — | 0 | 0 | 200/200 | FAIL |
-| 250 | burst | 2 | 76.2 | 278.0 | 97.5 | 40.6 | 328.2 | 0 | 0 | 250/250 | FAIL |
-| 250 | burst-streams | 2 | 114.5 | 245.2 | 70.5 | 27.8 | 280.9 | 0 | 0 | 250/250 | FAIL |
-| 250 | cold | 2 | 92.9 | 226.5 | 59.2 | — | 253.4 | 0 | 0 | 250/250 | FAIL |
-| 250 | pool10 | 2 | 115.0 | 221.9 | 74.5 | 43.3 | 202.9 | 0 | 0 | 250/250 | FAIL |
-| 250 | spread | 2 | 1.7 | 48.5 | 29.8 | 35.6 | — | 0 | 0 | 250/250 | pass |
-| 350 | burst | 2 | 196.0 | 302.1 | 110.1 | 38.8 | 593.6 | 0 | 0 | 350/350 | FAIL |
-| 350 | burst-streams | 2 | 95.7 | 292.1 | 86.3 | 49.3 | 537.0 | 0 | 0 | 350/350 | FAIL |
-| 350 | cold | 2 | 186.8 | 310.4 | 78.8 | — | 440.4 | 0 | 0 | 350/350 | FAIL |
-| 350 | pool10 | 2 | 183.8 | 225.5 | 93.8 | 36.9 | 418.2 | 0 | 0 | 350/350 | FAIL |
-| 350 | spread | 2 | 9.1 | 83.5 | 73.9 | 50.1 | — | 0 | 0 | 350/350 | FAIL |
-| 500 | burst | 2 | 206.8 | 363.5 | 153.2 | 43.7 | 803.8 | 0 | 0 | 500/500 | FAIL |
-| 500 | burst-streams | 2 | 139.2 | 361.2 | 85.2 | 54.8 | 821.7 | 0 | 0 | 500/500 | FAIL |
-| 500 | cold | 2 | 157.1 | 379.0 | 112.8 | — | 793.5 | 0 | 0 | 500/500 | FAIL |
-| 500 | pool10 | 2 | 126.3 | 289.8 | 78.0 | 44.7 | 662.5 | 0 | 0 | 500/500 | FAIL |
-| 500 | spread | 2 | 11.6 | 90.8 | 58.3 | 47.9 | — | 0 | 0 | 500/500 | FAIL |
+| 2 | burst | 2 | 1.4 | 14.2 | 25.7 | 15.6 | -9.8 | 0 | 0 | 2/2 | pass |
+| 2 | burst-streams | 2 | 1.0 | 27.1 | 37.4 | 13.9 | 19.7 | 0 | 0 | 2/2 | pass |
+| 2 | cold | 2 | 0.2 | 11.2 | 22.5 | — | -17.5 | 0 | 0 | 2/2 | pass |
+| 2 | pool10 | 2 | 0.7 | 10.5 | 10.0 | 12.3 | -21.5 | 0 | 0 | 2/2 | pass |
+| 2 | spread | 2 | 0.3 | 19.4 | 14.4 | 23.7 | -220.2 | 0 | 0 | 2/2 | pass |
+| 20 | burst | 2 | 2.1 | 38.9 | 17.4 | 15.9 | 3.9 | 0 | 0 | 20/20 | FAIL |
+| 20 | burst-streams | 2 | 1.5 | 67.4 | 13.2 | 10.7 | -25.1 | 0 | 0 | 20/20 | pass |
+| 20 | cold | 2 | 2.1 | 112.4 | 17.6 | — | -6.4 | 0 | 0 | 20/20 | FAIL |
+| 20 | pool10 | 2 | 1.0 | 90.1 | 15.0 | 16.0 | -22.1 | 0 | 0 | 20/20 | pass |
+| 20 | spread | 2 | 0.2 | 34.6 | 17.8 | 9.1 | -222.7 | 0 | 0 | 20/20 | pass |
+| 50 | burst | 2 | 0.8 | 134.7 | 65.1 | 12.2 | 99.1 | 0 | 0 | 50/50 | FAIL |
+| 50 | burst-streams | 2 | 2.1 | 40.2 | 16.0 | 19.7 | -1.5 | 0 | 0 | 50/50 | FAIL |
+| 50 | cold | 2 | 2.8 | 80.6 | 32.1 | — | 12.8 | 0 | 0 | 50/50 | FAIL |
+| 50 | pool10 | 2 | 2.2 | 114.9 | 23.1 | 24.4 | -6.1 | 0 | 0 | 50/50 | FAIL |
+| 50 | spread | 2 | 0.4 | 45.8 | 12.6 | 10.2 | -232.4 | 0 | 0 | 50/50 | pass |
+| 100 | burst | 2 | 17.4 | 61.9 | 19.7 | 21.9 | 6.3 | 0 | 0 | 100/100 | FAIL |
+| 100 | burst-streams | 2 | 35.6 | 133.6 | 77.8 | 19.6 | 81.1 | 0 | 0 | 100/100 | FAIL |
+| 100 | cold | 2 | 5.8 | 116.3 | 68.3 | — | 84.3 | 0 | 0 | 100/100 | FAIL |
+| 100 | pool10 | 2 | 2.1 | 89.5 | 32.5 | 17.2 | 29.5 | 0 | 0 | 100/100 | FAIL |
+| 100 | spread | 2 | 19.9 | 35.2 | 33.3 | 22.0 | -210.2 | 0 | 0 | 100/100 | FAIL |
+| 150 | burst | 2 | 89.5 | 178.8 | 78.1 | 35.3 | 127.6 | 0 | 0 | 150/150 | FAIL |
+| 150 | burst-streams | 2 | 3.2 | 157.3 | 90.4 | 38.2 | 141.8 | 0 | 0 | 150/150 | FAIL |
+| 150 | cold | 2 | 22.8 | 167.0 | 54.7 | — | 73.9 | 0 | 0 | 150/150 | FAIL |
+| 150 | pool10 | 2 | 65.9 | 160.0 | 43.1 | 24.3 | 144.9 | 0 | 0 | 150/150 | FAIL |
+| 150 | spread | 2 | 1.3 | 86.7 | 22.6 | 29.7 | -200.1 | 0 | 0 | 150/150 | pass |
+| 200 | burst | 2 | 101.3 | 198.6 | 43.7 | 30.0 | 220.7 | 0 | 0 | 200/200 | FAIL |
+| 200 | burst-streams | 2 | 153.1 | 172.5 | 83.2 | 43.7 | 238.4 | 0 | 0 | 200/200 | FAIL |
+| 200 | cold | 2 | 121.0 | 196.5 | 110.0 | — | 176.7 | 0 | 0 | 200/200 | FAIL |
+| 200 | pool10 | 2 | 108.1 | 203.7 | 36.6 | 49.3 | 191.2 | 0 | 0 | 200/200 | FAIL |
+| 200 | spread | 2 | 32.4 | 54.3 | 38.0 | 38.6 | -205.3 | 0 | 0 | 200/200 | FAIL |
+| 250 | burst | 2 | 188.8 | 198.1 | 123.2 | 41.3 | 304.7 | 0 | 0 | 250/250 | FAIL |
+| 250 | burst-streams | 2 | 396.2 | 430.1 | 64.9 | 38.8 | 633.9 | 0 | 0 | 250/250 | FAIL |
+| 250 | cold | 2 | 146.8 | 257.8 | 154.2 | — | 196.6 | 0 | 0 | 250/250 | FAIL |
+| 250 | pool10 | 2 | 149.1 | 245.1 | 128.8 | 32.8 | 212.1 | 0 | 0 | 250/250 | FAIL |
+| 250 | spread | 2 | 8.0 | 53.6 | 25.6 | 31.3 | -215.5 | 0 | 0 | 250/250 | FAIL |
+| 350 | burst | 2 | 200.9 | 321.3 | 178.0 | 76.9 | 417.2 | 0 | 0 | 350/350 | FAIL |
+| 350 | burst-streams | 2 | 243.5 | 268.6 | 96.0 | 28.1 | 466.2 | 0 | 0 | 350/350 | FAIL |
+| 350 | cold | 2 | 180.2 | 314.6 | 62.7 | — | 353.9 | 0 | 0 | 350/350 | FAIL |
+| 350 | pool10 | 2 | 186.6 | 331.4 | 53.1 | 36.1 | 383.3 | 0 | 0 | 350/350 | FAIL |
+| 350 | spread | 2 | 3.9 | 73.3 | 38.4 | 50.6 | -180.8 | 0 | 0 | 350/350 | FAIL |
+| 500 | burst | 2 | 254.6 | 349.4 | 73.3 | 52.7 | 595.7 | 0 | 0 | 500/500 | FAIL |
+| 500 | burst-streams | 2 | 313.9 | 575.4 | 83.8 | 50.3 | 757.5 | 0 | 0 | 500/500 | FAIL |
+| 500 | cold | 2 | 350.3 | 476.9 | 74.3 | — | 674.9 | 0 | 0 | 500/500 | FAIL |
+| 500 | pool10 | 2 | 286.5 | 329.3 | 66.8 | 65.2 | 697.4 | 0 | 0 | 500/500 | FAIL |
+| 500 | spread | 2 | 13.2 | 85.6 | 83.2 | 56.8 | -137.8 | 0 | 0 | 500/500 | FAIL |
 
 ## Analysis
 
 Every command in every run was accepted: no count produced an on-time refusal,
 a timeout or a command without a receipt (0 in total), the burst drained
-822 ms after the deadline at most (budget: 2000 ms), and no answer waited
-more than 379 ms for its commit (budget: 2000 ms). The earlier baseline (one
+758 ms after the deadline at most (budget: 2000 ms), and no answer waited
+more than 575 ms for its commit (budget: 2000 ms). The earlier baseline (one
 transaction per answer) accepted 46 of 500 burst answers and refused the rest;
 batching removes that failure. The drain, commit-wait, refusal, receipt and finish
 budgets pass at every tested count.
@@ -135,11 +135,11 @@ and repetition, with zero on-time refusals. The tested counts above it were reje
 | ---: | --- | --- |
 | 2 | yes | — |
 | 20 | no | burst:ordinary_answer_max, cold:ordinary_answer_max |
-| 50 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max |
+| 50 | no | burst-streams:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, pool10:ordinary_answer_max |
 | 100 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
-| 150 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max, spread:round_close_max |
+| 150 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max |
 | 200 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
-| 250 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max |
+| 250 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
 | 350 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max, spread:round_close_max |
 | 500 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max, spread:round_close_max |
 
