@@ -117,6 +117,9 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
     public async Task Successful_capability_update_sends_config_to_an_open_player_stream()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/stream");
+#if QUESSHI_TEST_IDENTITY
+        request.Headers.Add("X-Quesshi-Test-Player", Host.PlayerId.ToString());
+#endif
         using var response = await Host.Player.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(), Encoding.UTF8, leaveOpen: true);
