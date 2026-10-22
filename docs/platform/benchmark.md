@@ -12,7 +12,7 @@ Selected live maximum: **2** players.
 
 ## Reproducing the run
 
-Source revision `c05ddb23b272f622df12a34afe03a1094d1266f5`, run at 2026-10-23 17:30 UTC.
+Source revision `90dacb9a42eeec6337e3428086c51f1e51286562`, run at 2026-10-23 23:12 UTC.
 That revision is the rebased production source, including the current server and SSE
 implementation exercised by `burst-streams`; this report and its analysis are the
 only later changes.
@@ -110,9 +110,8 @@ budgets pass at every tested count.
 The limiting checks are the two per-turn maxima, which are single worst
 samples and therefore sensitive to host stalls: the ordinary-answer maximum
 (< 2 ms, the in-memory turn) and the round close (< 50 ms). Both are within budget
-in every scenario and repetition at 2 players. At 20 players, one `burst`
-sample took 3.3 ms, exceeding the ordinary-answer maximum despite every other
-20-player scenario passing. From 50 players onward, at least one scenario has
+in every scenario and repetition at 2 players. At 20 players, `burst` and `cold`
+each exceeded the ordinary-answer maximum. From 50 players onward, at least one scenario has
 an ordinary-answer or close maximum over budget.
 
 Including the batch's commit in the ordinary-answer turn was also measured (an equal
@@ -135,7 +134,7 @@ and repetition, with zero on-time refusals. The tested counts above it were reje
 | Players | Passed | Failed checks |
 | ---: | --- | --- |
 | 2 | yes | — |
-| 20 | no | burst:ordinary_answer_max |
+| 20 | no | burst:ordinary_answer_max, cold:ordinary_answer_max |
 | 50 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max |
 | 100 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max |
 | 150 | no | burst-streams:ordinary_answer_max, burst-streams:round_close_max, burst:ordinary_answer_max, burst:round_close_max, cold:ordinary_answer_max, cold:round_close_max, pool10:ordinary_answer_max, pool10:round_close_max, spread:ordinary_answer_max, spread:round_close_max |
