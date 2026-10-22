@@ -9,7 +9,7 @@ public sealed class PlayerBanEndpoints : ICoreRouteModule
 {
     public void Map(CoreRouteBuilder routes)
     {
-        var players = routes.AdminRoutes(AdminRole.Moderator).MapGroup("/players");
+        var players = routes.PlayerOperationRoutes().MapGroup("/players");
         players.MapPost("/{id:guid}/ban", BanAsync).WithMetadata(new AdminAuditMetadata("admin.player.ban", "player"));
         players.MapDelete("/{id:guid}/ban", UnbanAsync).WithMetadata(new AdminAuditMetadata("admin.player.unban", "player"));
     }
