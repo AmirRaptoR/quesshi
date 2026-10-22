@@ -145,7 +145,7 @@ public sealed class LiveBenchmarkRunner
                 "setup",
                 Endpoints: [first.Urls.Single(), second.Urls.Single()],
                 TenantHost: database.TenantHost,
-                Count: options.Players));
+                Count: options.Players), cancellationToken);
             var playerIds = setup.PlayerIds!;
             await WarmUpAsync(database.OwnerConnectionString, tenant, options, worker, playerIds, cancellationToken);
             measurements.Reset();
@@ -154,10 +154,10 @@ public sealed class LiveBenchmarkRunner
             // The first real client command activates the grain and begins the shared
             // countdown. Open the stream cohort during that countdown so setup cannot
             // consume the question window that is under measurement.
-            await worker.SendAsync(new WorkerRequest("first", Session: session.Id));
+            await worker.SendAsync(new WorkerRequest("first", Session: session.Id), cancellationToken);
             if (options.StreamCount > 0)
             {
-                await worker.SendAsync(new WorkerRequest("streams", Count: options.StreamCount, Session: session.Id));
+                await worker.SendAsync(new WorkerRequest("streams", Count: options.StreamCount, Session: session.Id), cancellationToken);
             }
             await WaitForPhaseAsync(database.OwnerConnectionString, session.Id, "1", cancellationToken);
 
@@ -172,8 +172,8 @@ public sealed class LiveBenchmarkRunner
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
             var gcBefore = (Gen0: GC.CollectionCount(0), Gen1: GC.CollectionCount(1), Gen2: GC.CollectionCount(2), Pause: GC.GetTotalPauseDuration());
             var deadline = await GetDeadlineAsync(database.OwnerConnectionString, session.Id, cancellationToken);
-            var commands = (await worker.SendAsync(new WorkerRequest("burst", Session: session.Id, Scenario: options.Scenario, Deadline: deadline))).Samples!;
-            var views = (await worker.SendAsync(new WorkerRequest("views"))).Views;
+            var commands = (await worker.SendAsync(new WorkerRequest("burst", Session: session.Id, Scenario: options.Scenario, Deadline: deadline), cancellationToken)).Samples!;
+            var views = (await worker.SendAsync(new WorkerRequest("views"), cancellationToken)).Views;
             var gc = new GcActivity(
                 GC.CollectionCount(0) - gcBefore.Gen0,
                 GC.CollectionCount(1) - gcBefore.Gen1,
@@ -230,9 +230,9 @@ public sealed class LiveBenchmarkRunner
         var warm = playerIds.Take(Math.Min(playerIds.Count, WarmUpPlayers)).ToArray();
         var warmOptions = options with { Players = warm.Length, Scenario = LiveScenario.Burst };
         var session = await BenchmarkFixture.SeedSessionAsync(ownerConnectionString, tenant, warmOptions, warm, cancellationToken);
-        await worker.SendAsync(new WorkerRequest("first", Session: session.Id));
+        await worker.SendAsync(new WorkerRequest("first", Session: session.Id), cancellationToken);
         await WaitForPhaseAsync(ownerConnectionString, session.Id, "1", cancellationToken);
-        await worker.SendAsync(new WorkerRequest("answer-all", Count: warm.Length, Session: session.Id));
+        await worker.SendAsync(new WorkerRequest("answer-all", Count: warm.Length, Session: session.Id), cancellationToken);
         await WaitForCompletionAsync(ownerConnectionString, session.Id, cancellationToken);
     }
 

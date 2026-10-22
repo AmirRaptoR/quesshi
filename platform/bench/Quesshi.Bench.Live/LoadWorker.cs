@@ -84,6 +84,7 @@ public static class LoadWorkerHost
 /// <summary>The benchmark's side of the worker protocol.</summary>
 public sealed class LoadWorkerProcess : IAsyncDisposable
 {
+    private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(45);
     private readonly Process _process;
 
     private LoadWorkerProcess(Process process) => _process = process;
@@ -99,12 +100,27 @@ public sealed class LoadWorkerProcess : IAsyncDisposable
         return new LoadWorkerProcess(Process.Start(start) ?? throw new InvalidOperationException("The load worker did not start."));
     }
 
-    public async Task<WorkerResponse> SendAsync(WorkerRequest request)
+    public async Task<WorkerResponse> SendAsync(WorkerRequest request, CancellationToken cancellationToken)
     {
         await _process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request));
         await _process.StandardInput.FlushAsync();
-        var line = await _process.StandardOutput.ReadLineAsync()
-            ?? throw new InvalidOperationException($"The load worker exited during '{request.Command}'.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ResponseTimeout);
+        string? line;
+        try
+        {
+            line = await _process.StandardOutput.ReadLineAsync().WaitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"The load worker did not respond to '{request.Command}' within {ResponseTimeout.TotalSeconds:0} seconds.");
+        }
+
+        if (line is null)
+        {
+            throw new InvalidOperationException($"The load worker exited during '{request.Command}'.");
+        }
+
         var response = JsonSerializer.Deserialize<WorkerResponse>(line)!;
         return response.Error is null ? response : throw new InvalidOperationException($"The load worker failed '{request.Command}': {response.Error}");
     }
@@ -113,7 +129,7 @@ public sealed class LoadWorkerProcess : IAsyncDisposable
     {
         try
         {
-            if (!_process.HasExited) await SendAsync(new WorkerRequest("stop"));
+            if (!_process.HasExited) await SendAsync(new WorkerRequest("stop"), CancellationToken.None);
             _process.StandardInput.Close();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             await _process.WaitForExitAsync(timeout.Token);
