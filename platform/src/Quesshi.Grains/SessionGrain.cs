@@ -454,7 +454,8 @@ public class SessionGrain(
 
     private SessionCommandResult View(string code, IFormat format, string viewer)
     {
-        var view = views.Render(_state!, format, viewer, clock.Now);
+        // Answers still waiting for their batch are not committed, so a view never shows them.
+        var view = views.Render(_baseline ?? _state!, format, viewer, clock.Now);
         return new SessionCommandResult(code, false, view.Version, view.Json);
     }
 
@@ -533,8 +534,16 @@ public class SessionGrain(
 
     private bool AwaitOwnPendingAnswer(Command command, IFormat format, Turn turn, bool activated, DateTimeOffset started)
     {
-        if (command.Type != CommandType.Answer
-            || !_pending.Any(waiting => waiting.Player == command.Player && waiting.Slot == command.At.Slot)) return false;
+        if (command.Type != CommandType.Answer) return false;
+        bool Own(PendingAnswer waiting) => waiting.Player == command.Player && waiting.Slot == command.At.Slot;
+        // A repeat of an answer whose batch is being written waits for that batch's outcome, never for a later one.
+        if (_inflight.FirstOrDefault(Own) is { } writing)
+        {
+            turn.Waiter = writing;
+            turn.Format = format;
+            return true;
+        }
+        if (!_pending.Any(Own)) return false;
         var follower = new PendingAnswer(command.Player, command.At.Slot, format, clock.Now - started, _state!.Session.DueAt, measured: false, acceptedAt: clock.Now);
         _pending.Add(follower);
         turn.Waiter = follower;
@@ -567,6 +576,7 @@ public class SessionGrain(
                 _pending = [];
                 _inflight = batch;
                 long version;
+                var writeStarted = clock.Now;
                 try
                 {
                     version = await store.SaveAsync(_tenantId, _sessionId, baseline.Session.Version, baseline, snapshot);
@@ -614,7 +624,7 @@ public class SessionGrain(
                     _baseline = committed;
                     _state = _state with { Session = _state.Session with { Version = version } };
                 }
-                Complete(batch, committed);
+                Complete(batch, committed, clock.Now - writeStarted);
             }
         }
         catch (Exception exception)
@@ -667,16 +677,17 @@ public class SessionGrain(
     }
 
     /// <summary>
-    /// Acknowledges a committed batch. An ordinary answer's measured turn is the time it held the gate; the wait for
-    /// its commit is recorded separately, because the grain is free to take other commands while a batch commits.
+    /// Acknowledges a committed batch. An ordinary answer's measured turn is its own in-memory turn plus an equal share
+    /// of the batch transaction (§7.4.1); the wait from acceptance to commit is recorded separately.
     /// </summary>
-    private void Complete(List<PendingAnswer> batch, SessionState committed)
+    private void Complete(List<PendingAnswer> batch, SessionState committed, TimeSpan writeTime = default)
     {
+        var share = batch.Count == 0 ? TimeSpan.Zero : writeTime / batch.Count;
         foreach (var answer in batch)
         {
             if (answer.Measured)
             {
-                _turnObserver.Record(new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, answer.OwnTurn, answer.DueAt, clock.Now));
+                _turnObserver.Record(new SessionTurnSample(SessionTurnKind.OrdinaryAnswer, answer.OwnTurn + share, answer.DueAt, clock.Now));
                 _turnObserver.RecordAnswerCommit(clock.Now - answer.AcceptedAt);
             }
             answer.Completion.TrySetResult(new BatchOutcome(committed, null, false));

@@ -179,6 +179,73 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1, events.Ended(seeded.Session));
     }
 
+    [SkippableTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_repeat_of_an_answer_in_a_batch_being_written_waits_for_that_batch_and_is_not_told_ok_if_it_is_lost(bool commits)
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var database = new FaultingTenantDb();
+        await using var silo = await StartSiloAsync(new CountingObserver(), database);
+        var seeded = await SeedQuestionAsync(owner, 3, untilDeadline: TimeSpan.FromSeconds(30));
+
+        database.HoldNextWrite();
+        if (!commits) database.FailNextWrite(commitLanded: false);
+        var original = SendAsync(silo, seeded, 0, DateTimeOffset.UtcNow);
+        await database.WriteHeld.WaitAsync(TimeSpan.FromSeconds(10));
+        var repeat = SendAsync(silo, seeded, 0, DateTimeOffset.UtcNow);
+        await Task.Delay(300);
+        Assert.False(repeat.IsCompleted, "A repeat was answered while the batch holding its original was uncommitted.");
+        database.ReleaseHeldWrite();
+
+        var repeated = await repeat;
+        var first = await original;
+        if (commits)
+        {
+            Assert.Equal("ok", repeated.Code);
+            Assert.Equal("ok", first.Code);
+            Assert.True((await AnswerRowsAsync(owner, seeded))[seeded.Players[0]]);
+        }
+        else
+        {
+            Assert.NotEqual("ok", repeated.Code);
+            Assert.True(repeated.Retryable);
+            Assert.True(first.Retryable);
+            Assert.DoesNotContain(true, (await AnswerRowsAsync(owner, seeded)).Values);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Rejected_commands_during_a_held_batch_show_only_committed_state()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var owner = await PrepareAsync();
+        var database = new FaultingTenantDb();
+        await using var silo = await StartSiloAsync(new CountingObserver(), database);
+        var seeded = await SeedQuestionAsync(owner, 3, untilDeadline: TimeSpan.FromSeconds(30));
+        var before = await SendAsync(silo, seeded, 0, DateTimeOffset.UtcNow, slot: 5);
+        Assert.Equal("stale_position", before.Code);
+
+        database.HoldNextWrite();
+        var held = SendAsync(silo, seeded, 0, DateTimeOffset.UtcNow);
+        await database.WriteHeld.WaitAsync(TimeSpan.FromSeconds(10));
+        var during = await SendAsync(silo, seeded, 0, DateTimeOffset.UtcNow, slot: 5);
+        Assert.Equal("stale_position", during.Code);
+        Assert.Equal(before.Version, during.Version);
+        Assert.Equal(WithoutTimes(before.ViewJson), WithoutTimes(during.ViewJson));
+        Assert.False(held.IsCompleted);
+        database.ReleaseHeldWrite();
+        Assert.Equal("ok", (await held).Code);
+
+        var after = await SendAsync(silo, seeded, 0, DateTimeOffset.UtcNow, slot: 5);
+        Assert.True(after.Version > before.Version);
+        Assert.NotEqual(WithoutTimes(during.ViewJson), WithoutTimes(after.ViewJson));
+    }
+
+    private static string? WithoutTimes(string? json) =>
+        json is null ? null : System.Text.RegularExpressions.Regex.Replace(json, @"\d{4}-\d\d-\d\dT[0-9:.]+(\\u002B|\+|Z)[0-9:]*", "<time>");
+
     private Task<(int Player, SessionCommandResult Result)> SendAtAsync(TestSilo silo, Seeded seeded, int player, DateTimeOffset at) =>
         Task.Run(async () =>
         {
@@ -187,9 +254,9 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture)
             return (player, await SendAsync(silo, seeded, player, DateTimeOffset.UtcNow));
         });
 
-    private static Task<SessionCommandResult> SendAsync(TestSilo silo, Seeded seeded, int player, DateTimeOffset receivedAt) =>
+    private static Task<SessionCommandResult> SendAsync(TestSilo silo, Seeded seeded, int player, DateTimeOffset receivedAt, int slot = 0) =>
         silo.Grains.GetGrain<ISessionGrain>($"{seeded.Tenant}/{seeded.Session}").ExecuteAsync(
-            new SessionCommand(seeded.Players[player].ToString(), "answer", "1", 0, 0, 0, null, "{\"index\":0}", receivedAt));
+            new SessionCommand(seeded.Players[player].ToString(), "answer", "1", slot, 0, 0, null, "{\"index\":0}", receivedAt));
 
     private async Task<NpgsqlConnection> PrepareAsync()
     {
