@@ -34,6 +34,7 @@ public sealed class LiveBenchmarkRunner
     private const string AppUser = "quesshi_app";
     private const string SystemUser = "quesshi_system";
     private const string RolePassword = "quesshi-benchmark-only";
+    private const long BootstrapLockKey = 869_327_625_914_302_761;
 
     public async Task<BenchmarkReport> RunAsync(BenchmarkOptions options, CancellationToken cancellationToken = default)
     {
@@ -450,8 +451,15 @@ public sealed class LiveBenchmarkRunner
                 await connection.OpenAsync(cancellationToken);
                 version = await connection.ExecuteScalarAsync<string>(new CommandDefinition("show server_version", cancellationToken: cancellationToken)) ?? "unknown";
                 var bootstrap = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "bootstrap-roles.sql"), cancellationToken);
-                await connection.ExecuteAsync(new CommandDefinition(bootstrap, cancellationToken: cancellationToken));
-                await connection.ExecuteAsync(new CommandDefinition($"alter role {OwnerUser} password '{RolePassword}'; alter role {AppUser} password '{RolePassword}'; alter role {SystemUser} password '{RolePassword}';", cancellationToken: cancellationToken));
+                await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+                await connection.ExecuteAsync(new CommandDefinition(
+                    "select pg_advisory_xact_lock(@key)",
+                    new { key = BootstrapLockKey },
+                    transaction,
+                    cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(bootstrap, transaction: transaction, cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition($"alter role {OwnerUser} password '{RolePassword}'; alter role {AppUser} password '{RolePassword}'; alter role {SystemUser} password '{RolePassword}';", transaction: transaction, cancellationToken: cancellationToken));
+                await transaction.CommitAsync(cancellationToken);
             }
 
             static string ForRole(NpgsqlConnectionStringBuilder source, string user)
