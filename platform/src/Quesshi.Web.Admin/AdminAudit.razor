@@ -1,0 +1,102 @@
+@page "/admin/audit"
+@layout AdminLayout
+@using System.Globalization
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (!CanReadAudit)
+{
+    <section class="card"><p>@Text[AdminAuditText.Denied]</p></section>
+}
+else
+{
+    <section class="stack" aria-labelledby="admin-audit-title">
+        <h1 id="admin-audit-title">@Text[AdminAuditText.Title]</h1>
+        @if (error is not null)
+        {
+            <p class="form-error" role="alert">@Text[error]</p>
+        }
+        @foreach (var entry in entries)
+        {
+            <article class="card" data-testid="audit-entry">
+                <h2 data-testid="audit-action">@entry.Action</h2>
+                <dl>
+                    <div><dt>@Text[AdminAuditText.Actor]</dt><dd data-testid="audit-actor">@Context(entry.ActorType, entry.ActorId)</dd></div>
+                    <div><dt>@Text[AdminAuditText.Target]</dt><dd data-testid="audit-target">@Context(entry.TargetType, entry.TargetId)</dd></div>
+                    <div><dt>@Text[AdminAuditText.Time]</dt><dd><time datetime="@entry.At.ToString("O", CultureInfo.InvariantCulture)">@entry.At.ToString("u", CultureInfo.InvariantCulture)</time></dd></div>
+                </dl>
+            </article>
+        }
+        @if (next is not null)
+        {
+            <button class="btn btn--quiet" type="button" data-testid="load-older-audit" disabled="@loadingOlder" @onclick="LoadOlderAsync">@Text[AdminAuditText.LoadOlder]</button>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private IReadOnlyList<AuditEntry> entries = [];
+    private long? next;
+    private string? error;
+    private bool loadingOlder;
+
+    private bool CanReadAudit => State?.Session is { } session &&
+        (session.IsPlatform || string.Equals(session.Role, "Owner", StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut)
+        {
+            Navigation.NavigateTo("/admin/login");
+            return;
+        }
+        if (State?.Session?.MustChangePassword == true)
+        {
+            Navigation.NavigateTo("/admin/password");
+            return;
+        }
+        if (CanReadAudit) await LoadAsync(null, true);
+    }
+
+    private async Task LoadOlderAsync()
+    {
+        if (next is null || loadingOlder) return;
+        loadingOlder = true;
+        try
+        {
+            await LoadAsync(next, false);
+        }
+        finally
+        {
+            loadingOlder = false;
+        }
+    }
+
+    private async Task LoadAsync(long? before, bool replace)
+    {
+        if (State is null) return;
+        var path = before is null ? "/api/admin/audit" : $"/api/admin/audit?before={before.Value}";
+        var result = await State.GetAsync<AuditPage>(path);
+        if (!result.Success || result.Value is null)
+        {
+            error = result.Error ?? AdminAuditText.LoadFailed;
+            return;
+        }
+
+        entries = replace ? result.Value.Items : [.. entries, .. result.Value.Items];
+        next = result.Value.Next;
+        error = null;
+    }
+
+    private static string Context(string? type, Guid? id) =>
+        id is null ? type ?? "—" : $"{type ?? "—"} · {id}";
+
+    private sealed record AuditPage(IReadOnlyList<AuditEntry> Items, long? Next);
+    private sealed record AuditEntry(long Id, string? ActorType, Guid? ActorId, string Action, string? TargetType, Guid? TargetId, DateTimeOffset At);
+}
