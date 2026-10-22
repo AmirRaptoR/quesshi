@@ -99,9 +99,9 @@ public sealed class PlayerOperationsEndpointTests : IAsyncLifetime
 
         using var banResponse = await Host.Moderator.PostAsync($"/api/admin/players/{Host.PlayerId}/ban", null);
         banResponse.EnsureSuccessStatusCode();
-        var frame = await ReadFrameAsync(reader, timeout.Token);
+        var frame = await ReadUntilFrameAsync(reader, "event: closed", timeout.Token);
 
-        Assert.Contains("event: gone", frame, StringComparison.Ordinal);
+        Assert.Contains("event: closed\ndata: {\"reason\":\"banned\"}", frame, StringComparison.Ordinal);
     }
 
     [SkippableFact]
@@ -143,6 +143,15 @@ public sealed class PlayerOperationsEndpointTests : IAsyncLifetime
             var line = await reader.ReadLineAsync(cancellationToken);
             if (line is null || line.Length == 0) return frame.ToString();
             frame.AppendLine(line);
+        }
+    }
+
+    private static async Task<string> ReadUntilFrameAsync(StreamReader reader, string requiredContent, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var frame = await ReadFrameAsync(reader, cancellationToken);
+            if (frame.Contains(requiredContent, StringComparison.Ordinal)) return frame;
         }
     }
 
