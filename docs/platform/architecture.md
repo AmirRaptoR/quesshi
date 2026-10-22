@@ -889,6 +889,11 @@ of the batch transaction (batch time divided by the answers in it). The *round c
 budgets are the whole turn, including the write of every deferred answer ahead of it, and the
 set-based writes of misses, seats and results.
 
+**Measured maximum.** With this path the two-silo PostgreSQL matrix of [the benchmark](benchmark.md)
+selects **50** as the live player maximum: the largest tested count that met every budget above with
+zero on-time refusals in every scenario. Larger tested counts (100 to 500) exceeded the ordinary-answer
+or round-close budget; the reasons are in the benchmark report.
+
 ### 7.5 Time, deadlines and timers
 
 **One clock.** Receipt time is sampled on whichever silo received the request, and deadlines are
