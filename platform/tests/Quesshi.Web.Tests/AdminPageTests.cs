@@ -59,6 +59,28 @@ public sealed class AdminPageTests : BunitContext
     }
 
     [Fact]
+    public async Task Moderator_dashboard_renders_the_tenant_counts_returned_by_the_admin_api()
+    {
+        var state = await StateAsync(
+            Response(HttpStatusCode.OK, SessionJson(role: "Moderator")),
+            Response(HttpStatusCode.OK, """
+                {
+                  "players":3,
+                  "sessionStatuses":[{"key":"lobby","count":1},{"key":"running","count":1}],
+                  "sessionFormats":[{"key":"async_duel","count":2}],
+                  "questionStatuses":[{"key":"pending","count":4}]
+                }
+                """));
+
+        var cut = Render<AdminDashboard>(parameters => parameters.AddCascadingValue(state));
+        cut.WaitForAssertion(() => Assert.Contains("3", cut.Find("[data-testid=dashboard-players]").TextContent, StringComparison.Ordinal));
+
+        Assert.Contains("lobby", cut.Find("[data-testid=dashboard-session-statuses]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("async_duel", cut.Find("[data-testid=dashboard-session-formats]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("pending", cut.Find("[data-testid=dashboard-question-statuses]").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_temporary_password_admin_cannot_open_accounts_before_changing_the_password()
     {
         var state = await StateAsync(Response(HttpStatusCode.OK, SessionJson(mustChangePassword: true)));

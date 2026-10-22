@@ -9,7 +9,7 @@
 }
 else
 {
-    <section class="card stack"><h1>@Text["admin.home.title"]</h1><p>@Text["admin.home.body"]</p></section>
+    <p class="muted">@Text["common.loading"]</p>
 }
 
 @code {
@@ -17,6 +17,7 @@ else
     protected override void OnParametersSet()
     {
         if (State?.Status == AdminSessionStatus.SignedOut) Navigation.NavigateTo("/admin/login");
-        if (State?.Session?.MustChangePassword == true) Navigation.NavigateTo("/admin/password");
+        else if (State?.Session?.MustChangePassword == true) Navigation.NavigateTo("/admin/password");
+        else if (State?.Session is not null) Navigation.NavigateTo("/admin/dashboard");
     }
 }
