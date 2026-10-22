@@ -360,14 +360,14 @@ public sealed class LiveBenchmarkRunner
         }
 
         return new BenchmarkRunEnvironment(
-            Environment.MachineName,
+            "anonymized",
             cpu,
             Environment.ProcessorCount,
             GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
             RuntimeInformation.OSDescription.Trim(),
             Environment.Version.ToString(),
             postgresVersion ?? "unavailable",
-            $"{(local ? "local" : "remote")} PostgreSQL at {host}:{builder.Port}");
+            $"{(local ? "local" : "remote")} PostgreSQL");
     }
 
     private static string SourceRevision()

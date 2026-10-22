@@ -146,7 +146,7 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassF
     }
 
     [SkippableFact]
-    public async Task A_timeout_close_commits_the_waiting_answers_and_records_misses_only_for_players_who_never_answered()
+    public async Task A_timeout_command_waiting_for_a_held_batch_commits_answers_before_recording_only_unanswered_misses()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
         const int players = 5;
@@ -164,6 +164,8 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassF
         var waiting = new[] { SendAsync(silo, seeded, 1, DateTimeOffset.UtcNow), SendAsync(silo, seeded, 2, DateTimeOffset.UtcNow) };
         await Task.Delay(seeded.Deadline + Grace + TimeSpan.FromMilliseconds(500) - DateTimeOffset.UtcNow);
         var afterGrace = SendAsync(silo, seeded, 3, DateTimeOffset.UtcNow);
+        await Task.Delay(300);
+        Assert.False(afterGrace.IsCompleted, "The timeout command completed while the older answer batch was still uncommitted.");
         database.ReleaseHeldWrite();
 
         Assert.All(await Task.WhenAll(waiting.Append(held)), result => Assert.Equal("ok", result.Code));

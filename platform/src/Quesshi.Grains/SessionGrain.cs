@@ -559,96 +559,152 @@ public class SessionGrain(
     }
 
     /// <summary>
-    /// Writes accepted answers one batch at a time without holding the gate, so the grain keeps accepting answers
-    /// while a batch commits; those answers form the next batch (group commit). Everything between awaits runs
-    /// uninterrupted on the grain's scheduler, so the state is never observed half-updated.
+    /// Writes accepted answers one batch at a time. The database await is outside the gate, but both sides of it
+    /// acquire the gate before observing or changing session state, so a reentrant continuation cannot overtake a
+    /// command or timeout that already owns the gate.
     /// </summary>
     private async Task FlushLoopAsync(TaskCompletionSource idle)
     {
         try
         {
-            while (!_exclusive && _pending.Count > 0 && _state is not null && _baseline is not null)
+            while (true)
             {
-                var generation = _generation;
-                var baseline = _baseline;
-                var snapshot = _state;
-                var batch = _pending;
-                _pending = [];
-                _inflight = batch;
-                long version;
+                int generation;
+                SessionState baseline;
+                SessionState snapshot;
+                List<PendingAnswer> batch;
+
+                await _gate.WaitAsync();
+                try
+                {
+                    if (_exclusive || _pending.Count == 0 || _state is null || _baseline is null) return;
+                    generation = _generation;
+                    baseline = _baseline;
+                    snapshot = _state;
+                    batch = _pending;
+                    _pending = [];
+                    _inflight = batch;
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+
+                long version = 0;
+                Exception? writeFailure = null;
                 try
                 {
                     version = await store.SaveAsync(_tenantId, _sessionId, baseline.Session.Version, baseline, snapshot);
                 }
-                catch (Exception exception) when (generation != _generation)
-                {
-                    logger.LogWarning(exception, "Answer batch failed for {SessionId} after its state was discarded", _sessionId);
-                    return;
-                }
-                catch (StaleActivationException)
-                {
-                    Fail(batch, "stale_activation", retryable: true);
-                    DropState();
-                    return;
-                }
-                catch (Exception exception) when (IsUnknownCommit(exception))
-                {
-                    logger.LogWarning(exception, "Answer batch has an unknown commit outcome for {SessionId}", _sessionId);
-                    Fail(batch, "retryable", retryable: true);
-                    DropState();
-                    return;
-                }
                 catch (Exception exception)
                 {
-                    // Rolled back for certain. Answers accepted meanwhile were graded on top of the lost ones.
-                    logger.LogWarning(exception, "Answer batch rolled back for {SessionId}", _sessionId);
+                    writeFailure = exception;
+                }
+
+                await _gate.WaitAsync();
+                try
+                {
+                    if (writeFailure is not null)
+                    {
+                        if (generation != _generation)
+                        {
+                            logger.LogWarning(writeFailure, "Answer batch failed for {SessionId} after its state was discarded", _sessionId);
+                            return;
+                        }
+                        if (writeFailure is StaleActivationException)
+                        {
+                            Fail(batch, "stale_activation", retryable: true);
+                            DropState();
+                            return;
+                        }
+                        if (IsUnknownCommit(writeFailure))
+                        {
+                            logger.LogWarning(writeFailure, "Answer batch has an unknown commit outcome for {SessionId}", _sessionId);
+                            Fail(batch, "retryable", retryable: true);
+                            DropState();
+                            return;
+                        }
+
+                        // Rolled back for certain. Answers accepted meanwhile were graded on top of the lost ones.
+                        logger.LogWarning(writeFailure, "Answer batch rolled back for {SessionId}", _sessionId);
+                        _inflight = [];
+                        _state = baseline;
+                        _baseline = null;
+                        _generation++;
+                        Fail(batch, "write_failed", retryable: true);
+                        FailPending("write_failed", retryable: true);
+                        return;
+                    }
+
+                    if (generation != _generation) return;
+                    var committed = snapshot with { Session = snapshot.Session with { Version = version } };
                     _inflight = [];
-                    _state = baseline;
-                    _baseline = null;
-                    _generation++;
-                    Fail(batch, "write_failed", retryable: true);
-                    FailPending("write_failed", retryable: true);
-                    return;
+                    if (_pending.Count == 0)
+                    {
+                        _state = committed;
+                        _baseline = null;
+                    }
+                    else
+                    {
+                        _baseline = committed;
+                        _state = _state with { Session = _state.Session with { Version = version } };
+                    }
+                    Complete(batch, committed);
                 }
-                if (generation != _generation) return;
-                var committed = snapshot with { Session = snapshot.Session with { Version = version } };
-                _inflight = [];
-                if (_pending.Count == 0)
+                finally
                 {
-                    _state = committed;
-                    _baseline = null;
+                    _gate.Release();
                 }
-                else
-                {
-                    _baseline = committed;
-                    _state = _state with { Session = _state.Session with { Version = version } };
-                }
-                Complete(batch, committed);
             }
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Flushing answers failed for {SessionId}", _sessionId);
-            DropState();
+            await _gate.WaitAsync();
+            try
+            {
+                logger.LogError(exception, "Flushing answers failed for {SessionId}", _sessionId);
+                DropState();
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
         finally
         {
-            _exclusive = false;
-            _flushIdle = null;
-            idle.TrySetResult();
+            await _gate.WaitAsync();
+            try
+            {
+                _exclusive = false;
+                _flushIdle = null;
+                idle.TrySetResult();
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
     }
 
     /// <summary>
-    /// Lets the batch being written finish and keeps further batches from starting. False when that batch failed,
-    /// so the state the caller computed from is gone.
+    /// Lets the batch being written finish and keeps further batches from starting. The caller owns the gate, so it
+    /// yields it while waiting for the flush continuation to finish under that same gate. False when the batch
+    /// failed, so the state the caller computed from is gone.
     /// </summary>
     private async Task<bool> QuiesceFlushAsync(int generation)
     {
         if (_flushIdle is { } idle)
         {
             _exclusive = true;
-            await idle.Task;
+            _gate.Release();
+            try
+            {
+                await idle.Task;
+            }
+            finally
+            {
+                await _gate.WaitAsync();
+            }
         }
         return generation == _generation;
     }

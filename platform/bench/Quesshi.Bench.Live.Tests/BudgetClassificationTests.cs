@@ -135,6 +135,9 @@ public sealed class BudgetClassificationTests
         Assert.Equal(BenchmarkReport.CurrentSchema, report.Schema);
         Assert.Matches("^[0-9a-f]{40}$", report.SourceRevision);
         Assert.NotEmpty(report.Command);
+        Assert.Equal("anonymized", report.Environment.HostClass);
+        Assert.DoesNotContain("\"Hostname\"", JsonSerializer.Serialize(report.Environment), StringComparison.Ordinal);
+        Assert.Equal("local PostgreSQL", report.Environment.PostgreSqlLocation);
         Assert.False(string.IsNullOrWhiteSpace(report.Environment.PostgreSqlVersion));
 
         var counts = report.Scenarios.Select(scenario => scenario.Players).Distinct().Order().ToArray();

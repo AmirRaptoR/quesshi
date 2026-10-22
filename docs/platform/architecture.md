@@ -724,8 +724,11 @@ database call; there is no ambient tenant and no default tenant. (Today's
 `TenantGrainCallFilter`, `RequestContext` tenant and the special-cased `"quesshi"` key prefix are
 removed.)
 
-**The grain is the session's only writer.** It is not reentrant: Orleans runs one command at a
-time, to completion, in the order they arrive.
+**The grain is the session's only writer.** Before batched answers, it relied on Orleans
+non-reentrancy: one command ran to completion in arrival order. The current batched execution
+model in 7.4.1 instead makes `SessionGrain` reentrant, but serializes every session-state change
+and orders every database write through its FIFO gate. Reentrancy permits a caller to wait for I/O without
+occupying that gate; it never permits two session transitions or writes to run at once.
 
 **What the grain holds.** On activation it loads, in one read-only repeatable-read transaction:
 the session row, its seats, the items for the slots currently open (with payload and resolved
@@ -813,15 +816,14 @@ time. It is bounded separately by the answer commit wait (7.4.1). The only plugi
 plugin runs here.
 
 **This is the riskiest number in the design, so it is measured first.** At 2 ms each, 500 answers
-take a second of the grain's time, and a non-reentrant grain does nothing else meanwhile; more
-silos do not make one session faster. The second milestone (19.2) is therefore a prototype of
-exactly this path on Orleans and PostgreSQL, before any format or screen is built on it. It runs
-two silos against one session and measures the whole occupied turn, including pool waits: 500
-answers arriving in the last 250 ms before the deadline, a full burst against the grace period
-(7.5), and the three budgets while views are being pushed to 500 streams. Its result decides one
-of: the design stands; the player limit for `live` is lowered (today's default is 20, and the
-platform maximum is 500); or answers are written in batches, which would then be designed before
-the engine is built.
+take a second of serial gate time; more silos do not make one session's transitions faster. The
+second milestone (19.2) is therefore a prototype of exactly this path on Orleans and PostgreSQL,
+before any format or screen is built on it. It runs two silos against one session and measures the
+whole occupied turn, including pool waits: 500 answers arriving in the last 250 ms before the
+deadline, a full burst against the grace period (7.5), and the three budgets while views are being
+pushed to 500 streams. The original one-transaction-per-answer prototype established that the
+batch model below was necessary; its result decides whether the design stands or the player limit
+for `live` is lowered (today's default is 20, and the platform maximum is 500).
 
 #### 7.4.1 Batched answers
 
@@ -833,10 +835,14 @@ these turns (only the format and the kind, which are pure).
 
 **One gate instead of non-reentrancy.** `SessionGrain` is reentrant so a command that is waiting
 for its batch to commit does not stop the grain from taking the next one. All state changes and
-all writes still happen one at a time inside a single first-in, first-out gate: every entry point
-(command, lobby command, timeout) takes the gate before it reads or changes the working state.
-The only thing done outside the gate is waiting for a batch to commit, and rendering the view
-from the committed snapshot the batch returned.
+the choice, snapshot, and completion of each write still happen one at a time inside a single
+first-in, first-out gate: every entry point (command, lobby command, timeout) takes the gate
+before it reads or changes the working state. The only things done outside the gate are waiting
+for a batch to commit and rendering the view from the committed snapshot the batch returned. The
+flush releases the gate only for its database await; when that await completes, it reacquires the
+same gate before it changes the committed or
+working state, completes callers, fails callers, or releases a close/timeout waiting for the
+flush. Thus a flush continuation cannot overtake an entry point that already owns the gate.
 
 **Working and committed state.** The grain keeps the *committed* state (what the database holds,
 at the version it last wrote) and the *working* state (committed state plus the answers accepted

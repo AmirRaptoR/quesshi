@@ -21,9 +21,9 @@ only later changes.
 dotnet run -c Release --project platform/bench/Quesshi.Bench.Live -- --matrix --repetitions 2 --allow-disposable-postgres
 ```
 
-Host `vps-c4d96c06`: Intel Core Processor (Haswell, no TSX), 6 logical processors,
-Ubuntu 26.04.1 LTS, .NET 10.0.13. PostgreSQL 18.6 ran
-locally (local PostgreSQL at 127.0.0.1:55400) as a disposable server; the explicit switch
+The anonymized benchmark host had an Intel Core Processor (Haswell, no TSX), 6 logical processors,
+Ubuntu 26.04.1 LTS, and .NET 10.0.13. PostgreSQL 18.6 ran
+locally as a disposable server; the explicit switch
 acknowledges that the runner provisions benchmark roles and databases there.
 Each case uses two independently hosted Orleans silos and one PostgreSQL
 database. Players run in a separate load process, authenticate as guests, send

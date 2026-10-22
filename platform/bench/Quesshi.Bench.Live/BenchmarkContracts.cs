@@ -61,7 +61,7 @@ public sealed record ScenarioReport(int Players, string Scenario, int Streams, i
     public int Repetition { get; init; } = 1;
     public BudgetAssessment? Assessment { get; init; }
 }
-public sealed record BenchmarkRunEnvironment(string Hostname, string CpuModel, int LogicalProcessorCount, long AvailableMemoryBytes, string OperatingSystem, string DotNet, string PostgreSqlVersion, string PostgreSqlLocation);
+public sealed record BenchmarkRunEnvironment(string HostClass, string CpuModel, int LogicalProcessorCount, long AvailableMemoryBytes, string OperatingSystem, string DotNet, string PostgreSqlVersion, string PostgreSqlLocation);
 public sealed record BenchmarkReport(string SourceRevision, DateTimeOffset RunAtUtc, string Command, BenchmarkRunEnvironment Environment, IReadOnlyList<ScenarioReport> Scenarios)
 {
     public const string CurrentSchema = "quesshi.live-benchmark/2";

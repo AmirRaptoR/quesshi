@@ -3,14 +3,14 @@
   "RunAtUtc": "2026-10-23T17:30:38.0231225+00:00",
   "Command": "dotnet run --project platform/bench/Quesshi.Bench.Live -- --matrix --repetitions 2 --allow-disposable-postgres",
   "Environment": {
-    "Hostname": "vps-c4d96c06",
+    "HostClass": "anonymized",
     "CpuModel": "Intel Core Processor (Haswell, no TSX)",
     "LogicalProcessorCount": 6,
     "AvailableMemoryBytes": 12238286848,
     "OperatingSystem": "Ubuntu 26.04.1 LTS",
     "DotNet": "10.0.13",
     "PostgreSqlVersion": "18.6 (Debian 18.6-1.pgdg13\u002B2)",
-    "PostgreSqlLocation": "local PostgreSQL at 127.0.0.1:55400"
+    "PostgreSqlLocation": "local PostgreSQL"
   },
   "Scenarios": [
     {
