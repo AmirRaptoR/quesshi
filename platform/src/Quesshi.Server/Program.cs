@@ -294,6 +294,7 @@ public static class Program
         builder.Services.AddSingleton<IInboxItems>(provider => provider.GetRequiredService<FeatureRegistry>());
         builder.Services.AddSingleton<INamedQueries>(provider => provider.GetRequiredService<FeatureRegistry>());
         builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
+        builder.Services.AddSingleton<CapabilityManagementService>();
         builder.Services.TryAddSingleton<ILocks, TenantLocks>();
         builder.Services.TryAddSingleton<IJobs, TenantJobs>();
         builder.Services.TryAddSingleton<ISessionEffectsNotifier, NullSessionEffectsNotifier>();
