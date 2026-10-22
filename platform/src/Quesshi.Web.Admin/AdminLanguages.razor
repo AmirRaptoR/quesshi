@@ -1,0 +1,119 @@
+@page "/admin/languages"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject ClientHttp Http
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading) { <p class="muted">@Text["common.loading"]</p> }
+else if (!CanManage) { <section class="card"><p>@Text[LanguageAdminText.Denied]</p></section> }
+else
+{
+    <section class="stack" aria-labelledby="admin-languages-title">
+        <h1 id="admin-languages-title">@Text[LanguageAdminText.Title]</h1>
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+
+        <EditForm id="language-create-form" Model="create" OnValidSubmit="CreateAsync"><div class="card stack">
+            <h2>@Text[LanguageAdminText.Create]</h2>
+            <label>@Text[LanguageAdminText.Code] <InputText id="language-code" @bind-Value="create.Code" /></label>
+            <label>@Text[LanguageAdminText.LocalName] <InputText id="language-local-name" @bind-Value="create.Name" /></label>
+            <label>@Text[LanguageAdminText.EnglishName] <InputText id="language-english-name" @bind-Value="create.EnglishName" /></label>
+            <label>@Text[LanguageAdminText.Direction] <InputSelect id="language-direction" @bind-Value="create.Direction"><option value="ltr">@Text[LanguageAdminText.Ltr]</option><option value="rtl">@Text[LanguageAdminText.Rtl]</option></InputSelect></label>
+            <button class="btn" type="submit">@Text[LanguageAdminText.Create]</button>
+        </div></EditForm>
+
+        @foreach (var language in languages)
+        {
+            <EditForm Model="language" OnValidSubmit="() => SaveAsync(language)"><div class="card stack">
+                <h2>@language.Code</h2>
+                <label>@Text[LanguageAdminText.LocalName] <InputText @bind-Value="language.Name" /></label>
+                <label>@Text[LanguageAdminText.EnglishName] <InputText @bind-Value="language.EnglishName" /></label>
+                <label>@Text[LanguageAdminText.Direction] <InputSelect @bind-Value="language.Direction"><option value="ltr">@Text[LanguageAdminText.Ltr]</option><option value="rtl">@Text[LanguageAdminText.Rtl]</option></InputSelect></label>
+                <button class="btn" type="submit">@Text[LanguageAdminText.Save]</button>
+                @if (language.IsDefault) { <p>@Text[LanguageAdminText.Default]</p> }
+                else { <button class="btn btn--ghost" type="button" @onclick="() => SetDefaultAsync(language.Code)">@Text[LanguageAdminText.SetDefault]</button> }
+                <button class="btn btn--danger" type="button" @onclick="() => DeleteAsync(language.Code)" disabled="@language.IsDefault">@Text[LanguageAdminText.Remove]</button>
+            </div></EditForm>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private readonly List<LanguageModel> languages = [];
+    private LanguageModel create = new() { Direction = "ltr" };
+    private string? error;
+
+    private bool CanManage => State?.Session is { IsPlatform: true } || string.Equals(State?.Session?.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanManage) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var loaded = await Http.GetFromJsonAsync<List<LanguageResponse>>("/api/admin/languages") ?? [];
+            languages.Clear();
+            languages.AddRange(loaded.Select(LanguageModel.From));
+            error = null;
+        }
+        catch (HttpRequestException)
+        {
+            error = LanguageAdminText.LoadFailed;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (await MutateAsync(HttpMethod.Post, "/api/admin/languages", create))
+            create = new LanguageModel { Direction = "ltr" };
+    }
+
+    private Task SaveAsync(LanguageModel language) =>
+        MutateAsync(HttpMethod.Put, $"/api/admin/languages/{Uri.EscapeDataString(language.Code)}", language);
+
+    private Task SetDefaultAsync(string code) =>
+        MutateAsync(HttpMethod.Put, "/api/admin/languages/default", new { code });
+
+    private Task DeleteAsync(string code) =>
+        MutateAsync(HttpMethod.Delete, $"/api/admin/languages/{Uri.EscapeDataString(code)}", null);
+
+    private async Task<bool> MutateAsync(HttpMethod method, string path, object? body)
+    {
+        if (State is null) return false;
+        var result = await State.MutateAsync<object>(method, path, body);
+        if (!result.Success)
+        {
+            error = result.Error ?? LanguageAdminText.SaveFailed;
+            return false;
+        }
+
+        await LoadAsync();
+        return true;
+    }
+
+    private sealed record LanguageResponse(string Code, string Name, string EnglishName, string Direction, bool IsDefault);
+
+    private sealed class LanguageModel
+    {
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string EnglishName { get; set; } = string.Empty;
+        public string Direction { get; set; } = string.Empty;
+        public bool IsDefault { get; set; }
+
+        public static LanguageModel From(LanguageResponse language) => new()
+        {
+            Code = language.Code,
+            Name = language.Name,
+            EnglishName = language.EnglishName,
+            Direction = language.Direction,
+            IsDefault = language.IsDefault,
+        };
+    }
+}
