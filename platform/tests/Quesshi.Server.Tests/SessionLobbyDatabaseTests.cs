@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Orleans;
 using Quesshi.Application;
 using Quesshi.Engine.Contracts;
@@ -9,6 +10,7 @@ using Quesshi.Formats.AsyncDuel;
 using Quesshi.Formats.Poll;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Plugin.Api;
+using Quesshi.Server.Sessions;
 
 namespace Quesshi.Server.Tests;
 
@@ -592,6 +594,8 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
             Fixture = new PlatformHttpFixture([new LobbyFeature()])
             {
                 Formats = new FormatRegistry([new AsyncDuelFormat(), new PollFormat(), new LobbyFormat(Shared, Pacing.Shared, true), new LobbyFormat(Personal, Pacing.Personal, true), new LobbyFormat(NoGuests, Pacing.Shared, false)]),
+                ConfigureServices = services => services.Remove(services.Single(descriptor =>
+                    descriptor.ServiceType == typeof(IHostedService) && descriptor.ImplementationType == typeof(DeadlineSweepService))),
             };
             await Fixture.StartAsync();
             foreach (var format in new[] { "async_duel", Shared, Personal, NoGuests }) await Fixture.SetCapabilityAsync("format", format, true);

@@ -40,6 +40,8 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     public Guid PlayerId => _identities?.PlayerId ?? throw new InvalidOperationException("The platform HTTP fixture has not initialized its identities.");
     /// <summary>Optional format registry that replaces the production formats for a hosted route test.</summary>
     public IFormatRegistry? Formats { get; init; }
+    /// <summary>Optional service changes applied before the hosted test application is built.</summary>
+    public Action<IServiceCollection>? ConfigureServices { get; init; }
     public IServiceProvider Services => _application?.Services ?? throw new InvalidOperationException("The platform HTTP fixture has not started.");
     public int HttpPort { get; private set; }
     public int SiloPort { get; private set; }
@@ -108,7 +110,8 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
                 SiloPort,
                 GatewayPort,
                 configuredFeatures: FeatureRegistry.Create(_features),
-                configuredFormats: Formats);
+                configuredFormats: Formats,
+                configureServices: ConfigureServices);
             application.Urls.Add("http://127.0.0.1:0");
             await application.StartAsync(cancellationToken);
             await application.Services.GetRequiredService<PostgresClock>().StartAsync(cancellationToken);
