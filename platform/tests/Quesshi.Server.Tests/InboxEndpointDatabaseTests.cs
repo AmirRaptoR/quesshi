@@ -90,6 +90,22 @@ public sealed class InboxEndpointDatabaseTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Inbox_returns_a_poll_when_the_player_has_not_submitted_for_its_current_slot()
+    {
+        var sessionId = Guid.NewGuid();
+        await SeedSessionAsync(sessionId, "INBOXPOLLWAIT", "running", format: "poll", slot: 0);
+        await SeedActiveParticipantAsync(sessionId);
+        await Host.ExecuteOwnerAsync("""
+            insert into session_items(tenant_id, session_id, slot, kind, kind_version, prompt, payload, resolved, card, reveal)
+            values (@tenantId, @sessionId, 0, 'poll_choice', 1, 'Question', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)
+            """, new { tenantId = Host.TenantId, sessionId });
+
+        var inbox = await GetInboxAsync(Host.Player);
+
+        Assert.Contains(inbox.Turns, session => session.Id == sessionId);
+    }
+
+    [SkippableFact]
     public async Task Inbox_omits_a_poll_after_the_player_submits_for_its_current_slot()
     {
         var sessionId = Guid.NewGuid();
@@ -113,6 +129,16 @@ public sealed class InboxEndpointDatabaseTests : IAsyncLifetime
         var inbox = await GetInboxAsync(Host.Player);
 
         Assert.Contains(inbox.Items, item => item.Type == "inbox_http");
+    }
+
+    [SkippableFact]
+    public async Task Inbox_omits_items_from_disabled_feature_handlers()
+    {
+        await Host.SetCapabilityAsync("feature", "inbox_http", false);
+
+        var inbox = await GetInboxAsync(Host.Player);
+
+        Assert.DoesNotContain(inbox.Items, item => item.Type == "inbox_http");
     }
 
     [SkippableFact]
