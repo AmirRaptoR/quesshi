@@ -1,0 +1,16 @@
+<article class="card" data-testid="@TestId">
+    <h2>@Title</h2>
+    <dl>
+        @foreach (var count in Counts)
+        {
+            <dt>@count.Key</dt>
+            <dd>@count.Count</dd>
+        }
+    </dl>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public IReadOnlyList<AdminDashboard.DashboardCount> Counts { get; set; } = [];
+    [Parameter, EditorRequired] public string TestId { get; set; } = string.Empty;
+}

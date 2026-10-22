@@ -1,0 +1,60 @@
+@page "/admin/dashboard"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (error is not null)
+{
+    <section class="card"><p class="form-error" role="alert">@Text[error]</p></section>
+}
+else if (dashboard is not null)
+{
+    <section class="stack" aria-labelledby="admin-dashboard-title">
+        <h1 id="admin-dashboard-title">@Text[AdminDashboardText.Title]</h1>
+        <article class="card" data-testid="dashboard-players">
+            <h2>@Text[AdminDashboardText.Players]</h2>
+            <strong>@dashboard.Players</strong>
+        </article>
+        <DashboardCounts Title="@Text[AdminDashboardText.SessionStatuses]" Counts="@dashboard.SessionStatuses" TestId="dashboard-session-statuses" />
+        <DashboardCounts Title="@Text[AdminDashboardText.SessionFormats]" Counts="@dashboard.SessionFormats" TestId="dashboard-session-formats" />
+        <DashboardCounts Title="@Text[AdminDashboardText.QuestionStatuses]" Counts="@dashboard.QuestionStatuses" TestId="dashboard-question-statuses" />
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private DashboardSnapshot? dashboard;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut)
+        {
+            Navigation.NavigateTo("/admin/login");
+            return;
+        }
+        if (State?.Session?.MustChangePassword == true)
+        {
+            Navigation.NavigateTo("/admin/password");
+            return;
+        }
+        if (State is null) return;
+
+        var result = await State.GetAsync<DashboardSnapshot>("/api/admin/dashboard");
+        dashboard = result.Value;
+        error = result.Error;
+    }
+
+    private sealed record DashboardSnapshot(
+        long Players,
+        IReadOnlyList<DashboardCount> SessionStatuses,
+        IReadOnlyList<DashboardCount> SessionFormats,
+        IReadOnlyList<DashboardCount> QuestionStatuses);
+
+    public sealed record DashboardCount(string Key, long Count);
+}
