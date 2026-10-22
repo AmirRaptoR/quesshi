@@ -16,6 +16,17 @@ internal sealed class RoleMatrix(IEnumerable<RoleMatrixExpectation> expectations
         new("platform administrator", host.PlatformAdministrator, HttpStatusCode.OK),
     ]);
 
+    public static RoleMatrix ForOwnerOnlyMutation(PlatformHttpFixture host) => new(
+    [
+        new("anonymous", host.Anonymous, HttpStatusCode.Unauthorized),
+        new("guest", host.Guest, HttpStatusCode.Unauthorized),
+        new("player", host.Player, HttpStatusCode.Unauthorized),
+        new("tenant moderator", host.Moderator, HttpStatusCode.Forbidden),
+        new("editor", host.Editor, HttpStatusCode.Forbidden),
+        new("owner", host.Owner, HttpStatusCode.NoContent),
+        new("platform administrator", host.PlatformAdministrator, HttpStatusCode.NoContent),
+    ]);
+
     public async Task AssertAsync(Func<HttpClient, Task<HttpResponseMessage>> sendAsync)
     {
         foreach (var expectation in expectations)
