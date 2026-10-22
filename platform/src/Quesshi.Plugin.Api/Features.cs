@@ -95,6 +95,18 @@ public delegate Task<TResult> NamedQueryHandler<TResult>(
     Guid playerId,
     CancellationToken cancellationToken);
 
+/// <summary>Invokes a feature's declared named queries inside the caller's tenant transaction.</summary>
+public interface INamedQueries
+{
+    /// <summary>Invokes the named query declared by the consumer feature.</summary>
+    Task<NamedQueryResult<TResult>> InvokeAsync<TResult>(
+        string consumerFeatureId,
+        string name,
+        ITenantTx transaction,
+        Guid playerId,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>The result of invoking a named feature query.</summary>
 public sealed record NamedQueryResult<TResult>(bool Available, TResult? Value)
 {

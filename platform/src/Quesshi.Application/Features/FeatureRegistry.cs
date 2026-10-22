@@ -9,7 +9,7 @@ namespace Quesshi.Application;
 internal sealed class FeatureRegistry(
     CapabilityRegistry capabilities,
     JobHandlerRegistry jobs,
-    JobScheduleRegistry schedules)
+    JobScheduleRegistry schedules) : INamedQueries
 {
     private readonly Dictionary<string, RegisteredFeature> _features = new(StringComparer.Ordinal);
     private readonly Dictionary<(string FeatureId, Type EventType), Delegate> _eventHandlers = [];
@@ -180,7 +180,7 @@ internal sealed class FeatureRegistry(
         return items;
     }
 
-    public async Task<NamedQueryResult<TResult>> InvokeQueryAsync<TResult>(
+    public async Task<NamedQueryResult<TResult>> InvokeAsync<TResult>(
         string consumerFeatureId,
         string name,
         ITenantTx transaction,

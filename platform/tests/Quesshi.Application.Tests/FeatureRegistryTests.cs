@@ -135,16 +135,17 @@ public sealed class FeatureRegistryTests
     }
 
     [Fact]
-    public async Task Declared_consumer_invokes_an_enabled_typed_named_query_in_its_transaction()
+    public async Task Declared_consumer_invokes_an_enabled_typed_named_query_through_the_public_contract()
     {
         var registry = CreateRegistry();
         var provider = new QueryProviderFeature();
         registry.Register(provider);
-        registry.Register(new QueryConsumerFeature());
+        var consumer = new QueryConsumerFeature(registry);
+        registry.Register(consumer);
         var transaction = new QueryTransaction(enabled: true);
         var playerId = Guid.NewGuid();
 
-        var result = await registry.InvokeQueryAsync<QueryValue>("consumer", "provider.value", transaction, playerId, CancellationToken.None);
+        var result = await consumer.GetValueAsync(transaction, playerId, CancellationToken.None);
 
         Assert.Equal(
             (new NamedQueryResult<QueryValue>(true, new QueryValue(playerId)), (ITenantTx?)transaction),
@@ -152,24 +153,26 @@ public sealed class FeatureRegistryTests
     }
 
     [Fact]
-    public async Task Declared_consumer_receives_an_unavailable_result_when_the_provider_is_disabled()
+    public async Task Declared_consumer_receives_an_unavailable_result_through_the_public_contract_when_the_provider_is_disabled()
     {
         var registry = CreateRegistry();
         registry.Register(new QueryProviderFeature());
-        registry.Register(new QueryConsumerFeature());
+        var consumer = new QueryConsumerFeature(registry);
+        registry.Register(consumer);
 
-        var result = await registry.InvokeQueryAsync<QueryValue>("consumer", "provider.value", new QueryTransaction(enabled: false), Guid.NewGuid(), CancellationToken.None);
+        var result = await consumer.GetValueAsync(new QueryTransaction(enabled: false), Guid.NewGuid(), CancellationToken.None);
 
         Assert.Equal(NamedQueryResult<QueryValue>.Unavailable, result);
     }
 
     [Fact]
-    public async Task Declared_consumer_receives_an_unavailable_result_when_no_provider_is_registered()
+    public async Task Declared_consumer_receives_an_unavailable_result_through_the_public_contract_when_no_provider_is_registered()
     {
         var registry = CreateRegistry();
-        registry.Register(new QueryConsumerFeature());
+        var consumer = new QueryConsumerFeature(registry);
+        registry.Register(consumer);
 
-        var result = await registry.InvokeQueryAsync<QueryValue>("consumer", "provider.value", new QueryTransaction(enabled: true), Guid.NewGuid(), CancellationToken.None);
+        var result = await consumer.GetValueAsync(new QueryTransaction(enabled: true), Guid.NewGuid(), CancellationToken.None);
 
         Assert.Equal(NamedQueryResult<QueryValue>.Unavailable, result);
     }
@@ -293,12 +296,18 @@ public sealed class FeatureRegistryTests
         });
     }
 
-    private sealed class QueryConsumerFeature : IFeature
+    private sealed class QueryConsumerFeature(INamedQueries queries) : IFeature
     {
         public string Id => "consumer";
         public FeatureSettings Settings => FeatureSettings.Create(new SampleSettings("default"), _ => []);
 
         public void Configure(IFeatureBuilder feature) => feature.Uses("provider.value");
+
+        public Task<NamedQueryResult<QueryValue>> GetValueAsync(
+            ITenantTx transaction,
+            Guid playerId,
+            CancellationToken cancellationToken) =>
+            queries.InvokeAsync<QueryValue>(Id, "provider.value", transaction, playerId, cancellationToken);
     }
 
     private sealed class QueryTransaction(bool enabled) : ITenantTx
