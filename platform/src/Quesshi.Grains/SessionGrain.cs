@@ -191,7 +191,7 @@ public class SessionGrain(
         _state ??= await snapshots.LoadAsync(_tenantId, _sessionId);
         if (_state is null) return LobbyCommandResult.Error("not_found");
         ArmDeadlineTimer();
-        if (_state.Session.Ended) return LobbyCommandResult.Error(_state.Session.Status == "cancelled" ? "cancelled" : "terminal");
+        if (_state.Session.Ended) return LobbyCommandResult.Error(LobbyTerminalCode(_state));
         if (await ReconcileAsync()) return LobbyCommandResult.Error("expired");
         LobbyOutcome outcome;
         try
@@ -300,6 +300,9 @@ public class SessionGrain(
         }
         return false;
     }
+
+    private static string LobbyTerminalCode(SessionState state) =>
+        state.Session.EndReason == EndReason.Expired ? "expired" : state.Session.Status == "cancelled" ? "cancelled" : "terminal";
 
     private bool ShouldExpire(SessionState state) => state.Session.StartedAt is { } started && clock.Now >= started.AddDays(90)
         || state.Session.Status == "lobby" && state.Session.DueAt is { } lobbyDue && lobbyDue <= clock.Now && !HasFormatLobbyDeadline(state.Session);

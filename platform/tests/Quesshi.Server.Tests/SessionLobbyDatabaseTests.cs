@@ -94,6 +94,8 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
     {
         var lobby = await CreateAsync(Shared);
         await host.Fixture.ExecuteOwnerAsync("update sessions set due_at = now() - interval '1 minute' where id = @id", new { id = lobby.Id });
+        var due = (await StateAsync(lobby.Id)).DueAt!.Value;
+        await Grain(lobby.Id).TimeoutAsync(due);
 
         var refused = await JoinAsync(host.Fixture.Guest, lobby.Code);
 
