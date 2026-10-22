@@ -389,6 +389,19 @@ public sealed class PlayerIdentityPageTests : BunitContext
     }
 
     [Fact]
+    public async Task Settings_shows_a_language_added_to_the_tenant_configuration()
+    {
+        var handler = new PageHandler(Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"Ada","avatarSeed":"avatar-1","lang":"en"}"""))
+            .WithLanguages("""[{"code":"en","displayName":"English","direction":"ltr"},{"code":"de","displayName":"Deutsch","direction":"ltr"}]""");
+        var auth = UseServices(handler);
+        await auth.InitializeAsync();
+
+        var cut = Render<Settings>();
+
+        Assert.Equal(["en", "de"], cut.FindAll("#settings-language option").Select(option => option.GetAttribute("value")!).ToArray());
+    }
+
+    [Fact]
     public async Task Profile_shows_the_current_tenant_player_identity()
     {
         var auth = UseServices(new PageHandler(Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"Ada","avatarSeed":"avatar-1","lang":"en"}""")));
@@ -503,6 +516,7 @@ public sealed class PlayerIdentityPageTests : BunitContext
         private readonly Queue<HttpResponseMessage> responses;
         private readonly Queue<string> signInMethodConfigurations;
         private readonly bool guests;
+        private string languages = """[{"code":"en","displayName":"English","direction":"ltr"},{"code":"fa","displayName":"فارسی","direction":"rtl"}]""";
         private long configVersion;
         public List<CapturedRequest> Requests { get; } = [];
 
@@ -534,6 +548,12 @@ public sealed class PlayerIdentityPageTests : BunitContext
             signInMethodConfigurations = new Queue<string>(["[]"]);
         }
 
+        public PageHandler WithLanguages(string values)
+        {
+            languages = values;
+            return this;
+        }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
@@ -544,7 +564,7 @@ public sealed class PlayerIdentityPageTests : BunitContext
                 var signInMethods = signInMethodConfigurations.Count > 1
                     ? signInMethodConfigurations.Dequeue()
                     : signInMethodConfigurations.Peek();
-                return Response(HttpStatusCode.OK, $$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"},{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"en","capabilities":{"switch":{{switches}}},"signInMethods":{{signInMethods}},"configVersion":{{++configVersion}},"serverBuildId":"test"}""");
+                return Response(HttpStatusCode.OK, $$"""{"name":"Tenant","languages":{{languages}},"defaultLanguage":"en","capabilities":{"switch":{{switches}}},"signInMethods":{{signInMethods}},"configVersion":{{++configVersion}},"serverBuildId":"test"}""");
             }
 
             if (request.RequestUri?.AbsolutePath.StartsWith("/i18n/", StringComparison.Ordinal) == true)
