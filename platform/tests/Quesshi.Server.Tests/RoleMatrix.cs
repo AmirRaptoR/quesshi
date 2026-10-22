@@ -27,6 +27,17 @@ internal sealed class RoleMatrix(IEnumerable<RoleMatrixExpectation> expectations
         new("platform administrator", host.PlatformAdministrator, HttpStatusCode.OK),
     ]);
 
+    public static RoleMatrix ForModeratorOnlyOperation(PlatformHttpFixture host) => new(
+    [
+        new("anonymous", host.Anonymous, HttpStatusCode.Unauthorized),
+        new("guest", host.Guest, HttpStatusCode.Unauthorized),
+        new("player", host.Player, HttpStatusCode.Unauthorized),
+        new("tenant moderator", host.Moderator, HttpStatusCode.OK),
+        new("editor", host.Editor, HttpStatusCode.Forbidden),
+        new("owner", host.Owner, HttpStatusCode.OK),
+        new("platform administrator", host.PlatformAdministrator, HttpStatusCode.OK),
+    ]);
+
     public static RoleMatrix ForOwnerOnlyRead(PlatformHttpFixture host) => new(
     [
         new("anonymous", host.Anonymous, HttpStatusCode.Unauthorized),
