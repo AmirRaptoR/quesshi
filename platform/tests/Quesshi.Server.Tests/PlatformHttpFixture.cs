@@ -173,6 +173,13 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     /// <summary>Creates an authenticated player in an isolated tenant for tenant-bound route tests.</summary>
     public async Task<HttpClient> CreateOtherTenantPlayerClientAsync(CancellationToken cancellationToken = default)
     {
+        var (client, _) = await CreateOtherTenantPlayerWithIdAsync(cancellationToken);
+        return client;
+    }
+
+    /// <summary>Creates an authenticated player and exposes its id for test-only header identity hosts.</summary>
+    public async Task<(HttpClient Client, Guid PlayerId)> CreateOtherTenantPlayerWithIdAsync(CancellationToken cancellationToken = default)
+    {
         var tenantId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
         var playerId = Guid.NewGuid();
@@ -195,7 +202,7 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
             email = $"other-{accountId:N}@example.test",
             playerId,
         }, cancellationToken: cancellationToken));
-        return await CreatePlayerClientAsync(tenantId, accountId, host, cancellationToken);
+        return (await CreatePlayerClientAsync(tenantId, accountId, host, cancellationToken), playerId);
     }
 
     private async Task<HttpClient> CreatePlayerClientAsync(Guid? accountId, CancellationToken cancellationToken)

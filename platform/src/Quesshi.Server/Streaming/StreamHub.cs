@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Threading.Channels;
+using Quesshi.Application.Inbox;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
 using Quesshi.Infrastructure.Streaming;
@@ -14,7 +16,8 @@ internal enum StreamMessageKind { View, Config, Inbox, Gone }
 internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null);
 
 /// <summary>One bounded local stream subscription. Delivery is always convergence-oriented.</summary>
-internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null)
+internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId, bool isGuest = false,
+    string? authenticationSessionKey = null)
 {
     private readonly object _gate = new();
     private readonly Channel<StreamMessage> _messages = Channel.CreateBounded<StreamMessage>(new BoundedChannelOptions(1)
@@ -24,10 +27,15 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         SingleWriter = false
     });
     private bool _terminal;
+    private StreamMessage? _queued;
+    private StreamMessage? _pendingView;
+    private StreamMessage? _pendingConfig;
+    private StreamMessage? _pendingInbox;
 
     public Guid TenantId { get; } = tenantId;
     public string PlayerId { get; } = playerId;
     public Guid? SessionId { get; } = sessionId;
+    public bool IsGuest { get; } = isGuest;
     public string? AuthenticationSessionKey { get; } = authenticationSessionKey;
     public ChannelReader<StreamMessage> Messages => _messages.Reader;
     public long LastSentVersion { get; private set; } = -1;
@@ -41,7 +49,15 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         {
             if (_terminal || view.Version <= Math.Max(LastSentVersion, LastQueuedVersion)) return;
             LastQueuedVersion = view.Version;
-            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.View, view.Version, view.Json));
+            var message = new StreamMessage(StreamMessageKind.View, view.Version, view.Json);
+            if (_queued?.Kind == StreamMessageKind.View)
+            {
+                _queued = message;
+                _messages.Writer.TryWrite(message);
+                return;
+            }
+            _pendingView = message;
+            QueuePending();
         }
     }
 
@@ -49,21 +65,19 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     {
         lock (_gate)
         {
-            // Preserve the convergence-critical view already in the one-slot buffer. The
-            // periodic reconcile will retry this config after that view has been sent.
-            if (_terminal || version <= LastConfigVersion || LastQueuedVersion > LastSentVersion) return;
-            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Config, version));
+            if (_terminal || version <= Math.Max(LastConfigVersion, PendingVersion(StreamMessageKind.Config))) return;
+            _pendingConfig = new StreamMessage(StreamMessageKind.Config, version);
+            QueuePending();
         }
     }
 
-    public void QueueInbox(long version)
+    public void QueueInbox(long version, string? json = null)
     {
         lock (_gate)
         {
-            // Preserve the convergence-critical view already in the one-slot buffer. The
-            // periodic reconcile will retry this inbox version after that view has been sent.
-            if (_terminal || version <= LastInboxVersion || LastQueuedVersion > LastSentVersion) return;
-            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Inbox, version));
+            if (_terminal || version <= Math.Max(LastInboxVersion, PendingVersion(StreamMessageKind.Inbox))) return;
+            _pendingInbox = new StreamMessage(StreamMessageKind.Inbox, version, json);
+            QueuePending();
         }
     }
 
@@ -73,6 +87,10 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         {
             if (_terminal) return;
             _terminal = true;
+            _queued = null;
+            _pendingView = null;
+            _pendingConfig = null;
+            _pendingInbox = null;
             _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Gone, 0, Reason: reason));
             _messages.Writer.TryComplete();
         }
@@ -86,17 +104,20 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
             {
                 if (message.Version <= LastSentVersion) return false;
                 LastSentVersion = message.Version;
+                Sent(message);
                 return true;
             }
             if (message.Kind == StreamMessageKind.Config)
             {
                 if (message.Version <= LastConfigVersion) return false;
                 LastConfigVersion = message.Version;
+                Sent(message);
             }
             if (message.Kind == StreamMessageKind.Inbox)
             {
                 if (message.Version <= LastInboxVersion) return false;
                 LastInboxVersion = message.Version;
+                Sent(message);
             }
             return true;
         }
@@ -107,13 +128,52 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         lock (_gate) return !_terminal && version > Math.Max(LastSentVersion, LastQueuedVersion);
     }
 
+    public bool NeedsInbox(long version)
+    {
+        lock (_gate) return !_terminal && version > Math.Max(LastInboxVersion, PendingVersion(StreamMessageKind.Inbox));
+    }
+
     public void Complete()
     {
         lock (_gate)
         {
             _terminal = true;
+            _queued = null;
+            _pendingView = null;
+            _pendingConfig = null;
+            _pendingInbox = null;
             _messages.Writer.TryComplete();
         }
+    }
+
+    private void Sent(StreamMessage message)
+    {
+        if (_queued == message) _queued = null;
+        QueuePending();
+    }
+
+    private long PendingVersion(StreamMessageKind kind)
+    {
+        var queued = _queued?.Kind == kind ? _queued.Version : -1;
+        var pending = kind switch
+        {
+            StreamMessageKind.Config => _pendingConfig?.Version ?? -1,
+            StreamMessageKind.Inbox => _pendingInbox?.Version ?? -1,
+            _ => _pendingView?.Version ?? -1
+        };
+        return Math.Max(queued, pending);
+    }
+
+    private void QueuePending()
+    {
+        if (_terminal || _queued is not null) return;
+        var next = _pendingView ?? _pendingInbox ?? _pendingConfig;
+        if (next is null) return;
+        if (next.Kind == StreamMessageKind.View) _pendingView = null;
+        else if (next.Kind == StreamMessageKind.Inbox) _pendingInbox = null;
+        else _pendingConfig = null;
+        _queued = next;
+        _messages.Writer.TryWrite(next);
     }
 }
 
@@ -132,6 +192,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private readonly IClock clock;
     private readonly ILogger<StreamHub> logger;
     private readonly IStreamSessionLiveness sessionLiveness;
+    private readonly InboxReader? inboxReader;
     private readonly TimeSpan scoreCoalesceWindow;
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
@@ -142,13 +203,20 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
         IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness sessionLiveness)
-        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness)
+        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness, null)
+    {
+    }
+
+    public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness sessionLiveness,
+        InboxReader inboxReader)
+        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness, inboxReader)
     {
     }
 
     internal StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
         IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow,
-        IStreamSessionLiveness sessionLiveness)
+        IStreamSessionLiveness sessionLiveness, InboxReader? inboxReader = null)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
@@ -159,12 +227,14 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         this.logger = logger;
         this.scoreCoalesceWindow = scoreCoalesceWindow;
         this.sessionLiveness = sessionLiveness;
+        this.inboxReader = inboxReader;
         notifications.Received += OnNotification;
     }
 
-    public StreamSubscription Subscribe(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null)
+    public StreamSubscription Subscribe(Guid tenantId, string playerId, Guid? sessionId, string? authenticationSessionKey = null,
+        bool isGuest = false)
     {
-        var subscription = new StreamSubscription(tenantId, playerId, sessionId, authenticationSessionKey);
+        var subscription = new StreamSubscription(tenantId, playerId, sessionId, isGuest, authenticationSessionKey);
         _subscriptions.TryAdd(Guid.NewGuid(), subscription);
         return subscription;
     }
@@ -198,6 +268,11 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     {
         if (subscription.SessionId is { } sessionId) await RenderSessionAsync(subscription.TenantId, sessionId, cancellationToken);
         if (!Guid.TryParse(subscription.PlayerId, out var playerId)) return;
+        if (inboxReader is not null)
+        {
+            await QueueInboxSnapshotAsync(subscription, playerId, cancellationToken);
+            return;
+        }
         var version = await database.InTenantAsync(subscription.TenantId, transaction => transaction.QuerySingleOrDefaultAsync<long?>("""
             select version
             from player_inbox
@@ -287,7 +362,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                     await RenderSessionAsync(tenant.Key, sessionId, cancellationToken);
                 }
             }
-            foreach (var inbox in state.InboxVersions) BroadcastInbox(tenant.Key, inbox.PlayerId, inbox.Version);
+            foreach (var inbox in state.InboxVersions) await BroadcastInboxAsync(tenant.Key, inbox.PlayerId, inbox.Version, cancellationToken);
             if (state.ConfigVersion is { } current) BroadcastConfig(tenant.Key, current);
         }
     }
@@ -311,7 +386,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 BroadcastConfig(config.TenantId, config.Version);
                 break;
             case StreamNotification.Inbox inbox:
-                BroadcastInbox(inbox.TenantId, inbox.PlayerId, inbox.Version);
+                _ = DeliverInboxAsync(inbox.TenantId, inbox.PlayerId, inbox.Version);
                 break;
             case StreamNotification.Player player:
                 Deleted([new AccountDeletionPlayer(player.TenantId, player.PlayerId)]);
@@ -508,16 +583,44 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         foreach (var subscription in _subscriptions.Values.Where(subscription => subscription.TenantId == tenantId)) subscription.QueueConfig(version);
     }
 
-    private void BroadcastInbox(Guid tenantId, Guid playerId, long version)
+    private async Task BroadcastInboxAsync(Guid tenantId, Guid playerId, long version, CancellationToken cancellationToken)
     {
-        foreach (var subscription in _subscriptions.Values.Where(subscription =>
+        var targets = _subscriptions.Values.Where(subscription =>
                      subscription.TenantId == tenantId
                      && Guid.TryParse(subscription.PlayerId, out var subscribedPlayerId)
-                     && subscribedPlayerId == playerId))
+                     && subscribedPlayerId == playerId
+                     && subscription.NeedsInbox(version)).ToArray();
+        foreach (var subscription in targets)
         {
-            subscription.QueueInbox(version);
+            if (inboxReader is null)
+            {
+                subscription.QueueInbox(version);
+                continue;
+            }
+            await QueueInboxSnapshotAsync(subscription, playerId, cancellationToken);
         }
     }
+
+    private async Task DeliverInboxAsync(Guid tenantId, Guid playerId, long version)
+    {
+        try
+        {
+            await BroadcastInboxAsync(tenantId, playerId, version, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Unable to deliver inbox stream update for player {PlayerId}", playerId);
+        }
+    }
+
+    private async Task QueueInboxSnapshotAsync(StreamSubscription subscription, Guid playerId, CancellationToken cancellationToken)
+    {
+        if (inboxReader is null) return;
+        var snapshot = await inboxReader.ReadAsync(subscription.TenantId, playerId, subscription.IsGuest, cancellationToken);
+        subscription.QueueInbox(snapshot.Version, JsonSerializer.Serialize(snapshot, InboxJson));
+    }
+
+    private static readonly JsonSerializerOptions InboxJson = new(JsonSerializerDefaults.Web);
 
     public override void Dispose()
     {

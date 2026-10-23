@@ -41,7 +41,7 @@ internal static class StreamEndpoints
         var sessionKey = context.Items.TryGetValue(typeof(PlayerStreamSession), out var streamSession)
             ? (streamSession as PlayerStreamSession)?.Key
             : null;
-        var subscription = hub.Subscribe(tenant.Id, player.PlayerId.ToString(), session, sessionKey);
+        var subscription = hub.Subscribe(tenant.Id, player.PlayerId.ToString(), session, sessionKey, player.IsGuest);
         try
         {
             await context.Response.StartAsync(cancellationToken);
@@ -99,7 +99,7 @@ internal static class StreamEndpoints
     {
         StreamMessageKind.View => $"event: view\ndata: {message.Json}\n\n",
         StreamMessageKind.Config => $"event: config\ndata: {JsonSerializer.Serialize(new { version = message.Version })}\n\n",
-        StreamMessageKind.Inbox => $"event: inbox\ndata: {JsonSerializer.Serialize(new { version = message.Version })}\n\n",
+        StreamMessageKind.Inbox => $"event: inbox\ndata: {message.Json ?? JsonSerializer.Serialize(new { version = message.Version })}\n\n",
         StreamMessageKind.Gone => $"event: gone\ndata: {JsonSerializer.Serialize(new { reason = message.Reason })}\n\n",
         _ => throw new ArgumentOutOfRangeException(nameof(message))
     };

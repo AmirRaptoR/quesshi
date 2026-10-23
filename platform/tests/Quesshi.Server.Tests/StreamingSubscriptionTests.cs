@@ -64,6 +64,27 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public void Inbox_and_config_converge_after_a_pending_view()
+    {
+        var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
+        subscription.QueueView(new RenderedSessionView(4, "{\"version\":4}"));
+        subscription.QueueInbox(3, "{\"version\":3}");
+        subscription.QueueConfig(2);
+
+        Assert.True(subscription.Messages.TryRead(out var view));
+        Assert.True(subscription.MarkSent(view));
+        Assert.Equal((StreamMessageKind.View, 4L), (view.Kind, view.Version));
+
+        Assert.True(subscription.Messages.TryRead(out var inbox));
+        Assert.True(subscription.MarkSent(inbox));
+        Assert.Equal((StreamMessageKind.Inbox, 3L, "{\"version\":3}"), (inbox.Kind, inbox.Version, inbox.Json));
+
+        Assert.True(subscription.Messages.TryRead(out var config));
+        Assert.True(subscription.MarkSent(config));
+        Assert.Equal((StreamMessageKind.Config, 2L), (config.Kind, config.Version));
+    }
+
+    [Fact]
     public void Revocation_is_terminal_and_cannot_be_displaced_by_later_messages()
     {
         var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
