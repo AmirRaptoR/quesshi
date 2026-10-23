@@ -15,8 +15,8 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
 {
     private const long MigrationLock = 638_002_989_883_045_713;
     private static readonly Regex FeatureResource = new(
-        "(?:^|\\.)Features\\.(?<owner>[a-z0-9][a-z0-9_-]*)\\.Migrations\\.",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        "(?:^|\\.)Features(?:\\.Features)?\\.(?<owner>[a-z0-9][a-z0-9_-]*)\\.Migrations\\.",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private readonly IReadOnlyList<MigrationScript> _scripts = scripts.OrderBy(script => script.Name, StringComparer.Ordinal).ToArray();
 
     public static IReadOnlyList<MigrationScript> Discover(params Assembly[] assemblies)
@@ -29,7 +29,9 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
                 var fileName = resourceName[(resourceName.LastIndexOf(".Migrations.", StringComparison.Ordinal) + ".Migrations.".Length)..];
                 var applicationMarker = ".Application.Migrations.";
                 var feature = FeatureResource.Match(resourceName);
-                var owner = resourceName.Contains(applicationMarker, StringComparison.Ordinal) ? "core" : feature.Groups["owner"].Value;
+                var owner = resourceName.Contains(applicationMarker, StringComparison.Ordinal)
+                    ? "core"
+                    : feature.Groups["owner"].Value.ToLowerInvariant();
                 if (string.IsNullOrEmpty(owner))
                 {
                     throw new InvalidOperationException($"Migration resource '{resourceName}' must live in Application/Migrations or Features/<owner>/Migrations.");
