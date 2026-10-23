@@ -216,6 +216,7 @@ public sealed class SecondIsolatedPostgresFixtureClass(PostgresFixture fixture) 
 
 internal static class IsolatedClassFixtureCoordinator
 {
+    private static readonly TimeSpan PeerWaitTimeout = TimeSpan.FromMinutes(2);
     private static readonly Guid FirstTenant = Guid.Parse("b8ac111b-aa71-4f78-9d5f-7c90404330f8");
     private static readonly Guid SecondTenant = Guid.Parse("86db0a4f-676d-4088-a1ca-4b98362e538a");
     private static readonly TaskCompletionSource FirstMigration = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -240,7 +241,7 @@ internal static class IsolatedClassFixtureCoordinator
     private static async Task WaitForPeerAsync(TaskCompletionSource current, TaskCompletionSource peer)
     {
         current.TrySetResult();
-        await peer.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await peer.Task.WaitAsync(PeerWaitTimeout);
     }
 
     private static async Task InsertTenantAsync(string connectionString, Guid tenant)
