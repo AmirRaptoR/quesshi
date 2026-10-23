@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Npgsql;
+using Quesshi.Application;
 using Quesshi.Plugin.Api;
 
 namespace Quesshi.Application.Content;
@@ -241,7 +242,7 @@ internal sealed class CategoryService(ITenantDb database) : ICategoryService
             """, cancellationToken: cancellationToken);
         var settings = json is null
             ? null
-            : JsonSerializer.Deserialize(json.Value, CategoryJsonContext.Default.BankCategorySettings);
+            : JsonSerializer.Deserialize<BankCategorySettings>(json.Value, CapabilitySettingsJson.Options);
         return settings is { CategoriesByFamily: not null }
             ? new(settings.CategoriesByFamily)
             : new(new Dictionary<string, Guid[]>(StringComparer.Ordinal));

@@ -93,6 +93,55 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Owner_update_round_trips_bank_settings_to_the_category_allow_list()
+    {
+        var allowed = Guid.NewGuid();
+        var excluded = Guid.NewGuid();
+        await Host.ExecuteOwnerAsync("""
+            insert into categories(tenant_id, id, slug, names, is_active, sort_order)
+            values (@tenantId, @allowed, 'capability-bank-allowed', '{"en":"Allowed"}'::jsonb, true, 0),
+                   (@tenantId, @excluded, 'capability-bank-excluded', '{"en":"Excluded"}'::jsonb, true, 1);
+            """, new { tenantId = Host.TenantId, allowed, excluded });
+        await Host.SetCapabilityAsync("source", "bank", true);
+        using var update = await UpdateAsync(Host.Owner, "source", "bank", new
+        {
+            enabled = true,
+            settings = new { categoriesByFamily = new Dictionary<string, Guid[]> { ["trivia"] = [allowed] } },
+        });
+        update.EnsureSuccessStatusCode();
+
+        using var response = await Host.Anonymous.GetAsync("/api/categories?family=trivia");
+        response.EnsureSuccessStatusCode();
+        var category = Assert.Single(await response.Content.ReadFromJsonAsync<IReadOnlyList<CategoryResponse>>() ?? []);
+
+        Assert.Equal(allowed, category.Id);
+    }
+
+    [SkippableFact]
+    public async Task Category_allow_list_reads_legacy_pascal_case_bank_settings()
+    {
+        var allowed = Guid.NewGuid();
+        var excluded = Guid.NewGuid();
+        await Host.ExecuteOwnerAsync("""
+            insert into categories(tenant_id, id, slug, names, is_active, sort_order)
+            values (@tenantId, @allowed, 'legacy-bank-allowed', '{"en":"Allowed"}'::jsonb, true, 0),
+                   (@tenantId, @excluded, 'legacy-bank-excluded', '{"en":"Excluded"}'::jsonb, true, 1);
+            """, new { tenantId = Host.TenantId, allowed, excluded });
+        await Host.SetCapabilityAsync("source", "bank", true);
+        await Host.ExecuteOwnerAsync("""
+            update tenant_capabilities
+            set settings = jsonb_build_object('CategoriesByFamily', jsonb_build_object('trivia', jsonb_build_array(@allowed)))
+            where tenant_id = @tenantId and type = 'source' and key = 'bank';
+            """, new { tenantId = Host.TenantId, allowed });
+
+        using var response = await Host.Anonymous.GetAsync("/api/categories?family=trivia");
+        response.EnsureSuccessStatusCode();
+        var category = Assert.Single(await response.Content.ReadFromJsonAsync<IReadOnlyList<CategoryResponse>>() ?? []);
+
+        Assert.Equal(allowed, category.Id);
+    }
+
+    [SkippableFact]
     public async Task Successful_capability_update_advances_config_version()
     {
         var before = await ConfigVersionAsync();
@@ -227,6 +276,7 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
     }
 
     private sealed record CapabilityResponse(string Type, string Key, bool Entitled, bool Enabled);
+    private sealed record CategoryResponse(Guid Id);
     private sealed record CapabilityErrorResponse(string Error, IReadOnlyList<string>? Messages);
 
     private sealed class CapabilityHttpFeature : IFeature
