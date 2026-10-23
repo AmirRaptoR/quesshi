@@ -28,7 +28,6 @@ internal sealed class RoleMatrix(IEnumerable<RoleMatrixExpectation> expectations
     ]);
 
     public static RoleMatrix ForOwnerOnlyRead(PlatformHttpFixture host) => new(
-
     [
         new("anonymous", host.Anonymous, HttpStatusCode.Unauthorized),
         new("guest", host.Guest, HttpStatusCode.Unauthorized),
