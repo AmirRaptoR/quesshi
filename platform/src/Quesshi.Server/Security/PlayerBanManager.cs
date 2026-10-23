@@ -43,7 +43,7 @@ internal sealed class PlayerBanManager(ITenantDb database, ILocks locks, IPlayer
             if (ban)
             {
                 await transaction.ExecuteAsync("select revoke_player_sessions(@playerId)", new { playerId }, cancellationToken);
-                await transaction.ExecuteAsync("select pg_notify('quesshi_player', concat('player:', @tenantId, ':', @playerId))", new { tenantId, playerId }, cancellationToken);
+                await transaction.ExecuteAsync("select pg_notify('quesshi_player', concat('player:', @tenantId, ':', @playerId, ':banned'))", new { tenantId, playerId }, cancellationToken);
             }
             return true;
         }, cancellationToken: cancellationToken);

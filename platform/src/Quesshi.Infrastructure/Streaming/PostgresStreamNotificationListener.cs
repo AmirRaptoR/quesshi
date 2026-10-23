@@ -10,7 +10,8 @@ public abstract record StreamNotification(Guid TenantId)
 {
     public sealed record Session(Guid TenantId, Guid SessionId, long Version, string? Phase = null) : StreamNotification(TenantId);
     public sealed record Config(Guid TenantId, long Version) : StreamNotification(TenantId);
-    public sealed record Player(Guid TenantId, Guid PlayerId) : StreamNotification(TenantId);
+    public sealed record Player(Guid TenantId, Guid PlayerId, string Reason = "deleted") : StreamNotification(TenantId);
+    public sealed record AuthenticationSession(Guid TenantId, string SessionKey) : StreamNotification(TenantId);
     public sealed record Inbox(Guid TenantId, Guid PlayerId, long Version) : StreamNotification(TenantId);
     public sealed record Reconnected() : StreamNotification(Guid.Empty);
 }
@@ -48,7 +49,7 @@ public sealed class PostgresStreamNotificationListener(DatabaseSources sources, 
                 connection.Notification += (_, args) => Publish(Parse(args.Payload));
                 await connection.OpenAsync(stoppingToken);
                 Volatile.Write(ref _backendProcessId, connection.ProcessID);
-                await using (var command = new NpgsqlCommand("listen quesshi_session; listen quesshi_config; listen quesshi_player; listen quesshi_inbox;", connection))
+                await using (var command = new NpgsqlCommand("listen quesshi_session; listen quesshi_config; listen quesshi_player; listen quesshi_inbox; listen quesshi_auth_session;", connection))
                 {
                     await command.ExecuteNonQueryAsync(stoppingToken);
                 }
@@ -92,10 +93,15 @@ public sealed class PostgresStreamNotificationListener(DatabaseSources sources, 
         {
             return new StreamNotification.Config(tenant, version);
         }
-        if (values.Length == 3 && values[0] == "player" && Guid.TryParse(values[1], out tenant)
+        if (values.Length is 3 or 4 && values[0] == "player" && Guid.TryParse(values[1], out tenant)
             && Guid.TryParse(values[2], out var playerId))
         {
-            return new StreamNotification.Player(tenant, playerId);
+            return new StreamNotification.Player(tenant, playerId, values.Length == 4 ? values[3] : "deleted");
+        }
+        if (values.Length == 3 && values[0] == "auth" && Guid.TryParse(values[1], out tenant)
+            && values[2].Length > 0)
+        {
+            return new StreamNotification.AuthenticationSession(tenant, values[2]);
         }
         if (values.Length == 4 && values[0] == "inbox" && Guid.TryParse(values[1], out tenant)
             && Guid.TryParse(values[2], out playerId)

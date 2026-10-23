@@ -67,7 +67,7 @@ internal static class StreamEndpoints
                         return;
                     }
                     await WriteAndFlushAsync(context, frame, cancellationToken);
-                    if (message.Kind == StreamMessageKind.Gone) return;
+                    if (message.Kind is StreamMessageKind.Gone or StreamMessageKind.Closed) return;
                 }
             }
         }
@@ -101,6 +101,7 @@ internal static class StreamEndpoints
         StreamMessageKind.Config => $"event: config\ndata: {JsonSerializer.Serialize(new { version = message.Version })}\n\n",
         StreamMessageKind.Inbox => $"event: inbox\ndata: {message.Json ?? JsonSerializer.Serialize(new { version = message.Version })}\n\n",
         StreamMessageKind.Gone => $"event: gone\ndata: {JsonSerializer.Serialize(new { reason = message.Reason })}\n\n",
+        StreamMessageKind.Closed => $"event: closed\ndata: {JsonSerializer.Serialize(new { reason = message.Reason })}\n\n",
         _ => throw new ArgumentOutOfRangeException(nameof(message))
     };
 
