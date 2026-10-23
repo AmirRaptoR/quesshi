@@ -222,6 +222,7 @@ public static class Program
         builder.Services.AddSingleton<SessionSnapshotFactory>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();
         builder.Services.AddSingleton<IExternalSignInContext, ExternalSignInContext>();
+        builder.Services.AddSingleton<ITenantRequestContext, TenantRequestContext>();
         builder.Services.AddSingleton<IIdentity>(provider => new ExternalIdentityService(
             provider.GetRequiredService<DatabaseSources>(),
             provider.GetRequiredService<ITenantDb>(),
