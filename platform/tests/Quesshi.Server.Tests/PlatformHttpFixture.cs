@@ -170,6 +170,31 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         return (await CreatePlayerClientAsync(accountId, cancellationToken), playerId);
     }
 
+    /// <summary>Creates a new authenticated session for the fixture's primary player.</summary>
+    public Task<HttpClient> CreateFreshPlayerClientAsync(CancellationToken cancellationToken = default) =>
+        CreatePlayerClientAsync(_identities?.AccountId ?? throw new InvalidOperationException("The platform HTTP host did not start."), cancellationToken);
+
+    /// <summary>Opens a direct server-sent events connection for the fixture's primary player.</summary>
+    public async Task<HttpResponseMessage> OpenPlayerStreamAsync(CancellationToken cancellationToken = default)
+    {
+        var identities = _identities ?? throw new InvalidOperationException("The platform HTTP host did not start.");
+#if QUESSHI_TEST_IDENTITY
+        var playerId = identities.PlayerId;
+#else
+        var cookie = await IssueAccountCookieAsync(identities.TenantId, identities.AccountId, cancellationToken);
+#endif
+        var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{HttpPort}") };
+        _clients.Add(client);
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/stream");
+        request.Headers.Host = TenantHost;
+#if QUESSHI_TEST_IDENTITY
+        request.Headers.Add("X-Quesshi-Test-Player", playerId.ToString());
+#else
+        request.Headers.TryAddWithoutValidation("Cookie", $"{PlayerSessionService.CookieName}={cookie}");
+#endif
+        return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+    }
+
     /// <summary>Creates an authenticated player in an isolated tenant for tenant-bound route tests.</summary>
     public async Task<HttpClient> CreateOtherTenantPlayerClientAsync(CancellationToken cancellationToken = default)
     {

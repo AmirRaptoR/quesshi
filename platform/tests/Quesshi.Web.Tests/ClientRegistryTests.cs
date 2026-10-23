@@ -130,6 +130,22 @@ public sealed class ClientRegistryTests
     }
 
     [Fact]
+    public async Task Admin_client_registers_the_player_screen_for_moderators_and_owners()
+    {
+        var registry = new AdminClientRegistry(
+            new RecordingLoader(typeof(AdminClientEntry).Assembly),
+            new RecordingTranslationRegistry());
+
+        await registry.LoadAsync();
+
+        var navigation = Assert.Single(registry.Navigation, item => item.Href == "/admin/players");
+        Assert.Contains(typeof(AdminPlayers), registry.Pages);
+        Assert.True(navigation.IsVisibleTo(new AdminNavigationContext("Moderator", false)));
+        Assert.True(navigation.IsVisibleTo(new AdminNavigationContext("Owner", false)));
+        Assert.False(navigation.IsVisibleTo(new AdminNavigationContext("Editor", false)));
+    }
+
+    [Fact]
     public async Task Admin_client_loads_one_root_and_multiple_independent_page_contributions()
     {
         var registry = new AdminClientRegistry(

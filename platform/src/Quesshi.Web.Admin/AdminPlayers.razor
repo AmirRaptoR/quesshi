@@ -1,0 +1,112 @@
+@page "/admin/players"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (!CanManage)
+{
+    <section class="card"><p>@Text[PlayerAdminText.Denied]</p></section>
+}
+else
+{
+    <section class="stack" data-testid="player-screen" aria-labelledby="admin-players-title">
+        <h1 id="admin-players-title">@Text[PlayerAdminText.Title]</h1>
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+        <form class="card" @onsubmit="SearchAsync" @onsubmit:preventDefault="true">
+            <label>@Text[PlayerAdminText.Search] <input data-testid="player-search" @bind="search" /></label>
+            <button type="submit" data-testid="player-search-submit">@Text[PlayerAdminText.Search]</button>
+        </form>
+        <section class="card stack" aria-live="polite">
+            @foreach (var player in players)
+            {
+                <article data-testid="player-row" data-player-id="@player.Id">
+                    <strong>@player.DisplayName</strong>
+                    <span>@Text[player.IsBanned ? PlayerAdminText.Banned : PlayerAdminText.Active]</span>
+                    <button type="button" data-testid="@(player.IsBanned ? "player-unban" : "player-ban")" @onclick="() => ChangeBanAsync(player)">
+                        @Text[player.IsBanned ? PlayerAdminText.Unban : PlayerAdminText.Ban]
+                    </button>
+                </article>
+            }
+            @if (players.Count == 0) { <p>@Text[PlayerAdminText.Empty]</p> }
+            <nav aria-label="@Text[PlayerAdminText.Paging]">
+                <button type="button" data-testid="player-previous" disabled="@(currentPage <= 1)" @onclick="PreviousAsync">@Text[PlayerAdminText.Previous]</button>
+                <span data-testid="player-page">@currentPage</span>
+                <button type="button" data-testid="player-next" disabled="@(currentPage * PageSize >= total)" @onclick="NextAsync">@Text[PlayerAdminText.Next]</button>
+            </nav>
+        </section>
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private const int PageSize = 25;
+    private readonly List<PlayerResponse> players = [];
+    private int currentPage = 1;
+    private long total;
+    private string search = string.Empty;
+    private bool loaded;
+    private string? error;
+
+    private bool CanManage => State?.Session is { } session &&
+        (session.IsPlatform || string.Equals(session.Role, "Owner", StringComparison.OrdinalIgnoreCase) || string.Equals(session.Role, "Moderator", StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanManage && !loaded) { loaded = true; await LoadAsync(); }
+    }
+
+    private async Task SearchAsync()
+    {
+        currentPage = 1;
+        await LoadAsync();
+    }
+
+    private Task PreviousAsync()
+    {
+        currentPage--;
+        return LoadAsync();
+    }
+
+    private Task NextAsync()
+    {
+        currentPage++;
+        return LoadAsync();
+    }
+
+    private async Task ChangeBanAsync(PlayerResponse player)
+    {
+        var method = player.IsBanned ? System.Net.Http.HttpMethod.Delete : System.Net.Http.HttpMethod.Post;
+        var result = await State!.MutateAsync<object>(method, $"/api/admin/players/{player.Id}/ban", null);
+        if (!result.Success)
+        {
+            error = PlayerAdminText.MutationFailed;
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var result = await State!.GetAsync<PlayerPage>($"/api/admin/players?page={currentPage}&pageSize={PageSize}&q={Uri.EscapeDataString(search.Trim())}");
+        if (!result.Success || result.Value is null)
+        {
+            error = PlayerAdminText.LoadFailed;
+            return;
+        }
+        players.Clear();
+        players.AddRange(result.Value.Items);
+        currentPage = result.Value.Page;
+        total = result.Value.Total;
+        error = null;
+    }
+
+    private sealed record PlayerPage(IReadOnlyList<PlayerResponse> Items, long Total, int Page, int PageSize);
+    private sealed record PlayerResponse(Guid Id, string DisplayName, bool IsBanned);
+}
