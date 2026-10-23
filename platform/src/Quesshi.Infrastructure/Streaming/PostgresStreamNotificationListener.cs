@@ -64,6 +64,7 @@ public sealed class PostgresStreamNotificationListener(DatabaseSources sources, 
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
+                Volatile.Write(ref _backendProcessId, 0);
                 return;
             }
             catch (Exception exception)

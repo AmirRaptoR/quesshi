@@ -112,17 +112,35 @@ public sealed class SessionEffectsEndpointDatabaseTests(PostgresFixture postgres
         var pending = await ReadEffectsFrameAsync(stream.Reader);
         var pendingRevision = Revision(pending);
         var listener = Host.Services.GetRequiredService<PostgresStreamNotificationListener>();
-        var backendProcessId = listener.BackendProcessId;
-        Assert.True(await Host.TerminateBackendAsync(backendProcessId));
-        await WaitForAsync(() => listener.BackendProcessId == 0);
-        var started = Stopwatch.StartNew();
-        Feature.ReleaseHandler();
-        await WaitForAsync(() => listener.BackendProcessId != 0);
-        var done = await ReadEffectsFrameAsync(stream.Reader, TimeSpan.FromMilliseconds(2500));
+        var missed = new List<StreamNotification.Effects>();
+        void Record(StreamNotification notification)
+        {
+            if (notification is StreamNotification.Effects effects && effects.TenantId == Host.TenantId && effects.SessionId == sessionId)
+                missed.Add(effects);
+        }
 
-        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(2500), $"Effects reconciliation took {started.ElapsedMilliseconds}ms.");
-        Assert.Equal("done", Status(done));
-        Assert.True(Revision(done) > pendingRevision);
+        listener.Received += Record;
+        await listener.StopAsync(CancellationToken.None);
+        await WaitForAsync(() => listener.BackendProcessId == 0);
+        try
+        {
+            Feature.ReleaseHandler();
+            await WaitForEffectsStatusAsync(sessionId, "done");
+            Assert.Empty(missed);
+
+            var started = Stopwatch.StartNew();
+            await listener.StartAsync(CancellationToken.None);
+            await WaitForAsync(() => listener.BackendProcessId != 0);
+            var done = await ReadEffectsFrameAsync(stream.Reader, TimeSpan.FromMilliseconds(2500));
+
+            Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(2500), $"Effects reconciliation took {started.ElapsedMilliseconds}ms.");
+            Assert.Equal("done", Status(done));
+            Assert.True(Revision(done) > pendingRevision);
+        }
+        finally
+        {
+            listener.Received -= Record;
+        }
     }
 
     [SkippableFact]
@@ -227,6 +245,20 @@ public sealed class SessionEffectsEndpointDatabaseTests(PostgresFixture postgres
     {
         using var document = JsonDocument.Parse(frame.Data);
         return document.RootElement.GetProperty("features").EnumerateArray().Single().GetProperty("status").GetString();
+    }
+
+    private async Task WaitForEffectsStatusAsync(Guid sessionId, string expectedStatus)
+    {
+        var timeout = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        while (true)
+        {
+            using var response = await Host.Player.GetAsync($"/api/sessions/{sessionId}/effects");
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var status = document.RootElement.GetProperty("features").EnumerateArray().Single().GetProperty("status").GetString();
+            if (status == expectedStatus) return;
+            if (Stopwatch.GetTimestamp() >= timeout) throw new TimeoutException("The effects handler did not commit its state.");
+            await Task.Delay(10);
+        }
     }
 
     private static async Task WaitForAsync(Func<bool> condition)

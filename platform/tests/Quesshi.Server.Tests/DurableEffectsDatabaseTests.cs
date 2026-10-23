@@ -3,6 +3,7 @@ using Quesshi.Application;
 using Quesshi.Application.Jobs;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Jobs;
+using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
 using Quesshi.Testing;
@@ -181,6 +182,58 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             """, ("tenant", tenant)));
         Assert.Equal(2L, await RevisionAsync(tenant, session));
         Assert.Equal(1, notifications.Sessions.Count(id => id == session));
+    }
+
+    [SkippableFact]
+    public async Task System_job_transition_notifies_only_its_tenant_when_session_ids_collide()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await PrepareAsync();
+        var tenant = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var feature = new SampleFeature("tenant-collision");
+        var registry = FeatureRegistry.Create([feature]);
+        var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new RecordingNotifier());
+        await CreateSessionAsync(tenant, Guid.NewGuid(), session);
+        await CreateSessionAsync(otherTenant, Guid.NewGuid(), session);
+        await SetCapabilityAsync(tenant, feature.Id, enabled: true);
+        await ExecuteSystemAsync("""
+            insert into session_effects(tenant_id, session_id, revision)
+            values (@tenant, @session, 7)
+            """, ("tenant", otherTenant), ("session", session));
+        await using var sources = Sources();
+        await new TenantDb(sources).InTenantAsync(tenant, async transaction =>
+        {
+            await events.EmitAsync(transaction, new SessionEnded(session));
+            return 0;
+        });
+        var jobId = await JobIdForFeatureAsync(tenant, feature.Id);
+        await ExecuteSystemAsync("update jobs set max_attempts = 1 where id = @jobId", ("jobId", jobId));
+        await using var listener = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
+        var notifications = new List<string>();
+        listener.Notification += (_, args) => notifications.Add(args.Payload);
+        await listener.OpenAsync();
+        await using (var listen = new NpgsqlCommand("listen quesshi_effects", listener))
+        {
+            await listen.ExecuteNonQueryAsync();
+        }
+
+        var store = new PostgresJobStore(sources, new PostgresSessionEffectsNotifier());
+        var lease = Assert.Single(await store.ClaimAsync(1, TimeSpan.FromMinutes(1)));
+        Assert.True(await store.FailAsync(lease.Id, lease.LockedBy, lease.Attempts, lease.MaxAttempts, "dead effect"));
+
+        using (var first = new CancellationTokenSource(TimeSpan.FromSeconds(1)))
+        {
+            await listener.WaitAsync(first.Token);
+        }
+        using (var remaining = new CancellationTokenSource(TimeSpan.FromMilliseconds(250)))
+        {
+            try { await listener.WaitAsync(remaining.Token); }
+            catch (OperationCanceledException) when (remaining.IsCancellationRequested) { }
+        }
+
+        Assert.Equal([$"effects:{tenant}:{session}:1"], notifications);
     }
 
     [SkippableFact]
@@ -467,7 +520,7 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             }
         }
 
-        public Task ChangedAsync(ITenantTx transaction, Guid sessionId, CancellationToken cancellationToken = default)
+        public Task ChangedAsync(ITenantTx transaction, Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default)
         {
             lock (_gate) _sessions.Add(sessionId);
             return Task.CompletedTask;

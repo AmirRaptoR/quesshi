@@ -197,7 +197,7 @@ public sealed class DurableEffectsTests
     {
         public List<Guid> Sessions { get; } = [];
 
-        public Task ChangedAsync(ITenantTx transaction, Guid sessionId, CancellationToken cancellationToken = default)
+        public Task ChangedAsync(ITenantTx transaction, Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default)
         {
             Sessions.Add(sessionId);
             return Task.CompletedTask;
