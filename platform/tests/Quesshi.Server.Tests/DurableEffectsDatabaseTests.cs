@@ -467,9 +467,10 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             }
         }
 
-        public void Changed(ITenantTx transaction, Guid sessionId)
+        public Task ChangedAsync(ITenantTx transaction, Guid sessionId, CancellationToken cancellationToken = default)
         {
             lock (_gate) _sessions.Add(sessionId);
+            return Task.CompletedTask;
         }
     }
 

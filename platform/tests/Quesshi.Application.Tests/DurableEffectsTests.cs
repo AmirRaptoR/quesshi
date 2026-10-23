@@ -197,7 +197,11 @@ public sealed class DurableEffectsTests
     {
         public List<Guid> Sessions { get; } = [];
 
-        public void Changed(ITenantTx transaction, Guid sessionId) => Sessions.Add(sessionId);
+        public Task ChangedAsync(ITenantTx transaction, Guid sessionId, CancellationToken cancellationToken = default)
+        {
+            Sessions.Add(sessionId);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class UnusedLocks : ILocks

@@ -11,7 +11,7 @@ using Quesshi.Server.Security;
 
 namespace Quesshi.Server.Streaming;
 
-internal enum StreamMessageKind { View, Config, Inbox, Gone, Closed }
+internal enum StreamMessageKind { View, Config, Inbox, Effects, Gone, Closed }
 
 internal enum StreamCloseReason { SignedOut, Banned, Deleted, Expired }
 
@@ -33,6 +33,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     private StreamMessage? _pendingView;
     private StreamMessage? _pendingConfig;
     private StreamMessage? _pendingInbox;
+    private StreamMessage? _pendingEffects;
 
     public Guid TenantId { get; } = tenantId;
     public string PlayerId { get; } = playerId;
@@ -44,6 +45,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public long LastQueuedVersion { get; private set; } = -1;
     public long LastConfigVersion { get; private set; }
     public long LastInboxVersion { get; private set; } = -1;
+    public long LastEffectsRevision { get; private set; } = -1;
 
     public void QueueView(RenderedSessionView view)
     {
@@ -83,6 +85,16 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         }
     }
 
+    public void QueueEffects(long revision, string json)
+    {
+        lock (_gate)
+        {
+            if (_terminal || revision <= Math.Max(LastEffectsRevision, PendingVersion(StreamMessageKind.Effects))) return;
+            _pendingEffects = new StreamMessage(StreamMessageKind.Effects, revision, json);
+            QueuePending();
+        }
+    }
+
     public void QueueGone(string reason)
     {
         QueueTerminal(StreamMessageKind.Gone, reason);
@@ -110,6 +122,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
             _pendingView = null;
             _pendingConfig = null;
             _pendingInbox = null;
+            _pendingEffects = null;
             _messages.Writer.TryWrite(new StreamMessage(kind, 0, Reason: reason));
             _messages.Writer.TryComplete();
         }
@@ -138,6 +151,12 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
                 LastInboxVersion = message.Version;
                 Sent(message);
             }
+            if (message.Kind == StreamMessageKind.Effects)
+            {
+                if (message.Version <= LastEffectsRevision) return false;
+                LastEffectsRevision = message.Version;
+                Sent(message);
+            }
             return true;
         }
     }
@@ -152,6 +171,11 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         lock (_gate) return !_terminal && version > Math.Max(LastInboxVersion, PendingVersion(StreamMessageKind.Inbox));
     }
 
+    public bool NeedsEffects(long revision)
+    {
+        lock (_gate) return !_terminal && revision > Math.Max(LastEffectsRevision, PendingVersion(StreamMessageKind.Effects));
+    }
+
     public void Complete()
     {
         lock (_gate)
@@ -161,6 +185,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
             _pendingView = null;
             _pendingConfig = null;
             _pendingInbox = null;
+            _pendingEffects = null;
             _messages.Writer.TryComplete();
         }
     }
@@ -178,6 +203,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         {
             StreamMessageKind.Config => _pendingConfig?.Version ?? -1,
             StreamMessageKind.Inbox => _pendingInbox?.Version ?? -1,
+            StreamMessageKind.Effects => _pendingEffects?.Version ?? -1,
             _ => _pendingView?.Version ?? -1
         };
         return Math.Max(queued, pending);
@@ -186,10 +212,11 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     private void QueuePending()
     {
         if (_terminal || _queued is not null) return;
-        var next = _pendingView ?? _pendingInbox ?? _pendingConfig;
+        var next = _pendingView ?? _pendingEffects ?? _pendingInbox ?? _pendingConfig;
         if (next is null) return;
         if (next.Kind == StreamMessageKind.View) _pendingView = null;
         else if (next.Kind == StreamMessageKind.Inbox) _pendingInbox = null;
+        else if (next.Kind == StreamMessageKind.Effects) _pendingEffects = null;
         else _pendingConfig = null;
         _queued = next;
         _messages.Writer.TryWrite(next);
@@ -212,6 +239,8 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private readonly ILogger<StreamHub> logger;
     private readonly IStreamSessionLiveness sessionLiveness;
     private readonly InboxReader? inboxReader;
+    private readonly ISessionEffects? effects;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly TimeSpan scoreCoalesceWindow;
     private readonly ConcurrentDictionary<Guid, StreamSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionGate> _sessionGates = new();
@@ -233,9 +262,16 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     {
     }
 
+    public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
+        IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, IStreamSessionLiveness sessionLiveness,
+        InboxReader inboxReader, ISessionEffects effects)
+        : this(snapshots, renderer, formats, database, notifications, clock, logger, ScoreCoalesceWindow, sessionLiveness, inboxReader, effects)
+    {
+    }
+
     internal StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
         IStreamNotificationSource notifications, IClock clock, ILogger<StreamHub> logger, TimeSpan scoreCoalesceWindow,
-        IStreamSessionLiveness sessionLiveness, InboxReader? inboxReader = null)
+        IStreamSessionLiveness sessionLiveness, InboxReader? inboxReader = null, ISessionEffects? effects = null)
     {
         this.snapshots = snapshots;
         this.renderer = renderer;
@@ -247,6 +283,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         this.scoreCoalesceWindow = scoreCoalesceWindow;
         this.sessionLiveness = sessionLiveness;
         this.inboxReader = inboxReader;
+        this.effects = effects;
         notifications.Received += OnNotification;
     }
 
@@ -353,9 +390,18 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                         from player_inbox
                         where player_id = any(@playerIds)
                         """, new { playerIds = players }, cancellationToken);
+                var effectsVersions = watched.Length == 0
+                    ? []
+                    : await transaction.QueryAsync<EffectsVersion>("""
+                        select effects.session_id as SessionId, effects.revision as Revision
+                        from session_effects effects
+                        join sessions on sessions.id = effects.session_id
+                        where effects.session_id = any(@sessionIds)
+                          and sessions.status in ('finished', 'cancelled')
+                        """, new { sessionIds = watched }, cancellationToken);
                 var configVersion = await transaction.QuerySingleOrDefaultAsync<long?>(
                     "select config_version from tenants where id = @tenantId", new { tenantId = tenant.Key }, cancellationToken);
-                return new ReconciliationState(sessionVersions, playerStates, inboxVersions, configVersion);
+                return new ReconciliationState(sessionVersions, playerStates, inboxVersions, effectsVersions, configVersion);
             }, cancellationToken: cancellationToken, readOnly: true);
 
             var versions = state.SessionVersions.ToDictionary(version => version.SessionId);
@@ -393,6 +439,11 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 }
             }
             foreach (var inbox in state.InboxVersions) await BroadcastInboxAsync(tenant.Key, inbox.PlayerId, inbox.Version, cancellationToken);
+            foreach (var effect in state.EffectsVersions)
+            {
+                if (tenant.Any(subscription => subscription.SessionId == effect.SessionId && subscription.NeedsEffects(effect.Revision)))
+                    await DeliverEffectsAsync(tenant.Key, effect.SessionId, effect.Revision, cancellationToken);
+            }
             if (state.ConfigVersion is { } current) BroadcastConfig(tenant.Key, current);
         }
     }
@@ -400,8 +451,9 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     internal sealed record SessionVersion(Guid SessionId, long Version);
     internal sealed record PlayerAccessState(Guid PlayerId, bool IsDeleted, bool IsBanned);
     internal sealed record InboxVersion(Guid PlayerId, long Version);
+    internal sealed record EffectsVersion(Guid SessionId, long Revision);
     private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<PlayerAccessState> PlayerStates,
-        IReadOnlyList<InboxVersion> InboxVersions, long? ConfigVersion);
+        IReadOnlyList<InboxVersion> InboxVersions, IReadOnlyList<EffectsVersion> EffectsVersions, long? ConfigVersion);
 
     private void OnNotification(StreamNotification notification)
     {
@@ -418,6 +470,9 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 break;
             case StreamNotification.Inbox inbox:
                 _ = DeliverInboxAsync(inbox.TenantId, inbox.PlayerId, inbox.Version);
+                break;
+            case StreamNotification.Effects effect:
+                _ = DeliverEffectsAsync(effect.TenantId, effect.SessionId, effect.Revision, CancellationToken.None);
                 break;
             case StreamNotification.Player player:
                 ClosePlayer(player.TenantId, player.PlayerId, player.Reason == "banned"
@@ -584,6 +639,8 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                     if (view is null) target.QueueGone("not_found");
                     else target.QueueView(view);
                 }
+                if (state.Session.Ended && targets.Any(target => target.NeedsEffects(0)))
+                    await DeliverEffectsAsync(tenantId, sessionId, 0, cancellationToken);
             }
             finally { _renderJobs.Release(); }
         }
@@ -592,6 +649,23 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
             if (entered) gate.Semaphore.Release();
             ReleaseSessionGate(key, gate);
         }
+    }
+
+    private async Task DeliverEffectsAsync(Guid tenantId, Guid sessionId, long revision, CancellationToken cancellationToken)
+    {
+        if (effects is null) return;
+        var targets = _subscriptions.Values.Where(subscription => subscription.TenantId == tenantId
+            && subscription.SessionId == sessionId && subscription.NeedsEffects(revision)).ToArray();
+        if (targets.Length == 0) return;
+
+        var state = await snapshots.LoadAsync(tenantId, sessionId, cancellationToken);
+        if (state is null || !state.Session.Ended) return;
+        targets = targets.Where(target => state.Seats.ContainsKey(target.PlayerId) && target.NeedsEffects(revision)).ToArray();
+        if (targets.Length == 0) return;
+
+        var current = await database.InTenantAsync(tenantId,
+            transaction => effects.GetAsync(transaction, sessionId, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
+        foreach (var target in targets) target.QueueEffects(current.Revision, JsonSerializer.Serialize(current, JsonOptions));
     }
 
     private sealed class SessionGate

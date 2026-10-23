@@ -128,7 +128,7 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
             var effectsTransaction = new SystemEffectsTransaction(transaction);
             foreach (var sessionId in await transaction.QueryAsync<Guid>(ParkExpired, cancellationToken: cancellationToken))
             {
-                notifications.Changed(effectsTransaction, sessionId);
+                await notifications.ChangedAsync(effectsTransaction, sessionId, cancellationToken);
             }
 
             return await transaction.QueryAsync<LeasedJob>(Claim, new { batchSize, lockedBy = Guid.NewGuid(), leaseDuration }, cancellationToken);
@@ -239,7 +239,7 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
             if (rerun is null) return null;
             if (rerun.SessionId is { } sessionId)
             {
-                notifications.Changed(new SystemEffectsTransaction(transaction), sessionId);
+                await notifications.ChangedAsync(new SystemEffectsTransaction(transaction), sessionId, cancellationToken);
             }
 
             return new TenantJob(rerun.Id, rerun.Kind, rerun.Attempts, rerun.LastError, rerun.OccurredAt, rerun.Status);
@@ -255,7 +255,7 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
             if (transition is null) return false;
             if (transition.SessionId is { } sessionId)
             {
-                notifications.Changed(new SystemEffectsTransaction(transaction), sessionId);
+                await notifications.ChangedAsync(new SystemEffectsTransaction(transaction), sessionId, cancellationToken);
             }
 
             return true;

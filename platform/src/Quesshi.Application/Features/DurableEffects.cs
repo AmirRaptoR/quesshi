@@ -10,14 +10,12 @@ namespace Quesshi.Application;
 /// </summary>
 internal interface ISessionEffectsNotifier
 {
-    void Changed(ITenantTx transaction, Guid sessionId);
+    Task ChangedAsync(ITenantTx transaction, Guid sessionId, CancellationToken cancellationToken = default);
 }
 
 internal sealed class NullSessionEffectsNotifier : ISessionEffectsNotifier
 {
-    public void Changed(ITenantTx transaction, Guid sessionId)
-    {
-    }
+    public Task ChangedAsync(ITenantTx transaction, Guid sessionId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 internal sealed class DurableEvents(
@@ -142,7 +140,7 @@ internal sealed class DurableEvents(
             if (eventValue is SessionEnded sessionEnded)
             {
                 await IncrementSessionRevisionAsync(transaction, sessionEnded.SessionId, cancellationToken);
-                notifications.Changed(transaction, sessionEnded.SessionId);
+                await notifications.ChangedAsync(transaction, sessionEnded.SessionId, cancellationToken);
             }
 
             return 0;

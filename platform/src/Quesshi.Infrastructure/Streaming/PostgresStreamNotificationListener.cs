@@ -13,6 +13,7 @@ public abstract record StreamNotification(Guid TenantId)
     public sealed record Player(Guid TenantId, Guid PlayerId, string Reason = "deleted") : StreamNotification(TenantId);
     public sealed record AuthenticationSession(Guid TenantId, string SessionKey) : StreamNotification(TenantId);
     public sealed record Inbox(Guid TenantId, Guid PlayerId, long Version) : StreamNotification(TenantId);
+    public sealed record Effects(Guid TenantId, Guid SessionId, long Revision) : StreamNotification(TenantId);
     public sealed record Reconnected() : StreamNotification(Guid.Empty);
 }
 
@@ -49,7 +50,7 @@ public sealed class PostgresStreamNotificationListener(DatabaseSources sources, 
                 connection.Notification += (_, args) => Publish(Parse(args.Payload));
                 await connection.OpenAsync(stoppingToken);
                 Volatile.Write(ref _backendProcessId, connection.ProcessID);
-                await using (var command = new NpgsqlCommand("listen quesshi_session; listen quesshi_config; listen quesshi_player; listen quesshi_inbox; listen quesshi_auth_session;", connection))
+                await using (var command = new NpgsqlCommand("listen quesshi_session; listen quesshi_config; listen quesshi_player; listen quesshi_inbox; listen quesshi_effects; listen quesshi_auth_session;", connection))
                 {
                     await command.ExecuteNonQueryAsync(stoppingToken);
                 }
@@ -108,6 +109,12 @@ public sealed class PostgresStreamNotificationListener(DatabaseSources sources, 
             && long.TryParse(values[3], System.Globalization.CultureInfo.InvariantCulture, out version))
         {
             return new StreamNotification.Inbox(tenant, playerId, version);
+        }
+        if (values.Length == 4 && values[0] == "effects" && Guid.TryParse(values[1], out tenant)
+            && Guid.TryParse(values[2], out session)
+            && long.TryParse(values[3], System.Globalization.CultureInfo.InvariantCulture, out version))
+        {
+            return new StreamNotification.Effects(tenant, session, version);
         }
         return null;
     }

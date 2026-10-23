@@ -65,6 +65,17 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         return (await owner.QueryAsync<T>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken))).ToArray();
     }
 
+    /// <summary>Terminates a PostgreSQL backend so a hosted-listener test can exercise reconnection.</summary>
+    public async Task<bool> TerminateBackendAsync(int backendProcessId, CancellationToken cancellationToken = default)
+    {
+        await using var admin = new NpgsqlConnection(_postgres.ConnectionString);
+        await admin.OpenAsync(cancellationToken);
+        return await admin.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "select pg_terminate_backend(@backendProcessId)",
+            new { backendProcessId },
+            cancellationToken: cancellationToken));
+    }
+
     /// <summary>Creates another guest in the fixture tenant.</summary>
     public async Task<(HttpClient Client, Guid PlayerId)> CreateAnotherGuestClientAsync(CancellationToken cancellationToken = default)
     {

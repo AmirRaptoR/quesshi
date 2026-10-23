@@ -17,6 +17,7 @@ public sealed class SessionEndpoints : ICoreRouteModule
     {
         routes.PlayerRoutes.MapPost("/sessions", CreateAsync);
         routes.PlayerRoutes.MapGet("/sessions/{id:guid}", GetAsync).AllowGuests();
+        routes.PlayerRoutes.MapGet("/sessions/{id:guid}/effects", GetEffectsAsync).AllowGuests();
     }
 
     private static async Task<IResult> CreateAsync(
@@ -67,6 +68,25 @@ public sealed class SessionEndpoints : ICoreRouteModule
             return Error("not_found", StatusCodes.Status404NotFound);
         var view = renderer.Render(state, format, player.PlayerId.ToString(), clock.Now);
         return Results.Content(view.Json, "application/json");
+    }
+
+    private static async Task<IResult> GetEffectsAsync(
+        Guid id,
+        HttpContext context,
+        [FromServices] ISessionSnapshotLoader snapshots,
+        [FromServices] ITenantDb database,
+        [FromServices] ISessionEffects effects,
+        CancellationToken cancellationToken)
+    {
+        var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("Session effects require tenant resolution.");
+        var player = context.Player() ?? throw new InvalidOperationException("Session effects require player authentication.");
+        var state = await snapshots.LoadAsync(tenant.Id, id, cancellationToken);
+        if (state is null || !state.Session.Ended || !state.Seats.ContainsKey(player.PlayerId.ToString()))
+            return Error("not_found", StatusCodes.Status404NotFound);
+
+        var result = await database.InTenantAsync(tenant.Id,
+            transaction => effects.GetAsync(transaction, id, cancellationToken), cancellationToken: cancellationToken, readOnly: true);
+        return Results.Json(result);
     }
 
     private static IResult Error(string error, int status) => Results.Json(new { error }, statusCode: status);
