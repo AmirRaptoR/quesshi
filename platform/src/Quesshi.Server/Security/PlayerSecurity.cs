@@ -140,7 +140,17 @@ internal sealed class PlayerSessionService(DatabaseSources sources, ITenantDb te
         if (!TryTokenHash(token, out var hash)) return;
         await using var connection = new Npgsql.NpgsqlConnection(sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition("delete from auth_sessions where token_hash = @hash", new { hash }, cancellationToken: cancellationToken));
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var tenantId = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
+            delete from auth_sessions where token_hash = @hash returning tenant_id
+            """, new { hash }, transaction, cancellationToken: cancellationToken));
+        if (tenantId is { } tenant)
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "select pg_notify('quesshi_auth_session', @payload)",
+                new { payload = $"auth:{tenant}:{Convert.ToHexString(hash)}" }, transaction, cancellationToken: cancellationToken));
+        }
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private Task<PlayerRow?> PlayerAsync(Guid tenantId, Guid playerId, CancellationToken cancellationToken) =>

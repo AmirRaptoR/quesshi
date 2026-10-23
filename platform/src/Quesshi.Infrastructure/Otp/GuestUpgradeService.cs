@@ -107,8 +107,17 @@ internal sealed class GuestUpgradeService(
     {
         await using var connection = new NpgsqlConnection(sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition("""
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var sessionHashes = await connection.QueryAsync<byte[]>(new CommandDefinition("""
             delete from auth_sessions where tenant_id = @tenantId and guest_id = @guestPlayerId
-            """, new { tenantId, guestPlayerId }, cancellationToken: cancellationToken));
+            returning token_hash
+            """, new { tenantId, guestPlayerId }, transaction, cancellationToken: cancellationToken));
+        foreach (var sessionHash in sessionHashes)
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "select pg_notify('quesshi_auth_session', @payload)",
+                new { payload = $"auth:{tenantId}:{Convert.ToHexString(sessionHash)}" }, transaction, cancellationToken: cancellationToken));
+        }
+        await transaction.CommitAsync(cancellationToken);
     }
 }

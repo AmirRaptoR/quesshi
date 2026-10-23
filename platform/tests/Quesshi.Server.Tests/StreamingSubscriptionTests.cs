@@ -183,7 +183,7 @@ public sealed class StreamingSubscriptionTests
         hub.Deleted([new AccountDeletionPlayer(tenant, player)]);
 
         var message = await ReadAsync(deleted);
-        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.Equal((StreamMessageKind.Closed, "deleted"), (message.Kind, message.Reason));
         Assert.False(other.Messages.TryRead(out _));
         hub.Dispose();
     }
@@ -202,7 +202,7 @@ public sealed class StreamingSubscriptionTests
         ((IPlayerAccessRevocationNotifier)hub).RevokePlayer(tenant, player);
 
         var message = await ReadAsync(deleted);
-        Assert.Equal((StreamMessageKind.Gone, "revoked"), (message.Kind, message.Reason));
+        Assert.Equal((StreamMessageKind.Closed, "banned"), (message.Kind, message.Reason));
         Assert.False(other.Messages.TryRead(out _));
         hub.Dispose();
     }
@@ -223,7 +223,7 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
-    public void Listener_parses_session_config_and_player_notifications()
+    public void Listener_parses_session_config_player_and_authentication_session_notifications()
     {
         var tenantId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
@@ -234,11 +234,14 @@ public sealed class StreamingSubscriptionTests
         var config = Assert.IsType<StreamNotification.Config>(
             PostgresStreamNotificationListener.Parse($"config:{tenantId}:8"));
         var player = Assert.IsType<StreamNotification.Player>(
-            PostgresStreamNotificationListener.Parse($"player:{tenantId}:{playerId}"));
+            PostgresStreamNotificationListener.Parse($"player:{tenantId}:{playerId}:banned"));
+        var authenticationSession = Assert.IsType<StreamNotification.AuthenticationSession>(
+            PostgresStreamNotificationListener.Parse($"auth:{tenantId}:ABCDEF"));
 
         Assert.Equal((tenantId, sessionId, 7, "3"), (session.TenantId, session.SessionId, session.Version, session.Phase));
         Assert.Equal((tenantId, 8), (config.TenantId, config.Version));
-        Assert.Equal((tenantId, playerId), (player.TenantId, player.PlayerId));
+        Assert.Equal((tenantId, playerId, "banned"), (player.TenantId, player.PlayerId, player.Reason));
+        Assert.Equal((tenantId, "ABCDEF"), (authenticationSession.TenantId, authenticationSession.SessionKey));
         Assert.Null(PostgresStreamNotificationListener.Parse("not-a-stream-event"));
     }
 
@@ -349,9 +352,10 @@ public sealed class StreamingSubscriptionTests
     {
         public static TestSessionLiveness Instance { get; } = new();
 
-        public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+        public Task<IReadOnlyDictionary<string, StreamSessionStatus>> StatusAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
+            Task.FromResult<IReadOnlyDictionary<string, StreamSessionStatus>>(sessionKeys.ToDictionary(
+                key => key, _ => StreamSessionStatus.Live, StringComparer.Ordinal));
     }
 
     private sealed class Notifications : IStreamNotificationSource

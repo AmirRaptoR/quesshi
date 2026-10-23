@@ -7,26 +7,37 @@ namespace Quesshi.Server.Streaming;
 /// <summary>Reads the global sign-in session state used to keep an SSE subscription authenticated.</summary>
 internal interface IStreamSessionLiveness
 {
-    Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<string, StreamSessionStatus>> StatusAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+        CancellationToken cancellationToken = default);
 }
+
+internal enum StreamSessionStatus { Live, SignedOut, Expired }
 
 internal sealed class StreamSessionLiveness(DatabaseSources sources) : IStreamSessionLiveness
 {
-    public async Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<string, StreamSessionStatus>> StatusAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+        CancellationToken cancellationToken = default)
     {
-        if (sessionKeys.Count == 0) return new HashSet<string>(StringComparer.Ordinal);
+        var statuses = sessionKeys.ToDictionary(key => key, _ => StreamSessionStatus.SignedOut, StringComparer.Ordinal);
+        if (sessionKeys.Count == 0) return statuses;
 
         var hashes = sessionKeys.Select(Convert.FromHexString).ToArray();
         await using var connection = new NpgsqlConnection(sources.SystemConnectionString);
         await connection.OpenAsync(cancellationToken);
-        var live = await connection.QueryAsync<byte[]>(new CommandDefinition("""
-            select token_hash
+        var sessions = await connection.QueryAsync<SessionState>(new CommandDefinition("""
+            select token_hash as TokenHash, revoked_at as RevokedAt, expires_at <= now() as IsExpired
             from auth_sessions
             where tenant_id = @tenantId
               and token_hash = any(@hashes)
-              and revoked_at is null
-              and expires_at > now()
             """, new { tenantId, hashes }, cancellationToken: cancellationToken));
-        return live.Select(Convert.ToHexString).ToHashSet(StringComparer.Ordinal);
+        foreach (var session in sessions)
+        {
+            statuses[Convert.ToHexString(session.TokenHash)] = session.IsExpired
+                ? StreamSessionStatus.Expired
+                : session.RevokedAt is null ? StreamSessionStatus.Live : StreamSessionStatus.SignedOut;
+        }
+        return statuses;
     }
+
+    private sealed record SessionState(byte[] TokenHash, DateTimeOffset? RevokedAt, bool IsExpired);
 }

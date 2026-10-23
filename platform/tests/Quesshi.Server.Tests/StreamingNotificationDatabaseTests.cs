@@ -107,7 +107,7 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
 
             await NotifyPlayerAsync(sender, tenant, player);
             var revocations = await Task.WhenAll(ReadAsync(firstSubscription), ReadAsync(secondSubscription));
-            Assert.All(revocations, revocation => Assert.Equal((StreamMessageKind.Gone, "revoked"), (revocation.Kind, revocation.Reason)));
+            Assert.All(revocations, revocation => Assert.Equal((StreamMessageKind.Closed, "deleted"), (revocation.Kind, revocation.Reason)));
         }
         finally
         {
@@ -287,9 +287,10 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
     {
         public static TestSessionLiveness Instance { get; } = new();
 
-        public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+        public Task<IReadOnlyDictionary<string, StreamSessionStatus>> StatusAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
+            Task.FromResult<IReadOnlyDictionary<string, StreamSessionStatus>>(sessionKeys.ToDictionary(
+                key => key, _ => StreamSessionStatus.Live, StringComparer.Ordinal));
     }
 
     private static async Task<StreamMessage> ReadAsync(StreamSubscription subscription, TimeSpan? timeout = null) =>
@@ -328,6 +329,8 @@ public sealed class StreamingNotificationDatabaseTests(PostgresFixture fixture)
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<T>>(typeof(T) == typeof(StreamHub.SessionVersion)
                 ? [(T)(object)new StreamHub.SessionVersion(sessionId, version)]
+                : typeof(T) == typeof(StreamHub.PlayerAccessState) && livePlayerId is { } playerAccessId
+                    ? [(T)(object)new StreamHub.PlayerAccessState(playerAccessId, false, false)]
                 : typeof(T) == typeof(Guid) && livePlayerId is { } playerId
                     ? [(T)(object)playerId]
                     : []);

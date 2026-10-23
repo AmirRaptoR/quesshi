@@ -11,7 +11,9 @@ using Quesshi.Server.Security;
 
 namespace Quesshi.Server.Streaming;
 
-internal enum StreamMessageKind { View, Config, Inbox, Gone }
+internal enum StreamMessageKind { View, Config, Inbox, Gone, Closed }
+
+internal enum StreamCloseReason { SignedOut, Banned, Deleted, Expired }
 
 internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null);
 
@@ -83,6 +85,23 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
 
     public void QueueGone(string reason)
     {
+        QueueTerminal(StreamMessageKind.Gone, reason);
+    }
+
+    public void QueueClosed(StreamCloseReason reason)
+    {
+        QueueTerminal(StreamMessageKind.Closed, reason switch
+        {
+            StreamCloseReason.SignedOut => "signed_out",
+            StreamCloseReason.Banned => "banned",
+            StreamCloseReason.Deleted => "deleted",
+            StreamCloseReason.Expired => "expired",
+            _ => throw new ArgumentOutOfRangeException(nameof(reason))
+        });
+    }
+
+    private void QueueTerminal(StreamMessageKind kind, string reason)
+    {
         lock (_gate)
         {
             if (_terminal) return;
@@ -91,7 +110,7 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
             _pendingView = null;
             _pendingConfig = null;
             _pendingInbox = null;
-            _messages.Writer.TryWrite(new StreamMessage(StreamMessageKind.Gone, 0, Reason: reason));
+            _messages.Writer.TryWrite(new StreamMessage(kind, 0, Reason: reason));
             _messages.Writer.TryComplete();
         }
     }
@@ -254,13 +273,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     {
         foreach (var player in players)
         {
-            foreach (var subscription in _subscriptions.Values.Where(subscription =>
-                         subscription.TenantId == player.TenantId
-                         && Guid.TryParse(subscription.PlayerId, out var playerId)
-                         && playerId == player.PlayerId))
-            {
-                subscription.QueueGone("revoked");
-            }
+            ClosePlayer(player.TenantId, player.PlayerId, StreamCloseReason.Deleted);
         }
     }
 
@@ -326,12 +339,12 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                         from sessions
                         where id = any(@sessionIds)
                         """, new { sessionIds = watched }, cancellationToken);
-                var livePlayers = players.Length == 0
+                var playerStates = players.Length == 0
                     ? []
-                    : await transaction.QueryAsync<Guid>("""
-                        select id
+                    : await transaction.QueryAsync<PlayerAccessState>("""
+                        select id as PlayerId, deleted_at is not null as IsDeleted, banned_at is not null as IsBanned
                         from players
-                        where id = any(@playerIds) and deleted_at is null and banned_at is null
+                        where id = any(@playerIds)
                         """, new { playerIds = players }, cancellationToken);
                 var inboxVersions = players.Length == 0
                     ? []
@@ -342,17 +355,34 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                         """, new { playerIds = players }, cancellationToken);
                 var configVersion = await transaction.QuerySingleOrDefaultAsync<long?>(
                     "select config_version from tenants where id = @tenantId", new { tenantId = tenant.Key }, cancellationToken);
-                return new ReconciliationState(sessionVersions, livePlayers, inboxVersions, configVersion);
+                return new ReconciliationState(sessionVersions, playerStates, inboxVersions, configVersion);
             }, cancellationToken: cancellationToken, readOnly: true);
 
             var versions = state.SessionVersions.ToDictionary(version => version.SessionId);
-            var livePlayerIds = state.LivePlayers.ToHashSet();
-            var liveSessionKeys = await sessionLiveness.LiveAsync(tenant.Key, sessionKeys, cancellationToken);
-            foreach (var subscription in tenant.Where(subscription =>
-                         (Guid.TryParse(subscription.PlayerId, out var playerId) && !livePlayerIds.Contains(playerId))
-                         || (subscription.AuthenticationSessionKey is { } key && !liveSessionKeys.Contains(key))))
+            var playerStates = state.PlayerStates.ToDictionary(player => player.PlayerId);
+            var sessionStatuses = await sessionLiveness.StatusAsync(tenant.Key, sessionKeys, cancellationToken);
+            foreach (var subscription in tenant)
             {
-                subscription.QueueGone("revoked");
+                if (Guid.TryParse(subscription.PlayerId, out var playerId))
+                {
+                    if (!playerStates.TryGetValue(playerId, out var player) || player.IsDeleted)
+                    {
+                        subscription.QueueClosed(StreamCloseReason.Deleted);
+                        continue;
+                    }
+                    if (player.IsBanned)
+                    {
+                        subscription.QueueClosed(StreamCloseReason.Banned);
+                        continue;
+                    }
+                }
+                if (subscription.AuthenticationSessionKey is { } key
+                    && (!sessionStatuses.TryGetValue(key, out var status) || status != StreamSessionStatus.Live))
+                {
+                    subscription.QueueClosed(status == StreamSessionStatus.Expired
+                        ? StreamCloseReason.Expired
+                        : StreamCloseReason.SignedOut);
+                }
             }
             foreach (var sessionId in watched)
             {
@@ -368,8 +398,9 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     }
 
     internal sealed record SessionVersion(Guid SessionId, long Version);
+    internal sealed record PlayerAccessState(Guid PlayerId, bool IsDeleted, bool IsBanned);
     internal sealed record InboxVersion(Guid PlayerId, long Version);
-    private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<Guid> LivePlayers,
+    private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<PlayerAccessState> PlayerStates,
         IReadOnlyList<InboxVersion> InboxVersions, long? ConfigVersion);
 
     private void OnNotification(StreamNotification notification)
@@ -389,7 +420,17 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 _ = DeliverInboxAsync(inbox.TenantId, inbox.PlayerId, inbox.Version);
                 break;
             case StreamNotification.Player player:
-                Deleted([new AccountDeletionPlayer(player.TenantId, player.PlayerId)]);
+                ClosePlayer(player.TenantId, player.PlayerId, player.Reason == "banned"
+                    ? StreamCloseReason.Banned
+                    : StreamCloseReason.Deleted);
+                break;
+            case StreamNotification.AuthenticationSession session:
+                foreach (var subscription in _subscriptions.Values.Where(subscription =>
+                             subscription.TenantId == session.TenantId
+                             && StringComparer.Ordinal.Equals(subscription.AuthenticationSessionKey, session.SessionKey)))
+                {
+                    subscription.QueueClosed(StreamCloseReason.SignedOut);
+                }
                 break;
             case StreamNotification.Reconnected:
                 _ = ReconcileAsync();
@@ -397,7 +438,18 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         }
     }
 
-    public void RevokePlayer(Guid tenantId, Guid playerId) => Deleted([new AccountDeletionPlayer(tenantId, playerId)]);
+    public void RevokePlayer(Guid tenantId, Guid playerId) => ClosePlayer(tenantId, playerId, StreamCloseReason.Banned);
+
+    private void ClosePlayer(Guid tenantId, Guid playerId, StreamCloseReason reason)
+    {
+        foreach (var subscription in _subscriptions.Values.Where(subscription =>
+                     subscription.TenantId == tenantId
+                     && Guid.TryParse(subscription.PlayerId, out var subscribedPlayerId)
+                     && subscribedPlayerId == playerId))
+        {
+            subscription.QueueClosed(reason);
+        }
+    }
 
     private async Task CoalescedRenderAsync(Guid tenantId, Guid sessionId, SessionRenderSchedule schedule)
     {

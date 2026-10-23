@@ -39,7 +39,7 @@ public sealed class PlayerBanStreamDatabaseTests(PostgresFixture fixture)
 
             Assert.Equal(PlayerBanChangeStatus.Success, (await manager.BanAsync(seeded.TenantId, seeded.PlayerId)).Status);
             var closed = await ReadAsync(stream);
-            Assert.Equal((StreamMessageKind.Gone, "revoked"), (closed.Kind, closed.Reason));
+            Assert.Equal((StreamMessageKind.Closed, "banned"), (closed.Kind, closed.Reason));
         }
         finally
         {
@@ -67,7 +67,8 @@ public sealed class PlayerBanStreamDatabaseTests(PostgresFixture fixture)
 
             await hub.ReconcileAsync();
 
-            Assert.Equal(StreamMessageKind.Gone, (await ReadAsync(banned)).Kind);
+            var closed = await ReadAsync(banned);
+            Assert.Equal((StreamMessageKind.Closed, "banned"), (closed.Kind, closed.Reason));
             Assert.False(live.Messages.TryRead(out _));
             Assert.False(otherTenant.Messages.TryRead(out _));
         }
@@ -93,7 +94,8 @@ public sealed class PlayerBanStreamDatabaseTests(PostgresFixture fixture)
 
             await hub.ReconcileAsync();
 
-            Assert.Equal(StreamMessageKind.Gone, (await ReadAsync(stream)).Kind);
+            var closed = await ReadAsync(stream);
+            Assert.Equal((StreamMessageKind.Closed, "deleted"), (closed.Kind, closed.Reason));
         }
         finally
         {
@@ -125,7 +127,8 @@ public sealed class PlayerBanStreamDatabaseTests(PostgresFixture fixture)
 
             await hub.ReconcileAsync();
 
-            Assert.Equal(StreamMessageKind.Gone, (await ReadAsync(stream)).Kind);
+            var closed = await ReadAsync(stream);
+            Assert.Equal((StreamMessageKind.Closed, "signed_out"), (closed.Kind, closed.Reason));
         }
         finally
         {

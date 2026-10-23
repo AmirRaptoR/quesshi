@@ -286,9 +286,10 @@ public sealed class StreamingEndpointTests
     {
         public static TestSessionLiveness Instance { get; } = new();
 
-        public Task<IReadOnlySet<string>> LiveAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
+        public Task<IReadOnlyDictionary<string, StreamSessionStatus>> StatusAsync(Guid tenantId, IReadOnlyCollection<string> sessionKeys,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlySet<string>>(sessionKeys.ToHashSet(StringComparer.Ordinal));
+            Task.FromResult<IReadOnlyDictionary<string, StreamSessionStatus>>(sessionKeys.ToDictionary(
+                key => key, _ => StreamSessionStatus.Live, StringComparer.Ordinal));
     }
 
     private sealed class Notifications : IStreamNotificationSource
