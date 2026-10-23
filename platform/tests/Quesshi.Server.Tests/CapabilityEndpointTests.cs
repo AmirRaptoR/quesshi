@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using Quesshi.Plugin.Api;
 using Quesshi.Testing;
 
@@ -75,6 +76,23 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Owner_update_round_trips_field_bearing_signin_settings_to_config()
+    {
+        const string clientId = "capability-settings.apps.googleusercontent.com";
+        await Host.SetCapabilityAsync("signin", "google", true);
+        using var update = await UpdateAsync(Host.Owner, "signin", "google", new { enabled = true, settings = new { clientId } });
+        update.EnsureSuccessStatusCode();
+
+        using var response = await Host.Anonymous.GetAsync("/api/config");
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var signInMethods = document.RootElement.GetProperty("signInMethods").EnumerateArray();
+        var google = Assert.Single(signInMethods, method => method.GetProperty("id").GetString() == "google");
+
+        Assert.Equal(clientId, google.GetProperty("settings").GetProperty("clientId").GetString());
+    }
+
+    [SkippableFact]
     public async Task Successful_capability_update_advances_config_version()
     {
         var before = await ConfigVersionAsync();
@@ -88,6 +106,7 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
     [SkippableFact]
     public async Task A_config_version_failure_rolls_back_the_capability_change()
     {
+        var before = await ConfigVersionAsync();
         await Host.ExecuteOwnerAsync("""
             create function reject_capability_config_version() returns trigger language plpgsql as $$
             begin
@@ -104,8 +123,9 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
                 select enabled from tenant_capabilities
                 where tenant_id = @tenantId and type = 'feature' and key = 'capability_http'
                 """, new { tenantId = Host.TenantId });
+            var after = await ConfigVersionAsync();
 
-            Assert.True(Assert.Single(enabled));
+            Assert.Equal((HttpStatusCode.InternalServerError, true, before), (response.StatusCode, enabled.Single(), after));
         }
         finally
         {

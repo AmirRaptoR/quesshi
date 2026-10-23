@@ -13,6 +13,12 @@ internal enum CapabilityType
     Switch
 }
 
+/// <summary>Defines the JSON contract shared by stored capability settings and their consumers.</summary>
+internal static class CapabilitySettingsJson
+{
+    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web);
+}
+
 internal abstract class CapabilityDefinition
 {
     protected CapabilityDefinition(CapabilityType type, string key, Type settingsType)
@@ -54,11 +60,11 @@ internal sealed class CapabilityDefinition<TSettings>(
         settings is TSettings typed ? Validate(typed) : ["Settings have the wrong type."];
 
     public override object Deserialize(JsonElement settings) =>
-        JsonSerializer.Deserialize<TSettings>(settings) ?? throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings.");
+        JsonSerializer.Deserialize<TSettings>(settings, CapabilitySettingsJson.Options) ?? throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings.");
 
     public override JsonElement SerializeObject(object settings) =>
         settings is TSettings typed
-            ? JsonSerializer.SerializeToElement(typed)
+            ? JsonSerializer.SerializeToElement(typed, CapabilitySettingsJson.Options)
             : throw new InvalidOperationException($"Capability {Type}:{Key} requires {typeof(TSettings).Name} settings.");
 }
 
@@ -69,7 +75,7 @@ internal sealed class FeatureCapabilityDefinition(CapabilityType type, string ke
     public override IReadOnlyList<string> ValidateObject(object value) => settings.Validate(value);
 
     public override object Deserialize(JsonElement value) =>
-        JsonSerializer.Deserialize(value, SettingsType) ?? throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings.");
+        JsonSerializer.Deserialize(value, SettingsType, CapabilitySettingsJson.Options) ?? throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings.");
 
     public override JsonElement SerializeObject(object value)
     {
@@ -79,7 +85,7 @@ internal sealed class FeatureCapabilityDefinition(CapabilityType type, string ke
             throw new InvalidOperationException($"Capability {Type}:{Key} has invalid settings: {string.Join(" ", validationErrors)}");
         }
 
-        return JsonSerializer.SerializeToElement(value, SettingsType);
+        return JsonSerializer.SerializeToElement(value, SettingsType, CapabilitySettingsJson.Options);
     }
 }
 

@@ -6,8 +6,6 @@ namespace Quesshi.Application;
 /// <summary>Lists and changes the platform-provisioned capability rows for one tenant.</summary>
 internal sealed class CapabilityManagementService(CapabilityRegistry registry, ITenantDb database)
 {
-    private static readonly JsonSerializerOptions SettingsOptions = new(JsonSerializerDefaults.Web);
-
     public async Task<IReadOnlyList<TenantCapability>> ListAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
         await database.InTenantAsync(tenantId, async transaction =>
         {
@@ -36,8 +34,7 @@ internal sealed class CapabilityManagementService(CapabilityRegistry registry, I
         object value;
         try
         {
-            value = JsonSerializer.Deserialize(settings, definition.SettingsType, SettingsOptions)
-                ?? throw new InvalidOperationException("Settings are invalid.");
+            value = definition.Deserialize(settings);
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
         {
@@ -46,7 +43,7 @@ internal sealed class CapabilityManagementService(CapabilityRegistry registry, I
 
         var messages = definition.ValidateObject(value);
         if (messages.Count > 0) return new CapabilityManagementResult(CapabilityManagementStatus.Invalid, messages);
-        var serialized = JsonSerializer.SerializeToElement(value, definition.SettingsType, SettingsOptions);
+        var serialized = definition.SerializeObject(value);
 
         return await database.InTenantAsync(tenantId, async transaction =>
         {
