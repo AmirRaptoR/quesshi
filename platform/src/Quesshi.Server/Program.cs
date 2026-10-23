@@ -298,7 +298,7 @@ public static class Program
         builder.Services.AddSingleton<CapabilityManagementService>();
         builder.Services.TryAddSingleton<ILocks, TenantLocks>();
         builder.Services.TryAddSingleton<IJobs, TenantJobs>();
-        builder.Services.TryAddSingleton<ISessionEffectsNotifier, NullSessionEffectsNotifier>();
+        builder.Services.TryAddSingleton<ISessionEffectsNotifier, PostgresSessionEffectsNotifier>();
         builder.Services.AddSingleton<DurableEvents>();
         builder.Services.AddSingleton<IEvents>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<IPlayerCleanup>(provider => provider.GetRequiredService<DurableEvents>());

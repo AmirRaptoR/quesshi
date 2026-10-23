@@ -51,6 +51,21 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public void Effects_revision_lower_than_the_revision_already_sent_is_not_delivered()
+    {
+        var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
+
+        subscription.QueueEffects(4, "{\"revision\":4}");
+        Assert.True(subscription.Messages.TryRead(out var delivered));
+        Assert.Equal((StreamMessageKind.Effects, 4L), (delivered.Kind, delivered.Version));
+        Assert.True(subscription.MarkSent(delivered));
+
+        subscription.QueueEffects(3, "{\"revision\":3}");
+
+        Assert.False(subscription.Messages.TryRead(out _));
+    }
+
+    [Fact]
     public void Config_does_not_displace_a_pending_view()
     {
         var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
@@ -237,11 +252,14 @@ public sealed class StreamingSubscriptionTests
             PostgresStreamNotificationListener.Parse($"player:{tenantId}:{playerId}:banned"));
         var authenticationSession = Assert.IsType<StreamNotification.AuthenticationSession>(
             PostgresStreamNotificationListener.Parse($"auth:{tenantId}:ABCDEF"));
+        var effects = Assert.IsType<StreamNotification.Effects>(
+            PostgresStreamNotificationListener.Parse($"effects:{tenantId}:{sessionId}:9"));
 
         Assert.Equal((tenantId, sessionId, 7, "3"), (session.TenantId, session.SessionId, session.Version, session.Phase));
         Assert.Equal((tenantId, 8), (config.TenantId, config.Version));
         Assert.Equal((tenantId, playerId, "banned"), (player.TenantId, player.PlayerId, player.Reason));
         Assert.Equal((tenantId, "ABCDEF"), (authenticationSession.TenantId, authenticationSession.SessionKey));
+        Assert.Equal((tenantId, sessionId, 9L), (effects.TenantId, effects.SessionId, effects.Revision));
         Assert.Null(PostgresStreamNotificationListener.Parse("not-a-stream-event"));
     }
 

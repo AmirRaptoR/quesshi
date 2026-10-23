@@ -69,9 +69,9 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
             group by tenant_id, (payload->>'subjectId')::uuid
             on conflict (tenant_id, session_id) do update
             set revision = session_effects.revision + excluded.revision
-            returning session_id
+            returning tenant_id, session_id
         )
-        select session_id from revised
+        select tenant_id as TenantId, session_id as SessionId from revised
         """;
 
     private const string Complete = """
@@ -103,9 +103,12 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
               and payload->>'eventType' = 'sessionEnded'
             on conflict (tenant_id, session_id) do update
             set revision = session_effects.revision + 1
-            returning session_id
+            returning tenant_id, session_id
         )
-        select id as Id, (select session_id from revised limit 1) as SessionId from transitioned
+        select id as Id,
+               (select tenant_id from revised limit 1) as TenantId,
+               (select session_id from revised limit 1) as SessionId
+        from transitioned
         """;
 
     private const string Cancel = """
@@ -126,9 +129,9 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
         return await database.InTransactionAsync(async transaction =>
         {
             var effectsTransaction = new SystemEffectsTransaction(transaction);
-            foreach (var sessionId in await transaction.QueryAsync<Guid>(ParkExpired, cancellationToken: cancellationToken))
+            foreach (var effect in await transaction.QueryAsync<EffectSession>(ParkExpired, cancellationToken: cancellationToken))
             {
-                notifications.Changed(effectsTransaction, sessionId);
+                await notifications.ChangedAsync(effectsTransaction, effect.TenantId, effect.SessionId, cancellationToken);
             }
 
             return await transaction.QueryAsync<LeasedJob>(Claim, new { batchSize, lockedBy = Guid.NewGuid(), leaseDuration }, cancellationToken);
@@ -172,9 +175,12 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
                   and payload->>'eventType' = 'sessionEnded'
                 on conflict (tenant_id, session_id) do update
                 set revision = session_effects.revision + 1
-                returning session_id
+                returning tenant_id, session_id
             )
-            select id as Id, (select session_id from revised limit 1) as SessionId from rerun
+            select id as Id,
+                   (select tenant_id from revised limit 1) as TenantId,
+                   (select session_id from revised limit 1) as SessionId
+            from rerun
             """, new { id }, cancellationToken);
 
     public Task<IReadOnlyList<TenantJob>> ListDeadForTenantAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
@@ -225,7 +231,7 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
                       and payload->>'eventType' = 'sessionEnded'
                     on conflict (tenant_id, session_id) do update
                     set revision = session_effects.revision + 1
-                    returning session_id
+                    returning tenant_id, session_id
                 )
                 select id as Id,
                        kind as Kind,
@@ -233,13 +239,14 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
                        last_error as LastError,
                        finished_at as OccurredAt,
                        status as Status,
+                       (select tenant_id from revised limit 1) as TenantId,
                        (select session_id from revised limit 1) as SessionId
                 from rerun
                 """, new { tenantId, id }, cancellationToken);
             if (rerun is null) return null;
-            if (rerun.SessionId is { } sessionId)
+            if (rerun is { TenantId: { } effectsTenantId, SessionId: { } sessionId })
             {
-                notifications.Changed(new SystemEffectsTransaction(transaction), sessionId);
+                await notifications.ChangedAsync(new SystemEffectsTransaction(transaction), effectsTenantId, sessionId, cancellationToken);
             }
 
             return new TenantJob(rerun.Id, rerun.Kind, rerun.Attempts, rerun.LastError, rerun.OccurredAt, rerun.Status);
@@ -253,15 +260,17 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
         {
             var transition = await transaction.QuerySingleOrDefaultAsync<EffectTransition?>(sql, parameters, cancellationToken);
             if (transition is null) return false;
-            if (transition.SessionId is { } sessionId)
+            if (transition is { TenantId: { } tenantId, SessionId: { } sessionId })
             {
-                notifications.Changed(new SystemEffectsTransaction(transaction), sessionId);
+                await notifications.ChangedAsync(new SystemEffectsTransaction(transaction), tenantId, sessionId, cancellationToken);
             }
 
             return true;
         }, cancellationToken);
 
-    private sealed record EffectTransition(long Id, Guid? SessionId);
+    private sealed record EffectSession(Guid TenantId, Guid SessionId);
+
+    private sealed record EffectTransition(long Id, Guid? TenantId, Guid? SessionId);
 
     private sealed record TenantJobTransition(
         long Id,
@@ -270,6 +279,7 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
         string? LastError,
         DateTimeOffset? OccurredAt,
         string Status,
+        Guid? TenantId,
         Guid? SessionId);
 
     /// <summary>Adapts the worker's transaction for the transaction-bound notification seam.</summary>

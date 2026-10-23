@@ -100,6 +100,7 @@ internal static class StreamEndpoints
         StreamMessageKind.View => $"event: view\ndata: {message.Json}\n\n",
         StreamMessageKind.Config => $"event: config\ndata: {JsonSerializer.Serialize(new { version = message.Version })}\n\n",
         StreamMessageKind.Inbox => $"event: inbox\ndata: {message.Json ?? JsonSerializer.Serialize(new { version = message.Version })}\n\n",
+        StreamMessageKind.Effects => $"event: effects\ndata: {message.Json}\n\n",
         StreamMessageKind.Gone => $"event: gone\ndata: {JsonSerializer.Serialize(new { reason = message.Reason })}\n\n",
         StreamMessageKind.Closed => $"event: closed\ndata: {JsonSerializer.Serialize(new { reason = message.Reason })}\n\n",
         _ => throw new ArgumentOutOfRangeException(nameof(message))

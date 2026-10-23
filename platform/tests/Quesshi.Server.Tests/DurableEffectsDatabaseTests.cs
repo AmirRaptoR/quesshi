@@ -3,6 +3,7 @@ using Quesshi.Application;
 using Quesshi.Application.Jobs;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Jobs;
+using Quesshi.Infrastructure.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Server;
 using Quesshi.Testing;
@@ -467,9 +468,10 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
             }
         }
 
-        public void Changed(ITenantTx transaction, Guid sessionId)
+        public Task ChangedAsync(ITenantTx transaction, Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default)
         {
             lock (_gate) _sessions.Add(sessionId);
+            return Task.CompletedTask;
         }
     }
 
