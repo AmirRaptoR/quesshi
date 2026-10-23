@@ -51,7 +51,7 @@ else
             }
             @foreach (var question in questions)
             {
-                <article data-testid="question-row" data-family="@question.Family">
+                <article data-testid="question-row" data-question-id="@question.Id" data-family="@question.Family">
                     <input type="checkbox" aria-label="Select @question.Prompt" checked="@selected.Contains(question.Id)" @onchange="change => Select(question.Id, change)" />
                     <strong>@question.Prompt</strong><span>@question.Kind</span><span>@question.Status</span>
                     @if (statsEnabled)
@@ -152,14 +152,24 @@ else
             AddQuery(query, "categoryId", filter.CategoryId); AddQuery(query, "level", filter.Level); AddQuery(query, "status", filter.Status); AddQuery(query, "text", filter.Prompt);
             var response = await Http.GetFromJsonAsync<QuestionListResponse>($"/api/admin/questions?{string.Join('&', query)}") ?? throw new InvalidOperationException("The question list response was empty.");
             if (version != loadVersion) return;
-            var usage = statsEnabled && response.Items.Count != 0
-                ? await Http.GetFromJsonAsync<IReadOnlyList<QuestionUsage>>($"/api/admin/x/stats/questions?ids={string.Join(',', response.Items.Select(question => question.Id))}") ?? []
-                : [];
-            if (version != loadVersion) return;
             questions.Clear(); questions.AddRange(response.Items); selected.IntersectWith(questions.Select(question => question.Id)); page = response.Page;
             usageByQuestion.Clear();
-            foreach (var item in usage) usageByQuestion[item.QuestionId] = item;
             error = null;
+
+            if (!statsEnabled || response.Items.Count == 0) return;
+
+            IReadOnlyList<QuestionUsage> usage;
+            try
+            {
+                usage = await Http.GetFromJsonAsync<IReadOnlyList<QuestionUsage>>($"/api/admin/x/stats/questions?ids={string.Join(',', response.Items.Select(question => question.Id))}") ?? [];
+            }
+            catch (HttpRequestException)
+            {
+                return;
+            }
+
+            if (version != loadVersion) return;
+            foreach (var item in usage) usageByQuestion[item.QuestionId] = item;
         }
         catch (HttpRequestException)
         {
