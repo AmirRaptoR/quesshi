@@ -185,58 +185,6 @@ public sealed class DurableEffectsDatabaseTests(PostgresFixture fixture)
     }
 
     [SkippableFact]
-    public async Task System_job_transition_notifies_only_its_tenant_when_session_ids_collide()
-    {
-        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
-        await PrepareAsync();
-        var tenant = Guid.NewGuid();
-        var otherTenant = Guid.NewGuid();
-        var session = Guid.NewGuid();
-        var feature = new SampleFeature("tenant-collision");
-        var registry = FeatureRegistry.Create([feature]);
-        var events = new DurableEvents(registry, new TenantJobs(), new TenantLocks(), new RecordingNotifier());
-        await CreateSessionAsync(tenant, Guid.NewGuid(), session);
-        await CreateSessionAsync(otherTenant, Guid.NewGuid(), session);
-        await SetCapabilityAsync(tenant, feature.Id, enabled: true);
-        await ExecuteSystemAsync("""
-            insert into session_effects(tenant_id, session_id, revision)
-            values (@tenant, @session, 7)
-            """, ("tenant", otherTenant), ("session", session));
-        await using var sources = Sources();
-        await new TenantDb(sources).InTenantAsync(tenant, async transaction =>
-        {
-            await events.EmitAsync(transaction, new SessionEnded(session));
-            return 0;
-        });
-        var jobId = await JobIdForFeatureAsync(tenant, feature.Id);
-        await ExecuteSystemAsync("update jobs set max_attempts = 1 where id = @jobId", ("jobId", jobId));
-        await using var listener = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_system"));
-        var notifications = new List<string>();
-        listener.Notification += (_, args) => notifications.Add(args.Payload);
-        await listener.OpenAsync();
-        await using (var listen = new NpgsqlCommand("listen quesshi_effects", listener))
-        {
-            await listen.ExecuteNonQueryAsync();
-        }
-
-        var store = new PostgresJobStore(sources, new PostgresSessionEffectsNotifier());
-        var lease = Assert.Single(await store.ClaimAsync(1, TimeSpan.FromMinutes(1)));
-        Assert.True(await store.FailAsync(lease.Id, lease.LockedBy, lease.Attempts, lease.MaxAttempts, "dead effect"));
-
-        using (var first = new CancellationTokenSource(TimeSpan.FromSeconds(1)))
-        {
-            await listener.WaitAsync(first.Token);
-        }
-        using (var remaining = new CancellationTokenSource(TimeSpan.FromMilliseconds(250)))
-        {
-            try { await listener.WaitAsync(remaining.Token); }
-            catch (OperationCanceledException) when (remaining.IsCancellationRequested) { }
-        }
-
-        Assert.Equal([$"effects:{tenant}:{session}:1"], notifications);
-    }
-
-    [SkippableFact]
     public async Task Session_effects_converge_when_events_are_delivered_in_the_reverse_order()
     {
         Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");

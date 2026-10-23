@@ -124,16 +124,17 @@ public sealed class SessionEffectsEndpointDatabaseTests(PostgresFixture postgres
         await WaitForAsync(() => listener.BackendProcessId == 0);
         try
         {
+            var deadline = TimeSpan.FromMilliseconds(2500);
+            var started = Stopwatch.StartNew();
             Feature.ReleaseHandler();
-            await WaitForEffectsStatusAsync(sessionId, "done");
+            await WaitForEffectsStatusAsync(sessionId, "done", Remaining(deadline, started));
             Assert.Empty(missed);
 
-            var started = Stopwatch.StartNew();
             await listener.StartAsync(CancellationToken.None);
-            await WaitForAsync(() => listener.BackendProcessId != 0);
-            var done = await ReadEffectsFrameAsync(stream.Reader, TimeSpan.FromMilliseconds(2500));
+            await WaitForAsync(() => listener.BackendProcessId != 0, Remaining(deadline, started));
+            var done = await ReadEffectsFrameAsync(stream.Reader, Remaining(deadline, started));
 
-            Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(2500), $"Effects reconciliation took {started.ElapsedMilliseconds}ms.");
+            Assert.True(started.Elapsed < deadline, $"Effects reconciliation took {started.ElapsedMilliseconds}ms.");
             Assert.Equal("done", Status(done));
             Assert.True(Revision(done) > pendingRevision);
         }
@@ -247,28 +248,37 @@ public sealed class SessionEffectsEndpointDatabaseTests(PostgresFixture postgres
         return document.RootElement.GetProperty("features").EnumerateArray().Single().GetProperty("status").GetString();
     }
 
-    private async Task WaitForEffectsStatusAsync(Guid sessionId, string expectedStatus)
+    private async Task WaitForEffectsStatusAsync(Guid sessionId, string expectedStatus, TimeSpan? timeout = null)
     {
-        var timeout = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        var started = Stopwatch.GetTimestamp();
+        var timeLimit = timeout ?? TimeSpan.FromSeconds(10);
         while (true)
         {
             using var response = await Host.Player.GetAsync($"/api/sessions/{sessionId}/effects");
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var status = document.RootElement.GetProperty("features").EnumerateArray().Single().GetProperty("status").GetString();
             if (status == expectedStatus) return;
-            if (Stopwatch.GetTimestamp() >= timeout) throw new TimeoutException("The effects handler did not commit its state.");
+            if (Stopwatch.GetElapsedTime(started) >= timeLimit) throw new TimeoutException("The effects handler did not commit its state.");
             await Task.Delay(10);
         }
     }
 
-    private static async Task WaitForAsync(Func<bool> condition)
+    private static async Task WaitForAsync(Func<bool> condition, TimeSpan? timeout = null)
     {
-        var timeout = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        var started = Stopwatch.GetTimestamp();
+        var timeLimit = timeout ?? TimeSpan.FromSeconds(10);
         while (!condition())
         {
-            if (Stopwatch.GetTimestamp() >= timeout) throw new TimeoutException("The PostgreSQL stream listener did not reach the expected state.");
+            if (Stopwatch.GetElapsedTime(started) >= timeLimit) throw new TimeoutException("The PostgreSQL stream listener did not reach the expected state.");
             await Task.Delay(10);
         }
+    }
+
+    private static TimeSpan Remaining(TimeSpan deadline, Stopwatch started)
+    {
+        var remaining = deadline - started.Elapsed;
+        if (remaining <= TimeSpan.Zero) throw new TimeoutException("Effects reconciliation exceeded its deadline.");
+        return remaining;
     }
 
     private sealed class EffectsHttpFeature : IFeature

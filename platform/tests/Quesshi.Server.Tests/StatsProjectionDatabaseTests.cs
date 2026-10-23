@@ -565,7 +565,7 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
 
         private sealed class RecordingNotifier : ISessionEffectsNotifier
         {
-            public void Changed(ITenantTx transaction, Guid sessionId) { }
+            public Task ChangedAsync(ITenantTx transaction, Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         private sealed class OffCapabilities : ICapabilities
