@@ -212,6 +212,34 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         return AddClient(cookie, token, "__Host-qp", "X-CSRF", host);
     }
 
+    /// <summary>Creates an owner client in an isolated tenant for tenant-bound administration route tests.</summary>
+    public async Task<HttpClient> CreateOtherTenantOwnerClientAsync(CancellationToken cancellationToken = default)
+    {
+        var tenantId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var host = $"other-admin-{tenantId:N}.example.test";
+        await ExecuteOwnerAsync("""
+            insert into tenants(id, slug, name, default_language)
+            values (@tenantId, @slug, 'Other admin fixture tenant', 'en');
+            insert into tenant_hosts(tenant_id, host) values (@tenantId, @host);
+            insert into admins(id, username, email, password_hash, must_change_password, is_platform)
+            values (@adminId, @username, @email, 'hash', false, false);
+            insert into admin_memberships(tenant_id, admin_id, role)
+            values (@tenantId, @adminId, 'owner');
+            """, new
+        {
+            tenantId,
+            slug = $"other-admin-{tenantId:N}",
+            host,
+            adminId,
+            username = $"other-owner-{adminId:N}",
+            email = $"other-owner-{adminId:N}@example.test",
+        }, cancellationToken);
+        var cookie = await IssueAdminCookieAsync(tenantId, adminId, cancellationToken);
+        var token = await AntiforgeryAsync("/api/admin/antiforgery", cookie, "__Host-qa", host, cancellationToken);
+        return AddClient(cookie, token, "__Host-qa", "X-CSRF-Admin", host);
+    }
+
     private async Task<HttpClient> CreateGuestClientAsync(CancellationToken cancellationToken)
     {
         var cookie = await IssueGuestCookieAsync(_identities!.GuestId, cancellationToken);
@@ -221,7 +249,7 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
 
     private async Task<HttpClient> CreateAdminClientAsync(Guid adminId, CancellationToken cancellationToken)
     {
-        var cookie = await IssueAdminCookieAsync(adminId, cancellationToken);
+        var cookie = await IssueAdminCookieAsync(_identities!.TenantId, adminId, cancellationToken);
         var token = await AntiforgeryAsync("/api/admin/antiforgery", cookie, "__Host-qa", TenantHost, cancellationToken);
         return AddClient(cookie, token, "__Host-qa", "X-CSRF-Admin", TenantHost);
     }
@@ -264,11 +292,11 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
         return CookieValue(context, "__Host-qp");
     }
 
-    private async Task<string> IssueAdminCookieAsync(Guid adminId, CancellationToken cancellationToken)
+    private async Task<string> IssueAdminCookieAsync(Guid tenantId, Guid adminId, CancellationToken cancellationToken)
     {
         var context = new DefaultHttpContext();
         var issued = await _application!.Services.GetRequiredService<IAdminSessionIssuer>()
-            .IssueAsync(context, _identities!.TenantId, adminId, mustChangePassword: false, cancellationToken);
+            .IssueAsync(context, tenantId, adminId, mustChangePassword: false, cancellationToken);
         if (!issued) throw new InvalidOperationException("The platform host did not issue the requested admin session.");
         return CookieValue(context, "__Host-qa");
     }
