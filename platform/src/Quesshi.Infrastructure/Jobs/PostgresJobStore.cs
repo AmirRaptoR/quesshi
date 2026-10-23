@@ -177,6 +177,74 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
             select id as Id, (select session_id from revised limit 1) as SessionId from rerun
             """, new { id }, cancellationToken);
 
+    public Task<IReadOnlyList<TenantJob>> ListDeadForTenantAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
+        database.QueryAsync<TenantJob>("""
+            select id as Id,
+                   kind as Kind,
+                   attempts as Attempts,
+                   last_error as LastError,
+                   finished_at as OccurredAt,
+                   status as Status
+            from jobs
+            where tenant_id = @tenantId
+              and status = 'dead'
+            order by finished_at, id
+            """, new { tenantId }, cancellationToken);
+
+    public Task<TenantJob?> GetForTenantAsync(Guid tenantId, long id, CancellationToken cancellationToken = default) =>
+        database.QuerySingleOrDefaultAsync<TenantJob>("""
+            select id as Id,
+                   kind as Kind,
+                   attempts as Attempts,
+                   last_error as LastError,
+                   finished_at as OccurredAt,
+                   status as Status
+            from jobs
+            where tenant_id = @tenantId
+              and id = @id
+            """, new { tenantId, id }, cancellationToken);
+
+    public Task<TenantJob?> RerunDeadForTenantAsync(Guid tenantId, long id, CancellationToken cancellationToken = default) =>
+        database.InTransactionAsync(async transaction =>
+        {
+            var rerun = await transaction.QuerySingleOrDefaultAsync<TenantJobTransition?>("""
+                with rerun as (
+                    update jobs
+                    set status = 'ready', run_at = now(), locked_by = null, locked_until = null, attempts = 0, last_error = null, finished_at = null
+                    where tenant_id = @tenantId
+                      and id = @id
+                      and status = 'dead'
+                    returning id, tenant_id, owner, kind, payload, attempts, last_error, finished_at, status
+                ),
+                revised as (
+                    insert into session_effects (tenant_id, session_id, revision)
+                    select tenant_id, (payload->>'subjectId')::uuid, 1
+                    from rerun
+                    where owner = 'core'
+                      and kind = 'event'
+                      and payload->>'eventType' = 'sessionEnded'
+                    on conflict (tenant_id, session_id) do update
+                    set revision = session_effects.revision + 1
+                    returning session_id
+                )
+                select id as Id,
+                       kind as Kind,
+                       attempts as Attempts,
+                       last_error as LastError,
+                       finished_at as OccurredAt,
+                       status as Status,
+                       (select session_id from revised limit 1) as SessionId
+                from rerun
+                """, new { tenantId, id }, cancellationToken);
+            if (rerun is null) return null;
+            if (rerun.SessionId is { } sessionId)
+            {
+                notifications.Changed(new SystemEffectsTransaction(transaction), sessionId);
+            }
+
+            return new TenantJob(rerun.Id, rerun.Kind, rerun.Attempts, rerun.LastError, rerun.OccurredAt, rerun.Status);
+        }, cancellationToken);
+
     private async Task<bool> UpdateAsync(string sql, object parameters, CancellationToken cancellationToken) =>
         await database.ExecuteAsync(sql, parameters, cancellationToken) == 1;
 
@@ -194,6 +262,15 @@ internal sealed class PostgresJobStore(ISystemDb database, ISessionEffectsNotifi
         }, cancellationToken);
 
     private sealed record EffectTransition(long Id, Guid? SessionId);
+
+    private sealed record TenantJobTransition(
+        long Id,
+        string Kind,
+        int Attempts,
+        string? LastError,
+        DateTimeOffset? OccurredAt,
+        string Status,
+        Guid? SessionId);
 
     /// <summary>Adapts the worker's transaction for the transaction-bound notification seam.</summary>
     private sealed class SystemEffectsTransaction(ISystemTx inner) : ITenantTx

@@ -1,0 +1,123 @@
+@page "/admin/dead-jobs"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (!CanManage)
+{
+    <section class="card"><p>@Text[AdminDeadJobsText.Denied]</p></section>
+}
+else
+{
+    <section class="stack" aria-labelledby="admin-dead-jobs-title">
+        <h1 id="admin-dead-jobs-title">@Text[AdminDeadJobsText.Title]</h1>
+        @if (error is not null)
+        {
+            <p class="form-error" role="alert">@Text[error]</p>
+        }
+        else if (jobs.Count == 0)
+        {
+            <p class="muted">@Text[AdminDeadJobsText.Empty]</p>
+        }
+        else
+        {
+            @foreach (var job in jobs)
+            {
+                <article class="card stack" data-testid="dead-job-@job.Id">
+                    <h2>@job.Kind</h2>
+                    <dl>
+                        <dt>@Text[AdminDeadJobsText.Attempts]</dt><dd>@job.Attempts</dd>
+                        <dt>@Text[AdminDeadJobsText.LastError]</dt><dd>@(job.LastError ?? Text[AdminDeadJobsText.None])</dd>
+                        <dt>@Text[AdminDeadJobsText.Time]</dt><dd>@(job.OccurredAt?.ToLocalTime().ToString("g") ?? Text[AdminDeadJobsText.None])</dd>
+                        <dt>@Text[AdminDeadJobsText.Status]</dt><dd data-testid="dead-job-status-@job.Id">@job.Status</dd>
+                    </dl>
+                    @if (job.Status == "dead")
+                    {
+                        <button class="btn" type="button" data-testid="rerun-dead-job-@job.Id" @onclick="() => RerunAsync(job)">@Text[AdminDeadJobsText.Rerun]</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn--ghost" type="button" data-testid="refresh-dead-job-@job.Id" @onclick="() => RefreshAsync(job)">@Text[AdminDeadJobsText.Refresh]</button>
+                    }
+                </article>
+            }
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private readonly List<DeadJobResponse> jobs = [];
+    private string? error;
+
+    private bool CanManage => State?.Session is { IsPlatform: true } || string.Equals(State?.Session?.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanManage) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (State is null) return;
+        var result = await State.GetAsync<IReadOnlyList<DeadJobResponse>>("/api/admin/dead-jobs");
+        if (!result.Success)
+        {
+            error = result.Error ?? AdminDeadJobsText.LoadFailed;
+            return;
+        }
+
+        jobs.Clear();
+        jobs.AddRange(result.Value ?? []);
+        error = null;
+    }
+
+    private async Task RerunAsync(DeadJobResponse job)
+    {
+        if (State is null) return;
+        var result = await State.MutateAsync<DeadJobResponse>(HttpMethod.Post, $"/api/admin/dead-jobs/{job.Id}/rerun", null);
+        if (!result.Success || result.Value is null)
+        {
+            error = result.Error ?? AdminDeadJobsText.RerunFailed;
+            return;
+        }
+
+        Replace(result.Value);
+        error = null;
+    }
+
+    private async Task RefreshAsync(DeadJobResponse job)
+    {
+        if (State is null) return;
+        var result = await State.GetAsync<DeadJobResponse>($"/api/admin/dead-jobs/{job.Id}");
+        if (!result.Success || result.Value is null)
+        {
+            error = result.Error ?? AdminDeadJobsText.RefreshFailed;
+            return;
+        }
+
+        Replace(result.Value);
+        error = null;
+    }
+
+    private void Replace(DeadJobResponse replacement)
+    {
+        var index = jobs.FindIndex(job => job.Id == replacement.Id);
+        if (index >= 0) jobs[index] = replacement;
+    }
+
+    private sealed record DeadJobResponse(
+        long Id,
+        string Kind,
+        int Attempts,
+        string? LastError,
+        DateTimeOffset? OccurredAt,
+        string Status);
+}
