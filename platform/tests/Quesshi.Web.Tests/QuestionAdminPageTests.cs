@@ -25,6 +25,103 @@ public sealed class QuestionAdminPageTests : BunitContext
     }
 
     [Fact]
+    public async Task Editor_question_screen_shows_usage_from_the_enabled_stats_feature()
+    {
+        var question = Guid.Parse("2818af63-3f8d-4b09-8adb-47b55914ea6d");
+        var handler = new Handler(request => request.RequestUri!.PathAndQuery switch
+        {
+            "/api/admin/auth/me" => Response(HttpStatusCode.OK, SessionJson("Editor")),
+            "/api/config" => Response(HttpStatusCode.OK, ConfigJson("{\"feature\":[\"stats\"]}")),
+            "/api/admin/categories" => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/categories?family=trivia", StringComparison.Ordinal) => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/admin/questions?", StringComparison.Ordinal) => Response(HttpStatusCode.OK, QuestionListJson("trivia", question)),
+            var path when path == $"/api/admin/x/stats/questions?ids={question}" => Response(HttpStatusCode.OK, QuestionUsageJson(question, 8, 4, .75)),
+            var path => throw new InvalidOperationException($"Unexpected request {path}.")
+        });
+        var state = await StateAsync(handler);
+
+        var cut = Render<AdminQuestions>(parameters => parameters.AddCascadingValue(state));
+
+        cut.WaitForState(() => cut.FindAll("[data-testid=question-usage]").Count == 1);
+        Assert.Equal(("8", "4", "75 %"), (
+            cut.Find("[data-testid=question-served]").TextContent,
+            cut.Find("[data-testid=question-asked]").TextContent,
+            cut.Find("[data-testid=question-accuracy]").TextContent));
+        Assert.Contains($"/api/admin/x/stats/questions?ids={question}", handler.Paths);
+    }
+
+    [Fact]
+    public async Task Editor_question_screen_shows_empty_accuracy_when_no_answers_were_asked()
+    {
+        var question = Guid.Parse("3818d822-6b1e-4a64-9a6c-68c6d8c3f7b2");
+        var handler = new Handler(request => request.RequestUri!.PathAndQuery switch
+        {
+            "/api/admin/auth/me" => Response(HttpStatusCode.OK, SessionJson("Editor")),
+            "/api/config" => Response(HttpStatusCode.OK, ConfigJson("""{"feature":["stats"]}""")),
+            "/api/admin/categories" => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/categories?family=trivia", StringComparison.Ordinal) => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/admin/questions?", StringComparison.Ordinal) => Response(HttpStatusCode.OK, QuestionListJson("trivia", question)),
+            var path when path == $"/api/admin/x/stats/questions?ids={question}" => Response(HttpStatusCode.OK, QuestionUsageJson(question, 7, 0, 0)),
+            var path => throw new InvalidOperationException($"Unexpected request {path}.")
+        });
+        var state = await StateAsync(handler);
+        var cut = Render<AdminQuestions>(parameters => parameters.AddCascadingValue(state));
+
+        cut.WaitForAssertion(() => Assert.Equal("—", cut.Find("[data-testid=question-accuracy]").TextContent));
+    }
+
+    [Fact]
+    public async Task Editor_question_screen_omits_usage_and_stats_request_when_the_feature_is_disabled()
+    {
+        var handler = new Handler(request => request.RequestUri!.PathAndQuery switch
+        {
+            "/api/admin/auth/me" => Response(HttpStatusCode.OK, SessionJson("Editor")),
+            "/api/config" => Response(HttpStatusCode.OK, ConfigJson()),
+            "/api/admin/categories" => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/categories?family=trivia", StringComparison.Ordinal) => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/admin/questions?", StringComparison.Ordinal) => Response(HttpStatusCode.OK, QuestionListJson("trivia")),
+            var path => throw new InvalidOperationException($"Unexpected request {path}.")
+        });
+        var state = await StateAsync(handler);
+
+        var cut = Render<AdminQuestions>(parameters => parameters.AddCascadingValue(state));
+
+        cut.WaitForState(() => cut.FindAll("[data-testid=question-row]").Count == 1);
+        Assert.Empty(cut.FindAll("[data-testid=question-usage]"));
+        Assert.DoesNotContain(handler.Paths, path => path.StartsWith("/api/admin/x/stats/questions", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Editor_question_screen_refreshes_usage_for_the_selected_family()
+    {
+        var triviaQuestion = Guid.Parse("d67c64a8-a6a1-4d8e-839f-e48f584a7b28");
+        var pollQuestion = Guid.Parse("2dfad67d-15b3-4bce-82d5-c9dca2ff486a");
+        var handler = new Handler(request => request.RequestUri!.PathAndQuery switch
+        {
+            "/api/admin/auth/me" => Response(HttpStatusCode.OK, SessionJson("Editor")),
+            "/api/config" => Response(HttpStatusCode.OK, ConfigJson("""{"feature":["stats"]}""")),
+            "/api/admin/categories" => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/categories?family=", StringComparison.Ordinal) => Response(HttpStatusCode.OK, "[]"),
+            var path when path.StartsWith("/api/admin/questions?", StringComparison.Ordinal) && path.Contains("family=poll", StringComparison.Ordinal) => Response(HttpStatusCode.OK, QuestionListJson("poll", pollQuestion)),
+            var path when path.StartsWith("/api/admin/questions?", StringComparison.Ordinal) => Response(HttpStatusCode.OK, QuestionListJson("trivia", triviaQuestion)),
+            var path when path == $"/api/admin/x/stats/questions?ids={triviaQuestion}" => Response(HttpStatusCode.OK, QuestionUsageJson(triviaQuestion, 2, 1, 1)),
+            var path when path == $"/api/admin/x/stats/questions?ids={pollQuestion}" => Response(HttpStatusCode.OK, QuestionUsageJson(pollQuestion, 6, 3, .5)),
+            var path => throw new InvalidOperationException($"Unexpected request {path}.")
+        });
+        var state = await StateAsync(handler);
+        var cut = Render<AdminQuestions>(parameters => parameters.AddCascadingValue(state));
+
+        cut.WaitForAssertion(() => Assert.Equal("2", cut.Find("[data-testid=question-served]").TextContent));
+        cut.Find("[data-testid=question-family]").Change("poll");
+        cut.WaitForAssertion(() => Assert.Equal(("poll", "6", "3", "50 %"), (
+            cut.Find("[data-testid=question-row]").GetAttribute("data-family"),
+            cut.Find("[data-testid=question-served]").TextContent,
+            cut.Find("[data-testid=question-asked]").TextContent,
+            cut.Find("[data-testid=question-accuracy]").TextContent)));
+        Assert.Contains($"/api/admin/x/stats/questions?ids={pollQuestion}", handler.Paths);
+    }
+
+    [Fact]
     public async Task Editor_question_screen_filters_the_shared_poll_list_in_the_selected_RTL_language()
     {
         var handler = new Handler(
@@ -388,8 +485,9 @@ public sealed class QuestionAdminPageTests : BunitContext
         "Existing prompt", JsonDocument.Parse(payload).RootElement.Clone(), null, null, "pending", "admin", null, null);
 
     private static string SessionJson(string role) => $$"""{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","role":"{{role}}","isPlatform":false,"mustChangePassword":false}""";
-    private static string ConfigJson() => """{"languages":[{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"fa"}""";
+    private static string ConfigJson(string capabilities = "{}") => $$"""{"languages":[{"code":"fa","displayName":"فارسی","direction":"rtl"}],"defaultLanguage":"fa","capabilities":{{capabilities}}}""";
     private static string QuestionListJson(string family, Guid? id = null, string kind = "poll_choice") => $$"""{"items":[{"id":"{{id ?? Guid.Parse("2818af63-3f8d-4b09-8adb-47b55914ea6d")}}","kind":"{{kind}}","kindVersion":1,"family":"{{family}}","language":"fa","categoryId":null,"level":1,"prompt":"Question","payload":{"options":[{"id":"a","text":"A"},{"id":"b","text":"B"}]},"explanation":null,"topic":null,"status":"pending","source":"admin","ownerId":null,"mediaId":null}],"total":1,"page":1,"pageSize":25,"buckets":[]}""";
+    private static string QuestionUsageJson(Guid question, long served, long asked, double accuracy) => $$"""[{"questionId":"{{question}}","served":{{served}},"asked":{{asked}},"accuracy":{{accuracy}}}]""";
     private static string QuestionJson(Guid id, string kind, string prompt) => $$"""{"id":"{{id}}","kind":"{{kind}}","kindVersion":1,"family":"{{(kind.StartsWith("poll_", StringComparison.Ordinal) ? "poll" : "trivia")}}","language":"en","categoryId":"{{Categories[0].Id}}","level":2,"prompt":"{{prompt}}","payload":{{PayloadJson(kind)}},"explanation":"Saved explanation","topic":null,"status":"approved","source":"admin","ownerId":null,"mediaId":null}""";
     private static string PreviewJson(Guid id, string kind, string card) => $$"""{"id":"{{id}}","kind":"{{kind}}","kindVersion":1,"language":"en","prompt":"Preview","mediaId":null,"card":{{card}}}""";
     private static string PayloadJson(string kind) => kind switch

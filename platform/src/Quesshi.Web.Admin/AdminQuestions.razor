@@ -43,11 +43,26 @@ else
             {
                 <button type="button" data-testid="bulk-approve-questions" @onclick="BulkApproveAsync">Approve selected (@selected.Count)</button>
             }
+            @if (statsEnabled)
+            {
+                <div data-testid="question-usage-columns">
+                    <span>@Text[QuestionAdminText.Served]</span><span>@Text[QuestionAdminText.Asked]</span><span>@Text[QuestionAdminText.Accuracy]</span>
+                </div>
+            }
             @foreach (var question in questions)
             {
                 <article data-testid="question-row" data-family="@question.Family">
                     <input type="checkbox" aria-label="Select @question.Prompt" checked="@selected.Contains(question.Id)" @onchange="change => Select(question.Id, change)" />
                     <strong>@question.Prompt</strong><span>@question.Kind</span><span>@question.Status</span>
+                    @if (statsEnabled)
+                    {
+                        var usage = usageByQuestion.GetValueOrDefault(question.Id);
+                        <div data-testid="question-usage">
+                            <span data-testid="question-served">@(usage?.Served ?? 0)</span>
+                            <span data-testid="question-asked">@(usage?.Asked ?? 0)</span>
+                            <span data-testid="question-accuracy">@(usage is { Asked: > 0 } ? usage.Accuracy.ToString("P0") : "—")</span>
+                        </div>
+                    }
                     <button type="button" @onclick="() => EditQuestionAsync(question)">@Text[QuestionAdminText.Edit]</button>
                     <button type="button" data-testid="preview-question" @onclick="() => PreviewQuestion(question)">Preview</button>
                     <button type="button" data-testid="approve-question" @onclick="() => ApproveAsync(question.Id)">Approve</button>
@@ -79,6 +94,7 @@ else
     private readonly List<CategoryResponse> editorCategories = [];
     private readonly List<QuestionResponse> questions = [];
     private readonly HashSet<Guid> selected = [];
+    private readonly Dictionary<Guid, QuestionUsage> usageByQuestion = [];
     private TenantLanguage selectedLanguage = new("en", "English", "ltr");
     private QuestionFilter filter = new();
     private int page = 1;
@@ -89,6 +105,8 @@ else
     private global::Quesshi.Web.Admin.QuestionResponse? editing;
     private string editorFamily = "trivia";
     private bool loaded;
+    private bool statsEnabled;
+    private int loadVersion;
     private string? error;
 
     private bool CanEdit => State?.Session is { IsPlatform: true } || string.Equals(State?.Session?.Role, "Owner", StringComparison.OrdinalIgnoreCase) || string.Equals(State?.Session?.Role, "Editor", StringComparison.OrdinalIgnoreCase);
@@ -106,6 +124,8 @@ else
         try
         {
             var config = await Http.GetFromJsonAsync<TenantConfig>("/api/config") ?? throw new InvalidOperationException("The tenant configuration response was empty.");
+            statsEnabled = config.Capabilities?.TryGetValue("feature", out var features) == true
+                && features.Contains("stats", StringComparer.Ordinal);
             languages.Clear();
             languages.AddRange(config.Languages);
             selectedLanguage = await SelectLanguageAsync(config);
@@ -124,13 +144,22 @@ else
 
     private async Task LoadQuestionsAsync()
     {
+        var version = ++loadVersion;
         try
         {
             var query = new List<string> { $"page={page}", $"pageSize={PageSize}" };
             AddQuery(query, "language", filter.Language); AddQuery(query, "family", filter.Family); AddQuery(query, "kind", filter.Kind);
             AddQuery(query, "categoryId", filter.CategoryId); AddQuery(query, "level", filter.Level); AddQuery(query, "status", filter.Status); AddQuery(query, "text", filter.Prompt);
             var response = await Http.GetFromJsonAsync<QuestionListResponse>($"/api/admin/questions?{string.Join('&', query)}") ?? throw new InvalidOperationException("The question list response was empty.");
-            questions.Clear(); questions.AddRange(response.Items); selected.IntersectWith(questions.Select(question => question.Id)); page = response.Page; error = null;
+            if (version != loadVersion) return;
+            var usage = statsEnabled && response.Items.Count != 0
+                ? await Http.GetFromJsonAsync<IReadOnlyList<QuestionUsage>>($"/api/admin/x/stats/questions?ids={string.Join(',', response.Items.Select(question => question.Id))}") ?? []
+                : [];
+            if (version != loadVersion) return;
+            questions.Clear(); questions.AddRange(response.Items); selected.IntersectWith(questions.Select(question => question.Id)); page = response.Page;
+            usageByQuestion.Clear();
+            foreach (var item in usage) usageByQuestion[item.QuestionId] = item;
+            error = null;
         }
         catch (HttpRequestException)
         {
@@ -228,8 +257,9 @@ else
         public string? Status { get; set; }
         public string? Prompt { get; set; }
     }
-    private sealed record TenantConfig(IReadOnlyList<TenantLanguage> Languages, string DefaultLanguage);
+    private sealed record TenantConfig(IReadOnlyList<TenantLanguage> Languages, string DefaultLanguage, IReadOnlyDictionary<string, string[]>? Capabilities);
     private sealed record TenantLanguage(string Code, string DisplayName, string Direction);
     private sealed record CategoryResponse(Guid Id, string Slug);
     private sealed record QuestionListResponse(IReadOnlyList<global::Quesshi.Web.Admin.QuestionResponse> Items, int Total, int Page, int PageSize, IReadOnlyList<object> Buckets);
+    private sealed record QuestionUsage(Guid QuestionId, long Served, long Asked, double Accuracy);
 }
