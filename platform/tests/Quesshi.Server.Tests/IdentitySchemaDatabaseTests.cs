@@ -13,6 +13,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     private const string MediaMigrationName = "20261019T0100_core_media_assets.sql";
     private const string SessionCreationMigrationName = "20261020T0100_core_session_creation_identity.sql";
     private const string InboxMigrationName = "20261022T0100_core_inbox.sql";
+    private const string FriendsMigrationName = "20261023T0100_friends_friendships.sql";
     private static readonly Guid TenantA = Guid.Parse("c66dbf5d-a7e8-42a0-9215-7c87b00bc13e");
     private static readonly Guid TenantB = Guid.Parse("b2461b37-f799-4a3b-96b3-ff5446c64d95");
 
@@ -67,6 +68,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             await RewindInboxMigrationAsync(owner);
             await RewindSessionCreationMigrationAsync(owner);
             await RewindQuestionsMigrationAsync(owner);
+            await RewindFriendsMigrationAsync(owner);
             await ExecuteAsync(owner, "alter table admin_memberships drop column if exists is_active; delete from schema_migrations where name = '20261018T0000_core_admin_membership_activity.sql'; insert into admin_memberships (tenant_id, admin_id, role) values (@tenant, @admin, 'editor')", ("tenant", tenant), ("admin", admin));
 
             await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
@@ -215,6 +217,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await RewindInboxMigrationAsync(owner);
         await RewindSessionCreationMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
+        await RewindFriendsMigrationAsync(owner);
 
         await ExecuteAsync(owner, """
             drop function session_ended_effect_jobs(uuid);
@@ -271,6 +274,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindInboxMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table session_invites; drop table player_inbox; delete from schema_migrations where name = '{InboxMigrationName}'");
+
+    private static Task RewindFriendsMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, $"drop table friendships; delete from schema_migrations where name = '{FriendsMigrationName}'");
 
     private static Task RewindSessionCreationMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name = '{SessionCreationMigrationName}'");
