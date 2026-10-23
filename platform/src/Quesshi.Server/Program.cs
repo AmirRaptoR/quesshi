@@ -1,5 +1,6 @@
 using Quesshi.Application;
 using Quesshi.Application.Content;
+using Quesshi.Application.Inbox;
 using Quesshi.Application.Identity;
 using Quesshi.Application.Jobs;
 using Quesshi.Features.SignIn.Google;
@@ -290,6 +291,7 @@ public static class Program
         });
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Jobs);
         builder.Services.AddSingleton(provider => provider.GetRequiredService<FeatureRegistry>().Schedules);
+        builder.Services.AddSingleton<IInboxItems>(provider => provider.GetRequiredService<FeatureRegistry>());
         builder.Services.AddSingleton<INamedQueries>(provider => provider.GetRequiredService<FeatureRegistry>());
         builder.Services.TryAddSingleton<ICapabilities, TenantCapabilities>();
         builder.Services.TryAddSingleton<ILocks, TenantLocks>();
@@ -299,6 +301,7 @@ public static class Program
         builder.Services.AddSingleton<IEvents>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<IPlayerCleanup>(provider => provider.GetRequiredService<DurableEvents>());
         builder.Services.AddSingleton<ISessionEffects>(provider => provider.GetRequiredService<DurableEvents>());
+        builder.Services.AddSingleton<InboxReader>();
         builder.Services.AddSingleton<CorePlayerCleanup>();
         builder.Services.AddSingleton<GuestPurge>(provider => new GuestPurge(
             provider.GetRequiredService<ILocks>(),

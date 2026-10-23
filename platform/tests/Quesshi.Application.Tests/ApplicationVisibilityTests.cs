@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using Quesshi.Application;
+using Quesshi.Application.Inbox;
 using Quesshi.Application.Media;
 using Quesshi.Application.Sessions;
 using Quesshi.Application.Tenancy;
@@ -19,6 +20,10 @@ public sealed class ApplicationVisibilityTests
 
         Assert.Equal(
             [
+                typeof(InboxInvitation),
+                typeof(InboxReader),
+                typeof(InboxSession),
+                typeof(InboxSnapshot),
                 typeof(IHostAddressResolver),
                 typeof(ILeadImageProvider),
                 typeof(IMediaFetcher),

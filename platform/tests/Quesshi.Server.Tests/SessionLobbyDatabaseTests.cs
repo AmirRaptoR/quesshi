@@ -93,9 +93,9 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
     public async Task Joining_an_expired_lobby_is_refused()
     {
         var lobby = await CreateAsync(Shared);
-        await host.Fixture.ExecuteOwnerAsync("update sessions set due_at = now() - interval '1 minute' where id = @id", new { id = lobby.Id });
-        var due = (await StateAsync(lobby.Id)).DueAt!.Value;
-        await Grain(lobby.Id).TimeoutAsync(due);
+        await host.Fixture.ExecuteOwnerAsync(
+            "update sessions set due_at = now() - interval '1 minute', retry_at = now() + interval '5 minutes' where id = @id",
+            new { id = lobby.Id });
 
         var refused = await JoinAsync(host.Fixture.Guest, lobby.Code);
 
