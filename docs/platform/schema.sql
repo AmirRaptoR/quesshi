@@ -361,6 +361,7 @@ create table sessions (
   id               uuid not null,
   code             text not null,                        -- short join code
   format           text not null,
+  scored           boolean not null default false,       -- immutable FormatSpec.Scored snapshot
   owner_id         uuid not null,
   lang             text not null,
   status           text not null default 'lobby' check (status in ('lobby', 'running', 'finished', 'cancelled')),

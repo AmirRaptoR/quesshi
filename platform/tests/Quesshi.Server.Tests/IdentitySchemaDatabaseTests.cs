@@ -14,6 +14,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
     private const string SessionCreationMigrationName = "20261020T0100_core_session_creation_identity.sql";
     private const string InboxMigrationName = "20261022T0100_core_inbox.sql";
     private const string FriendsMigrationName = "20261023T0100_friends_friendships.sql";
+    private const string SessionScoringMigrationName = "20261023T1800_core_session_scoring.sql";
     private static readonly Guid TenantA = Guid.Parse("c66dbf5d-a7e8-42a0-9215-7c87b00bc13e");
     private static readonly Guid TenantB = Guid.Parse("b2461b37-f799-4a3b-96b3-ff5446c64d95");
 
@@ -66,6 +67,8 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
             await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
             await RewindInboxMigrationAsync(owner);
+            await RewindStatsMigrationAsync(owner);
+            await RewindSessionScoringMigrationAsync(owner);
             await RewindSessionCreationMigrationAsync(owner);
             await RewindQuestionsMigrationAsync(owner);
             await RewindFriendsMigrationAsync(owner);
@@ -215,6 +218,8 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await RewindInboxMigrationAsync(owner);
+        await RewindStatsMigrationAsync(owner);
+        await RewindSessionScoringMigrationAsync(owner);
         await RewindSessionCreationMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
         await RewindFriendsMigrationAsync(owner);
@@ -277,6 +282,12 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindFriendsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table friendships; delete from schema_migrations where name = '{FriendsMigrationName}'");
+
+    private static Task RewindStatsMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists player_results; drop table if exists player_stats; drop table if exists player_category_stats; drop table if exists question_stats; delete from schema_migrations where name = '20261022T1800_stats_projection.sql'");
+
+    private static Task RewindSessionScoringMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, $"alter table sessions drop column if exists scored; delete from schema_migrations where name = '{SessionScoringMigrationName}'");
 
     private static Task RewindSessionCreationMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name = '{SessionCreationMigrationName}'");

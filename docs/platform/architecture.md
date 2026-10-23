@@ -1558,7 +1558,10 @@ per-category and abandonment fields, and `RedisLeaderboard`; `friends` from `Pla
 `Question.Report`; `ai_generation` from `TopUpQuestionBank`, `GenerateVotingQuestions`,
 `QuestionGeneratorGrain`, the generation logs and `IAiSpendLog`.
 
-**`stats`.** As today, only scored formats produce player statistics; `poll` produces none.
+**`stats`.** As today, only scored formats produce player statistics; `poll` produces none. Session
+creation snapshots `FormatSpec.Scored` in `sessions.scored`; the projection uses that immutable
+fact rather than a seat's leaderboard eligibility, so a guest-only scored session still records
+its started runs and later format configuration cannot reclassify a completed session.
 
 - For a `finished` scored session that counts (7.6): one result row per `player` seat **whose run
   began**: in personal pacing, a seat that was served at least one card; in shared pacing, a seat
