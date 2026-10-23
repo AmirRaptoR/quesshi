@@ -74,14 +74,14 @@ public sealed class CapabilitiesDatabaseTests(PostgresFixture fixture)
         Assert.False(await capabilities.IsOnAsync(TenantA, CapabilityType.Feature, "demo"));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantA)));
         Assert.True(await ScalarAsync<bool>(owner, "select entitled and not enabled from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA)));
-        Assert.Equal("changed", await ScalarAsync<string>(owner, "select settings ->> 'Label' from tenant_capabilities where tenant_id = @tenant", ("tenant", TenantA)));
+        Assert.Equal("changed", await ScalarAsync<string>(owner, "select settings ->> 'label' from tenant_capabilities where tenant_id = @tenant", ("tenant", TenantA)));
         Assert.Equal(new DemoSettings("changed"), await capabilities.GetSettingsAsync<DemoSettings>(TenantA, CapabilityType.Feature, "demo"));
 
         var exception = await Assert.ThrowsAsync<CapabilityValidationException>(() =>
             capabilities.SetAsync(TenantA, CapabilityType.Feature, "demo", true, new DemoSettings(string.Empty)));
         Assert.Equal(["A label is required."], exception.Messages);
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantA)));
-        Assert.Equal("changed", await ScalarAsync<string>(owner, "select settings ->> 'Label' from tenant_capabilities where tenant_id = @tenant", ("tenant", TenantA)));
+        Assert.Equal("changed", await ScalarAsync<string>(owner, "select settings ->> 'label' from tenant_capabilities where tenant_id = @tenant", ("tenant", TenantA)));
         Assert.Equal(0L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantB)));
         Assert.True(await ScalarAsync<bool>(owner, "select entitled and enabled from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantB)));
 
@@ -105,7 +105,7 @@ public sealed class CapabilitiesDatabaseTests(PostgresFixture fixture)
         }
 
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select config_version from tenants where id = @tenant", ("tenant", TenantA)));
-        Assert.True(await ScalarAsync<bool>(owner, "select not enabled and settings ->> 'Label' = 'changed' from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA)));
+        Assert.True(await ScalarAsync<bool>(owner, "select not enabled and settings ->> 'label' = 'changed' from tenant_capabilities where tenant_id = @tenant and type = 'feature' and key = 'demo'", ("tenant", TenantA)));
 
         var entitlementFailure = await Assert.ThrowsAsync<PostgresException>(() => database.InTenantAsync(TenantA, tx => tx.ExecuteAsync(
             "update tenant_capabilities set entitled = false where type = 'feature' and key = 'demo'")));

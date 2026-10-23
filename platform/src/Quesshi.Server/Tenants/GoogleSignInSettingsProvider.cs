@@ -33,5 +33,6 @@ internal sealed class GoogleSignInSettingsProvider(ITenantDb tenantDb) : IGoogle
     private sealed record GoogleSettingsRow(JsonElement Settings);
 }
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]
 [JsonSerializable(typeof(GoogleSignInSettings))]
 internal partial class GoogleSignInSettingsJsonContext : JsonSerializerContext;
