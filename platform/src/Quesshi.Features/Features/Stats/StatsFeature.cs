@@ -23,13 +23,7 @@ public sealed class StatsFeature : IFeature
                 where s.id = @sessionId
                   and s.status = 'finished'
                   and s.end_reason in ('completed', 'forfeit')
-                  and exists (
-                    select 1
-                    from session_participants p
-                    where p.session_id = s.id
-                      and p.role = 'player'
-                      and p.ranked
-                  )) as is_scored
+                  and s.scored) as is_scored
             """, new { sessionId = @event.SessionId }, cancellationToken);
         if (isScored != true) return;
 

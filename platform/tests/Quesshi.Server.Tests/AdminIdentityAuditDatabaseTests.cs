@@ -18,6 +18,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private const string SessionCreationMigrationName = "20261020T0100_core_session_creation_identity.sql";
     private const string InboxMigrationName = "20261022T0100_core_inbox.sql";
     private const string FriendsMigrationName = "20261023T0100_friends_friendships.sql";
+    private const string SessionScoringMigrationName = "20261023T1800_core_session_scoring.sql";
     private static readonly Guid TenantA = Guid.Parse("8d6b19a5-9349-48ec-b63b-28e987f95158");
     private static readonly Guid TenantB = Guid.Parse("bd41c053-3e51-43ce-b842-3d625a56c7d1");
 
@@ -110,6 +111,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
         await RewindFriendsMigrationAsync(owner);
         await RewindInboxMigrationAsync(owner);
         await RewindStatsMigrationAsync(owner);
+        await RewindSessionScoringMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
         await ExecuteAsync(owner, $"alter table sessions drop column creation_roster; alter table sessions drop column creation_shape; delete from schema_migrations where name in ('{SessionCreationMigrationName}', '{MigrationName}', '{LaterMigrationName}', '{CategoryMigrationName}', '20261016T0100_core_player_bans.sql', '{MembershipActivityMigrationName}'); drop table categories; drop function revoke_player_sessions(uuid); alter table auth_sessions drop column revoked_at; drop table audit_log; alter table auth_sessions drop constraint auth_sessions_admin_id_fkey; drop table admin_password_resets; drop table admin_memberships; drop table admins");
         await ExecuteAsync(owner, "delete from tenants where id in (@a, @b)", ("a", TenantA), ("b", TenantB));
@@ -128,6 +130,9 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindStatsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "drop table if exists player_results; drop table if exists player_stats; drop table if exists player_category_stats; drop table if exists question_stats; delete from schema_migrations where name = '20261022T1800_stats_projection.sql'");
+
+    private static Task RewindSessionScoringMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, $"alter table sessions drop column if exists scored; delete from schema_migrations where name = '{SessionScoringMigrationName}'");
 
     private static Task InsertTenantsAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@a, 'admin-a', 'Admin A', 'en'), (@b, 'admin-b', 'Admin B', 'en')", ("a", TenantA), ("b", TenantB));

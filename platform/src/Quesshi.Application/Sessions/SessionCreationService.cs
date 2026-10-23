@@ -96,7 +96,7 @@ internal sealed class SessionCreationService(
                 state = transition.Current;
             }
 
-            var created = await InsertWithCodeAsync(transaction, creatorId, request, roster, creator.Language, now, cancellationToken);
+            var created = await InsertWithCodeAsync(transaction, creatorId, request, roster, creator.Language, format.Spec.Scored, now, cancellationToken);
             if (created is null)
             {
                 var afterCollision = await ReplayAsync(transaction, creatorId, request, cancellationToken);
@@ -140,16 +140,16 @@ internal sealed class SessionCreationService(
         _ => null,
     };
 
-    private async Task<string?> InsertWithCodeAsync(ITenantTx transaction, Guid creatorId, SessionCreateRequest request, IReadOnlyList<SessionParticipant> roster, string language, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<string?> InsertWithCodeAsync(ITenantTx transaction, Guid creatorId, SessionCreateRequest request, IReadOnlyList<SessionParticipant> roster, string language, bool scored, DateTimeOffset now, CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt != 32; attempt++)
         {
             var code = codes.Next();
             var inserted = await transaction.QuerySingleOrDefaultAsync<Guid?>("""
-                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, rules, creation_shape, creation_roster, created_at, started_at)
-                values (app_tenant(), @id, @code, @format, @creatorId, @language, @status, @capacity, @content, @rules, @shape, @roster, @now, @startedAt)
+                insert into sessions (tenant_id, id, code, format, owner_id, lang, scored, status, capacity, content, rules, creation_shape, creation_roster, created_at, started_at)
+                values (app_tenant(), @id, @code, @format, @creatorId, @language, @scored, @status, @capacity, @content, @rules, @shape, @roster, @now, @startedAt)
                 on conflict do nothing returning id
-                """, new { id = request.Id, code, format = request.Format, creatorId, language,
+                """, new { id = request.Id, code, format = request.Format, creatorId, language, scored,
                     status = request.Shape == SessionShape.Lobby ? "lobby" : "running", capacity = request.Capacity,
                     content = Json(request.Content), rules = new Jsonb<JsonElement>(request.Rules, SessionJsonContext.Default.JsonElement),
                     shape = Shape(request.Shape), roster = Json(roster), now,

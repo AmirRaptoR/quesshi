@@ -33,6 +33,25 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
                 """, ("table", table)));
             Assert.Equal("owner:stats", await ScalarAsync<string>(owner, "select obj_description(@table::regclass)", ("table", table)));
         }
+
+        await using var local = await CreateHarnessAsync();
+        await using var foreign = await CreateHarnessAsync();
+        var player = await foreign.AddPlayerAsync();
+        var category = await foreign.AddCategoryAsync();
+        var question = await foreign.AddQuestionAsync(category);
+        var session = await foreign.AddSessionAsync(player, ranked: true, runBegan: true, slot: 0);
+        await foreign.AddItemAsync(session, 0, question, category);
+        await foreign.AddAnswerAsync(session, 0, player, 1F);
+        await foreign.EmitAndDeliverAsync(session);
+        Assert.Equal((1L, 1L, 1L, 1L), await foreign.ReadStatsTableCountsAsync());
+
+        await using var app = await OpenAsync("quesshi_app");
+        await SetTenantAsync(app, local.Tenant);
+        foreach (var table in StatsTables)
+        {
+            Assert.Equal(0L, await ScalarAsync<long>(app, $"select count(*) from {table} where tenant_id = @tenant", ("tenant", foreign.Tenant)));
+            Assert.Equal(0, await AffectedRowsAsync(app, $"update {table} set tenant_id = tenant_id where tenant_id = @tenant", ("tenant", foreign.Tenant)));
+        }
     }
 
     [Fact]
@@ -146,7 +165,7 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
 
         await harness.EmitAndDeliverAsync(session);
 
-        Assert.Equal(0L, await harness.CountAsync("select count(*) from player_results where player_id = @player", ("player", player)));
+        Assert.Equal((0L, 0L, 0L), await harness.ReadPlayerTableCountsAsync(player));
     }
 
     [SkippableFact]
@@ -164,7 +183,33 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
     [SkippableFact]
     public async Task An_unscored_session_contributes_no_stats()
     {
-        await AssertExcludedSessionAsync("finished", "completed", ranked: false);
+        await using var harness = await CreateHarnessAsync();
+        var player = await harness.AddPlayerAsync();
+        var category = await harness.AddCategoryAsync();
+        var question = await harness.AddQuestionAsync(category);
+        var session = await harness.AddSessionAsync(player, ranked: true, runBegan: true, slot: 0, format: "poll", scored: false);
+        await harness.AddItemAsync(session, 0, question, category);
+        await harness.AddAnswerAsync(session, 0, player, 1F);
+
+        await harness.EmitAndDeliverAsync(session);
+
+        Assert.Equal((0L, 0L, 0L, 0L), await harness.ReadStatsTableCountsAsync());
+    }
+
+    [SkippableFact]
+    public async Task A_started_guest_run_in_a_scored_session_records_stats()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var player = await harness.AddPlayerAsync();
+        var category = await harness.AddCategoryAsync();
+        var question = await harness.AddQuestionAsync(category);
+        var session = await harness.AddSessionAsync(player, ranked: false, runBegan: true, slot: 0, scored: true);
+        await harness.AddItemAsync(session, 0, question, category);
+        await harness.AddAnswerAsync(session, 0, player, 0.5F);
+
+        await harness.EmitAndDeliverAsync(session);
+
+        Assert.Equal((1L, 1L, 1L, 1L), await harness.ReadStatsTableCountsAsync());
     }
 
     [SkippableFact]
@@ -324,6 +369,16 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
         await command.ExecuteNonQueryAsync();
     }
 
+    private static async Task<int> AffectedRowsAsync(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+        return await command.ExecuteNonQueryAsync();
+    }
+
+    private static Task SetTenantAsync(NpgsqlConnection connection, Guid tenant) =>
+        ExecuteAsync(connection, "select set_config('app.tenant_id', @tenant, false)", ("tenant", tenant.ToString()));
+
     private static async Task<T> ScalarAsync<T>(NpgsqlConnection connection, string sql, params (string Name, object Value)[] parameters)
     {
         await using var command = new NpgsqlCommand(sql, connection);
@@ -367,14 +422,14 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
             return question;
         }
 
-        public async Task<Guid> AddSessionAsync(Guid owner, bool ranked, bool runBegan, string outcome = "win", int points = 10, int slot = -1, string status = "finished", string? endReason = "completed", DateTimeOffset? endedAt = null, string format = "async_duel")
+        public async Task<Guid> AddSessionAsync(Guid owner, bool ranked, bool runBegan, string outcome = "win", int points = 10, int slot = -1, string status = "finished", string? endReason = "completed", DateTimeOffset? endedAt = null, string format = "async_duel", bool scored = true)
         {
             var session = Guid.NewGuid();
             var ended = endedAt ?? new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
             await ExecuteOwnerAsync("""
-                insert into sessions (tenant_id, id, code, format, owner_id, lang, status, capacity, content, state, phase, slot, started_at, ended_at, end_reason)
-                values (@tenant, @session, @code, @format, @owner, 'en', @status, 8, '{}'::jsonb, '{}'::jsonb, 'finished', @slot, @ended, @ended, @endReason)
-                """, ("session", session), ("code", session.ToString("N")[..8]), ("format", format), ("owner", owner), ("status", status), ("slot", slot), ("ended", ended), ("endReason", endReason ?? (object)DBNull.Value));
+                insert into sessions (tenant_id, id, code, format, owner_id, lang, scored, status, capacity, content, state, phase, slot, started_at, ended_at, end_reason)
+                values (@tenant, @session, @code, @format, @owner, 'en', @scored, @status, 8, '{}'::jsonb, '{}'::jsonb, 'finished', @slot, @ended, @ended, @endReason)
+                """, ("session", session), ("code", session.ToString("N")[..8]), ("format", format), ("owner", owner), ("scored", scored), ("status", status), ("slot", slot), ("ended", ended), ("endReason", endReason ?? (object)DBNull.Value));
             await AddSeatAsync(session, owner, 0, ranked, runBegan, outcome, points);
             return session;
         }
@@ -456,7 +511,7 @@ public sealed class StatsProjectionDatabaseTests(PostgresFixture fixture) : ICla
 
         public async Task<(string Results, string Players, string Categories, string Questions)> ReadStatsSnapshotAsync() =>
             (await ScalarOwnerAsync<string>("select coalesce(string_agg(format('%s|%s|%s|%s|%s|%s', player_id, session_id, format, ended_at, outcome, points), ',' order by player_id, session_id), '') from player_results where tenant_id = @tenant"),
-             await ScalarOwnerAsync<string>("select coalesce(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s', player_id, format, played, wins, losses, draws, streak, best_streak), ',' order by player_id, format), '') from player_stats where tenant_id = @tenant"),
+             await ScalarOwnerAsync<string>("select coalesce(string_agg(format('%s|%s|%s|%s|%s|%s|%s|%s|%s', player_id, format, played, wins, losses, draws, streak, best_streak, points), ',' order by player_id, format), '') from player_stats where tenant_id = @tenant"),
              await ScalarOwnerAsync<string>("select coalesce(string_agg(format('%s|%s|%s|%s', player_id, category_id, asked, credit_sum), ',' order by player_id, category_id), '') from player_category_stats where tenant_id = @tenant"),
              await ScalarOwnerAsync<string>("select coalesce(string_agg(format('%s|%s|%s|%s', question_id, asked, served, credit_sum), ',' order by question_id), '') from question_stats where tenant_id = @tenant"));
 
