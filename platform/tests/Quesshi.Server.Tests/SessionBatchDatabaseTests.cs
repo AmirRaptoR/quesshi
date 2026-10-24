@@ -5,7 +5,9 @@ using Npgsql;
 using Orleans;
 using Quesshi.Application.Sessions;
 using Quesshi.Bench.Live;
+using Quesshi.Domain;
 using Quesshi.Engine.Contracts;
+using Quesshi.Formats.Live;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Infrastructure.Clock;
 using Quesshi.Infrastructure.Database;
@@ -26,6 +28,39 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassF
 {
     private static readonly TimeSpan Question = BenchLiveFormat.Question;
     private static readonly TimeSpan Grace = BenchLiveFormat.Grace;
+
+    [SkippableFact]
+    public async Task A_live_deadline_more_than_forty_seconds_late_ends_as_outage_without_recording_misses()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var clock = new TestClock(TruncateToMicroseconds(DateTimeOffset.UtcNow));
+        await using var owner = await PrepareAsync();
+        var seeded = await SeedLiveQuestionAsync(owner, clock.Now + TimeSpan.FromMinutes(5));
+        await using var silo = await StartSiloAsync(new CountingObserver(), format: new LiveFormat(), clock: clock);
+
+        clock.Set(seeded.Deadline + TimeSpan.FromSeconds(41));
+        await silo.Grains.GetGrain<ISessionGrain>($"{seeded.Tenant}/{seeded.Session}").TimeoutAsync(seeded.Deadline);
+
+        Assert.Equal("outage", await ScalarAsync<string>(owner, "select end_reason from sessions where tenant_id = @tenant and id = @session", ("tenant", seeded.Tenant), ("session", seeded.Session)));
+        Assert.Equal(0, await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session", ("tenant", seeded.Tenant), ("session", seeded.Session)));
+    }
+
+    [SkippableFact]
+    public async Task A_live_deadline_at_forty_seconds_late_remains_eligible_for_the_format_transition()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        var clock = new TestClock(TruncateToMicroseconds(DateTimeOffset.UtcNow));
+        await using var owner = await PrepareAsync();
+        var seeded = await SeedLiveQuestionAsync(owner, clock.Now + TimeSpan.FromMinutes(5));
+        await using var silo = await StartSiloAsync(new CountingObserver(), format: new LiveFormat(), clock: clock);
+
+        clock.Set(seeded.Deadline + TimeSpan.FromSeconds(40));
+        await silo.Grains.GetGrain<ISessionGrain>($"{seeded.Tenant}/{seeded.Session}").TimeoutAsync(seeded.Deadline);
+
+        Assert.Equal("running", await ScalarAsync<string>(owner, "select status from sessions where tenant_id = @tenant and id = @session", ("tenant", seeded.Tenant), ("session", seeded.Session)));
+        Assert.Equal("2", await ScalarAsync<string>(owner, "select phase from sessions where tenant_id = @tenant and id = @session", ("tenant", seeded.Tenant), ("session", seeded.Session)));
+        Assert.Equal(2, await ScalarAsync<long>(owner, "select count(*) from session_answers where tenant_id = @tenant and session_id = @session and answer is null", ("tenant", seeded.Tenant), ("session", seeded.Session)));
+    }
 
     [SkippableFact]
     public async Task Two_silos_keep_every_acknowledged_near_deadline_answer_durable_and_scored_once()
@@ -283,14 +318,27 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassF
         return new Seeded(tenant.Id, session.Id, ids, deadline);
     }
 
-    private async Task<TestSilo> StartSiloAsync(ISessionTurnObserver observer, ITenantDb? wrapper = null, IEvents? events = null)
+    private async Task<Seeded> SeedLiveQuestionAsync(NpgsqlConnection owner, DateTimeOffset dueAt)
+    {
+        var seeded = await SeedQuestionAsync(owner, 2, TimeSpan.FromSeconds(30));
+        await ExecuteAsync(owner, """
+            update sessions set format = 'live', phase = '1', slot = 0, step = 0, phase_started_at = @opened, due_at = @deadline,
+              state = jsonb_build_object('questionEndsAt', @questionEnd, 'expected', to_jsonb(@players), 'answered', '[]'::jsonb, 'missStreaks', '{}'::jsonb)
+            where tenant_id = @tenant and id = @session
+            """,
+            ("tenant", seeded.Tenant), ("session", seeded.Session), ("opened", dueAt - MatchRules.QuestionTime), ("deadline", dueAt),
+            ("questionEnd", dueAt - MatchRules.NetworkGrace), ("players", seeded.Players));
+        return seeded with { Deadline = dueAt };
+    }
+
+    private async Task<TestSilo> StartSiloAsync(ISessionTurnObserver observer, ITenantDb? wrapper = null, IEvents? events = null, IFormat? format = null, IClock? clock = null)
     {
         var sources = new DatabaseSources(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));
         var app = Program.CreateApplication(
             sources,
             TestPorts.Allocate(),
             TestPorts.Allocate(),
-            configuredFormats: new FormatRegistry([new BenchLiveFormat()]),
+            configuredFormats: new FormatRegistry([format ?? new BenchLiveFormat()]),
             configuredKinds: new KindRegistry([new ChoiceKind()]),
             turnObserver: observer,
             configureServices: services =>
@@ -299,6 +347,8 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassF
                     services.Replace(ServiceDescriptor.Singleton<ITenantDb>(provider => faulting.Wrap(new TenantDb(provider.GetRequiredService<DatabaseSources>()))));
                 if (events is not null)
                     services.Replace(ServiceDescriptor.Singleton<IEvents>(events));
+                if (clock is not null)
+                    services.Replace(ServiceDescriptor.Singleton<IClock>(clock));
             });
         app.Urls.Add("http://127.0.0.1:0");
         await app.StartAsync();
@@ -347,6 +397,9 @@ public sealed class SessionBatchDatabaseTests(PostgresFixture fixture) : IClassF
         foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
         await command.ExecuteNonQueryAsync();
     }
+
+    private static DateTimeOffset TruncateToMicroseconds(DateTimeOffset value)
+        => new(value.Ticks - (value.Ticks % 10), value.Offset);
 
     private sealed record Seeded(Guid Tenant, Guid Session, Guid[] Players, DateTimeOffset Deadline);
 
