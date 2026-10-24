@@ -7,6 +7,30 @@ namespace Quesshi.Application.Tests;
 public sealed class SessionViewRendererTests
 {
     [Fact]
+    public void Renderer_marks_a_recent_signed_in_player_online_in_the_roster()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:01:00Z");
+        var state = State(3) with
+        {
+            Seats = SessionState.ReadOnly(new[]
+            {
+                new Seat("alice", "player", LastSeenAt: now.AddSeconds(-60)),
+                new Seat("bob", "player", LastSeenAt: now.AddSeconds(-61)),
+                new Seat("guest", "player", IsGuest: true, LastSeenAt: now)
+            }.ToDictionary(seat => seat.Player))
+        };
+
+        var view = new ViewRenderer().Render(state, new ProbeFormat(), "alice", now);
+        using var json = JsonDocument.Parse(view.Json);
+        var online = json.RootElement.GetProperty("Roster").GetProperty("Seats")
+            .EnumerateArray().ToDictionary(seat => seat.GetProperty("Id").GetString()!, seat => seat.GetProperty("Online").GetBoolean());
+
+        Assert.True(online["alice"]);
+        Assert.False(online["bob"]);
+        Assert.False(online["guest"]);
+    }
+
+    [Fact]
     public void Renderer_gives_each_viewer_only_their_answer_until_the_session_ends()
     {
         var state = SessionState.Create(
