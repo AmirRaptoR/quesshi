@@ -76,13 +76,12 @@ internal static class ReportsModerationRoutes
     {
         await locks.ContentAsync(transaction, [questionId], cancellationToken);
         if (await content.GetAsync(transaction, questionId, cancellationToken) is null) return false;
-        if (!await content.SetStatusAsync(transaction, questionId, QuestionStatus.Approved, cancellationToken)) return false;
 
         await transaction.ExecuteAsync("""
             delete from question_reports
             where question_id = @questionId
             """, new { questionId }, cancellationToken);
-        return true;
+        return await content.SetStatusAsync(transaction, questionId, QuestionStatus.Approved, cancellationToken);
     }
 
     private sealed record ReportReasonRow(Guid QuestionId, long Count, string Reason);
