@@ -6,6 +6,7 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args is [LoadWorkerHost.Argument]) return await LoadWorkerHost.RunAsync(Console.In, Console.Out);
         try
         {
             var options = BenchmarkOptions.Parse(args);

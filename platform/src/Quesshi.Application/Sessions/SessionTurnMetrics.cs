@@ -9,6 +9,9 @@ public interface ISessionTurnObserver
     void Record(SessionTurnSample sample);
 
     void RecordTimerLag(TimeSpan lag);
+
+    /// <summary>Time from an ordinary answer being accepted in memory to its batch committing.</summary>
+    void RecordAnswerCommit(TimeSpan elapsed) { }
 }
 
 public enum SessionTurnKind

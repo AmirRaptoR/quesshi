@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using Quesshi.Engine.Contracts;
@@ -12,6 +13,7 @@ internal sealed class SessionTransition : ISession
     private readonly IClock _clock;
     private readonly TimeSpan _grace;
     private readonly bool _scored;
+    private Seat[]? _orderedSeats;
 
     public SessionTransition(SessionState initial, IKindRegistry kinds, IClock clock, TimeSpan grace, bool scored = false)
     {
@@ -28,12 +30,13 @@ internal sealed class SessionTransition : ISession
     public bool Changed { get; private set; }
     public SessionRow Session => Current.Session;
     public JsonElement State { get => Current.FormatState; set => Set(Current with { FormatState = value.Clone() }); }
-    public IReadOnlyList<Seat> Seats => Current.Seats.Values.OrderBy(x => x.Player, StringComparer.Ordinal).ToArray();
+    public IReadOnlyList<Seat> Seats => _orderedSeats ??= Current.Seats.Values.OrderBy(x => x.Player, StringComparer.Ordinal).ToArray();
     public IReadOnlyList<SessionItem> Items => Current.Items.Values.OrderBy(x => x.Metadata.Slot).Select(x => x.Metadata).ToArray();
     public int ItemCount => Current.ItemCount;
-    public DateTimeOffset Now => _clock.Now;
+    public DateTimeOffset Now => Microseconds(_clock.Now);
+    // Stored answers are immutable documents the session keeps for its lifetime, so they are handed out without a copy.
     public StoredAnswer? Answer(string player, int slot) => Current.Answers.TryGetValue(new(player, slot), out var answer)
-        ? new(answer.Stored?.Clone(), answer.Revision, answer.Miss) : null;
+        ? new(answer.Stored, answer.Revision, answer.Miss) : null;
     public JsonElement Card(int slot) => Item(slot).Card.Clone();
 
     public Graded Grade(Command command)
@@ -58,15 +61,14 @@ internal sealed class SessionTransition : ISession
     {
         var key = new AnswerKey(graded.Command.Player, graded.Command.At.Slot);
         if (Current.Answers.ContainsKey(key)) throw new SessionCommandException("invalid_command");
-        var answers = Copy(Current.Answers); answers[key] = ToAnswer(graded, points, graded.Command.Revision);
-        var seats = Copy(Current.Seats); var seat = Seat(key.Player) with { Score = Seat(key.Player).Score + points }; seats[key.Player] = seat;
-        Set(Current with { Answers = ReadOnly(answers), Seats = ReadOnly(seats) });
+        var seat = Seat(key.Player) with { Score = Seat(key.Player).Score + points };
+        Set(Current with { Answers = With(Current.Answers, key, ToAnswer(graded, points, graded.Command.Revision)), Seats = With(Current.Seats, key.Player, seat) });
     }
     public void Replace(Graded graded, int revision)
     {
         var key = new AnswerKey(graded.Command.Player, graded.Command.At.Slot);
         if (!Current.Answers.TryGetValue(key, out var old) || revision <= old.Revision) throw new SessionCommandException("invalid_command");
-        var answers = Copy(Current.Answers); answers[key] = ToAnswer(graded, old.Points, revision); Set(Current with { Answers = ReadOnly(answers) });
+        Set(Current with { Answers = With(Current.Answers, key, ToAnswer(graded, old.Points, revision)) });
     }
     public void RecordMiss(string player, int slot) => RecordMiss(new(player, slot));
     public void RecordMisses(int slot) { foreach (var player in Seats.Where(x => x.Role == "player" && !x.Eliminated).Select(x => x.Player).ToArray()) RecordMiss(player, slot); }
@@ -90,7 +92,7 @@ internal sealed class SessionTransition : ISession
     }
     public void Release(int slot) { var seats = Copy(Current.Seats); foreach (var (id, seat) in seats.ToArray()) seats[id] = seat with { ReleasedSlot = Math.Max(seat.ReleasedSlot ?? -1, slot) }; Set(Current with { Seats = ReadOnly(seats) }); }
     public void ReleaseTo(string player, int slot) => SetSeat(player, Seat(player) with { ReleasedSlot = Math.Max(Seat(player).ReleasedSlot ?? -1, slot) });
-    public void SetDeadline(DateTimeOffset at) => Set(Current with { Session = Session with { DueAt = MaximumDueAt(at) } });
+    public void SetDeadline(DateTimeOffset at) => Set(Current with { Session = Session with { DueAt = MaximumDueAt(Microseconds(at)) } });
     public void ClearDeadline() => Set(Current with { Session = Session with { DueAt = Session.StartedAt?.AddDays(90) } });
     public void Eliminate(string player, string why) => SetSeat(player, Seat(player) with { Eliminated = true, Status = SeatStatus.Eliminated });
     public void SetSeatResult(string player, SeatStatus status, JsonElement result) => SetSeat(player, Seat(player) with { Status = status, Result = result.Clone() });
@@ -134,13 +136,19 @@ internal sealed class SessionTransition : ISession
         Set(Current with { Session = Session with { Ended = true, EndReason = reason, Result = result.Clone(), DueAt = null, RetryAt = null, FaultCount = 0, Status = "finished" }, Seats = ReadOnly(seats), FormatState = JsonSerializer.SerializeToElement(new { }) });
     }
 
+    // PostgreSQL keeps microseconds. A state kept after a write must hold the value the database holds, because a timeout is delivered by its stored due time.
+    private static DateTimeOffset Microseconds(DateTimeOffset value) => new(value.Ticks - value.Ticks % 10, value.Offset);
+
     private DateTimeOffset MaximumDueAt(DateTimeOffset requested) => Session.StartedAt is { } started && requested > started.AddDays(90)
         ? started.AddDays(90)
         : requested;
 
-    private void RecordMiss(AnswerKey key) { if (Current.Answers.ContainsKey(key)) return; var values = Copy(Current.Answers); values[key] = new(null, false, 0, 0, TimeSpan.Zero, Now, true); Set(Current with { Answers = ReadOnly(values) }); }
-    private void SetSeat(string player, Seat seat) { var values = Copy(Current.Seats); values[player] = seat; Set(Current with { Seats = ReadOnly(values) }); }
-    private void Set(SessionState state) { Current = state; Changed = true; }
+    private void RecordMiss(AnswerKey key) { if (Current.Answers.ContainsKey(key)) return; Set(Current with { Answers = With(Current.Answers, key, new(null, false, 0, 0, TimeSpan.Zero, Now, true)) }); }
+    private void SetSeat(string player, Seat seat) => Set(Current with { Seats = With(Current.Seats, player, seat) });
+    private void Set(SessionState state) { Current = state; Changed = true; _orderedSeats = null; }
+    // A persistent map changes one entry in logarithmic time and keeps the others by reference; the first change converts a plain snapshot.
+    private static IReadOnlyDictionary<TKey, TValue> With<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> source, TKey key, TValue value) where TKey : notnull =>
+        (source as ImmutableDictionary<TKey, TValue> ?? source.ToImmutableDictionary()).SetItem(key, value);
     private SessionItemState Item(int slot) => Current.Items.TryGetValue(slot, out var item) ? item : throw new KeyNotFoundException($"Slot {slot} is not loaded.");
     private Seat Seat(string player) => Current.Seats.TryGetValue(player, out var seat) ? seat : throw new KeyNotFoundException($"Player '{player}' is not seated.");
     private static AnswerRecord ToAnswer(Graded value, int points, int revision) => new(value.Stored?.Clone(), value.IsGraded, value.Credit, points, value.Taken, value.Command.Received, Revision: revision);

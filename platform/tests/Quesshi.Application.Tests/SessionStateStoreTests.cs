@@ -117,7 +117,9 @@ public sealed class SessionStateStoreTests
         await new SessionStateStore(database).SaveAsync(tenant, session, 4, initial, current);
 
         var command = Assert.Single(database.Transaction.Commands, sql => sql.StartsWith("update session_participants", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("eligible = @eligible", command, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eligible = r.eligible", command, StringComparison.OrdinalIgnoreCase);
+        var rows = (string)database.Transaction.CommandParameters[database.Transaction.Commands.IndexOf(command)]!.GetType().GetProperty("rows")!.GetValue(database.Transaction.CommandParameters[database.Transaction.Commands.IndexOf(command)])!;
+        Assert.Contains("\"eligible\":true", rows, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -154,8 +156,9 @@ public sealed class SessionStateStoreTests
         public List<string> Queries { get; } = [];
         public List<object?> QueryParameters { get; } = [];
         public List<string> Commands { get; } = [];
+        public List<object?> CommandParameters { get; } = [];
         public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<T>>([]);
-        public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) { Commands.Add(sql); return Task.FromResult(1); }
+        public Task<int> ExecuteAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default) { Commands.Add(sql); CommandParameters.Add(parameters); return Task.FromResult(1); }
         public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, CancellationToken cancellationToken = default)
         {
             Queries.Add(sql);

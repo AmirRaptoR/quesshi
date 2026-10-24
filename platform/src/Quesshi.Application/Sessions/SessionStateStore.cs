@@ -49,29 +49,29 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
         }, cancellationToken);
         if (version is null) throw new StaleActivationException();
 
-        foreach (var (key, answer) in current.Answers.Where(pair =>
-                     !initial.Answers.TryGetValue(pair.Key, out var previous) || !AnswerEquals(previous, pair.Value)))
+        var changedAnswers = current.Answers.Where(pair =>
+                !initial.Answers.TryGetValue(pair.Key, out var previous) || !AnswerEquals(previous, pair.Value))
+            .Select(pair => new AnswerRow(
+                pair.Key.Slot,
+                Guid.Parse(pair.Key.Player),
+                pair.Value.Revision,
+                pair.Value.Miss ? null : JsonSerializer.Serialize(pair.Value.Stored),
+                pair.Value.IsGraded ? pair.Value.Credit : null,
+                pair.Value.Points,
+                (int)Math.Min(pair.Value.Taken.TotalMilliseconds, int.MaxValue),
+                pair.Value.Received))
+            .ToArray();
+        // One statement per table however many answers the batch holds (architecture 7.4.1).
+        if (changedAnswers.Length > 0)
         {
-            var playerId = Guid.Parse(key.Player);
             await tx.ExecuteAsync("""
                 insert into session_answers (tenant_id, session_id, slot, player_id, revision, answer, credit, points, taken_ms, received_at)
-                values (@tenantId, @sessionId, @slot, @playerId, @revision, cast(@answer as jsonb), @credit, @points, @takenMs, @receivedAt)
+                select @tenantId, @sessionId, r.slot, r.player_id, r.revision, cast(r.answer as jsonb), r.credit, r.points, r.taken_ms, r.received_at
+                from jsonb_to_recordset(cast(@rows as jsonb)) as r(slot int, player_id uuid, revision int, answer text, credit real, points int, taken_ms int, received_at timestamptz)
                 on conflict (tenant_id, session_id, slot, player_id, seq) do update set revision = excluded.revision,
                   answer = excluded.answer, credit = excluded.credit, points = excluded.points, taken_ms = excluded.taken_ms,
                   received_at = excluded.received_at
-                """, new
-            {
-                tenantId,
-                sessionId,
-                slot = key.Slot,
-                playerId,
-                revision = answer.Revision,
-                answer = answer.Miss ? null : JsonSerializer.Serialize(answer.Stored),
-                credit = answer.IsGraded ? answer.Credit : (double?)null,
-                answer.Points,
-                takenMs = (int)Math.Min(answer.Taken.TotalMilliseconds, int.MaxValue),
-                receivedAt = answer.Received
-            }, cancellationToken);
+                """, new { tenantId, sessionId, rows = JsonSerializer.Serialize(changedAnswers, RowJson) }, cancellationToken);
         }
         await WriteSeatsAsync(tx, tenantId, sessionId, initial, current, cancellationToken);
         if (!initial.Session.Ended && session.Ended && events is not null)
@@ -83,34 +83,40 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
     /// <summary>Writes every seat a transition changed, exactly as a command or timeout transition does.</summary>
     internal static async Task WriteSeatsAsync(ITenantTx tx, Guid tenantId, Guid sessionId, SessionState initial, SessionState current, CancellationToken cancellationToken)
     {
-        foreach (var seat in current.Seats.Values.Where(seat =>
-                     !initial.Seats.TryGetValue(seat.Player, out var previous) || !SeatEquals(previous, seat)))
-        {
-            await tx.ExecuteAsync("""
-                update session_participants set status = @status, phase = @phase, slot = @slot, step = @step,
-                  slot_started_at = @positionStartedAt, revealed_slot = @releasedSlot, score = @score,
-                  place = @place, outcome = @outcome, eligible = @eligible, ranked = @ranked, result = cast(@result as jsonb)
-                where tenant_id = @tenantId and session_id = @sessionId and player_id = @playerId
-                """, new
-            {
-                tenantId,
-                sessionId,
-                playerId = Guid.Parse(seat.Player),
-                status = SeatStatusName(seat),
-                phase = seat.Position?.Phase.ToString() ?? "idle",
-                slot = seat.Position?.Slot ?? -1,
-                step = seat.Position?.Step ?? 0,
+        var changed = current.Seats.Values.Where(seat =>
+                !initial.Seats.TryGetValue(seat.Player, out var previous) || !SeatEquals(previous, seat))
+            .Select(seat => new SeatRow(
+                Guid.Parse(seat.Player),
+                SeatStatusName(seat),
+                seat.Position?.Phase.ToString() ?? "idle",
+                seat.Position?.Slot ?? -1,
+                seat.Position?.Step ?? 0,
                 seat.PositionStartedAt,
-                releasedSlot = seat.ReleasedSlot ?? -1,
+                seat.ReleasedSlot ?? -1,
                 seat.Score,
                 seat.Place,
                 seat.Outcome,
                 seat.Eligible,
                 seat.Ranked,
-                result = JsonSerializer.Serialize(seat.Result ?? JsonSerializer.SerializeToElement(new { }))
-            }, cancellationToken);
-        }
+                JsonSerializer.Serialize(seat.Result ?? JsonSerializer.SerializeToElement(new { }))))
+            .ToArray();
+        if (changed.Length == 0) return;
+        await tx.ExecuteAsync("""
+            update session_participants p set status = r.status, phase = r.phase, slot = r.slot, step = r.step,
+              slot_started_at = r.slot_started_at, revealed_slot = r.revealed_slot, score = r.score,
+              place = r.place, outcome = r.outcome, eligible = r.eligible, ranked = r.ranked, result = cast(r.result as jsonb)
+            from jsonb_to_recordset(cast(@rows as jsonb)) as r(player_id uuid, status text, phase text, slot int, step int, slot_started_at timestamptz,
+              revealed_slot int, score int, place int, outcome text, eligible boolean, ranked boolean, result text)
+            where p.tenant_id = @tenantId and p.session_id = @sessionId and p.player_id = r.player_id
+            """, new { tenantId, sessionId, rows = JsonSerializer.Serialize(changed, RowJson) }, cancellationToken);
     }
+
+    private static readonly JsonSerializerOptions RowJson = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+
+    private sealed record AnswerRow(int Slot, Guid PlayerId, int Revision, string? Answer, double? Credit, int Points, int TakenMs, DateTimeOffset ReceivedAt);
+
+    private sealed record SeatRow(Guid PlayerId, string Status, string Phase, int Slot, int Step, DateTimeOffset? SlotStartedAt,
+        int RevealedSlot, int Score, int? Place, string? Outcome, bool Eligible, bool? Ranked, string Result);
 
     internal static Task NotifyAsync(ITenantTx tx, Guid tenantId, Guid sessionId, long version, string phase, CancellationToken cancellationToken) =>
          tx.ExecuteAsync("select pg_notify('quesshi_session', @message)", new { message = $"{tenantId}:{sessionId}:{version}:{phase}" }, cancellationToken);
@@ -190,7 +196,9 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
         _ => "active",
     };
 
+    // Records are immutable and a transition copies unchanged entries by reference, so identity settles most comparisons.
     private static bool AnswerEquals(AnswerRecord left, AnswerRecord right) =>
+        ReferenceEquals(left, right) ||
         left.IsGraded == right.IsGraded
         && left.Credit == right.Credit
         && left.Points == right.Points
@@ -202,6 +210,7 @@ public sealed class SessionStateStore(ITenantDb database, IEvents? events = null
         && JsonEquals(left.Stored, right.Stored);
 
     private static bool SeatEquals(Seat left, Seat right) =>
+        ReferenceEquals(left, right) ||
         left.Player == right.Player
         && left.Role == right.Role
         && left.Position == right.Position

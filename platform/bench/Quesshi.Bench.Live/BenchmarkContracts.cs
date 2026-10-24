@@ -6,23 +6,33 @@ using Quesshi.Kinds.Choice;
 namespace Quesshi.Bench.Live;
 
 public enum LiveScenario { Burst, Spread, BurstStreams, Cold, Pool10 }
-public sealed record BenchmarkOptions(int Players, LiveScenario Scenario, string? Output, bool Matrix = false, string? PostgreSql = null, bool DisposablePostgreSql = false)
+public sealed record BenchmarkOptions(int Players, LiveScenario Scenario, string? Output, bool Matrix = false, string? PostgreSql = null, bool DisposablePostgreSql = false, IReadOnlyList<int>? Counts = null, int Repetitions = 1)
 {
-    public static readonly int[] PlayerCounts = [20, 100, 250, 500];
+    public const int MinimumPlayers = 2;
+    public const int MaximumPlayers = 500;
+    /// <summary>The candidate counts of the matrix: the lower bound, today's default, and a ladder up to the platform maximum.</summary>
+    public static readonly int[] DefaultCounts = [2, 20, 50, 100, 150, 200, 250, 350, 500];
+    public IReadOnlyList<int> MatrixCounts => Counts ?? DefaultCounts;
+
     public static BenchmarkOptions Parse(string[] args)
     {
         var players = 500; var scenario = LiveScenario.Burst; string? output = null; string? postgreSql = null; var matrix = false; var disposablePostgreSql = false;
+        IReadOnlyList<int>? counts = null; var repetitions = 1;
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] == "--players" && ++i < args.Length) players = int.Parse(args[i]);
             else if (args[i] == "--scenario" && ++i < args.Length && !Enum.TryParse<LiveScenario>(args[i].Replace("-", ""), true, out scenario)) throw new ArgumentException("Unknown scenario.");
             else if (args[i] == "--output" && ++i < args.Length) output = args[i];
             else if (args[i] == "--postgres" && ++i < args.Length) postgreSql = args[i];
+            else if (args[i] == "--counts" && ++i < args.Length) counts = args[i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).Distinct().Order().ToArray();
+            else if (args[i] == "--repetitions" && ++i < args.Length) repetitions = int.Parse(args[i]);
             else if (args[i] == "--matrix") matrix = true;
             else if (args[i] == "--allow-disposable-postgres") disposablePostgreSql = true;
         }
-        if (!PlayerCounts.Contains(players)) throw new ArgumentOutOfRangeException(nameof(args), "--players must be 20, 100, 250, or 500.");
-        return new(players, scenario, output, matrix, postgreSql, disposablePostgreSql);
+        if (players is < MinimumPlayers or > MaximumPlayers) throw new ArgumentOutOfRangeException(nameof(args), $"--players must be {MinimumPlayers} to {MaximumPlayers}.");
+        if (counts is not null && counts.Any(count => count is < MinimumPlayers or > MaximumPlayers)) throw new ArgumentOutOfRangeException(nameof(args), $"--counts must be {MinimumPlayers} to {MaximumPlayers}.");
+        if (repetitions < 1) throw new ArgumentOutOfRangeException(nameof(args), "--repetitions must be at least 1.");
+        return new(players, scenario, output, matrix, postgreSql, disposablePostgreSql, counts, repetitions);
     }
     public int StreamCount => Scenario == LiveScenario.BurstStreams ? 500 : 0;
     public int ItemCount => Scenario == LiveScenario.Cold ? 100 : 1;
@@ -41,9 +51,23 @@ public sealed record Distribution(int SampleCount, double? P50, double? P95, dou
 public enum CommandOutcome { Accepted, LateAnswer, StalePosition, Failed, TimedOut }
 public sealed record CommandSample(Guid PlayerId, DateTimeOffset SentAt, DateTimeOffset? ReceivedAt, TimeSpan Latency, CommandOutcome Outcome, string? Error);
 public sealed record CommandOutcomeSummary(int CommandsSent, int Accepted, int LateAnswers, int StalePositions, int OtherErrors, int Timeouts);
-public sealed record ScenarioReport(int Players, string Scenario, int Streams, int Items, int PoolConnections, int ViewsReceived, Distribution OrdinaryAnswerBusy, Distribution RoundCloseBusy, Distribution FinishBusy, Distribution CommandLatency, Distribution TimerLag, Distribution PoolWait, Distribution ColdActivationBusy, Distribution ColdActivationPoolWait, double? LastAcceptedCommittedAfterDeadlineMs, int OnTimeRefusedAtClose, int CommandsSent, int Accepted, int LateAnswers, int StalePositions, int OtherErrors, int Failures, int Timeouts, int CommandsWithoutServerReceipt, IReadOnlyDictionary<string, int> FailureCauses);
-public sealed record BenchmarkRunEnvironment(string Hostname, string CpuModel, int LogicalProcessorCount, long AvailableMemoryBytes, string OperatingSystem, string DotNet, string PostgreSqlVersion, string PostgreSqlLocation);
-public sealed record BenchmarkReport(string SourceRevision, DateTimeOffset RunAtUtc, string Command, BenchmarkRunEnvironment Environment, IReadOnlyList<ScenarioReport> Scenarios);
+public sealed record GcActivity(int Gen0, int Gen1, int Gen2, double PauseMs);
+public sealed record ScenarioReport(int Players, string Scenario, int Streams, int Items, int PoolConnections, int ViewsReceived, Distribution OrdinaryAnswerBusy, Distribution RoundCloseBusy, Distribution FinishBusy, Distribution CommandLatency, Distribution TimerLag, Distribution PoolWait, Distribution ColdActivationBusy, Distribution ColdActivationPoolWait, double? LastAcceptedCommittedAfterDeadlineMs, int OnTimeRefusedAtClose, int CommandsSent, int Accepted, int LateAnswers, int StalePositions, int OtherErrors, int Failures, int Timeouts, int CommandsWithoutServerReceipt, IReadOnlyDictionary<string, int> FailureCauses)
+{
+    /// <summary>Time from an ordinary answer being accepted to its batch committing (not part of the grain's busy time).</summary>
+    public Distribution AnswerCommit { get; init; } = new(0, null, null, null, null, UnavailableReason: "not measured");
+    /// <summary>Collections and pause time of the silo process during the measured window.</summary>
+    public GcActivity? Gc { get; init; }
+    public int Repetition { get; init; } = 1;
+    public BudgetAssessment? Assessment { get; init; }
+}
+public sealed record BenchmarkRunEnvironment(string HostClass, string CpuModel, int LogicalProcessorCount, long AvailableMemoryBytes, string OperatingSystem, string DotNet, string PostgreSqlVersion, string PostgreSqlLocation);
+public sealed record BenchmarkReport(string SourceRevision, DateTimeOffset RunAtUtc, string Command, BenchmarkRunEnvironment Environment, IReadOnlyList<ScenarioReport> Scenarios)
+{
+    public const string CurrentSchema = "quesshi.live-benchmark/2";
+    public string Schema { get; init; } = CurrentSchema;
+    public LiveMaximumSelection? Selection { get; init; }
+}
 
 public static class BenchmarkMeasurementClassifier
 {
@@ -94,7 +118,9 @@ public static class BenchmarkReportAssembler
         IEnumerable<TimeSpan> timerLags,
         IEnumerable<TimeSpan> poolWaits,
         IEnumerable<SessionTurnSample> coldActivation,
-        IEnumerable<TimeSpan> coldPoolWaits)
+        IEnumerable<TimeSpan> coldPoolWaits,
+        IEnumerable<TimeSpan>? answerCommits = null,
+        GcActivity? gc = null)
     {
         var commandSamples = commands.ToArray();
         var turns = measurements.ToArray();
@@ -112,7 +138,7 @@ public static class BenchmarkReportAssembler
             .OrderBy(group => group.Key, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
-        return new ScenarioReport(
+        var report = new ScenarioReport(
             options.Players,
             options.Scenario.CliName(),
             options.StreamCount,
@@ -137,6 +163,11 @@ public static class BenchmarkReportAssembler
             outcomes.LateAnswers + outcomes.StalePositions + outcomes.OtherErrors,
             outcomes.Timeouts,
             commandSamples.Count(sample => sample.ReceivedAt is null),
-            failureCauses);
+            failureCauses)
+        {
+            AnswerCommit = ReportBuilder.DistributionOf(answerCommits ?? [], "no ordinary answer was committed"),
+            Gc = gc,
+        };
+        return report with { Assessment = BudgetClassifier.Assess(report) };
     }
 }

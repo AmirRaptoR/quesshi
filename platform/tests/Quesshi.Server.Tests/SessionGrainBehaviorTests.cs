@@ -4,8 +4,10 @@ using System.Data.Common;
 using Microsoft.Extensions.Logging.Abstractions;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
+using Quesshi.Formats.Poll;
 using Quesshi.Grains;
 using Quesshi.Grains.Abstractions;
+using Quesshi.Kinds.PollChoice;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Sessions;
 using Quesshi.Shared;
@@ -102,10 +104,11 @@ public sealed class SessionGrainBehaviorTests
     public async Task Post_commit_snapshot_reload_failures_discard_the_stale_cached_state()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
-        var grain = CreateGrain(new ThrowingSnapshotLoader(), new MutatingFormat(), new RecordingDeadlines(), now,
+        var grain = CreateGrain(new ThrowingSnapshotLoader(), new SlotMovingFormat(), new RecordingDeadlines(), now,
             database: new SavingDatabase(), initialState: State());
 
-        var result = await grain.ExecuteAsync(Command(now));
+        // A command that is not a deferred answer commits at once; moving to another slot reloads the durable snapshot.
+        var result = await grain.ExecuteAsync(Command(now, type: "next"));
 
         Assert.Equal("view_unavailable", result.Code);
         Assert.True(result.Retryable);
@@ -114,26 +117,41 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
-    public async Task Stale_and_unknown_commit_outcomes_discard_the_cached_snapshot()
+    public async Task Stale_commit_outcomes_discard_the_cached_snapshot_before_retry()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
-        var stale = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now, database: new FailingDatabase(new StaleActivationException()));
+        var loader = new ToggleSnapshotLoader { State = State() };
+        var stale = CreateGrain(loader, new MutatingFormat(), new RecordingDeadlines(), now, database: new FailingDatabase(new StaleActivationException()));
 
         var staleResult = await stale.ExecuteAsync(Command(now));
 
         Assert.Equal("stale_activation", staleResult.Code);
         Assert.True(staleResult.Retryable);
-        Assert.Null(StateOf(stale));
         Assert.Equal(1, stale.DeactivateCount);
 
-        var unknown = CreateGrain(State(), new MutatingFormat(), new RecordingDeadlines(), now,
+        loader.State = State(ended: true);
+        var retry = await stale.ExecuteAsync(Command(now));
+
+        Assert.Equal("terminal", retry.Code);
+        Assert.Equal(2, loader.LoadCount);
+    }
+
+    [Fact]
+    public async Task Repeated_unknown_commit_outcomes_request_deactivation_once()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var loader = new ToggleSnapshotLoader { State = State() };
+        var unknown = CreateGrain(loader, new MutatingFormat(), new RecordingDeadlines(), now,
             database: new FailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost"))));
 
         var unknownResult = await unknown.ExecuteAsync(Command(now));
+        var retry = await unknown.ExecuteAsync(Command(now));
 
         Assert.Equal("retryable", unknownResult.Code);
         Assert.True(unknownResult.Retryable);
-        Assert.Null(StateOf(unknown));
+        Assert.Equal("retryable", retry.Code);
+        Assert.True(retry.Retryable);
+        Assert.Equal(2, loader.LoadCount);
         Assert.Equal(1, unknown.DeactivateCount);
     }
 
@@ -236,6 +254,60 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
+    public async Task Conflicting_pending_poll_revision_is_rejected_without_acknowledging_the_original_answer()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var database = new SavingDatabase();
+        database.HoldNextWrite();
+        var snapshot = PollState();
+        var loader = new CurrentSnapshotLoader { Current = () => snapshot };
+        var grain = CreateGrain(loader, new PollFormat(), new RecordingDeadlines(), now, database: database,
+            kinds: new KindRegistry([new PollChoiceKind()]));
+
+        var original = grain.ExecuteAsync(Command(now, payload: "{\"option\":\"yes\"}", revision: 1));
+        await database.WriteHeld.WaitAsync(TimeSpan.FromSeconds(1));
+
+        try
+        {
+            var conflict = grain.ExecuteAsync(Command(now, payload: "{\"option\":\"no\"}", revision: 1));
+
+            Assert.Same(conflict, await Task.WhenAny(conflict, Task.Delay(TimeSpan.FromSeconds(1))));
+            Assert.Equal("revision_conflict", (await conflict).Code);
+            Assert.False(original.IsCompleted);
+        }
+        finally
+        {
+            database.ReleaseHeldWrite();
+        }
+
+        Assert.Equal("ok", (await original).Code);
+    }
+
+    [Fact]
+    public async Task Exact_duplicate_pending_poll_revision_waits_for_the_original_batch()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var database = new SavingDatabase();
+        database.HoldNextWrite();
+        var snapshot = PollState();
+        var loader = new CurrentSnapshotLoader { Current = () => snapshot };
+        var grain = CreateGrain(loader, new PollFormat(), new RecordingDeadlines(), now, database: database,
+            kinds: new KindRegistry([new PollChoiceKind()]));
+
+        var original = grain.ExecuteAsync(Command(now, payload: "{\"option\":\"yes\"}", revision: 1));
+        await database.WriteHeld.WaitAsync(TimeSpan.FromSeconds(1));
+        var duplicate = grain.ExecuteAsync(Command(now, payload: "{\"option\":\"yes\"}", revision: 1));
+
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+        Assert.False(duplicate.IsCompleted);
+
+        database.ReleaseHeldWrite();
+
+        Assert.Equal("ok", (await original).Code);
+        Assert.Equal("ok", (await duplicate).Code);
+    }
+
+    [Fact]
     public async Task Timer_and_sweep_deliveries_of_one_due_identity_persist_one_timeout()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:10Z");
@@ -286,7 +358,7 @@ public sealed class SessionGrainBehaviorTests
         Assert.Null(StateOf(unknown));
         Assert.Equal(1, unknown.DeactivateCount);
 
-        var reload = CreateGrain(new ThrowingSnapshotLoader(), new TimeoutFormat(), new RecordingDeadlines(), now,
+        var reload = CreateGrain(new ThrowingSnapshotLoader(), new SlotMovingFormat(), new RecordingDeadlines(), now,
             database: new SavingDatabase(), initialState: State(dueAt: due));
 
         await Assert.ThrowsAsync<KnownDatabaseException>(() => reload.TimeoutAsync(due));
@@ -395,6 +467,19 @@ public sealed class SessionGrainBehaviorTests
         return SessionState.Create(session, Json("{}"), [new Seat(Player, "player", position)], [item]);
     }
 
+    private static SessionState PollState()
+    {
+        var position = new Position(0, 0);
+        var session = new SessionRow("session", null, null, position, Format: "poll", Version: 3);
+        var item = SessionItemState.Create(
+            new SessionItem(0, "poll_choice", 1, null, null),
+            Json("{\"options\":[{\"id\":\"yes\",\"text\":\"Yes\"},{\"id\":\"no\",\"text\":\"No\"}]}"),
+            Json("{}"),
+            Json("{}"),
+            Json("{}"));
+        return SessionState.Create(session, Json("{}"), [new Seat(Player, "player", position), new Seat("second-player", "player", position)], [item]);
+    }
+
     private static SessionCommand Command(DateTimeOffset received, string type = "answer", int slot = 0, string payload = "{}", int? revision = null) =>
         new(Player, type, "0", slot, 0, revision, null, payload, received);
 
@@ -465,9 +550,23 @@ public sealed class SessionGrainBehaviorTests
 
     private sealed class SavingDatabase : ITenantDb
     {
+        private readonly TaskCompletionSource _writeHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _holdNextWrite;
         public int CallCount { get; private set; }
         public DateTimeOffset? SavedDueAt { get; private set; }
-        public Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false) => Run(callback);
+        public Task WriteHeld => _writeHeld.Task;
+        public void HoldNextWrite() => _holdNextWrite = 1;
+        public void ReleaseHeldWrite() => _releaseWrite.TrySetResult();
+        public async Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false)
+        {
+            if (!readOnly && Interlocked.Exchange(ref _holdNextWrite, 0) == 1)
+            {
+                _writeHeld.TrySetResult();
+                await _releaseWrite.Task.WaitAsync(cancellationToken);
+            }
+            return await Run(callback);
+        }
         private async Task<T> Run<T>(Func<ITenantTx, Task<T>> callback) { CallCount++; return await callback(new SavingTransaction(this)); }
 
         public void SaveDueAt(object? parameters)
@@ -580,6 +679,12 @@ public sealed class SessionGrainBehaviorTests
     private sealed class LatenessFormat(TimeSpan limit) : TimeoutFormat
     {
         public override TimeSpan? MaximumDeadlineLateness => limit;
+    }
+
+    private sealed class SlotMovingFormat : RecordingFormat
+    {
+        public override void Apply(ISession session, Command command) { base.Apply(session, command); session.SetPosition(0, command.At.Slot + 1); }
+        public override void Timeout(ISession session) => session.SetPosition(0, 1);
     }
 
     private sealed class AdvancingFormat : RecordingFormat
