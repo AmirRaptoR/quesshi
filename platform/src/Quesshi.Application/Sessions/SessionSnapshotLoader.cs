@@ -15,7 +15,7 @@ public interface ISessionSnapshotLoader
         throw new NotSupportedException("This snapshot loader does not support roster paging.");
 }
 
-public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshotLoader
+public sealed class SessionSnapshotLoader(ITenantDb database, IClock? clock = null) : ISessionSnapshotLoader
 {
     public Task<SessionState?> LoadAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken = default) =>
         database.InTenantAsync(tenantId, transaction => LoadAsync(transaction, sessionId, cancellationToken), IsolationLevel.RepeatableRead, cancellationToken, readOnly: true);
@@ -53,7 +53,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
             select p.player_id::text as Player, p.seat as Number, players.display_name as DisplayName, p.role as Role, p.status as Status, p.phase as Phase, p.slot as Slot, p.step as Step,
                    score as Score, revealed_slot as ReleasedSlot, slot_started_at as PositionStartedAt,
                    place as Place, outcome as Outcome, result::text as Result, eligible as Eligible, ranked as Ranked,
-                   players.account_id is null as IsGuest
+                   players.account_id is null as IsGuest, players.last_seen_at as LastSeenAt
             from session_participants p join players on players.tenant_id = p.tenant_id and players.id = p.player_id
             where p.session_id = @sessionId order by p.seat, p.player_id
             """, new { sessionId }, cancellationToken);
@@ -98,7 +98,7 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         return items.Select(ToItem).ToArray();
     }
 
-    private static async Task<RosterPage?> LoadRosterPageAsync(ITenantTx transaction, Guid sessionId, string viewer, int afterSeat, int take, CancellationToken cancellationToken)
+    private async Task<RosterPage?> LoadRosterPageAsync(ITenantTx transaction, Guid sessionId, string viewer, int afterSeat, int take, CancellationToken cancellationToken)
     {
         var seated = await transaction.QuerySingleOrDefaultAsync<int?>("""
             select 1 from session_participants where session_id = @sessionId and player_id::text = @viewer
@@ -106,13 +106,16 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         if (seated is null) return null;
         var rows = (await transaction.QueryAsync<RosterSeatData>("""
             select p.player_id::text as Id, players.display_name as Name, p.seat as Seat, p.role as Role,
-                   p.status as Status, p.score as Score, p.place as Place, p.outcome as Outcome
+                   p.status as Status, p.score as Score, p.place as Place, p.outcome as Outcome,
+                   players.account_id is null as IsGuest, players.last_seen_at as LastSeenAt
             from session_participants p join players on players.tenant_id = p.tenant_id and players.id = p.player_id
             where p.session_id = @sessionId and p.seat > @afterSeat
             order by p.seat, p.player_id
             limit @limit
             """, new { sessionId, afterSeat, limit = take + 1 }, cancellationToken)).ToArray();
-        var page = rows.Take(take).Select(row => new SessionRosterSeat(row.Id, row.Name, row.Seat, row.Role, row.Status, row.Score, row.Place, row.Outcome)).ToArray();
+        var now = clock?.Now;
+        var page = rows.Take(take).Select(row => new SessionRosterSeat(row.Id, row.Name, row.Seat, row.Role, row.Status, row.Score, row.Place,
+            row.Outcome, now is not null && !row.IsGuest && row.LastSeenAt >= now - PresenceTiming.OnlineWindow)).ToArray();
         return new RosterPage(page, rows.Length > take ? page[^1].Seat : null);
     }
 
@@ -137,7 +140,8 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
     };
     private static Seat ToSeat(SeatData value) => new(value.Player, value.Role, Position(value.Phase, value.Slot, value.Step), value.Score,
         value.Status == "eliminated", value.ReleasedSlot, value.PositionStartedAt, value.Place, value.Outcome,
-        ParseSeatStatus(value.Status), JsonOrNull(value.Result), value.Number, value.DisplayName, value.Eligible, value.Ranked, value.IsGuest);
+        ParseSeatStatus(value.Status), JsonOrNull(value.Result), value.Number, value.DisplayName, value.Eligible, value.Ranked, value.IsGuest,
+        value.LastSeenAt);
     private static SeatStatus ParseSeatStatus(string status) => status.ToLowerInvariant() switch
     {
         "done" => SeatStatus.Done,
@@ -194,12 +198,14 @@ public sealed class SessionSnapshotLoader(ITenantDb database) : ISessionSnapshot
         public bool Eligible { get; init; }
         public bool? Ranked { get; init; }
         public bool IsGuest { get; init; }
+        public DateTimeOffset? LastSeenAt { get; init; }
     }
     private sealed class RosterSeatData
     {
         public string Id { get; init; } = ""; public string Name { get; init; } = ""; public int Seat { get; init; }
         public string Role { get; init; } = ""; public string Status { get; init; } = ""; public int Score { get; init; }
         public int? Place { get; init; } public string? Outcome { get; init; }
+        public bool IsGuest { get; init; } public DateTimeOffset? LastSeenAt { get; init; }
     }
     private sealed class ItemData
     {

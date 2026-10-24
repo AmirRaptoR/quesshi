@@ -51,6 +51,21 @@ public sealed class StreamingSubscriptionTests
     }
 
     [Fact]
+    public void Presence_refresh_can_deliver_an_equal_version_view()
+    {
+        var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());
+        var view = new RenderedSessionView(4, "{\"version\":4}");
+        subscription.QueueView(view);
+        Assert.True(subscription.Messages.TryRead(out var initial));
+        Assert.True(subscription.MarkSent(initial));
+
+        subscription.QueueView(view, allowSameVersion: true);
+
+        Assert.True(subscription.Messages.TryRead(out var refreshed));
+        Assert.True(subscription.MarkSent(refreshed));
+    }
+
+    [Fact]
     public void Effects_revision_lower_than_the_revision_already_sent_is_not_delivered()
     {
         var subscription = new StreamSubscription(Guid.NewGuid(), "player", Guid.NewGuid());

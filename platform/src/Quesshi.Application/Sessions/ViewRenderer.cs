@@ -60,7 +60,7 @@ internal sealed class ViewRenderer : IViewRenderer
         var seats = state.Seats.Values.OrderBy(seat => seat.Number).ThenBy(seat => seat.Player, StringComparer.Ordinal).ToArray();
         return new RenderedSessionView(
             state.Session.Version,
-            Serialize(snapshot.Shared, null, ToMySeat(viewerSeat), RenderRoster(state.Session.Status, seats, viewer), Empty));
+            Serialize(snapshot.Shared, null, ToMySeat(viewerSeat), RenderRoster(state.Session.Status, seats, viewer, snapshot.Now), Empty));
     }
 
     public SessionViewSnapshot Snapshot(SessionState state, DateTimeOffset now)
@@ -80,23 +80,25 @@ internal sealed class ViewRenderer : IViewRenderer
         var body = JsonSerializer.SerializeToElement(format.View(viewing));
         var deadline = format.Deadline(viewing);
         var seats = state.Seats.Values.OrderBy(seat => seat.Number).ThenBy(seat => seat.Player, StringComparer.Ordinal).ToArray();
-        var roster = RenderRoster(state.Session.Status, seats, viewer);
+        var roster = RenderRoster(state.Session.Status, seats, viewer, snapshot.Now);
         return new RenderedSessionView(state.Session.Version, Serialize(snapshot.Shared, deadline, ToMySeat(viewerSeat), roster, body));
     }
 
-    private static RosterView RenderRoster(string status, Seat[] seats, string viewer)
+    private static RosterView RenderRoster(string status, Seat[] seats, string viewer, DateTimeOffset now)
     {
         var ordered = status is "finished" or "cancelled"
             ? seats.OrderBy(seat => seat.Place ?? int.MaxValue).ThenBy(seat => seat.Number).ThenBy(seat => seat.Player, StringComparer.Ordinal).ToArray()
             : seats;
-        if (ordered.Length <= 50) return new CompleteRosterView(ordered.Select(ToRosterSeat).ToArray());
+        if (ordered.Length <= 50) return new CompleteRosterView(ordered.Select(seat => ToRosterSeat(seat, now)).ToArray());
         var index = Array.FindIndex(ordered, seat => seat.Player == viewer);
-        var neighbours = index < 0 ? [] : ordered.Skip(Math.Max(0, index - 2)).Take(5).Select(ToRosterSeat).ToArray();
-        return new WindowedRosterView(ordered.Length, ordered.Take(10).Select(ToRosterSeat).ToArray(), neighbours);
+        var neighbours = index < 0 ? [] : ordered.Skip(Math.Max(0, index - 2)).Take(5).Select(seat => ToRosterSeat(seat, now)).ToArray();
+        return new WindowedRosterView(ordered.Length, ordered.Take(10).Select(seat => ToRosterSeat(seat, now)).ToArray(), neighbours);
     }
 
     private static MySeat ToMySeat(Seat seat) => new(seat.Player, seat.Number, seat.Role, SeatStatusText(seat), seat.Score, seat.Place, seat.Outcome);
-    private static SessionRosterSeat ToRosterSeat(Seat seat) => new(seat.Player, seat.DisplayName ?? seat.Player, seat.Number, seat.Role, SeatStatusText(seat), seat.Score, seat.Place, seat.Outcome);
+    private static SessionRosterSeat ToRosterSeat(Seat seat, DateTimeOffset now) => new(seat.Player, seat.DisplayName ?? seat.Player, seat.Number,
+        seat.Role, SeatStatusText(seat), seat.Score, seat.Place, seat.Outcome,
+        !seat.IsGuest && seat.LastSeenAt >= now - PresenceTiming.OnlineWindow);
     private static string SeatStatusText(Seat seat) => seat.Status.ToString().ToLowerInvariant();
     private static string Serialize(JsonElement shared, DateTimeOffset? deadline, MySeat me, RosterView roster, JsonElement body)
     {

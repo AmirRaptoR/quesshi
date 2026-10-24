@@ -6,6 +6,13 @@ public interface IClock
     DateTimeOffset Now { get; }
 }
 
+/// <summary>Shared timing boundaries for stream-backed player presence.</summary>
+public static class PresenceTiming
+{
+    public static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan OnlineWindow = TimeSpan.FromSeconds(60);
+}
+
 /// <summary>Reports whether the platform clock is safe to use for scored play.</summary>
 public interface IClockHealth
 {

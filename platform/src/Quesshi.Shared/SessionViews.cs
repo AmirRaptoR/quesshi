@@ -22,7 +22,8 @@ public sealed record SessionView(
     JsonElement Body);
 
 public sealed record MySeat(string Id, int Seat, string Role, string Status, int Score, int? Place, string? Outcome);
-public sealed record SessionRosterSeat(string Id, string Name, int Seat, string Role, string Status, int Score, int? Place, string? Outcome);
+public sealed record SessionRosterSeat(string Id, string Name, int Seat, string Role, string Status, int Score, int? Place, string? Outcome,
+    bool Online = false);
 
 /// <summary>A complete roster is sent only while it remains small enough for every view.</summary>
 public abstract record RosterView(int Total);

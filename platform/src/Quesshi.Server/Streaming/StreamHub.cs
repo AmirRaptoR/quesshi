@@ -15,7 +15,8 @@ internal enum StreamMessageKind { View, Config, Inbox, Effects, Gone, Closed }
 
 internal enum StreamCloseReason { SignedOut, Banned, Deleted, Expired }
 
-internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null);
+internal sealed record StreamMessage(StreamMessageKind Kind, long Version, string? Json = null, string? Reason = null,
+    bool AllowsSameVersion = false);
 
 /// <summary>One bounded local stream subscription. Delivery is always convergence-oriented.</summary>
 internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? sessionId, bool isGuest = false,
@@ -47,13 +48,14 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public long LastInboxVersion { get; private set; } = -1;
     public long LastEffectsRevision { get; private set; } = -1;
 
-    public void QueueView(RenderedSessionView view)
+    public void QueueView(RenderedSessionView view, bool allowSameVersion = false)
     {
         lock (_gate)
         {
-            if (_terminal || view.Version <= Math.Max(LastSentVersion, LastQueuedVersion)) return;
+            var newestVersion = Math.Max(LastSentVersion, LastQueuedVersion);
+            if (_terminal || view.Version < newestVersion || (!allowSameVersion && view.Version == newestVersion)) return;
             LastQueuedVersion = view.Version;
-            var message = new StreamMessage(StreamMessageKind.View, view.Version, view.Json);
+            var message = new StreamMessage(StreamMessageKind.View, view.Version, view.Json, AllowsSameVersion: allowSameVersion);
             if (_queued?.Kind == StreamMessageKind.View)
             {
                 _queued = message;
@@ -134,8 +136,8 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
         {
             if (message.Kind == StreamMessageKind.View)
             {
-                if (message.Version <= LastSentVersion) return false;
-                LastSentVersion = message.Version;
+                if (message.Version < LastSentVersion || (message.Version == LastSentVersion && !message.AllowsSameVersion)) return false;
+                LastSentVersion = Math.Max(LastSentVersion, message.Version);
                 Sent(message);
                 return true;
             }
@@ -164,6 +166,11 @@ internal sealed class StreamSubscription(Guid tenantId, string playerId, Guid? s
     public bool NeedsView(long version)
     {
         lock (_gate) return !_terminal && version > Math.Max(LastSentVersion, LastQueuedVersion);
+    }
+
+    public bool IsTerminal
+    {
+        get { lock (_gate) return _terminal; }
     }
 
     public bool NeedsInbox(long version)
@@ -247,6 +254,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     private readonly object _sessionGateLock = new();
     private readonly SemaphoreSlim _renderJobs = new(8, 8);
     private readonly ConcurrentDictionary<(Guid Tenant, Guid Session), SessionRenderSchedule> _renderSchedules = new();
+    private readonly ConcurrentDictionary<Guid, PresenceRefresh> _presenceRefreshes = new();
     private int _disposed;
 
     public StreamHub(ISessionSnapshotLoader snapshots, IViewRenderer renderer, IFormatRegistry formats, ITenantDb database,
@@ -372,7 +380,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 var sessionVersions = watched.Length == 0
                     ? []
                     : await transaction.QueryAsync<SessionVersion>("""
-                        select id as SessionId, version as Version
+                        select id as SessionId, version as Version, status as Status
                         from sessions
                         where id = any(@sessionIds)
                         """, new { sessionIds = watched }, cancellationToken);
@@ -430,13 +438,26 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                         : StreamCloseReason.SignedOut);
                 }
             }
-            foreach (var sessionId in watched)
+            var active = tenant.Where(subscription => !subscription.IsTerminal).ToArray();
+            var activePlayers = active.Where(subscription => !subscription.IsGuest)
+                .Select(subscription => Guid.TryParse(subscription.PlayerId, out var playerId) ? playerId : (Guid?)null)
+                .Where(playerId => playerId is not null && playerStates.TryGetValue(playerId.Value, out var player) && !player.IsDeleted && !player.IsBanned)
+                .Select(playerId => playerId!.Value).Distinct().ToArray();
+            var presenceRefreshed = await RefreshPresenceAsync(tenant.Key, activePlayers, cancellationToken);
+            var activeWatched = active.Where(subscription => subscription.SessionId is not null)
+                .Select(subscription => subscription.SessionId!.Value).Distinct().ToArray();
+            foreach (var sessionId in activeWatched)
             {
-                var targets = tenant.Where(subscription => subscription.SessionId == sessionId).ToArray();
+                var targets = active.Where(subscription => subscription.SessionId == sessionId).ToArray();
                 if (!versions.TryGetValue(sessionId, out var version) || targets.Any(target => target.NeedsView(version.Version)))
                 {
                     await RenderSessionAsync(tenant.Key, sessionId, cancellationToken);
                 }
+            }
+            if (presenceRefreshed)
+            {
+                foreach (var lobby in state.SessionVersions.Where(session => session.Status == "lobby" && activeWatched.Contains(session.SessionId)))
+                    await RenderSessionAsync(tenant.Key, lobby.SessionId, cancellationToken, force: true);
             }
             foreach (var inbox in state.InboxVersions) await BroadcastInboxAsync(tenant.Key, inbox.PlayerId, inbox.Version, cancellationToken);
             foreach (var effect in state.EffectsVersions)
@@ -448,12 +469,42 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
         }
     }
 
-    internal sealed record SessionVersion(Guid SessionId, long Version);
+    internal sealed record SessionVersion(Guid SessionId, long Version, string Status = "running");
     internal sealed record PlayerAccessState(Guid PlayerId, bool IsDeleted, bool IsBanned);
     internal sealed record InboxVersion(Guid PlayerId, long Version);
     internal sealed record EffectsVersion(Guid SessionId, long Revision);
     private sealed record ReconciliationState(IReadOnlyList<SessionVersion> SessionVersions, IReadOnlyList<PlayerAccessState> PlayerStates,
         IReadOnlyList<InboxVersion> InboxVersions, IReadOnlyList<EffectsVersion> EffectsVersions, long? ConfigVersion);
+
+    private async Task<bool> RefreshPresenceAsync(Guid tenantId, IReadOnlyCollection<Guid> playerIds, CancellationToken cancellationToken)
+    {
+        var refresh = _presenceRefreshes.GetOrAdd(tenantId, _ => new PresenceRefresh());
+        await refresh.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            var now = clock.Now;
+            if (refresh.LastRefreshAt is { } last && now - last < PresenceTiming.RefreshInterval) return false;
+            if (playerIds.Count > 0)
+            {
+                await database.InTenantAsync(tenantId, transaction => transaction.ExecuteAsync("""
+                    update players
+                    set last_seen_at = @now
+                    where id = any(@playerIds)
+                      and deleted_at is null
+                      and banned_at is null
+                    """, new { now, playerIds }, cancellationToken), cancellationToken: cancellationToken);
+            }
+            refresh.LastRefreshAt = now;
+            return true;
+        }
+        finally { refresh.Gate.Release(); }
+    }
+
+    private sealed class PresenceRefresh
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+        public DateTimeOffset? LastRefreshAt { get; set; }
+    }
 
     private void OnNotification(StreamNotification notification)
     {
@@ -599,7 +650,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
     }
 
     private async Task RenderSessionAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken,
-        SessionRenderSchedule? schedule = null)
+        SessionRenderSchedule? schedule = null, bool force = false)
     {
         var targets = _subscriptions.Values.Where(subscription => subscription.TenantId == tenantId && subscription.SessionId == sessionId).ToArray();
         if (targets.Length == 0) return;
@@ -624,7 +675,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 // A later notification arrived while this snapshot was loading. Let its render
                 // replace this stale result before a subscriber can observe it.
                 if (schedule?.HasNewerVersion(state.Session.Version) == true) return;
-                if (!targets.Any(target => target.NeedsView(state.Session.Version))) return;
+                if (!force && !targets.Any(target => target.NeedsView(state.Session.Version))) return;
                 if (!formats.TryGet(state.Session.Format ?? "", out var format) || format is null)
                 {
                     logger.LogWarning("No format {Format} registered for stream session {SessionId}", state.Session.Format, sessionId);
@@ -637,7 +688,7 @@ internal sealed class StreamHub : BackgroundService, IAccountDeletionNotifier, I
                 {
                     var view = renderer.Render(shared, format, target.PlayerId);
                     if (view is null) target.QueueGone("not_found");
-                    else target.QueueView(view);
+                    else target.QueueView(view, force);
                 }
                 if (state.Session.Ended && targets.Any(target => target.NeedsEffects(0)))
                     await DeliverEffectsAsync(tenantId, sessionId, 0, cancellationToken);
