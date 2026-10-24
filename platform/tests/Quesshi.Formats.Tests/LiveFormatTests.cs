@@ -220,6 +220,157 @@ public sealed class LiveFormatTests
         Assert.All(noContest.Seats, seat => Assert.False(seat.Ranked));
     }
 
+    [Fact]
+    public void An_answer_within_grace_scores_and_one_exactly_at_the_grace_boundary_has_no_speed_bonus()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b", "c"], 1, clock);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+        var questionEnd = Created + TimeSpan.FromSeconds(23);
+        var noBonus = Scoring.Score(1, MatchRules.QuestionTime, MatchRules.QuestionTime);
+
+        format.Apply(session, Answer("a", 0, clock.Now));
+        clock.Set(questionEnd + TimeSpan.FromSeconds(1));
+        format.Apply(session, Answer("b", 0, clock.Now));
+        clock.Set(session.Session.DueAt!.Value);
+        format.Apply(session, Answer("c", 0, clock.Now));
+
+        Assert.True(Seat(session, "a").Score > noBonus);
+        Assert.Equal(noBonus, Seat(session, "b").Score);
+        Assert.Equal(noBonus, Seat(session, "c").Score);
+        Assert.False(session.Answers("c").Single().Miss);
+        Assert.Equal(new Position(LiveFormat.RevealPhase, 0), session.Session.Position);
+    }
+
+    [Fact]
+    public void An_answer_after_the_grace_deadline_or_after_the_round_closed_is_rejected()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b"], 2, clock);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+
+        format.Apply(session, Answer("a", 0, clock.Now));
+        format.Apply(session, Answer("b", 0, session.Session.DueAt!.Value + TimeSpan.FromMilliseconds(1)));
+
+        Assert.Empty(session.Answers("b"));
+        Assert.Equal(new Position(LiveFormat.QuestionPhase, 0), session.Session.Position);
+
+        clock.Set(session.Session.DueAt!.Value);
+        format.Timeout(session);
+        Assert.True(session.Answers("b").Single().Miss);
+        var recorded = session.Answers("b").Single();
+
+        format.Apply(session, Answer("b", 0, clock.Now));
+
+        Assert.Same(recorded, session.Answers("b").Single());
+        Assert.Equal(new Position(LiveFormat.RevealPhase, 0), session.Session.Position);
+    }
+
+    [Fact]
+    public void A_duplicate_a_wrong_slot_and_a_non_participant_answer_are_rejected()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b"], 2, clock);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+
+        format.Apply(session, Answer("a", 0, clock.Now, 1));
+        var first = session.Answers("a").Single();
+        format.Apply(session, Answer("a", 0, clock.Now, 0.5));
+        format.Apply(session, Answer("b", 1, clock.Now));
+        format.Apply(session, Answer("stranger", 0, clock.Now));
+
+        Assert.Same(first, session.Answers("a").Single());
+        Assert.Equal(first.Points, Seat(session, "a").Score);
+        Assert.Empty(session.Answers("b"));
+        Assert.Empty(session.Answers("stranger"));
+        Assert.Equal(new Position(LiveFormat.QuestionPhase, 0), session.Session.Position);
+    }
+
+    [Fact]
+    public void A_left_or_eliminated_player_can_no_longer_answer()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b", "c"], 5, clock);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+        format.Apply(session, Leave("c", 0, clock.Now));
+        format.Apply(session, Answer("c", 0, clock.Now));
+        Assert.Empty(session.Answers("c"));
+
+        for (var round = 0; round < 3; round++)
+        {
+            format.Apply(session, Answer("b", round, clock.Now));
+            clock.Set(session.Session.DueAt!.Value);
+            format.Timeout(session);
+            if (round < 2) NextQuestion(format, session, clock);
+        }
+        Assert.Equal(SeatStatus.Eliminated, Seat(session, "a").Status);
+        Assert.Equal(EndReason.Completed, session.Session.EndReason);
+        Assert.Equal(3, session.Answers("a").Count(answer => answer.Miss));
+    }
+
+    [Fact]
+    public void An_eliminated_player_answer_is_ignored_while_others_keep_playing()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b", "c"], 5, clock);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+        for (var round = 0; round < 3; round++)
+        {
+            format.Apply(session, Answer("b", round, clock.Now));
+            format.Apply(session, Answer("c", round, clock.Now));
+            clock.Set(session.Session.DueAt!.Value);
+            format.Timeout(session);
+            NextQuestion(format, session, clock);
+        }
+        Assert.Equal(SeatStatus.Eliminated, Seat(session, "a").Status);
+        Assert.False(session.Session.Ended);
+
+        format.Apply(session, Answer("a", 3, clock.Now));
+
+        Assert.Equal(3, session.Answers("a").Count);
+        Assert.All(session.Answers("a"), answer => Assert.True(answer.Miss));
+        Assert.Equal(new Position(LiveFormat.QuestionPhase, 3), session.Session.Position);
+    }
+
+    [Fact]
+    public void A_round_closes_on_the_remaining_active_players_alone_once_someone_abandoned()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b", "c"], 2, clock);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+        format.Apply(session, Leave("c", 0, clock.Now));
+
+        format.Apply(session, Answer("a", 0, clock.Now));
+        Assert.Equal(new Position(LiveFormat.QuestionPhase, 0), session.Session.Position);
+        format.Apply(session, Answer("b", 0, clock.Now));
+
+        Assert.Equal(new Position(LiveFormat.RevealPhase, 0), session.Session.Position);
+        Assert.Empty(session.Answers("c"));
+    }
+
+    [Fact]
+    public void Two_players_abandoning_in_the_same_round_share_a_place_below_the_survivor()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b", "c"], 2, clock, scores: [0, 300, 100]);
+        var format = Start(new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+        format.Apply(session, Leave("b", 0, clock.Now));
+        format.Apply(session, Leave("c", 0, clock.Now));
+
+        Assert.Equal(EndReason.Completed, session.Session.EndReason);
+        Assert.Collection(Result(session).Standings.OrderBy(standing => standing.Place).ThenBy(standing => standing.Player),
+            standing => Assert.Equal(new LiveStanding("a", 0, 1, "win"), standing),
+            standing => Assert.Equal(new LiveStanding("b", 0, 2, "loss"), standing),
+            standing => Assert.Equal(new LiveStanding("c", 0, 2, "loss"), standing));
+    }
+
     private static LiveFormat Start(LiveFormat format, InMemorySession session)
     {
         format.Start(session);
