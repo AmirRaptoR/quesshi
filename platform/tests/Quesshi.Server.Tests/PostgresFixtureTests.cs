@@ -121,6 +121,35 @@ public sealed class PostgresFixtureIsolationTests
     }
 
     [SkippableFact]
+    public async Task Concurrent_fixtures_do_not_share_committed_tenants()
+    {
+        var first = CreateConfiguredFixture();
+        var second = CreateConfiguredFixture();
+        var tenant = Guid.Parse("b8ac111b-aa71-4f78-9d5f-7c90404330f8");
+        try
+        {
+            await Task.WhenAll(first.InitializeAsync(), second.InitializeAsync());
+            await Task.WhenAll(
+                Program.MigrateAsync(first.ConnectionStringForRole("quesshi_owner")),
+                Program.MigrateAsync(second.ConnectionStringForRole("quesshi_owner")));
+            await InsertTenantAsync(first.ConnectionStringForRole("quesshi_owner"), tenant);
+
+            Assert.False(await TenantExistsAsync(second.ConnectionStringForRole("quesshi_owner"), tenant));
+        }
+        finally
+        {
+            try
+            {
+                await second.DisposeAsync();
+            }
+            finally
+            {
+                await first.DisposeAsync();
+            }
+        }
+    }
+
+    [SkippableFact]
     public async Task Disposing_one_fixture_drops_its_database_without_affecting_another_fixture()
     {
         var first = CreateConfiguredFixture();
@@ -188,78 +217,6 @@ public sealed class PostgresFixtureIsolationTests
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("select exists(select 1 from pg_database where datname = @database)", connection);
         command.Parameters.AddWithValue("database", databaseName);
-        return (bool)(await command.ExecuteScalarAsync())!;
-    }
-}
-
-public sealed class FirstIsolatedPostgresFixtureClass(PostgresFixture fixture) : IClassFixture<PostgresFixture>
-{
-    [SkippableFact]
-    public async Task First_class_fixture_runs_concurrently_without_second_class_state()
-    {
-        Skip.If(fixture.ConnectionString is null, $"Set {PostgresFixture.AdminConnectionStringEnvironmentVariable} to run PostgreSQL tests locally.");
-
-        Assert.False(await IsolatedClassFixtureCoordinator.WriteTenantAndObservePeerAsync(fixture, isFirst: true));
-    }
-}
-
-public sealed class SecondIsolatedPostgresFixtureClass(PostgresFixture fixture) : IClassFixture<PostgresFixture>
-{
-    [SkippableFact]
-    public async Task Second_class_fixture_runs_concurrently_without_first_class_state()
-    {
-        Skip.If(fixture.ConnectionString is null, $"Set {PostgresFixture.AdminConnectionStringEnvironmentVariable} to run PostgreSQL tests locally.");
-
-        Assert.False(await IsolatedClassFixtureCoordinator.WriteTenantAndObservePeerAsync(fixture, isFirst: false));
-    }
-}
-
-internal static class IsolatedClassFixtureCoordinator
-{
-    private static readonly TimeSpan PeerWaitTimeout = TimeSpan.FromMinutes(2);
-    private static readonly Guid FirstTenant = Guid.Parse("b8ac111b-aa71-4f78-9d5f-7c90404330f8");
-    private static readonly Guid SecondTenant = Guid.Parse("86db0a4f-676d-4088-a1ca-4b98362e538a");
-    private static readonly TaskCompletionSource FirstMigration = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private static readonly TaskCompletionSource SecondMigration = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private static readonly TaskCompletionSource FirstWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private static readonly TaskCompletionSource SecondWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    public static async Task<bool> WriteTenantAndObservePeerAsync(PostgresFixture fixture, bool isFirst)
-    {
-        var connectionString = fixture.ConnectionStringForRole("quesshi_owner");
-        await Program.MigrateAsync(connectionString);
-        await WaitForPeerAsync(isFirst ? FirstMigration : SecondMigration, isFirst ? SecondMigration : FirstMigration);
-
-        var tenant = isFirst ? FirstTenant : SecondTenant;
-        var peerTenant = isFirst ? SecondTenant : FirstTenant;
-        await InsertTenantAsync(connectionString, tenant);
-        await WaitForPeerAsync(isFirst ? FirstWrite : SecondWrite, isFirst ? SecondWrite : FirstWrite);
-
-        return await TenantExistsAsync(connectionString, peerTenant);
-    }
-
-    private static async Task WaitForPeerAsync(TaskCompletionSource current, TaskCompletionSource peer)
-    {
-        current.TrySetResult();
-        await peer.Task.WaitAsync(PeerWaitTimeout);
-    }
-
-    private static async Task InsertTenantAsync(string connectionString, Guid tenant)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Class fixture isolation', 'en')", connection);
-        command.Parameters.AddWithValue("tenant", tenant);
-        command.Parameters.AddWithValue("slug", $"class-fixture-{tenant:N}");
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task<bool> TenantExistsAsync(string connectionString, Guid tenant)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("select exists(select 1 from tenants where id = @tenant)", connection);
-        command.Parameters.AddWithValue("tenant", tenant);
         return (bool)(await command.ExecuteScalarAsync())!;
     }
 }
