@@ -523,12 +523,16 @@ public class SessionGrain(
         _state = null;
         _baseline = null;
         _generation++;
+        // Complete the discard request before waking a deferred command. Its retryable
+        // outcome promises that this activation will not retain the indeterminate cache.
+        if (!_discardRequested)
+        {
+            _discardRequested = true;
+            Deactivate();
+        }
         Fail(_inflight, pendingErrorCode, pendingRetryable);
         _inflight = [];
         FailPending(pendingErrorCode, pendingRetryable);
-        if (_discardRequested) return;
-        _discardRequested = true;
-        Deactivate();
     }
 
     private async Task EndCoreAsync(CoreEndReason reason)
