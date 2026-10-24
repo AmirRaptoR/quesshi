@@ -19,6 +19,7 @@ public sealed class ReportsFeature : IFeature
     {
         ArgumentNullException.ThrowIfNull(feature);
         feature.PlayerRoutes(MapPlayerRoutes);
+        feature.AdminRoutes(AdminRole.Moderator, ReportsModerationRoutes.MapAdminRoutes);
         feature.CleanupPlayer(CleanupPlayerAsync);
     }
 
