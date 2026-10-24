@@ -13,7 +13,7 @@ public sealed record MigrationScript(string Name, string Owner, ReadOnlyMemory<b
 
 public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
 {
-    private const long MigrationLockSeed = 638_002_989_883_045_713;
+    private const long MigrationLock = 638_002_989_883_045_713;
     private static readonly Regex FeatureResource = new(
         "(?:^|\\.)Features(?:\\.Features)?\\.(?<owner>[a-z0-9][a-z0-9_-]*)\\.Migrations\\.",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -63,7 +63,7 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
         try
         {
             await ExecuteAsync(connection, "set search_path to public", cancellationToken);
-            await ExecuteAsync(connection, "select pg_advisory_lock(hashtextextended(current_database(), @seed))", cancellationToken, ("seed", MigrationLockSeed));
+            await ExecuteAsync(connection, "select pg_advisory_lock(@lock)", cancellationToken, ("lock", MigrationLock));
             try
             {
                 var applied = await ReadAppliedAsync(connection, cancellationToken);
@@ -75,7 +75,7 @@ public sealed class MigrationRunner(IEnumerable<MigrationScript> scripts)
             }
             finally
             {
-                await ExecuteAsync(connection, "select pg_advisory_unlock(hashtextextended(current_database(), @seed))", CancellationToken.None, ("seed", MigrationLockSeed));
+                await ExecuteAsync(connection, "select pg_advisory_unlock(@lock)", CancellationToken.None, ("lock", MigrationLock));
             }
         }
         finally
