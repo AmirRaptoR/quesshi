@@ -29,14 +29,16 @@ public sealed class ReportsModerationEndpointTests : IAsyncLifetime
     public async Task Moderator_lists_reported_questions_with_counts()
     {
         var questionId = await CreateQuestionAsync();
+        var anotherQuestionId = await CreateQuestionAsync();
         await SeedReportAsync(questionId, "WrongAnswer");
         await SeedReportAsync(questionId, "Unclear");
+        await SeedReportAsync(anotherQuestionId, "Other");
 
         var reports = await GetReportsAsync(Host.Moderator);
 
-        Assert.Equal((questionId, 2L), Assert.Single(reports) is { } report
-            ? (report.QuestionId, report.Count)
-            : throw new InvalidOperationException("Expected one reported question."));
+        Assert.Equal(
+            [(questionId, 2L), (anotherQuestionId, 1L)],
+            reports.Select(static report => (report.QuestionId, report.Count)));
     }
 
     [SkippableFact]
@@ -70,12 +72,16 @@ public sealed class ReportsModerationEndpointTests : IAsyncLifetime
     public async Task Moderator_dismissal_deletes_the_questions_reports()
     {
         var questionId = await CreateQuestionAsync();
+        var anotherQuestionId = await CreateQuestionAsync();
         await SeedReportAsync(questionId, "WrongAnswer");
+        await SeedReportAsync(anotherQuestionId, "Other");
 
         using var response = await DismissReportsAsync(Host.Moderator, questionId);
         response.EnsureSuccessStatusCode();
 
-        Assert.Equal(0L, await ReportCountAsync(questionId));
+        Assert.Equal(
+            (0L, 1L),
+            (await ReportCountAsync(questionId), await ReportCountAsync(anotherQuestionId)));
     }
 
     [SkippableFact]
