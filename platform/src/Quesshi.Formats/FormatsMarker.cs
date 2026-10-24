@@ -7,5 +7,5 @@ public sealed class FormatsMarker;
 /// <summary>The built-in platform formats explicitly available to a host.</summary>
 public static class PlatformFormats
 {
-    public static IFormatRegistry CreateRegistry() => new FormatRegistry([new AsyncDuel.AsyncDuelFormat(), new Poll.PollFormat()]);
+    public static IFormatRegistry CreateRegistry() => new FormatRegistry([new AsyncDuel.AsyncDuelFormat(), new Live.LiveFormat(), new Poll.PollFormat()]);
 }
