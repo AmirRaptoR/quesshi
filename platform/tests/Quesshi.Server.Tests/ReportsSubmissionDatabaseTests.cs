@@ -48,7 +48,7 @@ public sealed class ReportsSubmissionDatabaseTests : IAsyncLifetime
         using var second = await SubmitAsync(Host.Player, questionId, "Unclear");
         var report = await second.Content.ReadFromJsonAsync<ReportResponse>();
 
-        Assert.Equal((HttpStatusCode.OK, true, 1L), (second.StatusCode, report?.AlreadyReported, await ReportCountAsync(questionId)));
+        Assert.Equal((HttpStatusCode.OK, true, true, 1L), (second.StatusCode, report?.Reported, report?.AlreadyReported, await ReportCountAsync(questionId)));
     }
 
     [SkippableFact]
