@@ -19,6 +19,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private const string InboxMigrationName = "20261022T0100_core_inbox.sql";
     private const string FriendsMigrationName = "20261023T0100_friends_friendships.sql";
     private const string SessionScoringMigrationName = "20261023T1800_core_session_scoring.sql";
+    private const string ReportsMigrationName = "20261024T0000_reports_question_reports.sql";
     private static readonly Guid TenantA = Guid.Parse("8d6b19a5-9349-48ec-b63b-28e987f95158");
     private static readonly Guid TenantB = Guid.Parse("bd41c053-3e51-43ce-b842-3d625a56c7d1");
 
@@ -119,7 +120,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindQuestionsMigrationAsync(NpgsqlConnection owner)
     {
-        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table questions; drop table media_assets; drop table ai_calls; drop table ai_budgets; drop table generation_runs; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}', '20261020T2300_ai_generation_budgets.sql')");
+        return ExecuteAsync(owner, $"alter table session_items drop constraint if exists session_items_media_fk; alter table questions drop constraint if exists questions_media_fk; alter table session_items drop constraint if exists session_items_question_fk; alter table session_items drop constraint if exists session_items_category_fk; drop table question_reports; drop table questions cascade; drop table media_assets; drop table ai_calls; drop table ai_budgets; drop table generation_runs; delete from schema_migrations where name in ('{QuestionsMigrationName}', '{MediaMigrationName}', '20261020T2300_ai_generation_budgets.sql', '{ReportsMigrationName}')");
     }
 
     private static Task RewindInboxMigrationAsync(NpgsqlConnection owner) =>
