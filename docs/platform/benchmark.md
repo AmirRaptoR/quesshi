@@ -13,9 +13,11 @@ Selected live maximum: **2** players.
 ## Reproducing the run
 
 Source revision `8ef0547ded62854752408b583dc2e678e216d188`, run on 2026-10-24 UTC.
-That revision is an ancestor of this report and includes the current server and
-SSE implementation exercised by `burst-streams`; the report and its analysis are
-the only later changes.
+That revision is a commit of the pull request that added this report (#363) and
+includes the server and SSE implementation exercised by `burst-streams`. The
+squash merge removed it from main's history; it remains reachable through that
+pull request. The pull request later changed the session grain's batch handling
+after this run.
 
 ```text
 dotnet run -c Release --project platform/bench/Quesshi.Bench.Live -- --matrix --repetitions 2 --allow-disposable-postgres
