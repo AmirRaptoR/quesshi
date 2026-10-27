@@ -16,6 +16,8 @@ public sealed class FriendsFeature : IFeature
     {
         ArgumentNullException.ThrowIfNull(feature);
         feature.PlayerRoutes(MapPlayerRoutes);
+        feature.PlayerRoutes(FriendsReadRoutes.MapPlayerRoutes);
+        feature.Provides<IReadOnlyList<Guid>>("friends.ids", FriendsReadRoutes.GetFriendIdsAsync);
         feature.CleanupPlayer(CleanupPlayerAsync);
     }
 
