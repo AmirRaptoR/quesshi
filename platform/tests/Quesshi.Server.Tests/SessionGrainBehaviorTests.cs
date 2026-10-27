@@ -156,6 +156,32 @@ public sealed class SessionGrainBehaviorTests
     }
 
     [Fact]
+    public async Task An_answer_queued_behind_a_failing_batch_is_still_written()
+    {
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var database = new HeldFailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost")));
+        var deadlines = new HoldingDeadlines();
+        var grain = CreateGrain(new ToggleSnapshotLoader { State = State() }, new MutatingFormat(), deadlines, now, database: database);
+
+        var first = grain.ExecuteAsync(Command(now));
+        await database.WriteHeld;
+        deadlines.HoldNext();
+        var second = grain.ExecuteAsync(Command(now));
+        await deadlines.Held;
+        // The failed batch queues for the gate that the second answer holds, and the third answer queues behind it,
+        // so the third is accepted after the batch failed but before its flush loop has finished.
+        database.FailHeldWrite();
+        await Task.Delay(100);
+        var third = grain.ExecuteAsync(Command(now));
+        deadlines.Release();
+
+        Assert.Equal("retryable", (await first.WaitAsync(TimeSpan.FromSeconds(30))).Code);
+        Assert.Equal("retryable", (await second.WaitAsync(TimeSpan.FromSeconds(30))).Code);
+        Assert.Equal("retryable", (await third.WaitAsync(TimeSpan.FromSeconds(30))).Code);
+        Assert.Equal(2, database.WriteCount);
+    }
+
+    [Fact]
     public async Task Missing_sessions_are_not_cached_and_can_be_loaded_after_insertion()
     {
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
@@ -604,6 +630,43 @@ public sealed class SessionGrainBehaviorTests
     }
 
     private sealed class KnownDatabaseException : DbException { }
+
+    private sealed class HeldFailingDatabase(Exception exception) : ITenantDb
+    {
+        private readonly TaskCompletionSource _writeHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _failWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _writes;
+        public int WriteCount => Volatile.Read(ref _writes);
+        public Task WriteHeld => _writeHeld.Task;
+        public void FailHeldWrite() => _failWrite.TrySetResult();
+        public async Task<T> InTenantAsync<T>(Guid tenantId, Func<ITenantTx, Task<T>> callback, System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default, bool readOnly = false)
+        {
+            if (!readOnly && Interlocked.Increment(ref _writes) == 1)
+            {
+                _writeHeld.TrySetResult();
+                await _failWrite.Task;
+            }
+            throw exception;
+        }
+    }
+
+    private sealed class HoldingDeadlines : ISessionDeadlineReconciler
+    {
+        private readonly TaskCompletionSource _held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _holdNext;
+        public Task Held => _held.Task;
+        public void HoldNext() => _holdNext = 1;
+        public void Release() => _release.TrySetResult();
+        public async Task ReconcileAsync(SessionState state, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _holdNext, 0) == 1)
+            {
+                _held.TrySetResult();
+                await _release.Task;
+            }
+        }
+    }
 
     private sealed class RecordingDeadlines : ISessionDeadlineReconciler
     {

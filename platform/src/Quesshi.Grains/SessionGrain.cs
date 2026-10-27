@@ -729,9 +729,13 @@ public class SessionGrain(
             await _gate.WaitAsync();
             try
             {
+                var quiesced = _exclusive;
                 _exclusive = false;
                 _flushIdle = null;
                 idle.TrySetResult();
+                // An answer accepted after this loop decided to stop saw it still running and did not start another
+                // one. Unless a quiescing command will write those answers itself, start the flush they are waiting on.
+                if (!quiesced && _pending.Count > 0 && _state is not null && _baseline is not null) QueueFlush();
             }
             finally
             {
