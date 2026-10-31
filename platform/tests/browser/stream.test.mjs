@@ -16,7 +16,7 @@ class StreamServer {
   }
 
   handle = (request, response) => {
-    const record = { url: request.url, build: request.headers['x-client-build'], closed: false, response };
+    const record = { url: request.url, build: request.headers['x-client-build'], closed: false, at: Date.now(), response };
     this.requests.push(record);
     this.open.add(record);
     response.on('close', () => {
@@ -118,6 +118,21 @@ test('signed-in shell keeps one stream open across Home and Profile', { skip: !r
 test('changing the watched session closes the old reader before opening one for the new session', { skip: !runsPublishedClient }, async () => {
   const stream = new StreamServer((record, response) => eventStream(response, view(1)));
   await withShell(await startHost(stream), stream, async (page, host) => {
+    // Page-side order of the reader cancellation versus the next stream fetch; network events race, this does not.
+    await page.addInitScript(() => {
+      window.streamEvents = [];
+      const nativeFetch = window.fetch;
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.includes('/api/stream')) window.streamEvents.push(`open ${url.split('session=')[1]}`);
+        return nativeFetch(input, init);
+      };
+      const nativeCancel = ReadableStreamDefaultReader.prototype.cancel;
+      ReadableStreamDefaultReader.prototype.cancel = function (...args) {
+        window.streamEvents.push('cancel');
+        return nativeCancel.apply(this, args);
+      };
+    });
     await page.goto(host.tenantUrl('stream.localhost', `/?session=${sessionA}`));
     await page.locator('#home-title').waitFor();
     await until(() => stream.requests.length === 1, 'The first session stream should open.');
@@ -126,6 +141,13 @@ test('changing the watched session closes the old reader before opening one for 
     await page.evaluate(session => window.Blazor.navigateTo(`/?session=${session}`), sessionB);
     await until(() => stream.requests.length === 2, 'The new session stream should open.');
     await pause(500);
+
+    const all = await page.evaluate(() => window.streamEvents);
+    const events = all.slice(all.indexOf(`open ${sessionA}`));
+    assert.deepEqual(
+      events,
+      [`open ${sessionA}`, 'cancel', `open ${sessionB}`],
+      'The old reader should be cancelled before the new request opens.');
 
     assert.equal(stream.requests.length, 2);
     assert.equal(stream.requests[1].url, `/api/stream?session=${sessionB}`);
@@ -212,20 +234,20 @@ test('stream client_outdated reloads once for the build and is not retried', { s
 test('non-SSE success response is rejected and retried with a bounded delay', { skip: !runsPublishedClient }, async () => {
   const stream = new StreamServer((record, response, count) => {
     if (count <= 2) {
-      response.writeHead(200, { 'content-type': 'application/json' }).end('event: view\ndata: {"version":99}\n\n');
+      response.writeHead(200, { 'content-type': 'application/json' }).end('event: closed\ndata: {}\n\n');
       return;
     }
     eventStream(response, view(1));
   });
   await withShell(await startHost(stream), stream, async (page, host) => {
-    const started = Date.now();
     await page.goto(host.tenantUrl('stream.localhost'));
     await page.locator('#home-title').waitFor();
     await until(() => stream.requests.length === 3, 'The client should retry after a non-SSE response.', 15000);
     await until(() => stream.open.size === 1, 'The valid stream should stay open.');
 
-    assert.ok(Date.now() - started >= 400, 'Retries should be delayed, not immediate.');
-    assert.ok(Date.now() - started < 10000, 'The delay should be bounded.');
+    const [first, second, third] = stream.requests;
+    assert.ok(second.at - first.at >= 200, 'Retries should be delayed, not immediate.');
+    assert.ok(third.at - second.at < 5000, 'The delay should be bounded.');
     assert.equal(stream.requests.length, 3);
   });
 });
