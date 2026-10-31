@@ -32,7 +32,9 @@ internal sealed class SessionInvitationService(INamedQueries queries, IInbox inb
 {
     private static readonly TimeSpan RecentCoPlayerWindow = TimeSpan.FromDays(30);
     private static readonly TimeSpan PollInvitationLifetime = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan LobbyInvitationLifetime = TimeSpan.FromHours(24);
+    // A non-poll invitation lasts as long as its lobby (the inbox reader drops it once the session leaves
+    // `lobby`); this is only a backstop so abandoned rows cannot stay valid forever.
+    private static readonly TimeSpan LobbyInvitationBackstop = TimeSpan.FromDays(365);
 
     public async Task<SessionInviteStatus> InviteAsync(
         ITenantTx transaction,
@@ -70,7 +72,7 @@ internal sealed class SessionInvitationService(INamedQueries queries, IInbox inb
         if (!await IsEligibleAsync(transaction, inviterId, inviteeId, cancellationToken)) return SessionInviteStatus.NotEligible;
 
         var now = time.GetUtcNow();
-        var lifetime = session.Format == "poll" ? PollInvitationLifetime : LobbyInvitationLifetime;
+        var lifetime = session.Format == "poll" ? PollInvitationLifetime : LobbyInvitationBackstop;
         await transaction.ExecuteAsync("""
             insert into session_invites (tenant_id, session_id, player_id, invited_by, created_at, expires_at)
             values (current_setting('app.tenant_id')::uuid, @sessionId, @inviteeId, @inviterId, @now, @expiresAt)
@@ -89,6 +91,7 @@ internal sealed class SessionInvitationService(INamedQueries queries, IInbox inb
             join session_participants theirs on theirs.session_id = mine.session_id and theirs.player_id = @inviteeId
             join sessions on sessions.id = mine.session_id
             where mine.player_id = @inviterId
+              and mine.role = 'player' and theirs.role = 'player'
               and sessions.created_at >= @since
             limit 1
             """, new { inviterId, inviteeId, since = time.GetUtcNow() - RecentCoPlayerWindow }, cancellationToken);

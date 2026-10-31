@@ -79,6 +79,83 @@ public sealed class SessionInviteEligibilityDatabaseTests : IAsyncLifetime
         Assert.Equal(1, await InviteCountAsync(sessionId, coPlayerId));
     }
 
+    [SkippableFact]
+    public async Task A_guest_invitee_is_refused_even_when_a_friend()
+    {
+        var (_, guestId) = await Host.CreateAnotherGuestClientAsync();
+        await MakeFriendsAsync(Host.PlayerId, guestId);
+        var sessionId = await SeedLobbyAsync();
+
+        using var response = await InviteAsync(sessionId, guestId);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(0, await InviteCountAsync(sessionId, guestId));
+    }
+
+    [SkippableFact]
+    public async Task An_inviter_who_is_not_seated_is_refused()
+    {
+        var (_, friendId) = await Host.CreateSecondPlayerClientAsync();
+        await MakeFriendsAsync(Host.PlayerId, friendId);
+        var sessionId = await SeedLobbyAsync();
+        await Host.ExecuteOwnerAsync(
+            "delete from session_participants where session_id = @sessionId and player_id = @playerId",
+            new { sessionId, playerId = Host.PlayerId });
+
+        using var response = await InviteAsync(sessionId, friendId);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, await InviteCountAsync(sessionId, friendId));
+    }
+
+    [SkippableFact]
+    public async Task Inviting_yourself_is_refused()
+    {
+        var sessionId = await SeedLobbyAsync();
+
+        using var response = await InviteAsync(sessionId, Host.PlayerId);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(0, await InviteCountAsync(sessionId, Host.PlayerId));
+    }
+
+    [SkippableFact]
+    public async Task Friends_disabled_refuses_a_player_who_only_spectated_with_the_inviter()
+    {
+        var (_, spectatorId) = await Host.CreateSecondPlayerClientAsync();
+        await Host.SetCapabilityAsync("feature", "friends", false);
+        var earlier = await SeedLobbyAsync();
+        await Host.ExecuteOwnerAsync("""
+            insert into session_participants(tenant_id, session_id, player_id, seat, role, status, phase, slot, step)
+            values (@tenantId, @earlier, @spectatorId, 1, 'spectator', 'active', 'idle', -1, 0)
+            """, new { tenantId = Host.TenantId, earlier, spectatorId });
+        var sessionId = await SeedLobbyAsync();
+
+        using var response = await InviteAsync(sessionId, spectatorId);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, await InviteCountAsync(sessionId, spectatorId));
+    }
+
+    [SkippableFact]
+    public async Task An_invitation_to_a_lobby_stays_in_the_inbox_until_the_lobby_ends()
+    {
+        var (friendClient, friendId) = await Host.CreateSecondPlayerClientAsync();
+        await MakeFriendsAsync(Host.PlayerId, friendId);
+        var sessionId = await SeedLobbyAsync();
+        using var invited = await InviteAsync(sessionId, friendId);
+        Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+        await Host.ExecuteOwnerAsync(
+            "update session_invites set created_at = now() - interval '2 days' where session_id = @sessionId",
+            new { sessionId });
+
+        Assert.Contains(sessionId.ToString(), await friendClient.GetStringAsync("/api/me/inbox"), StringComparison.OrdinalIgnoreCase);
+
+        await Host.ExecuteOwnerAsync("update sessions set status = 'cancelled', ended_at = now() where id = @sessionId", new { sessionId });
+
+        Assert.DoesNotContain(sessionId.ToString(), await friendClient.GetStringAsync("/api/me/inbox"), StringComparison.OrdinalIgnoreCase);
+    }
+
     private PlatformHttpFixture Host => _host ?? throw new InvalidOperationException("The platform host is not configured.");
 
     private Task<HttpResponseMessage> InviteAsync(Guid sessionId, Guid playerId) =>
