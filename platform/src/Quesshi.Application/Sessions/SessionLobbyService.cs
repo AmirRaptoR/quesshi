@@ -12,16 +12,20 @@ namespace Quesshi.Application.Sessions;
 public interface ISessionLobby
 {
     Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
+    Task<LobbyOutcome> AcceptInviteAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
     Task<LobbyOutcome> LeaveAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
     Task<LobbyOutcome> ConfigureAsync(Guid tenantId, Guid sessionId, Guid playerId, string? rulesJson, string? contentJson, int? capacity, CancellationToken cancellationToken = default);
     Task<LobbyOutcome> StartAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
     Task<LobbyOutcome> CancelAsync(Guid tenantId, Guid sessionId, Guid playerId, SessionStateStore store, CancellationToken cancellationToken = default);
 }
 
-internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock) : ISessionLobby
+internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry formats, ISourceRegistry sources, SessionSnapshotFactory snapshots, IKindRegistry kinds, IClock clock, IInbox inbox) : ISessionLobby
 {
     public Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
         database.InTenantAsync(tenantId, tx => JoinAsync(tx, tenantId, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
+
+    public Task<LobbyOutcome> AcceptInviteAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
+        database.InTenantAsync(tenantId, tx => AcceptInviteAsync(tx, tenantId, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
 
     public Task<LobbyOutcome> LeaveAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) =>
         database.InTenantAsync(tenantId, tx => LeaveAsync(tx, tenantId, sessionId, playerId, cancellationToken), IsolationLevel.ReadCommitted, cancellationToken);
@@ -81,6 +85,27 @@ internal sealed class SessionLobbyService(ITenantDb database, IFormatRegistry fo
                 """, new { sessionId, playerId, seat, eligible = session.Status == "running" && format.Spec.Pacing == Pacing.Shared && !player.IsGuest }, cancellationToken);
         }
         return new LobbyOutcome("joined", version);
+    }
+
+    /// <summary>Seats the invitee and consumes the invitation in one transaction; a refused join keeps the invitation.</summary>
+    private async Task<LobbyOutcome> AcceptInviteAsync(ITenantTx tx, Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
+    {
+        // Same validity rule as the inbox: unexpired, and the session is a poll or still a lobby.
+        var valid = await tx.QuerySingleOrDefaultAsync<bool?>("""
+            select true
+            from session_invites
+            join sessions on sessions.id = session_invites.session_id
+            where session_invites.session_id = @sessionId and session_invites.player_id = @playerId
+              and session_invites.expires_at > now()
+              and (sessions.format = 'poll' or sessions.status = 'lobby')
+            for update of session_invites
+            """, new { sessionId, playerId }, cancellationToken);
+        if (valid != true) return LobbyOutcome.Error("invite_not_found");
+        var outcome = await JoinAsync(tx, tenantId, sessionId, playerId, cancellationToken);
+        if (outcome.Code != "joined") return outcome;
+        await tx.ExecuteAsync("delete from session_invites where session_id = @sessionId and player_id = @playerId", new { sessionId, playerId }, cancellationToken);
+        inbox.Changed(tx, playerId);
+        return outcome;
     }
 
     private async Task<LobbyOutcome> LeaveAsync(ITenantTx tx, Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken)
