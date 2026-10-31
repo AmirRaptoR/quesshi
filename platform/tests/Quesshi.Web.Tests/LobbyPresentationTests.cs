@@ -68,6 +68,17 @@ public class LobbyPresentationTests
     }
 
     [Fact]
+    public void A_seat_that_was_left_is_no_longer_shown_or_counted()
+    {
+        var json = LobbyViews.Json("amir", ["amir", "sara"]).Replace(
+            """"id":"sara","name":"sara","seat":1,"role":"player","status":"active"""", """"id":"sara","name":"sara","seat":1,"role":"player","status":"left"""");
+        var view = PlatformState.ParseView(json)!;
+
+        Assert.Equal(["amir"], LobbyPresentation.Seats(view).Select(seat => seat.Id));
+        Assert.False(LobbyPresentation.CanStart(view));
+    }
+
+    [Fact]
     public void The_owners_own_seat_tile_reads_host_and_anyone_else_reads_ready()
     {
         var view = LobbyViews.Parse("amir", ["amir", "sara"]);
@@ -112,5 +123,21 @@ public class LobbyPresentationTests
         var link = LobbyPresentation.ShareLink("https://tenant.example/", view);
 
         Assert.Equal("https://tenant.example/join/ZK7Q4M", link);
+    }
+}
+
+/// <summary>The stream writes the roster in the server's own PascalCase; the client must read it as a complete roster.</summary>
+public class ServerRosterCasingTests
+{
+    [Fact]
+    public void A_complete_roster_written_in_server_casing_parses_with_its_online_marks()
+    {
+        const string json = """{"Id":"s1","Code":"ABCD23","Format":"fake","Status":"lobby","Phase":"idle","Slot":-1,"Step":0,"Version":1,"ConfigVersion":1,"Now":"2026-01-01T00:00:00Z","Deadline":null,"Me":{"Id":"amir","Seat":0,"Role":"player","Status":"active","Score":0,"Place":null,"Outcome":null},"Roster":{"Total":1,"Seats":[{"Id":"amir","Name":"Amir","Seat":0,"Role":"player","Status":"active","Score":0,"Place":null,"Outcome":null,"Online":true}]},"Content":{},"Rules":{},"Body":{}}""";
+
+        var view = PlatformState.ParseView(json)!;
+
+        var seat = Assert.Single(LobbyPresentation.Seats(view));
+        Assert.True(seat.Online);
+        Assert.True(LobbyPresentation.IsOwner(view));
     }
 }

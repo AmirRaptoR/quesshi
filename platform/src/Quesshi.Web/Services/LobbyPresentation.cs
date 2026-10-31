@@ -17,7 +17,7 @@ public static class LobbyPresentation
 
     public static bool IsLobby(SessionView view) => view.Status == LobbyStatus;
 
-    /// <summary>The seated players, lowest seat first; a windowed roster contributes its top entries only.</summary>
+    /// <summary>The seated players (a seat that was left stays in the roster but is no longer taken), lowest seat first; a windowed roster contributes its top entries only.</summary>
     public static IReadOnlyList<SessionRosterSeat> Seats(SessionView view)
     {
         var seats = view.Roster switch
@@ -26,7 +26,7 @@ public static class LobbyPresentation
             WindowedRosterView windowed => windowed.Top,
             _ => [],
         };
-        return [.. seats.Where(seat => seat.Role == "player").OrderBy(seat => seat.Seat)];
+        return [.. seats.Where(seat => seat.Role == "player" && seat.Status != "left").OrderBy(seat => seat.Seat)];
     }
 
     public static bool IsOwner(SessionView view) =>

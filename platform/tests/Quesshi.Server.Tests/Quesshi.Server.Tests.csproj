@@ -5,6 +5,7 @@
     <ProjectReference Include="../../bench/Quesshi.Bench.Live/Quesshi.Bench.Live.csproj" />
     <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+    <PackageReference Include="bunit" Version="2.9.0" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Migrations/Application/*.sql" LogicalName="Quesshi.Application.Migrations.%(Filename)%(Extension)" />
