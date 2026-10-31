@@ -29,7 +29,19 @@ public sealed class ClientHttp(HttpClient http, IClientReloader reloader)
         return response;
     }
 
-    internal static bool IsOutdated(HttpResponseMessage response) =>
+    /// <summary>Opens a long-lived response: headers only, browser response streaming, never buffered or timed out as a whole.</summary>
+    public async Task<HttpResponseMessage> OpenStreamAsync(string path, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Options.Set(new HttpRequestOptionsKey<bool>("WebAssemblyEnableStreamingResponse"), true);
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
+        request.Headers.TryAddWithoutValidation("X-Client-Build", BuildId);
+        var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (IsOutdated(response) && reloadedBuilds.Add(BuildId)) await reloader.ReloadOnceAsync(BuildId);
+        return response;
+    }
+
+    public static bool IsOutdated(HttpResponseMessage response) =>
         response.StatusCode == HttpStatusCode.UpgradeRequired
         || response.Headers.TryGetValues("X-Client-Status", out var values) && values.Contains("client_outdated", StringComparer.OrdinalIgnoreCase)
         || string.Equals(response.ReasonPhrase, "client_outdated", StringComparison.OrdinalIgnoreCase);

@@ -37,6 +37,12 @@ public sealed class AuthState(PlayerApi api)
         }
     }
 
+    /// <summary>The server rejected the player's session (for example a 401 on the stream).</summary>
+    public void MarkSignedOut()
+    {
+        if (Status == PlayerIdentityStatus.SignedIn) Set(PlayerIdentityStatus.SignedOut, null);
+    }
+
     public Task RetryAsync(CancellationToken cancellationToken = default) => InitializeAsync(cancellationToken);
 
     public Task<ApiResponse<VerificationResult>> RequestCodeAsync(string email, CancellationToken cancellationToken = default) =>

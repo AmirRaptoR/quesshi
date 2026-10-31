@@ -46,6 +46,11 @@ function tenantFor(request, tenants) {
 function dynamicResource(request, response, tenant) {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   if (!tenant) return false;
+  const handler = tenant.handlers?.[pathname];
+  if (handler) {
+    handler(request, response);
+    return true;
+  }
   const resources = {
     '/api/config': { body: JSON.stringify(tenant.config), type: 'application/json', tag: `config-${tenant.config.configVersion}` },
     '/api/me': { body: '', type: 'application/json', status: 401, tag: `identity-${tenant.config.configVersion}` },

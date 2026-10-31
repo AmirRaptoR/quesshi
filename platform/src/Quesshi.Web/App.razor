@@ -1,8 +1,9 @@
 @using Quesshi.Web.Services
 @using Quesshi.Web.Plugins
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AppConfig Config
 @inject AuthState Auth
+@inject StreamClient Stream
 @inject LanguageSelection Languages
 @inject Translator Translator
 @inject NavigationManager Navigation
@@ -71,12 +72,14 @@ else
 
 @code {
     private bool authInitialized;
+    private bool disposed;
     private bool languageInitialized;
 
     protected override void OnInitialized()
     {
         Config.Changed += StateHasChanged;
-        Auth.Changed += StateHasChanged;
+        Auth.Changed += AuthChanged;
+        Stream.Unauthorized += Auth.MarkSignedOut;
         Navigation.LocationChanged += NavigationChanged;
     }
 
@@ -109,12 +112,37 @@ else
 
     private bool IsAdminRoute => new Uri(Navigation.Uri).AbsolutePath.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
 
-    private void NavigationChanged(object? sender, LocationChangedEventArgs args) => StateHasChanged();
-
-    public void Dispose()
+    private void AuthChanged()
     {
+        StateHasChanged();
+        _ = SyncStreamAsync();
+    }
+
+    private void NavigationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        StateHasChanged();
+        _ = SyncStreamAsync();
+    }
+
+    // One reader for the whole signed-in shell. The optional ?session={id} query selects the watched session.
+    private async Task SyncStreamAsync()
+    {
+        await Stream.SyncAsync(() =>
+        {
+            if (disposed) return (false, null);
+            var query = System.Web.HttpUtility.ParseQueryString(new Uri(Navigation.Uri).Query);
+            Guid? session = Guid.TryParse(query["session"], out var id) ? id : null;
+            return (Auth.Status == PlayerIdentityStatus.SignedIn && !IsAdminRoute, session);
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
         Config.Changed -= StateHasChanged;
-        Auth.Changed -= StateHasChanged;
+        Auth.Changed -= AuthChanged;
+        Stream.Unauthorized -= Auth.MarkSignedOut;
         Navigation.LocationChanged -= NavigationChanged;
+        await Stream.SyncAsync(false, null);
     }
 }
