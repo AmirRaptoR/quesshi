@@ -17,6 +17,7 @@ public class BrowserTranslationTests
     [
         Path.Combine(AppContext.BaseDirectory, "PlayerShell"),
         Path.Combine(AppContext.BaseDirectory, "PlayerPages"),
+        Path.Combine(AppContext.BaseDirectory, "PlayerComponents"),
         Path.Combine(AppContext.BaseDirectory, "AdminPages")
     ];
 

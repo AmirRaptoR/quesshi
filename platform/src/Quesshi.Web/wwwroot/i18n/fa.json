@@ -412,6 +412,8 @@
   "lobby.invite.title": "دعوت",
   "lobby.leave": "خروج",
   "lobby.leaveOwner": "لغو لابی",
+  "lobby.offline": "آفلاین",
+  "lobby.online": "آنلاین",
   "lobby.openSeat": "خالی",
   "lobby.rosterCount": "{0} از {1} نفر اینجا",
   "lobby.seatHost": "میزبان",

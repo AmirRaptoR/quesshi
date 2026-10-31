@@ -412,6 +412,8 @@
   "lobby.invite.title": "Invite",
   "lobby.leave": "Leave",
   "lobby.leaveOwner": "Cancel the lobby",
+  "lobby.offline": "Offline",
+  "lobby.online": "Online",
   "lobby.openSeat": "Open",
   "lobby.rosterCount": "{0} of {1} here",
   "lobby.seatHost": "Host",

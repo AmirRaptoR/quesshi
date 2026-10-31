@@ -23,3 +23,6 @@ public sealed record ProfileSectionParameters(string PlayerId);
 
 /// <summary>Parameters for a contribution to a finished session's result.</summary>
 public sealed record SessionResultParameters(SessionView Session);
+
+/// <summary>Parameters for a format's lobby settings component; <paramref name="IsOwner"/> tells it whether the viewer may change them.</summary>
+public sealed record FormatSettingsParameters(SessionView Session, bool IsOwner);

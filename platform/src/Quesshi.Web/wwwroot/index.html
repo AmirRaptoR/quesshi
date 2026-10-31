@@ -32,6 +32,12 @@
           const theme = document.getElementById('tenant-theme');
           theme.href = `/theme.css?v=${encodeURIComponent(version)}`;
         },
+        copy: async text => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },
+        share: async data => {
+          if (!navigator.share) return false;
+          try { await navigator.share(data); } catch { /* cancelled or refused: still handled */ }
+          return true;
+        },
         reloadOnce: buildId => {
           const key = `quesshi.outdated.${buildId}`;
           if (sessionStorage.getItem(key)) return;

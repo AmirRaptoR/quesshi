@@ -1,0 +1,142 @@
+@using Microsoft.JSInterop
+@using Quesshi.Shared
+@using Quesshi.Web.Plugins
+@using Quesshi.Web.Services
+@inject Translator L
+@inject LobbyActions Actions
+@inject IFormatClientRegistry Formats
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+@if (!LobbyPresentation.IsLobby(SessionView))
+{
+    <div class="empty enter">
+        <p>@L["lobby.alreadyStarted"]</p>
+    </div>
+}
+else
+{
+    var view = SessionView;
+    var seats = LobbyPresentation.Seats(view);
+    var isOwner = LobbyPresentation.IsOwner(view);
+    <section class="lobby-panel" data-lobby-panel="@view.Id">
+        <div class="enter" style="text-align:center;margin-top:.5rem">
+            <p class="muted" style="margin:0;font-size:var(--step--1)">@L["lobby.shareCode"]</p>
+            <p class="lobby-code" dir="ltr" data-lobby-code>@view.Code</p>
+            <div class="row" style="justify-content:center;gap:.5rem;margin-top:.2rem">
+                <button type="button" class="btn btn--ghost btn--pill" data-lobby-copy @onclick="CopyAsync">
+                    @(copied ? L["lobby.copied"] : L["lobby.copyLink"])
+                </button>
+                <button type="button" class="btn btn--ghost btn--pill" data-lobby-share @onclick="ShareAsync">@L["lobby.share"]</button>
+            </div>
+        </div>
+
+        <section class="enter" style="margin-top:1.9rem">
+            <span style="font-size:var(--step-0);font-weight:700" data-lobby-count>@L.Format("lobby.rosterCount", L.Num(seats.Count), L.Num(seats.Count))</span>
+            <div class="lobby-grid" style="--lobby-cols:3">
+                @foreach (var seat in seats)
+                {
+                    var host = LobbyPresentation.SeatStateFor(view, seat) == LobbyPresentation.SeatState.Host;
+                    <div class="lobby-tile" @key="seat.Id" data-seat="@seat.Id" data-online="@(seat.Online ? "true" : "false")">
+                        <span class="avatar avatar--tile">@Initial(seat.Name)</span>
+                        <span dir="auto" style="font-weight:700;font-size:var(--step--1)">@seat.Name</span>
+                        <span style="font-size:var(--step--1);color:@(host ? "var(--zaferan)" : "var(--sadaf-3)")">
+                            @(host ? L["lobby.seatHost"] : L["lobby.seatReady"])
+                        </span>
+                        <span class="faint" style="font-size:var(--step--1)" data-presence>@(seat.Online ? L["lobby.online"] : L["lobby.offline"])</span>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="enter" style="margin-top:1.5rem" data-lobby-settings>
+            <FormatSettings Session="view" IsOwner="isOwner" Registry="Formats" />
+        </section>
+
+        @if (Invitees.Count > 0)
+        {
+            <section class="enter" style="margin-top:1.5rem">
+                <p class="muted" style="margin:0 0 .5rem;font-size:var(--step--1)">@L["lobby.invite.title"]</p>
+                <div class="row" style="flex-wrap:wrap;gap:.5rem">
+                    @foreach (var invitee in Invitees)
+                    {
+                        var state = LobbyPresentation.InviteState(view, invitee, invited.Contains(invitee.Id));
+                        <button type="button" class="btn btn--ghost btn--pill" data-invitee="@invitee.Id" disabled="@(busy || state != LobbyPresentation.InviteTileState.Available)"
+                                @onclick="() => InviteAsync(invitee)">
+                            @invitee.Name · @(state switch
+                            {
+                                LobbyPresentation.InviteTileState.Joined => L["lobby.invite.joined"],
+                                LobbyPresentation.InviteTileState.Invited => L["lobby.invite.invited"],
+                                _ => L["lobby.invite.button"],
+                            })
+                        </button>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (error is not null)
+        {
+            <p class="form-error" role="alert">@L["common.error"]</p>
+        }
+
+        <div class="enter" style="margin-top:1.5rem">
+            @if (isOwner)
+            {
+                <button type="button" class="btn btn--block" data-lobby-start disabled="@(busy || !LobbyPresentation.CanStart(view))" @onclick="StartAsync">@L["lobby.start"]</button>
+                <p class="muted" style="font-size:var(--step--1)">@L["lobby.startHint"]</p>
+            }
+            else
+            {
+                <p class="muted" style="font-size:var(--step--1)">@L["lobby.waitingForOwner"]</p>
+            }
+            <button type="button" class="btn btn--ghost btn--block" data-lobby-leave disabled="@busy" @onclick="LeaveAsync">@(isOwner ? L["lobby.leaveOwner"] : L["lobby.leave"])</button>
+        </div>
+    </section>
+}
+
+@code {
+    private readonly HashSet<string> invited = new(StringComparer.Ordinal);
+    private bool copied, busy;
+    private string? error;
+
+    /// <summary>The lobby to show; the hosting page passes each newer accepted view.</summary>
+    [Parameter, EditorRequired]
+    public SessionView SessionView { get; set; } = default!;
+
+    /// <summary>People the viewer may invite; eligibility itself is decided by the server.</summary>
+    [Parameter]
+    public IReadOnlyList<LobbyInvitee> Invitees { get; set; } = [];
+
+    private string ShareLink => LobbyPresentation.ShareLink(Nav.BaseUri, SessionView);
+
+    private async Task CopyAsync() => copied = await Js.InvokeAsync<bool>("quesshi.copy", ShareLink);
+
+    private async Task ShareAsync()
+    {
+        var shared = await Js.InvokeAsync<bool>("quesshi.share", new { title = L["app.name"], text = L["lobby.shareCode"], url = ShareLink });
+        if (!shared) await CopyAsync();
+    }
+
+    private Task StartAsync() => RunAsync(() => Actions.StartAsync(SessionView.Id));
+
+    private Task LeaveAsync() => RunAsync(() => Actions.LeaveAsync(SessionView.Id));
+
+    private Task InviteAsync(LobbyInvitee invitee) => RunAsync(async () =>
+    {
+        var outcome = await Actions.InviteAsync(SessionView.Id, invitee.Id);
+        if (outcome.Succeeded) invited.Add(invitee.Id);
+        return outcome;
+    });
+
+    private async Task RunAsync(Func<Task<LobbyActionOutcome>> action)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try { error = (await action()).ErrorCode; }
+        finally { busy = false; }
+    }
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+}
