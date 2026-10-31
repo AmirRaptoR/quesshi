@@ -7,25 +7,25 @@ using Quesshi.Plugin.Api;
 
 namespace Quesshi.Features.Leaderboard;
 
-/// <summary>
-/// Read side of the leaderboard (design 13). A rank is the count of strictly higher scores plus one, so tied
-/// players share it. Everything is plain SQL inside the caller's tenant transaction.
-/// </summary>
 /// <summary>One ranked player. Serialises to the shape of <c>Quesshi.Shared.LeaderboardRowDto</c>, which the client reads.</summary>
 public sealed record LeaderboardRow(int Rank, Guid PlayerId, string Name, string Avatar, long Score);
 
 /// <summary>A board page, shaped like <c>Quesshi.Shared.LeaderboardDto</c>: at most 100 rows plus the caller's own.</summary>
 public sealed record LeaderboardPage(IReadOnlyList<LeaderboardRow> Entries, LeaderboardRow? Me);
 
+/// <summary>
+/// Read side of the leaderboard (design 13). A rank is the count of strictly higher scores plus one, so tied
+/// players share it. Everything is plain SQL inside the caller's tenant transaction.
+/// </summary>
 public static partial class LeaderboardReadRoutes
 {
-    public const int TopCount = 100;
+    private const int TopCount = 100;
 
     /// <summary>The feature's query declared in <c>Uses</c>: the caller's friend ids as <c>IReadOnlyList&lt;Guid&gt;</c>.</summary>
     public const string FriendsQuery = "friends.ids";
 
-    /// <summary>The top entries of one board and period, served by the <c>leaderboard_top</c> index.</summary>
-    public const string TopSql = """
+    // The top entries of one board and period, served by the leaderboard_top index.
+    private const string TopSql = """
         with top as (
             select s.player_id,
                    s.score,

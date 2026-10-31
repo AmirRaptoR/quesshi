@@ -82,16 +82,31 @@ public sealed class LeaderboardReadEndpointTests : IAsyncLifetime
     public async Task The_top_100_query_plan_uses_the_leaderboard_top_index()
     {
         var database = Host.Services.GetRequiredService<ITenantDb>();
+        // Enough rows that the planner prefers the index for a limited, ordered read.
+        await Host.ExecuteOwnerAsync("""
+            with new_players as (
+                insert into players(tenant_id, id, display_name, avatar_seed, lang)
+                select @tenantId, gen_random_uuid(), 'Plan ' || n, 'plan-' || n, 'en' from generate_series(1, 5000) n
+                returning id, display_name
+            )
+            insert into leaderboard_scores(tenant_id, board, period, player_id, score)
+            select @tenantId, 'all', '2026-10', id, 1 + substr(display_name, 6)::int from new_players;
+            analyze leaderboard_scores;
+            """, new { tenantId = Host.TenantId });
+        const string scans = "select coalesce(sum(idx_scan), 0)::bigint from pg_stat_user_indexes where indexrelname = 'leaderboard_top'";
+        var before = await database.InTenantAsync(Host.TenantId, t => t.QuerySingleOrDefaultAsync<long>(scans), readOnly: true);
 
-        var plan = await database.InTenantAsync(Host.TenantId, async transaction =>
+        await LeaderboardReadSupport.GetAsync(Host.Player, "/api/x/leaderboard/all?period=2026-10");
+
+        // Index usage statistics reach other sessions asynchronously, so poll briefly.
+        long after = before;
+        for (var attempt = 0; attempt < 50 && after <= before; attempt++)
         {
-            await transaction.ExecuteAsync("set local enable_seqscan = off");
-            await transaction.ExecuteAsync("set local enable_bitmapscan = off");
-            return await transaction.QueryAsync<string>(
-                "explain " + LeaderboardReadRoutes.TopSql, new { board = "all", period = "all" });
-        });
+            await Task.Delay(200);
+            after = await database.InTenantAsync(Host.TenantId, t => t.QuerySingleOrDefaultAsync<long>(scans), readOnly: true);
+        }
 
-        Assert.Contains(plan, line => line.Contains("leaderboard_top", StringComparison.Ordinal));
+        Assert.True(after > before, "the top-100 read never scanned the leaderboard_top index");
     }
 
     /// <summary>AC-2.</summary>
