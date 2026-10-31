@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
 using Orleans;
+using Quesshi.Application.Sessions;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Security;
@@ -17,6 +18,7 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         routes.PlayerRoutes.MapPut("/sessions/{id:guid}/settings", SettingsAsync).AllowGuests();
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/start", StartAsync).AllowGuests();
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/leave", LeaveAsync).AllowGuests();
+        routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites", InviteAsync);
     }
 
     private static async Task<IResult> JoinAsync(HttpContext context, ITenantDb database, IGrainFactory grains, CancellationToken cancellationToken)
@@ -41,6 +43,35 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         var body = await ReadBodyAsync<SettingsBody>(context, cancellationToken);
         if (body is null) return Error("invalid_request", 400);
         return await ExecuteAsync(id, new LobbyCommand("", "settings", body.Rules?.GetRawText(), body.Content?.GetRawText(), body.Capacity), context, grains);
+    }
+
+    private static async Task<IResult> InviteAsync(
+        Guid id,
+        HttpContext context,
+        ITenantDb database,
+        ISessionInvitations invitations,
+        CancellationToken cancellationToken)
+    {
+        var body = await ReadBodyAsync<InviteBody>(context, cancellationToken);
+        if (body is null || body.PlayerId is not { } inviteeId || inviteeId == Guid.Empty) return Error("invalid_request", 400);
+        var player = context.Player();
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (player is null) return Error("identity_required", 401);
+        if (tenant is null) return Error("not_found", 404);
+        var status = await database.InTenantAsync(
+            tenant.Id,
+            transaction => invitations.InviteAsync(transaction, id, player.PlayerId, inviteeId, cancellationToken),
+            cancellationToken: cancellationToken);
+        return status switch
+        {
+            SessionInviteStatus.Invited => Results.Json(new { code = "invited" }),
+            SessionInviteStatus.SessionNotFound => Error("not_found", 404),
+            SessionInviteStatus.NotSeated => Error("absent_seat", 403),
+            SessionInviteStatus.NotEligible => Error("not_eligible", 403),
+            SessionInviteStatus.InviteeUnavailable => Error("invitee_unavailable", 404),
+            SessionInviteStatus.AlreadySeated => Error("already_seated", 409),
+            _ => Error("not_in_lobby", 409),
+        };
     }
 
     private static async Task<T?> ReadBodyAsync<T>(HttpContext context, CancellationToken cancellationToken) where T : class
@@ -78,5 +109,7 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
     private static IResult Error(string error, int status) => Results.Json(new { error }, statusCode: status);
 
     public sealed record JoinBody(string? Code);
+
+    public sealed record InviteBody(Guid? PlayerId);
     public sealed record SettingsBody(JsonElement? Rules, JsonElement? Content, int? Capacity);
 }
