@@ -67,6 +67,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         {
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
             await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
+            await RewindMatchmakingMigrationAsync(owner);
             await RewindInboxMigrationAsync(owner);
             await RewindLeaderboardMigrationAsync(owner);
             await RewindStatsMigrationAsync(owner);
@@ -219,6 +220,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         await Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
+        await RewindMatchmakingMigrationAsync(owner);
         await RewindInboxMigrationAsync(owner);
         await RewindLeaderboardMigrationAsync(owner);
         await RewindStatsMigrationAsync(owner);
@@ -282,6 +284,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindInboxMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table session_invites; drop table player_inbox; delete from schema_migrations where name = '{InboxMigrationName}'");
+
+    private static Task RewindMatchmakingMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists matchmaking_entries; delete from schema_migrations where name = '20261025T0000_matchmaking_entries.sql'");
 
     private static Task RewindFriendsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table friendships; delete from schema_migrations where name = '{FriendsMigrationName}'");
