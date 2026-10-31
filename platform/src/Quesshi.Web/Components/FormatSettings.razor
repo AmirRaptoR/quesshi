@@ -1,0 +1,22 @@
+@using Quesshi.Shared
+@using Quesshi.Web.Plugins
+@using Microsoft.AspNetCore.Components.Web
+
+@if (Registry.ResolveFormat(Session.Format) is { } client)
+{
+    <ErrorBoundary @key="Session.Format">
+        <ChildContent>
+            <DynamicComponent Type="client.Settings"
+                              Parameters="@(new Dictionary<string, object> { [ClientSlotComponent.ParameterName] = new FormatSettingsParameters(Session, IsOwner) })" />
+        </ChildContent>
+        <ErrorContent>
+            <p role="alert" data-settings-gap="@Session.Format"></p>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    [Parameter, EditorRequired] public SessionView Session { get; set; } = default!;
+    [Parameter] public bool IsOwner { get; set; }
+    [Parameter, EditorRequired] public IFormatClientRegistry Registry { get; set; } = default!;
+}

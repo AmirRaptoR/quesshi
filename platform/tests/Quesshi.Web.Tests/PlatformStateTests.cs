@@ -24,6 +24,19 @@ public sealed class PlatformStateTests
     }
 
     [Fact]
+    public async Task A_presence_refresh_at_the_same_version_but_a_later_server_time_replaces_the_view_and_an_earlier_one_does_not()
+    {
+        var (state, fixture) = Create();
+        await using var _ = fixture;
+        await fixture.StreamAsync(1, [View(5, BrowserNow)]);
+
+        Assert.True(state.AcceptView(Parse(View(5, BrowserNow + TimeSpan.FromSeconds(30)))));
+        Assert.False(state.AcceptView(Parse(View(5, BrowserNow + TimeSpan.FromSeconds(10)))));
+        Assert.False(state.AcceptView(Parse(View(5, BrowserNow + TimeSpan.FromSeconds(30)))));
+        Assert.Equal(BrowserNow + TimeSpan.FromSeconds(30), state.View!.Now);
+    }
+
+    [Fact]
     public async Task An_older_command_response_view_after_a_newer_stream_view_leaves_the_current_view_unchanged()
     {
         var (state, fixture) = Create();

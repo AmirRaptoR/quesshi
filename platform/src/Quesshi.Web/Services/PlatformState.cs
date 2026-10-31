@@ -41,14 +41,14 @@ public sealed class PlatformState : IDisposable
     public event Action<InboxState>? InboxChanged;
     public event Action<EffectsState>? EffectsChanged;
 
-    /// <summary>Accepts a view from the stream or a command response; false when it is not newer than the current one.</summary>
+    /// <summary>Accepts a view from the stream or a command response; false when it is not newer than the current one (a later server time at the same version counts as newer).</summary>
     public bool AcceptView(SessionView view)
     {
         SessionView? previous;
         lock (gate)
         {
             previous = View;
-            if (previous is not null && previous.Id == view.Id && view.Version <= previous.Version) return false;
+            if (previous is not null && previous.Id == view.Id && IsStale(view, previous)) return false;
             View = view;
             ClockOffset = view.Now - time.GetUtcNow();
         }
@@ -56,6 +56,10 @@ public sealed class PlatformState : IDisposable
         ViewChanged?.Invoke(previous, view);
         return true;
     }
+
+    /// <summary>A presence refresh keeps the session version and only moves the server clock on, so equal versions order by that clock.</summary>
+    private static bool IsStale(SessionView view, SessionView current) =>
+        view.Version < current.Version || view.Version == current.Version && view.Now <= current.Now;
 
     public bool AcceptInbox(InboxState inbox)
     {

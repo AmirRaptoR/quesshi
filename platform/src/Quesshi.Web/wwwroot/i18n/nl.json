@@ -412,6 +412,8 @@
   "lobby.invite.title": "Uitnodigen",
   "lobby.leave": "Verlaten",
   "lobby.leaveOwner": "Lobby annuleren",
+  "lobby.offline": "Offline",
+  "lobby.online": "Online",
   "lobby.openSeat": "Vrij",
   "lobby.rosterCount": "{0} van {1} hier",
   "lobby.seatHost": "Eigenaar",
