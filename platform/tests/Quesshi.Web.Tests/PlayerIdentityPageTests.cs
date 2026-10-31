@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Quesshi.Web.Models;
 using Quesshi.Web.Pages;
+using Quesshi.Web.Plugins;
 using Quesshi.Web.Services;
 
 namespace Quesshi.Web.Tests;
@@ -405,6 +406,7 @@ public sealed class PlayerIdentityPageTests : BunitContext
     public async Task Profile_shows_the_current_tenant_player_identity()
     {
         var auth = UseServices(new PageHandler(Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"Ada","avatarSeed":"avatar-1","lang":"en"}""")));
+        Services.AddSingleton<IFormatClientRegistry>(new ClientRegistry(new NoClientLoader()));
         await auth.InitializeAsync();
 
         var cut = Render<Profile>();
@@ -577,6 +579,11 @@ public sealed class PlayerIdentityPageTests : BunitContext
     }
 
     private sealed record CapturedRequest(string Path, string? Body);
+
+    private sealed class NoClientLoader : IClientAssemblyLoader
+    {
+        public Task<IReadOnlyList<System.Reflection.Assembly>> LoadAsync(string assemblyName) => throw new NotSupportedException();
+    }
 
     private sealed class NullReloader : IClientReloader
     {
