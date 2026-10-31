@@ -1,4 +1,6 @@
 @page "/profile"
+@using Quesshi.Shared
+@using Quesshi.Web.Plugins
 @using Quesshi.Web.Services
 @inject AuthState Auth
 @inject Translator Translator
@@ -15,6 +17,8 @@
         </dl>
         <button class="btn" type="button" @onclick="OpenSettings">@Translator["settings.title"]</button>
     </section>
+    <ClientSlotHost TParameters="ProfileSectionParameters" Slot="ClientSlots.ProfileSection"
+                    Value="@(new ProfileSectionParameters(Auth.Player.Id.ToString()))" />
 }
 
 @code {

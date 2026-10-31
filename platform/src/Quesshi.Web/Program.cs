@@ -35,6 +35,8 @@ builder.Services.AddScoped<IClientRegistry>(services =>
     return registry;
 });
 
+builder.Services.AddScoped<IFormatClientRegistry>(services => (IFormatClientRegistry)services.GetRequiredService<IClientRegistry>());
+
 var host = builder.Build();
 await host.Services.GetRequiredService<AppConfig>().LoadAsync();
 _ = host.Services.GetRequiredService<PlatformState>();
