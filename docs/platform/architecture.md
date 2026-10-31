@@ -1807,6 +1807,7 @@ GET  /api/sessions/{id}           PUT /api/sessions/{id}/settings
 GET  /api/sessions/{id}/roster    GET  /api/sessions/{id}/effects
 POST /api/sessions/{id}/start     POST /api/sessions/{id}/leave
 POST /api/sessions/{id}/invites   POST /api/sessions/{id}/rematch
+POST /api/sessions/{id}/invites/accept    POST /api/sessions/{id}/invites/decline
 POST /api/sessions/{id}/commands
 
 /api/x/{feature}/...              each feature plugin's player routes

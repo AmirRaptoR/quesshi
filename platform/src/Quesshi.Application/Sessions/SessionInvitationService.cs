@@ -22,6 +22,9 @@ public interface ISessionInvitations
         Guid inviterId,
         Guid inviteeId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Removes the caller's own invitation without seating them; true when one existed.</summary>
+    Task<bool> DeclineAsync(ITenantTx transaction, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -81,6 +84,17 @@ internal sealed class SessionInvitationService(INamedQueries queries, IInbox inb
             """, new { sessionId, inviteeId, inviterId, now, expiresAt = now + lifetime }, cancellationToken);
         inbox.Changed(transaction, inviteeId);
         return SessionInviteStatus.Invited;
+    }
+
+    public async Task<bool> DeclineAsync(ITenantTx transaction, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default)
+    {
+        var removed = await transaction.ExecuteAsync(
+            "delete from session_invites where session_id = @sessionId and player_id = @playerId",
+            new { sessionId, playerId },
+            cancellationToken);
+        if (removed == 0) return false;
+        inbox.Changed(transaction, playerId);
+        return true;
     }
 
     private async Task<bool> IsEligibleAsync(ITenantTx transaction, Guid inviterId, Guid inviteeId, CancellationToken cancellationToken)

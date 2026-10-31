@@ -292,6 +292,7 @@ public class SessionGrain(
             outcome = request.Type.ToLowerInvariant() switch
             {
                 "join" => await lobby.JoinAsync(_tenantId, _sessionId, playerId),
+                "accept_invite" => await lobby.AcceptInviteAsync(_tenantId, _sessionId, playerId),
                 "leave" when string.Equals(_state.Session.Owner, request.Player, StringComparison.Ordinal) =>
                     await lobby.CancelAsync(_tenantId, _sessionId, playerId, store),
                 "leave" => await lobby.LeaveAsync(_tenantId, _sessionId, playerId),

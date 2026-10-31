@@ -19,6 +19,8 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/start", StartAsync).AllowGuests();
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/leave", LeaveAsync).AllowGuests();
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites", InviteAsync);
+        routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites/accept", AcceptInviteAsync);
+        routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites/decline", DeclineInviteAsync);
     }
 
     private static async Task<IResult> JoinAsync(HttpContext context, ITenantDb database, IGrainFactory grains, CancellationToken cancellationToken)
@@ -74,6 +76,27 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         };
     }
 
+    private static Task<IResult> AcceptInviteAsync(Guid id, HttpContext context, IGrainFactory grains) =>
+        ExecuteAsync(id, new LobbyCommand("", "accept_invite"), context, grains);
+
+    private static async Task<IResult> DeclineInviteAsync(
+        Guid id,
+        HttpContext context,
+        ITenantDb database,
+        ISessionInvitations invitations,
+        CancellationToken cancellationToken)
+    {
+        var player = context.Player();
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (player is null) return Error("identity_required", 401);
+        if (tenant is null) return Error("not_found", 404);
+        var removed = await database.InTenantAsync(
+            tenant.Id,
+            transaction => invitations.DeclineAsync(transaction, id, player.PlayerId, cancellationToken),
+            cancellationToken: cancellationToken);
+        return removed ? Results.Json(new { code = "declined" }) : Error("invite_not_found", 404);
+    }
+
     private static async Task<T?> ReadBodyAsync<T>(HttpContext context, CancellationToken cancellationToken) where T : class
     {
         try { return await context.Request.ReadFromJsonAsync<T>(cancellationToken); }
@@ -99,7 +122,7 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
     private static IResult Result(LobbyCommandResult result) => result.Code switch
     {
         "joined" or "configured" or "left" or "ended" or "started" => Results.Json(new { code = result.Code, version = result.Version }),
-        "not_found" => Error(result.Code, 404),
+        "not_found" or "invite_not_found" => Error(result.Code, 404),
         "not_owner" or "absent_seat" or "guest_not_allowed" => Error(result.Code, 403),
         "session_full" or "stale_activation" or "late_join_not_allowed" or "expired" or "cancelled" or "not_in_lobby" or "not_enough_players" => Error(result.Code, 409),
         "source_unavailable" => Error(result.Code, 503),
