@@ -1,0 +1,95 @@
+@page "/sessions/{Id:guid}"
+@using System.Net.Http.Json
+@using Quesshi.Shared
+@using Quesshi.Web.Plugins
+@using Quesshi.Web.Services
+@inject ClientHttp Http
+@inject Translator Translator
+
+<section class="card stack" aria-labelledby="session-history-title">
+    <h1 id="session-history-title">@Translator["history.session.title"]</h1>
+    <a href="/sessions">@Translator["history.back"]</a>
+    @if (unavailable)
+    {
+        <p role="alert" data-test="history-unavailable">@Translator["history.session.unavailable"]</p>
+    }
+    else if (failed)
+    {
+        <p role="alert" data-test="history-error">@Translator["history.error"]</p>
+    }
+    else
+    {
+        <ol class="stack" data-test="question-list">
+            @foreach (var item in items)
+            {
+                <li data-slot="@item.Slot">
+                    <p data-field="prompt">@item.Prompt</p>
+                    <KindReveal Card="@(new KindCard(item.Kind, item.KindVersion, item.Card))" Reveal="@item.Reveal" Answers="@System.Text.Json.JsonSerializer.SerializeToElement(item.Answers)" />
+                </li>
+            }
+        </ol>
+    }
+    @if (next is not null)
+    {
+        <button class="btn" type="button" data-test="questions-more" disabled="@loading" @onclick="LoadAsync">@Translator["history.more"]</button>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private readonly List<SessionQuestionHistoryItem> items = [];
+    private int? next;
+    private bool loading;
+    private bool failed;
+    private bool unavailable;
+    private Guid loadedId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedId == Id) return;
+        loadedId = Id;
+        items.Clear();
+        next = null;
+        unavailable = false;
+        failed = false;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (loading) return;
+        loading = true;
+        failed = false;
+        var id = Id;
+        try
+        {
+            var path = next is null ? $"/api/sessions/{id}/history" : $"/api/sessions/{id}/history?after={next}";
+            using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Get, path));
+            if (id != Id) return;
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
+            {
+                unavailable = true;
+                return;
+            }
+
+            var page = response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<SessionQuestionHistoryPage>() : null;
+            if (page is null)
+            {
+                failed = true;
+                return;
+            }
+
+            items.AddRange(page.Items);
+            next = page.Next;
+        }
+        catch (HttpRequestException)
+        {
+            failed = true;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

@@ -1011,6 +1011,31 @@ of seconds; a network split can take longer. Any that exceed the limit end as `o
 nobody fires when a question's 20 seconds pass; that player's next command sees the expired slot
 and records the miss. `due_at` is for things that must happen with nobody present.
 
+### 7.5.1 History reads
+
+A player's history is read from the persisted rows (`session_participants`, `session_items`,
+`session_answers`), never from the grain, and every read runs in a tenant transaction.
+
+- **`GET /api/me/sessions?before=&limit=`** lists the caller's sessions, newest joined first, in the
+  order `(joined_at desc, session id)` of the `participants_history` index. `limit` defaults to 20
+  and is capped at 50. `before` is the opaque `next` value of the previous page (`{joined_at UTC
+  ticks}.{session id as 32 hex digits}`); the next page holds the rows strictly after that pair, so
+  no session repeats or is skipped, including sessions that joined at the same instant. A value
+  the server did not issue is `400 invalid_cursor`. The response is `{sessions, next}` where `next`
+  is null on the last page.
+- **`GET /api/sessions/{id}/history?after=&limit=`** lists a finished session's questions in
+  `slot` order, with the card and reveal snapshots from `session_items` and the caller's own
+  stored answers for each slot. `after` is the `next` slot of the previous page (absent for the
+  first page), `limit` as above. The response is `{items, next}`.
+  - Only a player who holds a seat in the session (any role, any seat status) may read it. Anyone
+    else, and any session of another tenant, gets `404 not_found`.
+  - A session that has not finished (`lobby`, `running` or `cancelled`) answers `409 not_finished`
+    to a participant: its questions and reveals are not released until the end.
+  - Both routes are open to guests, who see only their own seats.
+
+The `/sessions` and `/sessions/{id}` client pages render these lists; each question is shown
+through its kind's `Reveal` component, so a format's own result layout stays with that format.
+
 ### 7.6 Settlement
 
 A session ends once: step 1 of 7.4 rejects everything afterwards. There are two ways to end.
@@ -1809,6 +1834,7 @@ POST /api/sessions/{id}/start     POST /api/sessions/{id}/leave
 POST /api/sessions/{id}/invites   POST /api/sessions/{id}/rematch
 POST /api/sessions/{id}/invites/accept    POST /api/sessions/{id}/invites/decline
 POST /api/sessions/{id}/commands
+GET  /api/me/sessions?before=      GET  /api/sessions/{id}/history?after=
 
 /api/x/{feature}/...              each feature plugin's player routes
 /api/auth/x/{method}/...          each sign-in plugin's routes
