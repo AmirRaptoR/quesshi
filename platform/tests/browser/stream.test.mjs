@@ -121,15 +121,27 @@ test('changing the watched session closes the old reader before opening one for 
     // Page-side order of the reader cancellation versus the next stream fetch; network events race, this does not.
     await page.addInitScript(() => {
       window.streamEvents = [];
+      const streamReaders = new WeakSet();
       const nativeFetch = window.fetch;
       window.fetch = (input, init) => {
         const url = typeof input === 'string' ? input : input.url;
-        if (url.includes('/api/stream')) window.streamEvents.push(`open ${url.split('session=')[1]}`);
-        return nativeFetch(input, init);
+        if (!url.includes('/api/stream')) return nativeFetch(input, init);
+        window.streamEvents.push(`open ${url.split('session=')[1]}`);
+        // Only readers of the stream response count; other requests (Home's data loads) cancel readers too.
+        return nativeFetch(input, init).then(response => {
+          const body = response.body;
+          const getReader = body.getReader;
+          body.getReader = function (...args) {
+            const reader = getReader.apply(this, args);
+            streamReaders.add(reader);
+            return reader;
+          };
+          return response;
+        });
       };
       const nativeCancel = ReadableStreamDefaultReader.prototype.cancel;
       ReadableStreamDefaultReader.prototype.cancel = function (...args) {
-        window.streamEvents.push('cancel');
+        if (streamReaders.has(this)) window.streamEvents.push('cancel');
         return nativeCancel.apply(this, args);
       };
     });
