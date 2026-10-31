@@ -16,6 +16,12 @@ public sealed class PlayerApi(ClientHttp client)
         return await ReadAsync<PlayerProfile>(response, cancellationToken);
     }
 
+    public async Task<ApiResponse<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default)
+    {
+        using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, path), cancellationToken);
+        return await ReadAsync<T>(response, cancellationToken);
+    }
+
     public async Task<ApiResponse<VerificationResult>> RequestCodeAsync(string email, CancellationToken cancellationToken = default) =>
         await SendMutationAsync<VerificationResult>(HttpMethod.Post, "/api/auth/code", new { email }, cancellationToken);
 

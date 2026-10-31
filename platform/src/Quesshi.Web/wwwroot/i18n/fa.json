@@ -613,5 +613,16 @@
   "last_owner": "آخرین مالک قابل تغییر نیست.",
   "admin.accounts.lastOwner": "آخرین مالک قابل تغییر نیست.",
   "admin.error": "درخواست انجام نشد.",
-  "admin.auth.signedOut": "نشست مدیریت شما پایان یافته است."
+  "admin.auth.signedOut": "نشست مدیریت شما پایان یافته است.",
+  "home.newSession": "شروع یک نشست",
+  "home.noFormats": "اکنون چیزی برای بازی جدید باز نیست.",
+  "home.joinSubmit": "پیوستن",
+  "home.joinFailed": "این کد کار نکرد — شاید نشست پر یا بسته شده باشد.",
+  "home.createFailed": "نشست شروع نشد. دوباره تلاش کنید.",
+  "home.waitingForYou": "منتظر شما",
+  "home.invitations": "دعوت‌ها",
+  "home.invitedBy": "به یک نشست دعوت شده‌اید",
+  "home.accept": "پذیرفتن",
+  "home.decline": "رد کردن",
+  "home.inviteFailed": "پاسخ به این دعوت انجام نشد."
 }

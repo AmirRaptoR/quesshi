@@ -168,7 +168,7 @@ test('published player entry, confirmation, profile, and settings fit their acti
 
     await page.goto(host.tenantUrl('rtl-player.localhost'));
     await page.locator('#home-title').waitFor();
-    await page.locator('main section button').click();
+    await page.locator('#home-title ~ button').click();
     await page.locator('#profile-title').waitFor();
     await assertRtlActionsFit(page);
     await page.locator('main section button').click();

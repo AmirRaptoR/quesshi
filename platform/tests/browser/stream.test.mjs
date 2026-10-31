@@ -104,7 +104,7 @@ test('signed-in shell keeps one stream open across Home and Profile', { skip: !r
     assert.equal(stream.requests[0].url, '/api/stream');
     assert.ok(stream.requests[0].build, 'The stream request should carry the client build id.');
 
-    await page.locator('main section button').click();
+    await page.locator('#home-title ~ button').click();
     await page.locator('#profile-title').waitFor();
     await page.goBack();
     await page.locator('#home-title').waitFor();

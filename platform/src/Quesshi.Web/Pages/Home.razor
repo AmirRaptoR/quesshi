@@ -1,15 +1,150 @@
 @page "/"
+@using Quesshi.Shared
+@using Quesshi.Web.Plugins
 @using Quesshi.Web.Services
+@implements IDisposable
 @inject AuthState Auth
 @inject Translator Translator
 @inject NavigationManager Navigation
+@inject PlayerApi Api
+@inject PlatformState State
+@inject AppConfig Config
+@inject IFormatClientRegistry Registry
 
-<section class="card" aria-labelledby="home-title">
+<section class="card stack" aria-labelledby="home-title">
     <h1 id="home-title">@Translator["home.title"]</h1>
     <p class="muted">@Auth.Player?.DisplayName</p>
     <button class="btn" type="button" @onclick="OpenProfile">@Translator["nav.profile"]</button>
 </section>
 
+<section class="card stack" aria-labelledby="home-new" data-test="home-new">
+    <h2 id="home-new">@Translator["home.newSession"]</h2>
+    @if (formats.Count == 0)
+    {
+        <p class="muted">@Translator["home.noFormats"]</p>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var format in formats)
+            {
+                var id = format;
+                <button class="btn" type="button" data-format="@id" disabled="@busy" @onclick="() => CreateAsync(id)">
+                    @Translator.Or($"format.{id}", id)
+                </button>
+            }
+        </div>
+    }
+    <form class="row" @onsubmit="JoinAsync" @onsubmit:preventDefault="true" aria-label="@Translator["home.join"]">
+        <input class="input" name="code" maxlength="64" autocomplete="off" aria-label="@Translator["home.join"]"
+               placeholder="@Translator["home.joinPlaceholder"]" @bind="code" @bind:event="oninput" />
+        <button class="btn" type="submit" data-test="join-submit" disabled="@(busy || code.Trim().Length == 0)">@Translator["home.joinSubmit"]</button>
+    </form>
+    @if (error is not null)
+    {
+        <p role="alert" class="notice notice--bad">@error</p>
+    }
+</section>
+
+@if (inbox.Invitations.Count > 0)
+{
+    <section class="card stack" aria-labelledby="home-invitations" data-test="home-invitations">
+        <h2 id="home-invitations">@Translator["home.invitations"]</h2>
+        @foreach (var invitation in inbox.Invitations)
+        {
+            var id = invitation.SessionId;
+            <div class="row" data-invitation="@id">
+                <span>@Translator["home.invitedBy"]</span>
+                <button class="btn" type="button" data-action="accept" disabled="@busy" @onclick="() => AcceptAsync(id)">@Translator["home.accept"]</button>
+                <button class="btn btn--ghost" type="button" data-action="decline" disabled="@busy" @onclick="() => DeclineAsync(id)">@Translator["home.decline"]</button>
+            </div>
+        }
+    </section>
+}
+
+@if (inbox.Turns.Count > 0)
+{
+    <section class="card stack" aria-labelledby="home-waiting" data-test="home-waiting">
+        <h2 id="home-waiting">@Translator["home.waitingForYou"]</h2>
+        @foreach (var session in inbox.Turns)
+        {
+            <a class="btn btn--ghost" href="/s/@session.Id" data-session="@session.Id">@Translator.Or($"format.{session.Format}", session.Format) · @session.Code</a>
+        }
+    </section>
+}
+
+<ClientSlotHost TParameters="HomeTileParameters" Slot="ClientSlots.HomeTile" Value="@(new HomeTileParameters(formats))" />
+
 @code {
+    private HomeSessions sessions = default!;
+    private IReadOnlyList<string> formats = [];
+    private HomeInbox inbox = HomeInbox.Empty;
+    private string code = "";
+    private string? error;
+    private bool busy;
+    private bool disposed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sessions = new HomeSessions(Api, State, Config);
+        formats = sessions.EnabledFormats(id => Registry.ResolveFormat(id) is not null);
+        State.InboxChanged += OnInboxChanged;
+        if (State.Inbox is { } known) inbox = HomeInbox.From(known.Data);
+        inbox = await sessions.LoadInboxAsync();
+    }
+
     private void OpenProfile() => Navigation.NavigateTo("/profile");
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/s/{id}");
+
+    private async Task CreateAsync(string format) => await RunAsync(() => sessions.CreateAsync(format), "home.createFailed");
+
+    private async Task JoinAsync() => await RunAsync(() => sessions.JoinByCodeAsync(code), "home.joinFailed");
+
+    private async Task AcceptAsync(Guid id) => await RunAsync(() => sessions.AcceptAsync(id), "home.inviteFailed");
+
+    private async Task DeclineAsync(Guid id)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try
+        {
+            if (await sessions.DeclineAsync(id))
+                inbox = inbox with { Invitations = inbox.Invitations.Where(i => i.SessionId != id).ToArray() };
+            else
+                error = Translator["home.inviteFailed"];
+        }
+        finally { busy = false; }
+    }
+
+    private async Task RunAsync(Func<Task<HomeOutcome>> action, string failureKey)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try
+        {
+            var outcome = await action();
+            if (outcome.SessionId is { } id) Open(id);
+            else error = Translator[failureKey];
+        }
+        finally { busy = false; }
+    }
+
+    private void OnInboxChanged(InboxState state)
+    {
+        if (disposed) return;
+        _ = InvokeAsync(() =>
+        {
+            inbox = HomeInbox.From(state.Data);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        State.InboxChanged -= OnInboxChanged;
+    }
 }
