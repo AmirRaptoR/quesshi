@@ -1,0 +1,12 @@
+@page "/duels"
+@inject NavigationManager Nav
+
+@*
+    The old Duels page is gone but its URL is still in bookmarks and history. Waiting sessions are on
+    the platform Home now, so the route answers with Home instead of a 404.
+*@
+
+@code {
+    /// <summary>Replaces rather than pushes, so back goes where the player came from instead of bouncing here again.</summary>
+    protected override void OnInitialized() => Nav.NavigateTo("/", replace: true);
+}

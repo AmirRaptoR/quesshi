@@ -613,5 +613,16 @@
   "last_owner": "The last owner cannot be changed.",
   "admin.accounts.lastOwner": "The last owner cannot be changed.",
   "admin.error": "The request could not be completed.",
-  "admin.auth.signedOut": "Your administration session has ended."
+  "admin.auth.signedOut": "Your administration session has ended.",
+  "home.newSession": "Start a session",
+  "home.noFormats": "Nothing is open for new play right now.",
+  "home.joinSubmit": "Join",
+  "home.joinFailed": "That code didn't work — the session may be full or closed.",
+  "home.createFailed": "The session couldn't be started. Try again.",
+  "home.waitingForYou": "Waiting for you",
+  "home.invitations": "Invitations",
+  "home.invitedBy": "You're invited to a session",
+  "home.accept": "Accept",
+  "home.decline": "Decline",
+  "home.inviteFailed": "That invitation couldn't be answered."
 }

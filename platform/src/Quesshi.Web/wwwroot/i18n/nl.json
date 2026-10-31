@@ -613,5 +613,16 @@
   "last_owner": "De laatste eigenaar kan niet worden gewijzigd.",
   "admin.accounts.lastOwner": "De laatste eigenaar kan niet worden gewijzigd.",
   "admin.error": "De aanvraag kon niet worden uitgevoerd.",
-  "admin.auth.signedOut": "Je beheersessie is beëindigd."
+  "admin.auth.signedOut": "Je beheersessie is beëindigd.",
+  "home.newSession": "Start een sessie",
+  "home.noFormats": "Er is nu niets open om te spelen.",
+  "home.joinSubmit": "Meedoen",
+  "home.joinFailed": "Die code werkte niet — de sessie is mogelijk vol of gesloten.",
+  "home.createFailed": "De sessie kon niet worden gestart. Probeer het opnieuw.",
+  "home.waitingForYou": "Wacht op jou",
+  "home.invitations": "Uitnodigingen",
+  "home.invitedBy": "Je bent uitgenodigd voor een sessie",
+  "home.accept": "Accepteren",
+  "home.decline": "Weigeren",
+  "home.inviteFailed": "Die uitnodiging kon niet worden beantwoord."
 }
