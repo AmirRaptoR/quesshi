@@ -1,0 +1,67 @@
+@page "/s/{Id}"
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Shared
+@using Quesshi.Web.Components
+@using Quesshi.Web.Plugins
+@using Quesshi.Web.Services
+@implements IDisposable
+@inject PlatformState State
+@inject IFormatClientRegistry Formats
+@inject Translator L
+
+@if (Current is not { } view)
+{
+    <p class="muted" data-session-loading>@L["session.loading"]</p>
+}
+else if (view.Status == "cancelled")
+{
+    <section class="card stack" data-session-cancelled>
+        <p>@L["session.cancelled"]</p>
+        <a class="btn" href="/">@L["session.cancelled.home"]</a>
+    </section>
+}
+else if (LobbyPresentation.IsLobby(view))
+{
+    <LobbyPanel SessionView="view" />
+}
+else if (view.Status == "finished")
+{
+    @if (Formats.ResolveFormat(view.Format) is { } client)
+    {
+        <ErrorBoundary @key="view.Format">
+            <ChildContent>
+                <DynamicComponent Type="client.Result" Parameters="@Parameters(view)" />
+            </ChildContent>
+            <ErrorContent>
+                <p role="alert" data-result-gap="@view.Format"></p>
+            </ErrorContent>
+        </ErrorBoundary>
+    }
+    <ClientSlotHost TParameters="SessionResultParameters" Slot="ClientSlots.SessionResult" Value="@(new SessionResultParameters(view))" />
+}
+else if (Formats.ResolveFormat(view.Format) is { } running)
+{
+    <ErrorBoundary @key="view.Format">
+        <ChildContent>
+            <DynamicComponent Type="running.Screen" Parameters="@Parameters(view)" />
+        </ChildContent>
+        <ErrorContent>
+            <p role="alert" data-screen-gap="@view.Format"></p>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private SessionView? Current => State.View is { } view && Guid.TryParse(Id, out var id) && Guid.TryParse(view.Id, out var viewId) && id == viewId ? view : null;
+
+    protected override void OnInitialized() => State.ViewChanged += OnViewChanged;
+
+    private void OnViewChanged(SessionView? previous, SessionView view) => _ = InvokeAsync(StateHasChanged);
+
+    private static IDictionary<string, object> Parameters(SessionView view) =>
+        new Dictionary<string, object> { [ClientSlotComponent.ParameterName] = new FormatScreenParameters(view) };
+
+    public void Dispose() => State.ViewChanged -= OnViewChanged;
+}

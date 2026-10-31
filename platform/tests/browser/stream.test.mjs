@@ -156,6 +156,24 @@ test('changing the watched session closes the old reader before opening one for 
   });
 });
 
+test('opening the session page watches that session and returning home clears the watch', { skip: !runsPublishedClient }, async () => {
+  const stream = new StreamServer((record, response) => eventStream(response, view(1)));
+  await withShell(await startHost(stream), stream, async (page, host) => {
+    await page.goto(host.tenantUrl('stream.localhost', `/s/${sessionA}`));
+    await until(() => stream.requests.length === 1, 'The session page should open a stream for its session.');
+    assert.equal(stream.requests[0].url, `/api/stream?session=${sessionA}`);
+
+    await page.evaluate(() => window.Blazor.navigateTo('/'));
+    await page.locator('#home-title').waitFor();
+    await until(() => stream.requests.length === 2, 'Returning home should reopen the stream without a session.');
+    await pause(500);
+
+    assert.equal(stream.requests[1].url, '/api/stream');
+    assert.equal(stream.requests[0].closed, true, 'The session reader should be cancelled.');
+    assert.equal(stream.open.size, 1);
+  });
+});
+
 test('signing out cancels the stream without opening another request', { skip: !runsPublishedClient }, async () => {
   const stream = new StreamServer((record, response) => eventStream(response, view(1)));
   await withShell(await startHost(stream), stream, async (page, host) => {

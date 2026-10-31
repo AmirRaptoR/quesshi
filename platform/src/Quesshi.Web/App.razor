@@ -129,14 +129,13 @@ else
         _ = SyncStreamAsync();
     }
 
-    // One reader for the whole signed-in shell. The optional ?session={id} query selects the watched session.
+    // One reader for the whole signed-in shell. The /s/{id} route or the optional ?session={id} query selects the watched session.
     private async Task SyncStreamAsync()
     {
         await Stream.SyncAsync(() =>
         {
             if (disposed) return (false, null);
-            var query = System.Web.HttpUtility.ParseQueryString(new Uri(Navigation.Uri).Query);
-            Guid? session = Guid.TryParse(query["session"], out var id) ? id : null;
+            var session = WatchedSession.From(new Uri(Navigation.Uri));
             return (Auth.Status == PlayerIdentityStatus.SignedIn && !IsAdminRoute, session);
         });
     }
