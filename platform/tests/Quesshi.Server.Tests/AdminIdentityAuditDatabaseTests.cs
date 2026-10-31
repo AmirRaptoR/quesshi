@@ -111,6 +111,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     {
         await RewindFriendsMigrationAsync(owner);
         await RewindInboxMigrationAsync(owner);
+        await RewindLeaderboardMigrationAsync(owner);
         await RewindStatsMigrationAsync(owner);
         await RewindSessionScoringMigrationAsync(owner);
         await RewindQuestionsMigrationAsync(owner);
@@ -128,6 +129,9 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindFriendsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table friendships; delete from schema_migrations where name = '{FriendsMigrationName}'");
+
+    private static Task RewindLeaderboardMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists leaderboard_entries; drop table if exists leaderboard_scores; drop table if exists leaderboard_abandonments; delete from schema_migrations where name = '20261031T1000_leaderboard_ledger.sql'");
 
     private static Task RewindStatsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "drop table if exists player_results; drop table if exists player_stats; drop table if exists player_category_stats; drop table if exists question_stats; delete from schema_migrations where name = '20261022T1800_stats_projection.sql'");

@@ -32,7 +32,7 @@ public sealed class TenantAddDatabaseTests(PostgresFixture fixture)
         Assert.Equal("example.test", await ScalarAsync<string>(owner, "select host from tenant_hosts where tenant_id = @tenant and is_primary", ("tenant", tenant)));
         Assert.Equal(2L, await ScalarAsync<long>(owner, "select count(*) from tenant_languages where tenant_id = @tenant", ("tenant", tenant)));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from tenant_hosts where tenant_id = @tenant and is_primary", ("tenant", tenant)));
-        Assert.Equal(8L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where tenant_id = @tenant and not entitled and not enabled", ("tenant", tenant)));
+        Assert.Equal(9L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where tenant_id = @tenant and not entitled and not enabled", ("tenant", tenant)));
     }
 
     [SkippableFact]
@@ -73,8 +73,8 @@ public sealed class TenantAddDatabaseTests(PostgresFixture fixture)
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from tenant_hosts"));
         Assert.Equal("existing.example.test", await ScalarAsync<string>(owner, "select host from tenant_hosts"));
         Assert.Equal(1L, await ScalarAsync<long>(owner, "select count(*) from tenant_languages"));
-        Assert.Equal(8L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities"));
-        Assert.Equal(8L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where not entitled and not enabled"));
+        Assert.Equal(9L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities"));
+        Assert.Equal(9L, await ScalarAsync<long>(owner, "select count(*) from tenant_capabilities where not entitled and not enabled"));
     }
 
     private DatabaseSources Sources() => new(fixture.ConnectionStringForRole("quesshi_app"), fixture.ConnectionStringForRole("quesshi_system"));

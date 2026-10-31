@@ -68,6 +68,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
             await ExecuteAsync(owner, "insert into tenants (id, slug, name, default_language) values (@tenant, @slug, 'Membership migration', 'en')", ("tenant", tenant), ("slug", $"membership-{tenant:N}"));
             await ExecuteAsync(owner, "insert into admins (id, username, email, password_hash) values (@admin, @username, @email, 'hash')", ("admin", admin), ("username", $"membership-{admin:N}"), ("email", $"membership-{admin:N}@example.test"));
             await RewindInboxMigrationAsync(owner);
+            await RewindLeaderboardMigrationAsync(owner);
             await RewindStatsMigrationAsync(owner);
             await RewindSessionScoringMigrationAsync(owner);
             await RewindSessionCreationMigrationAsync(owner);
@@ -219,6 +220,7 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
         var owner = await OpenAsync("quesshi_owner");
         await ExecuteAsync(owner, "delete from auth_sessions; delete from account_identities; delete from login_codes; delete from auth_rate_limits; delete from rate_limits; delete from data_protection_keys; delete from session_participants; delete from sessions; delete from tenants; delete from accounts");
         await RewindInboxMigrationAsync(owner);
+        await RewindLeaderboardMigrationAsync(owner);
         await RewindStatsMigrationAsync(owner);
         await RewindSessionScoringMigrationAsync(owner);
         await RewindSessionCreationMigrationAsync(owner);
@@ -283,6 +285,9 @@ public sealed class IdentitySchemaDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindFriendsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table friendships; delete from schema_migrations where name = '{FriendsMigrationName}'");
+
+    private static Task RewindLeaderboardMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists leaderboard_entries; drop table if exists leaderboard_scores; drop table if exists leaderboard_abandonments; delete from schema_migrations where name = '20261031T1000_leaderboard_ledger.sql'");
 
     private static Task RewindStatsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "drop table if exists player_results; drop table if exists player_stats; drop table if exists player_category_stats; drop table if exists question_stats; delete from schema_migrations where name = '20261022T1800_stats_projection.sql'");
