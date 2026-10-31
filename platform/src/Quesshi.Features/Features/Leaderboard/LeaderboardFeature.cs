@@ -21,6 +21,9 @@ public sealed class LeaderboardFeature : IFeature
     {
         feature.On<SessionEnded>(ProjectSessionEndedAsync);
         feature.CleanupPlayer(CleanupPlayerAsync);
+        feature.PlayerRoutes(LeaderboardReadRoutes.MapPlayerRoutes);
+        feature.Provides<long>("leaderboard.score", LeaderboardReadRoutes.GetScoreAsync);
+        feature.Uses(LeaderboardReadRoutes.FriendsQuery);
     }
 
     private static async Task ProjectSessionEndedAsync(ITenantTx transaction, SessionEnded @event, CancellationToken cancellationToken)
