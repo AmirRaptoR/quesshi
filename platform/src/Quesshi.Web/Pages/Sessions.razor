@@ -1,0 +1,84 @@
+@page "/sessions"
+@using System.Net.Http.Json
+@using Quesshi.Shared
+@using Quesshi.Web.Plugins
+@using Quesshi.Web.Services
+@inject ClientHttp Http
+@inject Translator Translator
+
+<section class="card stack" aria-labelledby="sessions-title">
+    <h1 id="sessions-title">@Translator["history.sessions.title"]</h1>
+    @if (failed)
+    {
+        <p role="alert" data-test="history-error">@Translator["history.error"]</p>
+    }
+    else if (loaded && entries.Count == 0)
+    {
+        <p class="muted" data-test="sessions-empty">@Translator["history.sessions.empty"]</p>
+    }
+    else
+    {
+        <ul class="stack" data-test="session-list">
+            @foreach (var entry in entries)
+            {
+                <li data-session-id="@entry.Id">
+                    <a href="/sessions/@entry.Id">
+                        <span data-field="format">@entry.Format</span>
+                        <span data-field="status">@entry.Status</span>
+                        <time data-field="joined" datetime="@entry.JoinedAt.ToString("O")">@entry.JoinedAt.ToString("yyyy-MM-dd HH:mm")</time>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
+    @if (next is not null)
+    {
+        <button class="btn" type="button" data-test="sessions-more" disabled="@loading" @onclick="LoadAsync">@Translator["history.more"]</button>
+    }
+</section>
+
+@code {
+    private readonly List<SessionHistoryEntry> entries = [];
+    private string? next;
+    private bool loaded;
+    private bool loading;
+    private bool failed;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (loading) return;
+        loading = true;
+        failed = false;
+        try
+        {
+            var path = next is null ? "/api/me/sessions" : $"/api/me/sessions?before={Uri.EscapeDataString(next)}";
+            using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Get, path));
+            if (!response.IsSuccessStatusCode)
+            {
+                failed = true;
+                return;
+            }
+
+            var page = await response.Content.ReadFromJsonAsync<SessionHistoryPage>();
+            if (page is null)
+            {
+                failed = true;
+                return;
+            }
+
+            entries.AddRange(page.Sessions);
+            next = page.Next;
+            loaded = true;
+        }
+        catch (HttpRequestException)
+        {
+            failed = true;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}
