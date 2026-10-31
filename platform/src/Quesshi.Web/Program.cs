@@ -15,6 +15,8 @@ builder.Services.AddScoped<PlayerApi>();
 builder.Services.AddScoped<StreamClient>(services => new StreamClient(services.GetRequiredService<ClientHttp>()));
 builder.Services.AddScoped<AuthState>();
 builder.Services.AddScoped<AppConfig>();
+builder.Services.AddScoped<PlatformState>(services => new PlatformState(
+    services.GetRequiredService<AppConfig>(), services.GetRequiredService<StreamClient>()));
 builder.Services.AddScoped<LanguageSelection>();
 builder.Services.AddScoped<Translator>();
 builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
@@ -35,4 +37,5 @@ builder.Services.AddScoped<IClientRegistry>(services =>
 
 var host = builder.Build();
 await host.Services.GetRequiredService<AppConfig>().LoadAsync();
+_ = host.Services.GetRequiredService<PlatformState>();
 await host.RunAsync();

@@ -11,8 +11,10 @@ public sealed class AppConfig(ClientHttp http, IJSRuntime js)
 
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        Current = await http.GetFromJsonAsync<TenantConfig>("/api/config", cancellationToken)
+        var loaded = await http.GetFromJsonAsync<TenantConfig>("/api/config", cancellationToken)
             ?? throw new InvalidOperationException("The tenant configuration response was empty.");
+        if (Current is not null && loaded.ConfigVersion < Current.ConfigVersion) return;
+        Current = loaded;
     }
 
     public async Task ConfigChanged(long version, CancellationToken cancellationToken = default)
