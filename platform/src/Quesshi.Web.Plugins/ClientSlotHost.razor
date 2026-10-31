@@ -1,0 +1,24 @@
+@using Quesshi.Shared
+@typeparam TParameters
+@using Microsoft.AspNetCore.Components.Web
+@inject IFormatClientRegistry Registry
+
+@foreach (var component in Registry.Contributions(Slot))
+{
+    <ErrorBoundary @key="component">
+        <ChildContent>
+            <DynamicComponent Type="component" Parameters="@(new Dictionary<string, object> { [ClientSlotComponent.ParameterName] = Value! })" />
+        </ChildContent>
+        <ErrorContent>
+            <p role="alert" data-slot-gap="@Slot.Name"></p>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ClientSlot<TParameters> Slot { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public TParameters Value { get; set; } = default!;
+}
