@@ -67,7 +67,8 @@ internal sealed class JobWorker(
     JobHandlerRegistry handlers,
     ITenantDb tenantDatabase,
     ICapabilities capabilities,
-    ILogger<JobWorker>? logger = null)
+    ILogger<JobWorker>? logger = null,
+    IServiceProvider? services = null)
 {
     private readonly ILogger<JobWorker> _logger = logger ?? NullLogger<JobWorker>.Instance;
     internal const int MaximumConcurrentHandlers = 4;
@@ -142,7 +143,7 @@ internal sealed class JobWorker(
             ITenantDb? boundDatabase = job.TenantId is { } tenant
                 ? new JobTenantDb(tenantDatabase, tenant)
                 : null;
-            await handler.Handler(new JobContext(job.Id, job.TenantId, job.Owner, job.Kind, job.Payload, boundDatabase), cancellationToken);
+            await handler.Handler(new JobContext(job.Id, job.TenantId, job.Owner, job.Kind, job.Payload, boundDatabase, services), cancellationToken);
             await jobs.CompleteAsync(job.Id, job.LockedBy, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
