@@ -62,6 +62,7 @@ public sealed class ClientSlotPageTests : BunitContext
         Services.AddSingleton(new LanguageSelection(config, translator, JSInterop.JSRuntime));
         Services.AddSingleton(new AuthState(new PlayerApi(http)));
         Services.AddSingleton(new StreamClient(http));
+        Services.AddSingleton(new PlatformState(config));
         var registry = new ClientRegistry(new NoLoader());
         registry.RegisterSlot(ClientSlots.NavItem, typeof(NavContribution));
         registry.RegisterSlot(ClientSlots.ProfileSection, typeof(ProfileContribution));

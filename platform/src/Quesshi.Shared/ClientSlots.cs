@@ -26,3 +26,6 @@ public sealed record SessionResultParameters(SessionView Session);
 
 /// <summary>Parameters for a format's lobby settings component; <paramref name="IsOwner"/> tells it whether the viewer may change them.</summary>
 public sealed record FormatSettingsParameters(SessionView Session, bool IsOwner);
+
+/// <summary>Parameters for a format's running screen or finished result; the session page passes the current accepted view.</summary>
+public sealed record FormatScreenParameters(SessionView Session);
