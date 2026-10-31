@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using Quesshi.Shared;
 
 namespace Quesshi.Web.Plugins;
 
@@ -149,8 +150,13 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
     }
 }
 
-public sealed class ClientRegistry(IClientAssemblyLoader loader) : IClientRegistry
+public sealed class ClientRegistry(IClientAssemblyLoader loader) : IClientRegistry, IFormatClientRegistry
 {
+    private readonly ConcurrentDictionary<string, IFormatClient> formats = new(StringComparer.Ordinal);
+    private readonly object contributionsLock = new();
+    private readonly List<(string Path, Type Component)> pages = [];
+    private readonly List<(string Slot, Type Parameters, Type Component)> slots = [];
+
     private readonly ConcurrentDictionary<string, IKindClient> clients = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, LazyKind> lazyKinds = new(StringComparer.Ordinal);
 
@@ -159,6 +165,51 @@ public sealed class ClientRegistry(IClientAssemblyLoader loader) : IClientRegist
         ArgumentNullException.ThrowIfNull(client);
         if (string.IsNullOrWhiteSpace(client.Id)) throw new ArgumentException("A kind client id is required.", nameof(client));
         if (!clients.TryAdd(client.Id, client)) throw new InvalidOperationException($"A client for '{client.Id}' is already registered.");
+    }
+
+    public void RegisterFormat(IFormatClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        if (string.IsNullOrWhiteSpace(client.Id)) throw new ArgumentException("A format client id is required.", nameof(client));
+        ArgumentNullException.ThrowIfNull(client.Settings);
+        ArgumentNullException.ThrowIfNull(client.Screen);
+        ArgumentNullException.ThrowIfNull(client.Result);
+        if (!formats.TryAdd(client.Id, client)) throw new InvalidOperationException($"A client for format '{client.Id}' is already registered.");
+    }
+
+    public IFormatClient? ResolveFormat(string id) => formats.GetValueOrDefault(id);
+
+    public IReadOnlyList<(string Path, Type Component)> Pages
+    {
+        get { lock (contributionsLock) return pages.ToArray(); }
+    }
+
+    public void RegisterPage(string path, Type component)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(component);
+        var normalized = "/" + path.Trim('/');
+        lock (contributionsLock)
+        {
+            if (pages.Any(page => string.Equals(page.Path, normalized, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException($"The client page path '{normalized}' is already registered.");
+            pages.Add((normalized, component));
+        }
+    }
+
+    public void RegisterSlot<TParameters>(ClientSlot<TParameters> slot, Type component)
+    {
+        ArgumentNullException.ThrowIfNull(slot);
+        ArgumentNullException.ThrowIfNull(component);
+        ClientSlotComponent.EnsureAccepts(component, typeof(TParameters));
+        lock (contributionsLock) slots.Add((slot.Name, typeof(TParameters), component));
+    }
+
+    public IReadOnlyList<Type> Contributions<TParameters>(ClientSlot<TParameters> slot)
+    {
+        ArgumentNullException.ThrowIfNull(slot);
+        lock (contributionsLock)
+            return slots.Where(s => s.Slot == slot.Name && s.Parameters == typeof(TParameters)).Select(s => s.Component).ToArray();
     }
 
     public void RegisterLazy(string id, string assemblyName)
