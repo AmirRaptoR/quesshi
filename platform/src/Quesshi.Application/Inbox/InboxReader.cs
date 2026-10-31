@@ -20,10 +20,12 @@ public sealed class InboxReader(ITenantDb database, IInboxItems featureItems)
             IReadOnlyList<InboxInvitation> invitations = isGuest
                 ? []
                 : await transaction.QueryAsync<InboxInvitation>("""
-                    select session_id as SessionId, invited_by as InvitedBy, expires_at as ExpiresAt
+                    select session_invites.session_id as SessionId, session_invites.invited_by as InvitedBy, session_invites.expires_at as ExpiresAt
                     from session_invites
-                    where player_id = @playerId and expires_at > now()
-                    order by expires_at, session_id
+                    join sessions on sessions.id = session_invites.session_id
+                    where session_invites.player_id = @playerId and session_invites.expires_at > now()
+                      and (sessions.format = 'poll' or sessions.status = 'lobby')
+                    order by session_invites.expires_at, session_invites.session_id
                     """, new { playerId }, cancellationToken);
             var lobbies = await ReadSessionsAsync(transaction, playerId, "lobby", cancellationToken);
             var turns = await ReadTurnsAsync(transaction, playerId, cancellationToken);

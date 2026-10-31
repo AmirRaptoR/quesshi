@@ -17,7 +17,10 @@ internal sealed class FeatureRegistry(
     private readonly Dictionary<string, Delegate> _cleanupHandlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, InboxHandler> _inboxHandlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RegisteredNamedQuery> _namedQueries = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, HashSet<string>> _usedNamedQueries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _usedNamedQueries = new(StringComparer.Ordinal)
+    {
+        [NamedQueryConsumers.Core] = new(StringComparer.Ordinal) { "friends.ids" },
+    };
     private readonly List<FeatureRoutes> _routes = [];
 
     public IReadOnlyCollection<RegisteredFeature> Features => _features.Values;
@@ -199,7 +202,7 @@ internal sealed class FeatureRegistry(
 
         var normalizedConsumerFeatureId = consumerFeatureId.Trim();
         var normalizedName = name.Trim();
-        if (!_features.ContainsKey(normalizedConsumerFeatureId))
+        if (normalizedConsumerFeatureId != NamedQueryConsumers.Core && !_features.ContainsKey(normalizedConsumerFeatureId))
         {
             throw new InvalidOperationException($"Feature '{normalizedConsumerFeatureId}' is not registered.");
         }

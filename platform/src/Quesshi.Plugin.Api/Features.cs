@@ -104,6 +104,13 @@ public delegate Task<TResult> NamedQueryHandler<TResult>(
     Guid playerId,
     CancellationToken cancellationToken);
 
+/// <summary>Consumer identities for platform core, which is not a feature but may use a fixed set of named queries.</summary>
+public static class NamedQueryConsumers
+{
+    /// <summary>Platform core. It may use <c>friends.ids</c> for lobby invitation eligibility.</summary>
+    public const string Core = "core";
+}
+
 /// <summary>Invokes a feature's declared named queries inside the caller's tenant transaction.</summary>
 public interface INamedQueries
 {
