@@ -51,7 +51,7 @@ public sealed class PlayerApi(ClientHttp client)
         antiforgeryToken = token?.Token ?? throw new InvalidOperationException("The server returned an empty antiforgery token.");
     }
 
-    private async Task<ApiResponse<T>> SendMutationAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    public async Task<ApiResponse<T>> SendMutationAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < 2; attempt++)
         {
