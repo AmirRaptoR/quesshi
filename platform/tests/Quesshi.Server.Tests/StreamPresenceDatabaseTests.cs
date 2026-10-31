@@ -129,6 +129,7 @@ public sealed class StreamPresenceDatabaseTests(PostgresFixture postgres) : IAsy
         await using var watcher = await OpenStreamAsync(client, watcherId, sessionId);
         var initial = await ReadFrameAsync(watcher.Reader);
         await using var presence = await OpenStreamAsync(Host.Player, Host.PlayerId);
+        await WaitForAsync(() => Hub.SubscriptionCount == 2);
 
         await Hub.ReconcileAsync();
 
@@ -145,6 +146,7 @@ public sealed class StreamPresenceDatabaseTests(PostgresFixture postgres) : IAsy
         await using var watcher = await OpenStreamAsync(client, watcherId, sessionId);
         _ = await ReadFrameAsync(watcher.Reader);
         await using var presence = await OpenStreamAsync(Host.Player, Host.PlayerId);
+        await WaitForAsync(() => Hub.SubscriptionCount == 2);
 
         await Hub.ReconcileAsync();
 
