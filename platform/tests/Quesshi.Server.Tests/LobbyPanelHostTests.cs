@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Quesshi.Engine.Contracts;
+using Quesshi.Features.Features.Friends;
 using Quesshi.Server.Streaming;
 using Quesshi.Plugin.Api;
 using Quesshi.Shared;
@@ -31,7 +32,7 @@ public sealed class LobbyPanelHostTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task InitializeAsync()
     {
         if (postgres.ConnectionString is null) return;
-        _host = new PlatformHttpFixture([new LobbyPanelFeature()])
+        _host = new PlatformHttpFixture([new LobbyPanelFeature(), new FriendsFeature(), new FriendsConsumerFeature()])
         {
             ConfigureServices = services => services.AddSingleton<IClock>(_clock),
         };
@@ -128,6 +129,48 @@ public sealed class LobbyPanelHostTests(PostgresFixture postgres) : IAsyncLifeti
     }
 
     [SkippableFact]
+    public async Task A_mutual_friend_who_is_not_a_recent_co_player_is_offered_and_invited_through_the_real_endpoint()
+    {
+        await Host.SetCapabilityAsync("feature", "friends", true);
+        var (friendClient, friendId) = await Host.CreateSecondPlayerClientAsync();
+        (await Host.Player.PostAsync($"/api/x/friends/{friendId}", content: null)).EnsureSuccessStatusCode();
+        (await friendClient.PostAsync($"/api/x/friends/{Host.PlayerId}", content: null)).EnsureSuccessStatusCode();
+        var lobby = await CreateLobbyAsync();
+
+        var owner = await OpenAsync(Host.Player, Host.PlayerId, lobby.Id);
+        owner.Panel.WaitForAssertion(() => Assert.Single(owner.Panel.FindAll($"[data-invitee='{friendId}']")), Wait);
+        owner.Panel.Find($"[data-invitee='{friendId}']").Click();
+
+        owner.Panel.WaitForAssertion(() => Assert.Contains("lobby.invite.invited", owner.Panel.Find($"[data-invitee='{friendId}']").TextContent), Wait);
+        Assert.Equal(1, (await Host.QueryOwnerAsync<int>(
+            "select count(*)::int from session_invites where session_id = @sessionId and player_id = @playerId",
+            new { sessionId = lobby.Id, playerId = friendId })).Single());
+        Assert.Empty(owner.Panel.FindAll("[role='alert']"));
+    }
+
+    [SkippableFact]
+    public async Task With_friends_disabled_a_friend_is_not_offered_but_a_recent_co_player_still_is()
+    {
+        await Host.SetCapabilityAsync("feature", "friends", true);
+        var (friendClient, friendId) = await Host.CreateSecondPlayerClientAsync();
+        (await Host.Player.PostAsync($"/api/x/friends/{friendId}", content: null)).EnsureSuccessStatusCode();
+        (await friendClient.PostAsync($"/api/x/friends/{Host.PlayerId}", content: null)).EnsureSuccessStatusCode();
+        await Host.SetCapabilityAsync("feature", "friends", false);
+        var (_, coPlayerId) = await Host.CreateSecondPlayerClientAsync();
+        var earlier = await CreateLobbyAsync();
+        await Host.ExecuteOwnerAsync("""
+            insert into session_participants(tenant_id, session_id, player_id, seat, role, status, phase, slot, step)
+            values (@tenantId, @sessionId, @playerId, 1, 'player', 'active', 'idle', -1, 0)
+            """, new { tenantId = Host.TenantId, sessionId = earlier.Id, playerId = coPlayerId });
+        var lobby = await CreateLobbyAsync();
+
+        var owner = await OpenAsync(Host.Player, Host.PlayerId, lobby.Id, [new LobbyInvitee(coPlayerId.ToString(), "Co-player")]);
+
+        owner.Panel.WaitForAssertion(() => Assert.Single(owner.Panel.FindAll($"[data-invitee='{coPlayerId}']")), Wait);
+        Assert.Empty(owner.Panel.FindAll($"[data-invitee='{friendId}']"));
+    }
+
+    [SkippableFact]
     public async Task The_seated_owner_starts_an_eligible_lobby_through_the_real_endpoint()
     {
         var (secondClient, secondId) = await Host.CreateSecondPlayerClientAsync();
@@ -211,6 +254,7 @@ public sealed class LobbyPanelHostTests(PostgresFixture postgres) : IAsyncLifeti
     {
         var browser = new Browser(client, playerId, sessionId, invitees ?? []);
         _browsers.Add(browser);
+        await browser.RenderAsync();
         await browser.GoOnlineAsync();
         return browser;
     }
@@ -262,21 +306,33 @@ public sealed class LobbyPanelHostTests(PostgresFixture postgres) : IAsyncLifeti
         private readonly Guid _sessionId;
         private readonly BunitContext _context = new();
 
+        private readonly AppConfig _config;
+        private readonly IReadOnlyList<LobbyInvitee> _invitees;
+
         public Browser(HttpClient client, Guid playerId, Guid sessionId, IReadOnlyList<LobbyInvitee> invitees)
         {
             _sessionId = sessionId;
             var http = new ClientHttp(new HttpClient(new Bridge(client, playerId)) { BaseAddress = new Uri("http://tenant.test/") }, new NoReloader());
             _stream = new StreamClient(http);
-            var state = new PlatformState(new AppConfig(http, null!), _stream);
+            _invitees = invitees;
+            _config = new AppConfig(http, null!);
+            var state = new PlatformState(_config, _stream);
             _context.Services.AddSingleton(state);
             _context.Services.AddSingleton(new Translator(http));
             _context.Services.AddSingleton(new LobbyActions(new PlayerApi(http)));
+            _context.Services.AddSingleton(new LobbyInviteCandidates(new PlayerApi(http), _config));
             _context.Services.AddSingleton<IFormatClientRegistry>(new ClientRegistry(new NoLoader()));
             _context.JSInterop.Mode = JSRuntimeMode.Loose;
-            Panel = _context.Render<Harness>(p => p.Add(c => c.Invitees, invitees));
         }
 
-        public IRenderedComponent<Harness> Panel { get; }
+        public IRenderedComponent<Harness> Panel { get; private set; } = null!;
+
+        /// <summary>Loads the tenant's capabilities as the app shell does, then renders the panel.</summary>
+        public async Task RenderAsync()
+        {
+            await _config.LoadAsync();
+            Panel = _context.Render<Harness>(p => p.Add(c => c.Invitees, _invitees));
+        }
 
         public Task GoOnlineAsync() => _stream.SyncAsync(true, _sessionId);
 
@@ -356,4 +412,11 @@ public sealed class LobbyPanelHostTests(PostgresFixture postgres) : IAsyncLifeti
     }
 
     private sealed record LobbyPanelSettings;
+
+    private sealed class FriendsConsumerFeature : IFeature
+    {
+        public string Id => "lobby_panel_friends";
+        public FeatureSettings Settings => FeatureSettings.Create(new LobbyPanelSettings(), _ => []);
+        public void Configure(IFeatureBuilder feature) => feature.Uses("friends.ids");
+    }
 }

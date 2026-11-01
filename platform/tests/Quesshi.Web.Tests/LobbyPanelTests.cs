@@ -22,6 +22,7 @@ public sealed class LobbyPanelTests : BunitContext
         registry.RegisterFormat(new FakeFormat("broken", typeof(BrokenSettings)));
         Services.AddSingleton(new Translator(http));
         Services.AddSingleton(new LobbyActions(new PlayerApi(http)));
+        Services.AddSingleton(new LobbyInviteCandidates(new PlayerApi(http), new AppConfig(http, null!)));
         Services.AddSingleton<IFormatClientRegistry>(registry);
     }
 

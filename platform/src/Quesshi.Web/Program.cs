@@ -13,6 +13,7 @@ builder.Services.AddScoped<IClientReloader, JsClientReloader>();
 builder.Services.AddScoped<ClientHttp>();
 builder.Services.AddScoped<PlayerApi>();
 builder.Services.AddScoped<LobbyActions>();
+builder.Services.AddScoped<LobbyInviteCandidates>();
 builder.Services.AddScoped<StreamClient>(services => new StreamClient(services.GetRequiredService<ClientHttp>()));
 builder.Services.AddScoped<AuthState>();
 builder.Services.AddScoped<AppConfig>();
