@@ -1,0 +1,154 @@
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Shared
+@using Quesshi.Web.Services
+@inject ClientHttp Http
+@inject IClientTranslator L
+
+@if (_state == LoadState.Ready)
+{
+    <section class="card stack" aria-labelledby="friends-title" data-test="friends-section">
+        <div class="row">
+            <h2 id="friends-title" class="friends-title">@L["profile.friends"]</h2>
+        </div>
+        <form class="row" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <input class="input grow" type="search" data-test="friends-search" placeholder="@L["profile.findFriends"]"
+                   aria-label="@L["profile.findFriends"]" @bind="_query" @bind:event="oninput" />
+            <button class="btn" type="submit" data-test="friends-search-submit" disabled="@(_busy || _query.Trim().Length == 0)">@L["profile.findFriends"]</button>
+        </form>
+        @if (_error is not null)
+        {
+            <p role="alert" data-test="friends-error">@L[_error]</p>
+        }
+        @if (_candidates is not null)
+        {
+            @if (_candidates.Count == 0)
+            {
+                <p class="faint" data-test="friends-search-empty">@L["profile.searchEmpty"]</p>
+            }
+            <ul class="stack friend-list" data-test="friends-candidates">
+                @foreach (var candidate in _candidates)
+                {
+                    <li class="friend-row" @key="candidate.Id" data-test="friends-candidate">
+                        <span class="avatar friend-row__avatar" style="background:@Tint(candidate.AvatarSeed)">@Initial(candidate.DisplayName)</span>
+                        <div class="grow friend-row__name" dir="auto">@candidate.DisplayName</div>
+                        <button class="btn" type="button" data-test="friends-add" disabled="@_busy" @onclick="() => AddAsync(candidate)">@L["profile.add"]</button>
+                    </li>
+                }
+            </ul>
+        }
+        @if (_friends.Count == 0)
+        {
+            <p class="friends-empty" data-test="friends-empty">@L["profile.friendsEmpty"]</p>
+        }
+        <ul class="stack friend-list" data-test="friends-list">
+            @foreach (var friend in _friends)
+            {
+                <li class="friend-row" @key="friend.Id" data-test="friend">
+                    <span class="avatar friend-row__avatar" data-test="friend-avatar" data-seed="@friend.AvatarSeed" style="background:@Tint(friend.AvatarSeed)">
+                        @Initial(friend.DisplayName)
+                        @if (friend.IsOnline)
+                        {
+                            <span class="dot--online friend-row__dot" data-test="friend-online" aria-label="@L["profile.online"]" title="@L["profile.online"]"></span>
+                        }
+                    </span>
+                    <div class="grow friend-row__name" data-test="friend-name" dir="auto">@friend.DisplayName</div>
+                    <button type="button" class="icon-hit friend-row__remove" data-test="friend-remove" disabled="@_busy"
+                            aria-label="@L["profile.remove"]" @onclick="() => RemoveAsync(friend)">@L["profile.remove"]</button>
+                </li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    private enum LoadState { Loading, Ready, Hidden }
+
+    private LoadState _state = LoadState.Loading;
+    private IReadOnlyList<FriendEntry> _friends = [];
+    private IReadOnlyList<FriendCandidate>? _candidates;
+    private FriendsClient? _client;
+    private string _query = "";
+    private string? _error;
+    private bool _busy;
+
+    [Parameter, EditorRequired] public ProfileSectionParameters Parameters { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _client = new FriendsClient(Http);
+        var (outcome, friends) = await _client.ListAsync();
+        if (outcome == FriendsOutcome.Ok)
+        {
+            _friends = friends;
+            _state = LoadState.Ready;
+        }
+        else
+        {
+            // A tenant with friends off answers 404; any other failure also leaves the profile without a broken section.
+            _state = LoadState.Hidden;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        var text = _query.Trim();
+        if (text.Length == 0 || _busy) return;
+        await RunAsync(async () =>
+        {
+            var (outcome, candidates) = await _client!.SearchAsync(text);
+            if (outcome != FriendsOutcome.Ok) return outcome;
+            _candidates = candidates;
+            return outcome;
+        });
+    }
+
+    private Task AddAsync(FriendCandidate candidate) => RunAsync(async () =>
+    {
+        var outcome = await _client!.AddAsync(candidate.Id);
+        if (outcome != FriendsOutcome.Ok) return outcome;
+        _candidates = _candidates?.Where(found => found.Id != candidate.Id).ToArray();
+        return await ReloadAsync();
+    });
+
+    private Task RemoveAsync(FriendEntry friend) => RunAsync(async () =>
+    {
+        var outcome = await _client!.RemoveAsync(friend.Id);
+        return outcome == FriendsOutcome.Ok ? await ReloadAsync() : outcome;
+    });
+
+    private async Task<FriendsOutcome> ReloadAsync()
+    {
+        var (outcome, friends) = await _client!.ListAsync();
+        if (outcome == FriendsOutcome.Ok) _friends = friends;
+        return outcome;
+    }
+
+    private async Task RunAsync(Func<Task<FriendsOutcome>> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var outcome = await action();
+            if (outcome == FriendsOutcome.Unavailable) _state = LoadState.Hidden;
+            else if (outcome == FriendsOutcome.Failed) _error = "profile.friendAddFailed";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "profile.friendAddFailed";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Initial(string name) => name.Length == 0 ? "?" : char.ToUpperInvariant(name[0]).ToString();
+
+    private static string Tint(string seed)
+    {
+        var hash = 0;
+        foreach (var character in seed) hash = unchecked(hash * 31 + character);
+        return $"hsl({Math.Abs(hash % 360)} 55% 45%)";
+    }
+}
