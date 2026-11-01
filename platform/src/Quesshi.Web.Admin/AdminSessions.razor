@@ -1,0 +1,90 @@
+@page "/admin/sessions"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading)
+{
+    <p class="muted">@Text["common.loading"]</p>
+}
+else if (!CanManage)
+{
+    <section class="card"><p>@Text[AdminSessionsText.Denied]</p></section>
+}
+else
+{
+    <section class="stack" aria-labelledby="admin-sessions-title">
+        <h1 id="admin-sessions-title">@Text[AdminSessionsText.Title]</h1>
+        @if (error is not null)
+        {
+            <p class="form-error" role="alert">@Text[error]</p>
+        }
+        @if (sessions.Count == 0 && error is null)
+        {
+            <p class="muted">@Text[AdminSessionsText.Empty]</p>
+        }
+        @foreach (var session in sessions)
+        {
+            <article class="card stack" data-testid="admin-session-@session.Id">
+                <h2>@session.Code</h2>
+                <dl>
+                    <dt>@Text[AdminSessionsText.Format]</dt><dd>@session.Format</dd>
+                    <dt>@Text[AdminSessionsText.Status]</dt><dd>@session.Status</dd>
+                    <dt>@Text[AdminSessionsText.Players]</dt><dd>@session.Players</dd>
+                    <dt>@Text[AdminSessionsText.Created]</dt><dd>@session.CreatedAt.ToLocalTime().ToString("g")</dd>
+                </dl>
+                <button class="btn" type="button" data-testid="end-session-@session.Id" @onclick="() => EndAsync(session)">@Text[AdminSessionsText.End]</button>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private readonly List<ActiveSessionResponse> sessions = [];
+    private string? error;
+    private bool loaded;
+
+    private bool CanManage => State?.Session is { } session &&
+        (session.IsPlatform || string.Equals(session.Role, "Owner", StringComparison.OrdinalIgnoreCase) || string.Equals(session.Role, "Moderator", StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanManage && !loaded) { loaded = true; await LoadAsync(); }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (State is null) return;
+        var result = await State.GetAsync<IReadOnlyList<ActiveSessionResponse>>("/api/admin/session-operations");
+        if (!result.Success)
+        {
+            error = result.Error ?? AdminSessionsText.LoadFailed;
+            return;
+        }
+
+        sessions.Clear();
+        sessions.AddRange(result.Value ?? []);
+        error = null;
+    }
+
+    private async Task EndAsync(ActiveSessionResponse session)
+    {
+        if (State is null) return;
+        var result = await State.MutateAsync<EndSessionResponse>(HttpMethod.Post, $"/api/admin/session-operations/{session.Id}/end", null);
+        if (!result.Success)
+        {
+            error = result.Error ?? AdminSessionsText.EndFailed;
+            return;
+        }
+
+        sessions.RemoveAll(candidate => candidate.Id == session.Id);
+        error = null;
+    }
+
+    private sealed record ActiveSessionResponse(Guid Id, string Code, string Format, string Status, DateTimeOffset CreatedAt, long Players);
+    private sealed record EndSessionResponse(bool Ended);
+}
