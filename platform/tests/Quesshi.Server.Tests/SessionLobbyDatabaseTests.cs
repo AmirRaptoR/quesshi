@@ -244,6 +244,34 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
     }
 
     [SkippableFact]
+    public async Task A_poll_lobby_accepts_the_poll_settings_the_client_sends_and_refuses_invalid_ones()
+    {
+        var category = Guid.NewGuid();
+        await host.Fixture.SetCapabilityAsync("format", "poll", true);
+        await host.Fixture.SetCapabilityAsync("kind", "poll_choice", true);
+        await host.Fixture.ExecuteOwnerAsync("""
+            insert into categories(tenant_id, id, slug, names) values (@t, @category, 'poll-category', '{"en":"Poll"}'::jsonb);
+            update tenant_capabilities
+            set settings = jsonb_set(settings, '{CategoriesByFamily,poll}', jsonb_build_array(@category::text))
+            where tenant_id = @t and type = 'source' and key = 'bank';
+            insert into questions(tenant_id, id, kind, kind_version, family, lang, category_id, level, prompt, payload, fingerprint, status, source)
+            select @t, gen_random_uuid(), 'poll_choice', 1, 'poll', 'en', @category, 1, 'Poll prompt ' || n,
+                   '{"options":[{"id":"a","text":"A"},{"id":"b","text":"B"}]}'::jsonb, 'poll-' || n, 'approved', 'admin'
+            from generate_series(1, 60) as n
+            """, new { t = host.Fixture.TenantId, category });
+        var lobby = await CreateAsync("poll", capacity: 2);
+        var content = new { source = "bank", parameters = new { categories = new[] { category } }, count = 20 };
+
+        var valid = await host.Fixture.Player.PutAsJsonAsync($"/api/sessions/{lobby.Id}/settings", new { content, rules = new { language = "en" }, capacity = 8 });
+        var badCapacity = await host.Fixture.Player.PutAsJsonAsync($"/api/sessions/{lobby.Id}/settings", new { capacity = 9 });
+        var badCount = await host.Fixture.Player.PutAsJsonAsync($"/api/sessions/{lobby.Id}/settings", new { content = content with { count = 0 } });
+        var stored = (await host.Fixture.QueryOwnerAsync<int>("select capacity from sessions where id = @id", new { id = lobby.Id })).Single();
+
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.BadRequest, HttpStatusCode.BadRequest, 8),
+            (valid.StatusCode, badCapacity.StatusCode, badCount.StatusCode, stored));
+    }
+
+    [SkippableFact]
     public async Task A_non_owner_leaving_frees_their_seat()
     {
         var (second, secondId) = await host.Fixture.CreateSecondPlayerClientAsync();
