@@ -49,6 +49,7 @@ function friendsTenant({ enabled }) {
         response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
         response.write(': open\n\n');
       },
+      '/api/me/sessions': (request, response) => json(response, { sessions: [], next: null }),
       '/api/x/friends': gated((request, response) =>
         json(response, [...friends].map(id => people[id]).sort((a, b) => a.displayName.localeCompare(b.displayName)))),
       '/api/x/friends/search': gated((request, response) => {

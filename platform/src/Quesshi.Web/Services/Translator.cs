@@ -4,7 +4,7 @@ using Quesshi.Web.Plugins;
 namespace Quesshi.Web.Services;
 
 /// <summary>Loads the tenant's selected i18n table without assuming a fixed language enum.</summary>
-public sealed class Translator(ClientHttp http) : IClientTranslator, IClientTranslationRegistry
+public sealed class Translator(ClientHttp http) : IClientTranslator, IClientLanguage, IClientTranslationRegistry
 {
     private readonly Dictionary<string, Dictionary<string, string>> tables = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<IReadOnlyDictionary<string, string>>> contributions = new(StringComparer.OrdinalIgnoreCase);

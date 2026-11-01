@@ -44,7 +44,7 @@ public sealed class StatsReadEndpointTests : IAsyncLifetime
 
         Assert.Equivalent(new StatsPlayerSummary(Host.PlayerId,
             [new StatsFormatSummary("async_duel", 12, 8, 3, 1, 73, 2, 5)],
-            [new StatsCategorySummary(_categoryId, 6, 4.5, new Dictionary<string, string> { ["en"] = "Current history", ["fa"] = "تاریخ" })]), summary);
+            [new StatsCategorySummary(_categoryId, 6, 4.5, new Dictionary<string, string> { ["en"] = "Current history", ["fa"] = "تاریخ" })], 73), summary);
     }
 
     [SkippableFact]
@@ -53,7 +53,7 @@ public sealed class StatsReadEndpointTests : IAsyncLifetime
         var summary = await GetSummaryAsync(Host.Player, $"/api/x/stats/players/{_secondPlayerId}");
 
         Assert.Equivalent(new StatsPlayerSummary(_secondPlayerId,
-            [new StatsFormatSummary("async_duel", 4, 1, 2, 1, 11, 0, 3)], []), summary);
+            [new StatsFormatSummary("async_duel", 4, 1, 2, 1, 11, 0, 3)], [], 11), summary);
     }
 
     [SkippableFact]

@@ -1,0 +1,77 @@
+@using System.Globalization
+@using Quesshi.Shared
+@using Quesshi.Web.Services
+@inject ClientHttp Http
+@inject IClientTranslator L
+@inject IClientLanguage Language
+
+@if (_summary is not null)
+{
+    <section class="card stack" aria-labelledby="stats-title" data-test="stats-section">
+        <h2 id="stats-title">@L["profile.stats"]</h2>
+        <p data-test="stats-total"><span>@L["profile.score"]</span> <strong data-test="stats-total-value">@_summary.Total.ToString(CultureInfo.InvariantCulture)</strong></p>
+        <div class="stack" data-test="stats-formats">
+            @foreach (var format in _summary.Formats)
+            {
+                <dl class="identity-summary" data-test="stats-format" data-format="@format.Format">
+                    <div><dt data-test="stats-format-name">@FormatName(format.Format)</dt></div>
+                    <div><dt>@L["profile.played"]</dt><dd data-test="stats-played">@format.Played</dd></div>
+                    <div><dt>@L["profile.wins"]</dt><dd data-test="stats-wins">@format.Wins</dd></div>
+                    <div><dt>@L["profile.losses"]</dt><dd data-test="stats-losses">@format.Losses</dd></div>
+                    <div><dt>@L["profile.draws"]</dt><dd data-test="stats-draws">@format.Draws</dd></div>
+                    <div><dt>@L["profile.streak"]</dt><dd data-test="stats-streak">@format.Streak</dd></div>
+                    <div><dt>@L["profile.bestStreak"]</dt><dd data-test="stats-best-streak">@format.BestStreak</dd></div>
+                </dl>
+            }
+        </div>
+        @if (_summary.Categories.Count > 0)
+        {
+            <h3>@L["profile.accuracy"]</h3>
+            <ul class="stack" data-test="stats-categories">
+                @foreach (var category in _summary.Categories)
+                {
+                    <li data-test="stats-category" data-category="@category.CategoryId">
+                        <span data-test="stats-category-name" dir="auto">@CategoryName(category)</span>
+                        <span data-test="stats-category-accuracy">@Accuracy(category)</span>
+                        <span class="faint" data-test="stats-category-counts">@category.CreditSum.ToString("0.##", CultureInfo.InvariantCulture)/@category.Asked</span>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+}
+
+@code {
+    private StatsSummary? _summary;
+
+    [Parameter, EditorRequired] public ProfileSectionParameters Parameters { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // A tenant with stats off answers 404; any other failure also leaves the profile without a broken section.
+            _summary = await new StatsApi(Http).LoadAsync(Parameters.PlayerId);
+        }
+        catch (HttpRequestException)
+        {
+            _summary = null;
+        }
+    }
+
+    private string FormatName(string format)
+    {
+        var key = $"format.{format}";
+        var name = L[key];
+        return name == key ? format : name;
+    }
+
+    private string CategoryName(StatsCategory category)
+    {
+        if (category.Names.TryGetValue(Language.Lang, out var name) && name.Length > 0) return name;
+        return category.Names.Values.FirstOrDefault(value => value.Length > 0) ?? category.CategoryId.ToString();
+    }
+
+    private static string Accuracy(StatsCategory category) =>
+        category.Asked == 0 ? "—" : $"{Math.Round(category.CreditSum / category.Asked * 100, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture)}%";
+}

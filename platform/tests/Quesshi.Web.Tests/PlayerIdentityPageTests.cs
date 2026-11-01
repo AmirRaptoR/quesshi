@@ -407,6 +407,8 @@ public sealed class PlayerIdentityPageTests : BunitContext
     {
         var auth = UseServices(new PageHandler(Response(HttpStatusCode.OK, """{"id":"21ac7193-52fd-4d4b-9194-5cd547448072","displayName":"Ada","avatarSeed":"avatar-1","lang":"en"}""")));
         Services.AddSingleton<IFormatClientRegistry>(new ClientRegistry(new NoClientLoader()));
+        Services.AddSingleton(new ClientHttp(
+            new HttpClient(new PageHandler(Response(HttpStatusCode.ServiceUnavailable))) { BaseAddress = new Uri("https://tenant.example/") }, new NullReloader()));
         await auth.InitializeAsync();
 
         var cut = Render<Profile>();

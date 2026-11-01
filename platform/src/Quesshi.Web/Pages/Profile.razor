@@ -1,8 +1,10 @@
 @page "/profile"
+@using System.Net.Http.Json
 @using Quesshi.Shared
 @using Quesshi.Web.Plugins
 @using Quesshi.Web.Services
 @inject AuthState Auth
+@inject ClientHttp Http
 @inject Translator Translator
 @inject NavigationManager Navigation
 
@@ -17,10 +19,44 @@
         </dl>
         <button class="btn" type="button" @onclick="OpenSettings">@Translator["settings.title"]</button>
     </section>
+    @if (history.Count > 0)
+    {
+        <section class="card stack" aria-labelledby="profile-history-title" data-test="profile-history">
+            <h2 id="profile-history-title">@Translator["profile.history"]</h2>
+            <ul class="stack">
+                @foreach (var session in history)
+                {
+                    <li data-session-id="@session.Id">
+                        <a href="@ProfileHistory.Route(session)">
+                            <span data-field="format">@session.Format</span>
+                            <time data-field="joined" datetime="@session.JoinedAt.ToString("O")">@session.JoinedAt.ToString("yyyy-MM-dd HH:mm")</time>
+                        </a>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
     <ClientSlotHost TParameters="ProfileSectionParameters" Slot="ClientSlots.ProfileSection"
                     Value="@(new ProfileSectionParameters(Auth.Player.Id.ToString()))" />
 }
 
 @code {
+    private List<SessionHistoryEntry> history = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/me/sessions?limit=50"));
+            if (!response.IsSuccessStatusCode) return;
+            var page = await response.Content.ReadFromJsonAsync<SessionHistoryPage>();
+            if (page is not null) history = ProfileHistory.Completed(page.Sessions);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            // The profile stays usable without its history.
+        }
+    }
+
     private void OpenSettings() => Navigation.NavigateTo("/settings");
 }

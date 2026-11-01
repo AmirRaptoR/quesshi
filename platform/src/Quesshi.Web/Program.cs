@@ -24,6 +24,7 @@ builder.Services.AddScoped<PlatformState>(services => new PlatformState(
 builder.Services.AddScoped<LanguageSelection>();
 builder.Services.AddScoped<Translator>();
 builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
+builder.Services.AddScoped<IClientLanguage>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<Sounds>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddScoped<IClientAssemblyLoader, LazyAssemblyClientLoader>();
@@ -40,6 +41,7 @@ builder.Services.AddScoped<IClientRegistry>(services =>
     entry.RegisterSlots(registry);
     registry.RegisterLazy("map_pick", "Quesshi.Kinds.MapPick.Client.dll");
     Quesshi.Web.Plugins.Features.Leaderboard.LeaderboardClient.Register(registry);
+    Quesshi.Web.Plugins.Features.Stats.StatsClient.Register(registry);
     return registry;
 });
 
