@@ -9,6 +9,12 @@ public interface IClientTranslator
     string this[string key] { get; }
 }
 
+/// <summary>The tenant language the shell currently renders in.</summary>
+public interface IClientLanguage
+{
+    string Lang { get; }
+}
+
 /// <summary>Accepts client-owned translations that complement the tenant's shared table.</summary>
 public interface IClientTranslationRegistry
 {

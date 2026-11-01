@@ -57,6 +57,7 @@ public sealed class ClientSlotPageTests : BunitContext
         JSInterop.SetupVoid("quesshi.applyLanguage", _ => true).SetVoidResult();
         JSInterop.Setup<string?>("quesshi.get", _ => true).SetResult(null);
         JSInterop.Setup<string[]>("quesshi.browserLanguages").SetResult([]);
+        Services.AddSingleton(http);
         Services.AddSingleton(config);
         Services.AddSingleton(translator);
         Services.AddSingleton(new LanguageSelection(config, translator, JSInterop.JSRuntime));
