@@ -165,7 +165,7 @@ public enum WhenDisabled
 /// <summary>Tenant-bound durable work made available to a registered feature-job handler.</summary>
 public sealed class JobContext
 {
-    public JobContext(long id, Guid? tenantId, string owner, string kind, JsonElement payload, ITenantDb? database)
+    public JobContext(long id, Guid? tenantId, string owner, string kind, JsonElement payload, ITenantDb? database, IServiceProvider? services = null)
     {
         Id = id;
         TenantId = tenantId;
@@ -173,6 +173,7 @@ public sealed class JobContext
         Kind = kind;
         Payload = payload;
         Database = database;
+        Services = services;
     }
 
     public long Id { get; }
@@ -186,4 +187,7 @@ public sealed class JobContext
     /// It accepts only this job's explicit tenant id and has no ambient or fallback tenant.
     /// </summary>
     public ITenantDb? Database { get; }
+
+    /// <summary>The platform services a job handler resolves its core contracts (locks, sessions, inbox) from.</summary>
+    public IServiceProvider? Services { get; }
 }
