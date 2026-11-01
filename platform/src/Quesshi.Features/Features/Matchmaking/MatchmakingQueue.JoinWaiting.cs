@@ -13,7 +13,6 @@ internal enum JoinResult { NoCandidate, Skipped, Paired, TryAgain }
 internal sealed partial class MatchmakingQueue
 {
     private static readonly TimeSpan Lease = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan EntryLives = TimeSpan.FromHours(48);
 
     // The session can still take another player: open, running, before its forfeit deadline, with a free seat.
     private const string Joinable = """
@@ -83,6 +82,7 @@ internal sealed partial class MatchmakingQueue
     {
         try
         {
+            if (policies.Find(format) is not { } rule) return JoinResult.NoCandidate;
             for (var attempt = 0; attempt < AttemptsPerRequest; attempt++)
             {
                 var candidate = await database.InTenantAsync(tenantId, transaction => transaction.QuerySingleOrDefaultAsync<WaitingSession>("""
@@ -95,10 +95,11 @@ internal sealed partial class MatchmakingQueue
                     join players owner on owner.tenant_id = other.tenant_id and owner.id = other.player_id
                                       and owner.deleted_at is null and owner.banned_at is null
                     where mine.player_id = @joinerId and mine.format = @format and mine.session_id is not null
-                      and other.enqueued_at + @entryLives > now()
+                      and (@lifetimeSeconds::double precision is null
+                           or other.enqueued_at + make_interval(secs => @lifetimeSeconds::double precision) > now())
                     order by other.enqueued_at, other.player_id
                     limit 1
-                    """, new { joinerId, format, entryLives = EntryLives }, cancellationToken), readOnly: true, cancellationToken: cancellationToken);
+                    """, new { joinerId, format, lifetimeSeconds = rule.Lifetime?.TotalSeconds }, cancellationToken), readOnly: true, cancellationToken: cancellationToken);
                 if (candidate is null) return JoinResult.NoCandidate;
                 var result = await TryJoinAsync(tenantId, format, joinerId, candidate.OwnerId, candidate.SessionId, cancellationToken);
                 if (result != JoinResult.Skipped) return result;
@@ -118,6 +119,19 @@ internal sealed partial class MatchmakingQueue
         var leased = await database.InTenantAsync(tenantId, async transaction =>
         {
             await locks.PlayersAsync(transaction, [joinerId, ownerId], cancellationToken);
+            if (policies.Find(format) is not { } rule) return false;
+
+            // The same eligibility as create-started entries: expired, banned and deleted players are dropped.
+            Guid[] ids = [joinerId, ownerId];
+            var entries = await MatchmakingEligibility.ReadAsync(transaction, rule, format, null, ids, cancellationToken, withSession: true);
+            var dropped = entries.Where(entry => !entry.Eligible).Select(entry => entry.PlayerId).ToArray();
+            if (dropped.Length > 0)
+            {
+                await MatchmakingEligibility.DeleteAsync(transaction, format, dropped, cancellationToken, withSession: true);
+                foreach (var playerId in dropped) inbox.Changed(transaction, playerId);
+                return false;
+            }
+
             var claimed = await transaction.ExecuteAsync("""
                 update matchmaking_entries
                 set claimed_by = @token, claimed_until = now() + @lease
@@ -210,28 +224,43 @@ internal sealed partial class MatchmakingQueue
     /// <summary>Removes entries that can no longer be joined, then pairs waiters that never saw each other.</summary>
     private async Task SweepJoinWaitingAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        var stale = await database.InTenantAsync(tenantId, transaction => transaction.QueryAsync<StaleEntry>($"""
-            select e.player_id as PlayerId, e.format as Format
-            from matchmaking_entries e
-            left join sessions s on s.tenant_id = e.tenant_id and s.id = e.session_id
-            where e.session_id is not null and (e.claimed_until is null or e.claimed_until <= now())
-              and (e.enqueued_at + @entryLives <= now() or s.id is null or not ({Joinable}))
-            limit @batch
-            """, new { entryLives = EntryLives, batch = SweepBatch }, cancellationToken), readOnly: true, cancellationToken: cancellationToken);
-        foreach (var entry in stale)
-            await database.InTenantAsync(tenantId, async transaction =>
-            {
-                await locks.PlayersAsync(transaction, [entry.PlayerId], cancellationToken);
-                var deleted = await transaction.ExecuteAsync($"""
-                    delete from matchmaking_entries e
-                    where e.player_id = @playerId and e.format = @format and e.session_id is not null
-                      and (e.claimed_until is null or e.claimed_until <= now())
-                      and (e.enqueued_at + @entryLives <= now()
-                           or not exists (select 1 from sessions s where s.tenant_id = e.tenant_id and s.id = e.session_id and {Joinable}))
-                    """, new { playerId = entry.PlayerId, format = entry.Format, entryLives = EntryLives }, cancellationToken);
-                if (deleted > 0) inbox.Changed(transaction, entry.PlayerId);
-                return deleted;
-            }, cancellationToken: cancellationToken);
+        var formats = await database.InTenantAsync(tenantId, transaction => transaction.QueryAsync<string>(
+            "select distinct format from matchmaking_entries where session_id is not null", cancellationToken: cancellationToken),
+            readOnly: true, cancellationToken: cancellationToken);
+        foreach (var format in formats)
+        {
+            if (policies.Find(format) is not { } rule) continue;
+            var stale = await database.InTenantAsync(tenantId, transaction => transaction.QueryAsync<Guid>($"""
+                select e.player_id
+                from matchmaking_entries e
+                left join sessions s on s.tenant_id = e.tenant_id and s.id = e.session_id
+                join players p on p.tenant_id = e.tenant_id and p.id = e.player_id
+                where e.format = @format and e.session_id is not null and (e.claimed_until is null or e.claimed_until <= now())
+                  and (p.banned_at is not null or p.deleted_at is not null or s.id is null or not ({Joinable})
+                       or (@lifetimeSeconds::double precision is not null
+                           and e.enqueued_at + make_interval(secs => @lifetimeSeconds::double precision) <= now()))
+                limit @batch
+                """, new { format, lifetimeSeconds = rule.Lifetime?.TotalSeconds, batch = SweepBatch }, cancellationToken),
+                readOnly: true, cancellationToken: cancellationToken);
+            foreach (var playerId in stale)
+                await database.InTenantAsync(tenantId, async transaction =>
+                {
+                    await locks.PlayersAsync(transaction, [playerId], cancellationToken);
+                    var deleted = await transaction.ExecuteAsync($"""
+                        delete from matchmaking_entries e
+                        using players p
+                        where p.tenant_id = e.tenant_id and p.id = e.player_id
+                          and e.player_id = @playerId and e.format = @format and e.session_id is not null
+                          and (e.claimed_until is null or e.claimed_until <= now())
+                          and (p.banned_at is not null or p.deleted_at is not null
+                               or not exists (select 1 from sessions s where s.tenant_id = e.tenant_id and s.id = e.session_id and {Joinable})
+                               or (@lifetimeSeconds::double precision is not null
+                                   and e.enqueued_at + make_interval(secs => @lifetimeSeconds::double precision) <= now()))
+                        """, new { playerId, format, lifetimeSeconds = rule.Lifetime?.TotalSeconds }, cancellationToken);
+                    if (deleted > 0) inbox.Changed(transaction, playerId);
+                    return deleted;
+                }, cancellationToken: cancellationToken);
+        }
 
         var waiting = await database.InTenantAsync(tenantId, transaction => transaction.QueryAsync<Waiting>("""
             select player_id as PlayerId, format as Format, match_key as MatchKey
@@ -272,5 +301,4 @@ internal sealed partial class MatchmakingQueue
 
     private sealed record WaitingSession(Guid OwnerId, Guid SessionId);
 
-    private sealed record StaleEntry(Guid PlayerId, string Format);
 }

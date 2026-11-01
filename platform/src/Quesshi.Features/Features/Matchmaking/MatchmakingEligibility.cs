@@ -12,9 +12,13 @@ internal static class MatchmakingEligibility
 {
     public sealed record WaitingEntry(Guid PlayerId, string Settings, DateTimeOffset EnqueuedAt, bool Eligible);
 
-    /// <summary>Reads the still-waiting entries of the given players and marks which may be paired.</summary>
+    /// <summary>
+    /// Reads the still-waiting entries of the given players and marks which may be paired. <paramref name="withSession"/>
+    /// selects join-waiting entries (that own an open session) instead of create-started ones.
+    /// </summary>
     public static async Task<IReadOnlyList<WaitingEntry>> ReadAsync(
-        ITenantTx transaction, MatchPolicy rule, string format, string matchKey, Guid[] playerIds, CancellationToken cancellationToken)
+        ITenantTx transaction, MatchPolicy rule, string format, string? matchKey, Guid[] playerIds, CancellationToken cancellationToken,
+        bool withSession = false)
     {
         var rows = await transaction.QueryAsync<Row>($"""
             select entry.player_id as PlayerId, entry.settings::text as Settings, entry.enqueued_at as EnqueuedAt,
@@ -23,20 +27,24 @@ internal static class MatchmakingEligibility
                    coalesce(player.last_seen_at < now() - make_interval(secs => @onlineSeconds), true) as Offline
             from matchmaking_entries entry
             join players player on player.tenant_id = entry.tenant_id and player.id = entry.player_id
-            where entry.format = @format and entry.match_key = @matchKey and entry.session_id is null
+            where entry.format = @format and (@matchKey::text is null or entry.match_key = @matchKey)
+              and (entry.session_id is not null) = @withSession
               and entry.player_id = any(@playerIds)
-            """, new { format, matchKey, playerIds, lifetimeSeconds = rule.Lifetime?.TotalSeconds, onlineSeconds = rule.OnlineWindow.TotalSeconds }, cancellationToken);
+            """, new { format, matchKey, withSession, playerIds, lifetimeSeconds = rule.Lifetime?.TotalSeconds, onlineSeconds = rule.OnlineWindow.TotalSeconds }, cancellationToken);
         return rows
             .Select(row => new WaitingEntry(row.PlayerId, row.Settings, row.EnqueuedAt,
                 !row.Expired && !row.Unavailable && !(rule.RequireOnline && row.Offline)))
             .ToArray();
     }
 
-    /// <summary>Deletes the given players' waiting entries of a format.</summary>
-    public static Task<int> DeleteAsync(ITenantTx transaction, string format, IEnumerable<Guid> playerIds, CancellationToken cancellationToken) =>
+    /// <summary>Deletes the given players' waiting entries of a format; a join-waiting entry leased by a pairing stays.</summary>
+    public static Task<int> DeleteAsync(
+        ITenantTx transaction, string format, IEnumerable<Guid> playerIds, CancellationToken cancellationToken, bool withSession = false) =>
         transaction.ExecuteAsync("""
-            delete from matchmaking_entries where format = @format and session_id is null and player_id = any(@playerIds)
-            """, new { format, playerIds = playerIds.ToArray() }, cancellationToken);
+            delete from matchmaking_entries
+            where format = @format and (session_id is not null) = @withSession and player_id = any(@playerIds)
+              and (claimed_until is null or claimed_until <= now())
+            """, new { format, withSession, playerIds = playerIds.ToArray() }, cancellationToken);
 
     /// <summary>Players whose entry for this format has expired (read without locks; re-checked under the lock).</summary>
     public static async Task<IReadOnlyList<Guid>> ExpiredAsync(
