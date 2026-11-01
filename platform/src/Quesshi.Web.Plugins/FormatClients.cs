@@ -21,6 +21,9 @@ public interface IFormatClientRegistry
     /// <summary>Resolves a registered format whether or not it is still offered for new play.</summary>
     IFormatClient? ResolveFormat(string id);
 
+    /// <summary>The ids of every registered format.</summary>
+    IReadOnlyList<string> FormatIds { get; }
+
     void RegisterPage(string path, Type component);
     IReadOnlyList<(string Path, Type Component)> Pages { get; }
 

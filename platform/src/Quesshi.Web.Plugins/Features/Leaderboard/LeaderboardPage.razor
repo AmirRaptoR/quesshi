@@ -1,0 +1,192 @@
+@page "/ranks"
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Shared
+@implements IDisposable
+@inject LeaderboardApi Api
+@inject IClientTranslator L
+@inject IFormatClientRegistry Formats
+@inject TimeProvider Time
+
+<PageTitle>@L["nav.ranks"]</PageTitle>
+
+<section class="stack" data-test="ranks-page">
+    <h1>@L["nav.ranks"]</h1>
+
+    <div class="row" style="gap:.5rem">
+        <label>
+            <span class="sr-only">@L["ranks.board"]</span>
+            <select class="select" data-test="ranks-board" value="@_board" @onchange="OnBoardChanged">
+                @foreach (var board in Boards)
+                {
+                    <option value="@board">@BoardName(board)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span class="sr-only">@L["ranks.period"]</span>
+            <select class="select" data-test="ranks-period" value="@_period" @onchange="OnPeriodChanged">
+                @foreach (var period in _periods)
+                {
+                    <option value="@period">@PeriodName(period)</option>
+                }
+            </select>
+        </label>
+    </div>
+
+    @if (_friendsAvailable)
+    {
+        <div class="row" style="gap:.5rem" data-test="ranks-scope">
+            <button type="button" class="btn btn--sm @(_scope == LeaderboardApi.FriendsScope ? "btn--ghost" : "")" data-test="ranks-all-tab"
+                    @onclick="() => SwitchScopeAsync(LeaderboardApi.AllScope)">@L["ranks.global"]</button>
+            <button type="button" class="btn btn--sm @(_scope == LeaderboardApi.FriendsScope ? "" : "btn--ghost")" data-test="ranks-friends-tab"
+                    @onclick="() => SwitchScopeAsync(LeaderboardApi.FriendsScope)">@L["ranks.friends"]</button>
+        </div>
+    }
+
+    @if (_failed)
+    {
+        <p role="alert" data-test="ranks-error">@L["ranks.loadFailed"]</p>
+    }
+    else if (_loading)
+    {
+        <div class="spinner" role="status" aria-label="@L["common.loading"]"></div>
+    }
+    else if (_page is { } page)
+    {
+        @if (page.Entries.Count == 0)
+        {
+            <p class="empty">@L["ranks.empty"]</p>
+        }
+        else
+        {
+            <ol class="stack" data-test="ranks-list">
+                @foreach (var row in page.Entries)
+                {
+                    <li class="card card--flat row @(row.PlayerId == page.Me?.PlayerId ? "is-me" : null)" data-test="ranks-row" data-rank="@row.Rank">
+                        <span class="numeral faint" data-test="rank" style="width:1.8rem;text-align:center">@row.Rank</span>
+                        <span class="avatar" data-test="avatar" data-seed="@row.Avatar" style="background:@Tint(row.Avatar)">@Initial(row.Name)</span>
+                        <span class="grow" data-test="name" style="font-weight:600">@row.Name</span>
+                        <span class="numeral" data-test="score" style="color:var(--zaferan)">@row.Score</span>
+                    </li>
+                }
+            </ol>
+        }
+
+        @if (page.Me is { } me)
+        {
+            <div class="card row" data-test="ranks-me">
+                <span class="faint">@L["ranks.you"]</span>
+                <span class="numeral" data-test="me-rank">@me.Rank</span>
+                <span class="avatar" style="background:@Tint(me.Avatar)">@Initial(me.Name)</span>
+                <span class="grow" data-test="me-name" style="font-weight:600">@me.Name</span>
+                <span class="numeral" data-test="me-score" style="color:var(--zaferan)">@me.Score</span>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private IReadOnlyList<string> _periods = [LeaderboardApi.AllPeriod];
+    private string _board = LeaderboardApi.AllBoard;
+    private string _period = LeaderboardApi.AllPeriod;
+    private string _scope = LeaderboardApi.AllScope;
+    private bool _friendsAvailable;
+    private bool _loading = true;
+    private bool _failed;
+    private LeaderboardDto? _page;
+    private int _request;
+
+    private IEnumerable<string> Boards => new[] { LeaderboardApi.AllBoard }.Concat(Formats.FormatIds);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _periods = LeaderboardPeriods.Current(Time.GetUtcNow());
+        // The friends tab exists only while the server can answer the friends scope.
+        var probe = ProbeFriendsAsync();
+        await LoadAsync();
+        await probe;
+    }
+
+    private async Task ProbeFriendsAsync()
+    {
+        try
+        {
+            var result = await Api.LoadAsync(_board, _period, LeaderboardApi.FriendsScope, _lifetime.Token);
+            _friendsAvailable = !result.Unavailable;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            _friendsAvailable = false;
+        }
+    }
+
+    private Task OnBoardChanged(ChangeEventArgs e) => SelectAsync(board: e.Value as string);
+
+    private Task OnPeriodChanged(ChangeEventArgs e) => SelectAsync(period: e.Value as string);
+
+    private Task SwitchScopeAsync(string scope) => SelectAsync(scope: scope);
+
+    private async Task SelectAsync(string? board = null, string? period = null, string? scope = null)
+    {
+        _board = board ?? _board;
+        _period = period ?? _period;
+        _scope = scope ?? _scope;
+        await LoadAsync();
+    }
+
+    /// <summary>Loads the current selection; a response for a selection that has since changed is dropped.</summary>
+    private async Task LoadAsync()
+    {
+        var request = ++_request;
+        _loading = true;
+        _failed = false;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.LoadAsync(_board, _period, _scope, _lifetime.Token);
+            if (request != _request) return;
+            if (result.Unavailable)
+            {
+                _friendsAvailable = false;
+                _scope = LeaderboardApi.AllScope;
+                result = await Api.LoadAsync(_board, _period, _scope, _lifetime.Token);
+                if (request != _request) return;
+            }
+            _page = result.Board;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            if (request != _request) return;
+            _failed = true;
+        }
+        _loading = false;
+    }
+
+    private string BoardName(string board)
+    {
+        if (board == LeaderboardApi.AllBoard)
+            return L["ranks.board.all"];
+        var key = $"format.{board}";
+        var name = L[key];
+        return name == key ? board : name;
+    }
+
+    private string PeriodName(string period) => period switch
+    {
+        LeaderboardApi.AllPeriod => L["ranks.period.all"],
+        _ when period.Contains('W') => L["ranks.period.week"],
+        _ => L["ranks.period.month"],
+    };
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    /// <summary>Every player gets a stable glaze colour derived from their avatar seed.</summary>
+    private static string Tint(string seed) => $"hsl({Math.Abs(seed.GetHashCode()) % 360} 55% 62%)";
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

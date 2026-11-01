@@ -220,6 +220,8 @@ public sealed class ClientRegistry(IClientAssemblyLoader loader) : IClientRegist
 
     public IFormatClient? ResolveFormat(string id) => formats.GetValueOrDefault(id);
 
+    public IReadOnlyList<string> FormatIds => formats.Keys.Order(StringComparer.Ordinal).ToArray();
+
     public IReadOnlyList<(string Path, Type Component)> Pages
     {
         get { lock (contributionsLock) return pages.ToArray(); }
