@@ -10,6 +10,8 @@ namespace Quesshi.Features.Stats;
 
 internal static partial class StatsReadRoutes
 {
+    public const string ScoreQuery = "leaderboard.score";
+
     public static void MapPlayerRoutes(RouteGroupBuilder routes)
     {
         ArgumentNullException.ThrowIfNull(routes);
@@ -64,21 +66,38 @@ internal static partial class StatsReadRoutes
             order by stats.category_id
             """, new { playerId }, cancellationToken);
 
+        var formatSummaries = formats.Select(static row => new StatsFormatSummary(
+            row.Format, row.Played, row.Wins, row.Losses, row.Draws, row.Points, row.Streak, row.BestStreak)).ToArray();
         return new StatsPlayerSummary(
             playerId,
-            formats.Select(static row => new StatsFormatSummary(
-                row.Format, row.Played, row.Wins, row.Losses, row.Draws, row.Points, row.Streak, row.BestStreak)).ToArray(),
+            formatSummaries,
             categories.Select(static row => new StatsCategorySummary(
                 row.CategoryId,
                 row.Asked,
                 row.CreditSum,
-                JsonSerializer.Deserialize(row.NamesJson, StatsJsonContext.Default.DictionaryStringString) ?? [])).ToArray());
+                JsonSerializer.Deserialize(row.NamesJson, StatsJsonContext.Default.DictionaryStringString) ?? [])).ToArray(),
+            formatSummaries.Sum(static format => format.Points));
+    }
+
+    /// <summary>The summary with its total taken from the all-time board when <c>leaderboard.score</c> is offered.</summary>
+    public static async Task<StatsPlayerSummary?> GetSummaryWithBoardTotalAsync(
+        ITenantTx transaction,
+        INamedQueries queries,
+        Guid playerId,
+        CancellationToken cancellationToken)
+    {
+        var summary = await GetSummaryAsync(transaction, playerId, cancellationToken);
+        if (summary is null) return null;
+
+        var score = await queries.InvokeAsync<long>("stats", ScoreQuery, transaction, playerId, cancellationToken);
+        return score.Available ? summary with { Total = score.Value } : summary;
     }
 
     private static async Task<IResult> GetOwnSummaryAsync(
         HttpContext context,
         ITenantRequestContext tenants,
         ITenantDb database,
+        INamedQueries queries,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId) || tenants.GetTenantId(context) is not { } tenantId)
@@ -86,7 +105,7 @@ internal static partial class StatsReadRoutes
             return Results.Unauthorized();
         }
 
-        return await GetSummaryResponseAsync(database, tenantId, playerId, cancellationToken);
+        return await GetSummaryResponseAsync(database, queries, tenantId, playerId, cancellationToken);
     }
 
     private static async Task<IResult> GetPlayerSummaryAsync(
@@ -94,21 +113,23 @@ internal static partial class StatsReadRoutes
         HttpContext context,
         ITenantRequestContext tenants,
         ITenantDb database,
+        INamedQueries queries,
         CancellationToken cancellationToken)
     {
         if (tenants.GetTenantId(context) is not { } tenantId) return Results.NotFound();
-        return await GetSummaryResponseAsync(database, tenantId, playerId, cancellationToken);
+        return await GetSummaryResponseAsync(database, queries, tenantId, playerId, cancellationToken);
     }
 
     private static async Task<IResult> GetSummaryResponseAsync(
         ITenantDb database,
+        INamedQueries queries,
         Guid tenantId,
         Guid playerId,
         CancellationToken cancellationToken)
     {
         var summary = await database.InTenantAsync(
             tenantId,
-            transaction => GetSummaryAsync(transaction, playerId, cancellationToken),
+            transaction => GetSummaryWithBoardTotalAsync(transaction, queries, playerId, cancellationToken),
             cancellationToken: cancellationToken,
             readOnly: true);
         return summary is null ? Results.NotFound() : Results.Ok(summary);

@@ -1,10 +1,14 @@
 namespace Quesshi.Plugin.Api;
 
-/// <summary>A player's read-only statistics within one tenant.</summary>
+/// <summary>
+/// A player's read-only statistics within one tenant. <paramref name="Total"/> is the all-time
+/// <c>leaderboard.score</c> when that query is offered, otherwise the points earned across all formats.
+/// </summary>
 public sealed record StatsPlayerSummary(
     Guid PlayerId,
     IReadOnlyList<StatsFormatSummary> Formats,
-    IReadOnlyList<StatsCategorySummary> Categories);
+    IReadOnlyList<StatsCategorySummary> Categories,
+    long Total);
 
 /// <summary>A player's aggregate results for one session format.</summary>
 public sealed record StatsFormatSummary(

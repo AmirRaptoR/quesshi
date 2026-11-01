@@ -12,6 +12,7 @@ public sealed class StatsFeature : IFeature
     {
         feature.PlayerRoutes(StatsReadRoutes.MapPlayerRoutes);
         feature.AdminRoutes(AdminRole.Editor, StatsReadRoutes.MapAdminRoutes);
+        feature.Uses(StatsReadRoutes.ScoreQuery);
         feature.Provides<StatsPlayerSummary?>("stats.summary", StatsReadRoutes.GetSummaryAsync);
         feature.On<SessionEnded>(ProjectSessionEndedAsync);
         feature.CleanupPlayer(CleanupPlayerAsync);
