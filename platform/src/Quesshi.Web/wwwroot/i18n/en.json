@@ -582,6 +582,8 @@
   "admin.shell.title": "Administration",
   "admin.nav.label": "Administration navigation",
   "admin.nav.home": "Home",
+  "admin.feature.unavailable": "This admin page is not available to you.",
+  "admin.feature.failed": "This admin page failed to load.",
   "admin.nav.accounts": "Accounts",
   "admin.nav.password": "Password",
   "admin.nav.signOut": "Sign out",

@@ -582,6 +582,8 @@
   "admin.shell.title": "مدیریت",
   "admin.nav.label": "ناوبری مدیریت",
   "admin.nav.home": "خانه",
+  "admin.feature.unavailable": "این صفحهٔ مدیریت برای شما در دسترس نیست.",
+  "admin.feature.failed": "بارگیری این صفحهٔ مدیریت انجام نشد.",
   "admin.nav.accounts": "حساب‌ها",
   "admin.nav.password": "گذرواژه",
   "admin.nav.signOut": "خروج",

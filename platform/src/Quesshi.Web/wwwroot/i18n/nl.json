@@ -582,6 +582,8 @@
   "admin.shell.title": "Beheer",
   "admin.nav.label": "Beheernavigatie",
   "admin.nav.home": "Start",
+  "admin.feature.unavailable": "Deze beheerpagina is niet beschikbaar voor u.",
+  "admin.feature.failed": "Deze beheerpagina kon niet worden geladen.",
   "admin.nav.accounts": "Accounts",
   "admin.nav.password": "Wachtwoord",
   "admin.nav.signOut": "Afmelden",

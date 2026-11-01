@@ -6,7 +6,16 @@ public sealed class AdminState(AdminApi api)
 {
     public AdminSessionStatus Status { get; private set; } = AdminSessionStatus.Loading;
     public AdminSession? Session { get; private set; }
+    public IReadOnlyDictionary<string, string[]>? Capabilities { get; private set; }
     public event Action? Changed;
+
+    /// <summary>Loads the tenant's enabled capabilities once, so capability-gated admin pages can be offered.</summary>
+    public async Task LoadCapabilitiesAsync()
+    {
+        if (Capabilities is not null) return;
+        Capabilities = await api.CapabilitiesAsync();
+        Changed?.Invoke();
+    }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
