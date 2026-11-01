@@ -3,13 +3,14 @@ using Quesshi.Plugin.Api;
 
 namespace Quesshi.Features.Features.Matchmaking;
 
-public enum EnqueueOutcome { Queued, InvalidSettings, FormatUnavailable, PlayerUnavailable, AlreadyPlaying }
+public enum EnqueueOutcome { Queued, InvalidSettings, FormatUnavailable, PlayerUnavailable, AlreadyPlaying, TryAgain }
 
 /// <summary>
 /// The queue and its pairing attempt. A pairing attempt finds a candidate without locking, then locks both
 /// players (ascending), re-reads both entries and, in the same transaction, removes them and starts the session.
+/// A join-waiting format instead seats the joiner in the waiter's open session (see MatchmakingQueue.JoinWaiting.cs).
 /// </summary>
-internal sealed class MatchmakingQueue(ITenantDb database, ILocks locks, ISessions sessions, IInbox inbox)
+internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks, ISessions sessions, ISessionSeating seating, IInbox inbox)
 {
     private const int AttemptsPerRequest = 3;
     private const int SweepBatch = 1000;
@@ -33,6 +34,9 @@ internal sealed class MatchmakingQueue(ITenantDb database, ILocks locks, ISessio
 
             var parsed = MatchmakingRules.ParseLive(settings, language);
             if (parsed is null) return EnqueueOutcome.InvalidSettings;
+
+            if (MatchmakingRules.IsJoinWaiting(format))
+                return await EnqueueJoinWaitingAsync(transaction, playerId, format, parsed, cancellationToken);
 
             // A player already in a running duel of this format is not queued a second time.
             var playing = await transaction.QuerySingleOrDefaultAsync<bool>("""
@@ -64,8 +68,15 @@ internal sealed class MatchmakingQueue(ITenantDb database, ILocks locks, ISessio
             return EnqueueOutcome.Queued;
         }, cancellationToken: cancellationToken);
 
-        if (outcome == EnqueueOutcome.Queued) await AttemptAsync(tenantId, playerId, format, cancellationToken);
-        return outcome;
+        if (outcome != EnqueueOutcome.Queued) return outcome;
+        if (!MatchmakingRules.IsJoinWaiting(format))
+        {
+            await AttemptAsync(tenantId, playerId, format, cancellationToken);
+            return outcome;
+        }
+        return await AttemptJoinAsync(tenantId, playerId, format, cancellationToken) == JoinResult.TryAgain
+            ? EnqueueOutcome.TryAgain
+            : outcome;
     }
 
     public Task LeaveAsync(Guid tenantId, Guid playerId, string format, CancellationToken cancellationToken) =>
@@ -109,6 +120,8 @@ internal sealed class MatchmakingQueue(ITenantDb database, ILocks locks, ISessio
     /// <summary>Pairs everything still waiting; one failing pair never blocks the others.</summary>
     public async Task SweepAsync(Guid tenantId, CancellationToken cancellationToken)
     {
+        await SweepJoinWaitingAsync(tenantId, cancellationToken);
+
         var waiting = await database.InTenantAsync(tenantId, transaction => transaction.QueryAsync<Waiting>("""
             select player_id as PlayerId, format as Format, match_key as MatchKey
             from matchmaking_entries

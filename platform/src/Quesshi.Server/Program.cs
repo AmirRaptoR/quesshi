@@ -11,6 +11,7 @@ using Quesshi.Features;
 using Quesshi.Features.Sources.Bank;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Migrations;
+using Quesshi.Server.Api;
 using Quesshi.Server.Commands;
 using Quesshi.Server.Health;
 using Quesshi.Server.Accounts;
@@ -237,6 +238,7 @@ public static class Program
         builder.Services.AddSingleton<ISessionLobby, SessionLobbyService>();
         builder.Services.AddSingleton<ISessionCodeGenerator, SessionCodeGenerator>();
         builder.Services.AddSingleton<ISessions, SessionCreationService>();
+        builder.Services.AddSingleton<ISessionSeating, GrainSessionSeating>();
         builder.Services.AddSingleton<ISessionInvitations, SessionInvitationService>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();

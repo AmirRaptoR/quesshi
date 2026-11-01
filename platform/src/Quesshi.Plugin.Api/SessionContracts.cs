@@ -35,3 +35,21 @@ public interface ISessions
         SessionCreateRequest request,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Seats a player in a session that is already open, through the session's own grain, which is the only writer.
+/// The call is idempotent: repeating it for a player who already holds a seat reports the seat again.
+/// </summary>
+public interface ISessionSeating
+{
+    /// <summary>
+    /// True when <paramref name="playerId" /> holds a seat afterwards; false when the session refused the join
+    /// (ended, expired, full or not open). Any exception means the outcome is not known.
+    /// </summary>
+    Task<bool> SeatAsync(
+        Guid tenantId,
+        Guid sessionId,
+        Guid playerId,
+        Guid pairingToken,
+        CancellationToken cancellationToken = default);
+}

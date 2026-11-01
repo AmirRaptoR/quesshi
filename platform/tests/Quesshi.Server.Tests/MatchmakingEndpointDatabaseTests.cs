@@ -151,12 +151,14 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
     }
 
     [SkippableFact]
-    public async Task Join_waiting_formats_and_invalid_settings_are_rejected()
+    public async Task Invalid_settings_and_unknown_formats_are_rejected()
     {
-        using var duel = await Host.Player.PostAsJsonAsync("/api/x/matchmaking", new { format = "async_duel", settings = new { questionCount = 10 } });
+        using var duel = await EnqueueDuel(Host.Player, 7);
         using var badCount = await Enqueue(Host.Player, 7);
+        using var unknown = await Host.Player.PostAsJsonAsync("/api/x/matchmaking", new { format = "poll", settings = new { questionCount = 10 } });
 
-        Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest), (duel.StatusCode, badCount.StatusCode));
+        Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest, HttpStatusCode.BadRequest),
+            (duel.StatusCode, badCount.StatusCode, unknown.StatusCode));
         Assert.Empty(await EntriesAsync());
     }
 
@@ -172,6 +174,9 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         Assert.Empty(await EntriesAsync());
     }
+
+    private Task<HttpResponseMessage> EnqueueDuel(HttpClient client, int questionCount) =>
+        client.PostAsJsonAsync("/api/x/matchmaking", new { format = "async_duel", settings = new { questionCount } });
 
     private PlatformHttpFixture Host
     {
