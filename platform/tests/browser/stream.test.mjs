@@ -281,3 +281,29 @@ test('non-SSE success response is rejected and retried with a bounded delay', { 
     assert.equal(stream.requests.length, 3);
   });
 });
+
+test('a config stream update restyles an open page from the tenant theme without a reload', { skip: !runsPublishedClient }, async () => {
+  const stream = new StreamServer((record, response) => eventStream(response, view(1)));
+  const branded = tenant('Stream', stream);
+  const host = await startPublishedPlatformHost({ directory: publishedDirectory, tenants: { 'stream.localhost': branded } });
+  await withShell(host, stream, async page => {
+    let loads = 0;
+    page.on('load', () => loads++);
+    await page.goto(host.tenantUrl('stream.localhost'));
+    await page.locator('#home-title').waitFor();
+    await until(() => stream.open.size === 1, 'The signed-in shell should open the stream.');
+    const shab = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--shab').trim());
+    assert.equal(await shab(), '#114477');
+
+    branded.config.configVersion = 2;
+    branded.theme = ':root { --shab: #224466; }';
+    for (const record of stream.open) record.response.write('event: config\ndata: {"version":2}\n\n');
+
+    const deadline = Date.now() + 10000;
+    while (await shab() !== '#224466') {
+      if (Date.now() > deadline) assert.fail('The open page should pick up the new theme colour.');
+      await pause(50);
+    }
+    assert.equal(loads, 1);
+  });
+});
