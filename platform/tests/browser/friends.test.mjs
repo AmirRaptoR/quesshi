@@ -129,7 +129,7 @@ test('removing a friend makes the friends list omit it', { skip: !runsPublishedC
 
 test('the profile has no friends section when the tenant disables friends', { skip: !runsPublishedClient }, async () => {
   await withProfile(false, async page => {
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     assert.equal(await page.locator('[data-test="friends-section"]').count(), 0);
   });
 });
