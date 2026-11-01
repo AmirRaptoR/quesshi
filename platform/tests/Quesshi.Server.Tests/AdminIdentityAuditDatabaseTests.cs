@@ -129,7 +129,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
         ExecuteAsync(owner, $"drop table session_invites; drop table player_inbox; delete from schema_migrations where name = '{InboxMigrationName}'");
 
     private static Task RewindMatchmakingMigrationAsync(NpgsqlConnection owner) =>
-        ExecuteAsync(owner, "drop table if exists matchmaking_entries; delete from schema_migrations where name = '20261025T0000_matchmaking_entries.sql'");
+        ExecuteAsync(owner, "drop table if exists matchmaking_entries; delete from schema_migrations where name = '20261101T1000_matchmaking_entries.sql'");
 
     private static Task RewindFriendsMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table friendships; delete from schema_migrations where name = '{FriendsMigrationName}'");
