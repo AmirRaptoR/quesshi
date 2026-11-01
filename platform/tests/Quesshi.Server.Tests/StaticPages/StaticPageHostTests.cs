@@ -1,9 +1,8 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
-using Microsoft.Extensions.DependencyInjection;
-using Quesshi.Application;
-using Quesshi.Application.Sessions;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Quesshi.Plugin.Api;
 using Quesshi.Testing;
 
@@ -17,14 +16,7 @@ public sealed class StaticPageHostTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task InitializeAsync()
     {
         if (postgres.ConnectionString is null) return;
-        _host = new PlatformHttpFixture([new StaticPageFeature()])
-        {
-            // Any lobby operation made while serving a static page fails the test.
-            ConfigureServices = services =>
-            {
-                services.AddSingleton<ISessionLobby, ForbiddenLobby>();
-            }
-        };
+        _host = new PlatformHttpFixture([new StaticPageFeature()]);
         await _host.StartAsync();
         await _host.ExecuteOwnerAsync("""
             update tenants set name = 'Test Quiz', default_language = 'en',
@@ -66,7 +58,7 @@ public sealed class StaticPageHostTests(PostgresFixture postgres) : IAsyncLifeti
     }
 
     [SkippableFact]
-    public async Task The_join_page_is_a_static_preview_with_a_join_button_and_an_empty_app_container_and_looks_nothing_up()
+    public async Task The_join_page_is_a_static_preview_with_a_join_button_and_an_empty_app_container_and_has_no_lobby_content()
     {
         var response = await GetAsync("/join/ABC123");
 
@@ -78,6 +70,31 @@ public sealed class StaticPageHostTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.Contains("<div id=\"app\"></div>", html);
         Assert.Contains("<script src=\"_framework/blazor.webassembly.js\"></script>", html);
         Assert.DoesNotContain("ABC123</", preview);
+    }
+
+    [SkippableFact]
+    public async Task The_join_page_is_identical_for_a_real_lobby_code_and_an_unknown_one()
+    {
+        await Host.SetCapabilityAsync("format", "async_duel", true);
+        var created = await Host.Player.PostAsJsonAsync("/api/sessions", new
+        {
+            id = Guid.NewGuid(),
+            format = "async_duel",
+            content = new { source = "bank", parameters = new { }, count = 10 },
+            rules = new { },
+            capacity = 4,
+        });
+        var body = await created.Content.ReadAsStringAsync();
+        Assert.True(created.StatusCode == HttpStatusCode.Created, body);
+        using var document = JsonDocument.Parse(body);
+        var realCode = document.RootElement.GetProperty("code").GetString()!;
+        var unknownCode = realCode == "ZZZZZZ" ? "YYYYYY" : "ZZZZZZ";
+
+        var real = await (await GetAsync($"/join/{realCode}")).Content.ReadAsStringAsync();
+        var unknown = await (await GetAsync($"/join/{unknownCode}")).Content.ReadAsStringAsync();
+
+        // The code only appears in the sign-in fallback link; nothing else may differ if no lobby was looked up.
+        Assert.Equal(unknown.Replace(unknownCode, "CODE"), real.Replace(realCode, "CODE"));
     }
 
     [SkippableFact]
@@ -219,18 +236,6 @@ public sealed class StaticPageHostTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.True(from >= 0 && to > from, $"'{start}' ... '{end}' not found.");
         return text[from..to];
     }
-
-    private sealed class ForbiddenLobby : ISessionLobby
-    {
-        public Task<LobbyOutcome> JoinAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) => throw Forbidden();
-        public Task<LobbyOutcome> AcceptInviteAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) => throw Forbidden();
-        public Task<LobbyOutcome> LeaveAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) => throw Forbidden();
-        public Task<LobbyOutcome> ConfigureAsync(Guid tenantId, Guid sessionId, Guid playerId, string? rulesJson, string? contentJson, int? capacity, CancellationToken cancellationToken = default) => throw Forbidden();
-        public Task<LobbyOutcome> StartAsync(Guid tenantId, Guid sessionId, Guid playerId, CancellationToken cancellationToken = default) => throw Forbidden();
-        public Task<LobbyOutcome> CancelAsync(Guid tenantId, Guid sessionId, Guid playerId, SessionStateStore store, CancellationToken cancellationToken = default) => throw Forbidden();
-    }
-
-    private static InvalidOperationException Forbidden() => new("A static page must not look a lobby up.");
 
     private sealed class StaticPageFeature : IFeature
     {
