@@ -40,6 +40,11 @@ internal static class TenantResourceEndpoints
         ?? typeof(TenantResourceEndpoints).Assembly.GetName().Version?.ToString()
         ?? "unknown";
 
+    /// <summary>The theme token names an owner may override.</summary>
+    internal static IReadOnlyCollection<string> PaletteTokens => DefaultPalette.Keys.ToArray();
+
+    internal static bool IsHexColor(string value) => Branding.IsHexColor(value);
+
     public static IEndpointRouteBuilder MapTenantResources(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/config", WriteConfigAsync);
@@ -63,6 +68,7 @@ internal static class TenantResourceEndpoints
         }
 
         var appNames = Branding.ReadAppNames(data.Branding);
+        var landingTexts = Branding.ReadLandingTexts(data.Branding);
         var capabilities = CapabilityTypes.ToDictionary(
             type => type.ToString().ToLowerInvariant(),
             type => data.Capabilities
@@ -80,7 +86,7 @@ internal static class TenantResourceEndpoints
             .ToArray();
         var document = new ConfigDocument(
             data.Name,
-            data.Languages.Select(language => new LanguageDocument(language.Code, language.Name, language.Direction, appNames.GetValueOrDefault(language.Code))).ToArray(),
+            data.Languages.Select(language => new LanguageDocument(language.Code, language.Name, language.Direction, appNames.GetValueOrDefault(language.Code), landingTexts.GetValueOrDefault(language.Code))).ToArray(),
             data.DefaultLanguage,
             capabilities,
             signInMethods,
@@ -196,7 +202,7 @@ internal static class TenantResourceEndpoints
         long ConfigVersion,
         string ServerBuildId);
     private sealed record SignInMethodDocument(string Id, object Settings);
-    private sealed record LanguageDocument(string Code, string DisplayName, string Direction, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AppName);
+    private sealed record LanguageDocument(string Code, string DisplayName, string Direction, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AppName, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LandingText);
     private sealed record ManifestDocument(
         [property: JsonPropertyName("name")] string Name,
         [property: JsonPropertyName("short_name")] string ShortName,
@@ -228,16 +234,21 @@ internal static class TenantResourceEndpoints
             return result;
         }
 
-        public static IReadOnlyDictionary<string, string> ReadAppNames(JsonElement branding)
+        public static IReadOnlyDictionary<string, string> ReadAppNames(JsonElement branding) => ReadTexts(branding, "appNames", 160);
+
+        public static IReadOnlyDictionary<string, string> ReadLandingTexts(JsonElement branding) => ReadTexts(branding, "landingTexts", 2000);
+
+        private static Dictionary<string, string> ReadTexts(JsonElement branding, string propertyName, int maximumLength)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var names = GetObject(branding, "appNames");
-            if (names is not { } appNames) return result;
-            foreach (var property in appNames.EnumerateObject())
+            var texts = GetObject(branding, propertyName);
+            if (texts is not { } entries) return result;
+            foreach (var property in entries.EnumerateObject())
             {
                 if (property.Value.ValueKind is JsonValueKind.String
                     && property.Name.Length is > 0 and <= 32
-                    && property.Value.GetString() is { Length: > 0 and <= 160 } value)
+                    && property.Value.GetString() is { Length: > 0 } value
+                    && value.Length <= maximumLength)
                 {
                     result[property.Name] = value;
                 }
@@ -249,7 +260,8 @@ internal static class TenantResourceEndpoints
         {
             if (TryGetString(branding, "icon", out var icon) && IsLocalPath(icon))
             {
-                return [new ManifestIcon(icon, "image/png", "any")];
+                var type = TryGetString(branding, "iconMime", out var mime) && mime.StartsWith("image/", StringComparison.Ordinal) ? mime : "image/png";
+                return [new ManifestIcon(icon, type, "any")];
             }
             return DefaultIcons;
         }
@@ -268,7 +280,7 @@ internal static class TenantResourceEndpoints
                 && (result = property.GetString() ?? string.Empty).Length > 0;
         }
 
-        private static bool IsHexColor(string value) =>
+        public static bool IsHexColor(string value) =>
             value.Length is 4 or 5 or 7 or 9
             && value[0] == '#'
             && value[1..].All(character => character is >= '0' and <= '9'
