@@ -122,6 +122,25 @@ public sealed class LiveScreenTests : BunitContext
     }
 
     [Fact]
+    public void The_previous_outcome_stays_through_later_views_of_the_same_phase_and_clears_on_the_next_step()
+    {
+        var cut = RenderScreen(Parse("amir", [Amir, Sara], Question, slot: 0, body: ChoiceBody([])));
+        cut.Render(p => p.Add(c => c.Parameters, new FormatScreenParameters(
+            Parse("amir", [Amir, Sara], Reveal, slot: 1, version: 5,
+                body: ChoiceBody([], reveal: true, responded: ["amir"], previousResponded: ["amir", "sara"], slot: 1)))));
+        Assert.Single(cut.FindAll("[data-previous-outcome]"));
+
+        cut.Render(p => p.Add(c => c.Parameters, new FormatScreenParameters(
+            Parse("amir", [Amir with { Score = 10 }, Sara], Reveal, slot: 1, version: 6,
+                body: ChoiceBody([], reveal: true, responded: ["amir"], previousResponded: ["amir", "sara"], slot: 1)))));
+        Assert.Single(cut.FindAll("[data-previous-outcome]"));
+
+        cut.Render(p => p.Add(c => c.Parameters, new FormatScreenParameters(
+            Parse("amir", [Amir, Sara], Question, slot: 2, version: 7, body: ChoiceBody([], slot: 2)))));
+        Assert.Empty(cut.FindAll("[data-previous-outcome]"));
+    }
+
+    [Fact]
     public void A_view_after_a_reconnect_shows_the_previous_slots_outcome_from_the_view_alone()
     {
         var cut = RenderScreen(Parse("amir", [Amir, Sara], Question, slot: 2, body: ChoiceBody([], previousResponded: ["sara"], slot: 2)));

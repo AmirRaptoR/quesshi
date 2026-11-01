@@ -257,7 +257,8 @@
     {
         _opponentAnswered = false;
         _gains = [];
-        _skipped = previous is null || previous.Id != next.Id || Order(next) - Order(previous) > 1;
+        if (previous is null || previous.Id != next.Id) _skipped = true;
+        else if (Order(next) != Order(previous)) _skipped = Order(next) - Order(previous) > 1;
         if (previous is null || previous.Id != next.Id) return;
 
         var before = LiveBodyView.From(previous);
