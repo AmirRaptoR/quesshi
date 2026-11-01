@@ -20,6 +20,7 @@ public sealed class ReportsAdminClientEntry : IAdminClientAssemblyEntry
             [ReportedText.Dismiss] = "Dismiss",
             [ReportedText.LoadFailed] = "Reported questions could not be loaded.",
             [ReportedText.DismissFailed] = "The reports could not be dismissed.",
+            [ReportedText.DetailsUnavailable] = "Question text is not available for your role, so questions are shown by id. You can still review reports and dismiss them.",
         }));
         registry.RegisterTranslation(new ClientTranslation("fa", new Dictionary<string, string>
         {
@@ -31,6 +32,7 @@ public sealed class ReportsAdminClientEntry : IAdminClientAssemblyEntry
             [ReportedText.Dismiss] = "رد گزارش",
             [ReportedText.LoadFailed] = "بارگیری پرسش‌های گزارش‌شده انجام نشد.",
             [ReportedText.DismissFailed] = "رد گزارش‌ها انجام نشد.",
+            [ReportedText.DetailsUnavailable] = "متن پرسش برای نقش شما در دسترس نیست، بنابراین پرسش‌ها با شناسه نمایش داده می‌شوند. همچنان می‌توانید گزارش‌ها را بررسی و رد کنید.",
         }));
     }
 }
@@ -45,4 +47,5 @@ internal static class ReportedText
     public const string Dismiss = "admin.reported.dismiss";
     public const string LoadFailed = "admin.reported.loadFailed";
     public const string DismissFailed = "admin.reported.dismissFailed";
+    public const string DetailsUnavailable = "admin.reported.detailsUnavailable";
 }

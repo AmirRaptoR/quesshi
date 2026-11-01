@@ -6,6 +6,10 @@
     {
         <p class="form-error" role="alert">@Text[error]</p>
     }
+    @if (detailsUnavailable)
+    {
+        <p class="muted" data-testid="reported-details-unavailable">@Text[ReportedText.DetailsUnavailable]</p>
+    }
     @if (reports is null)
     {
         <p class="muted">@Text["common.loading"]</p>
@@ -43,6 +47,7 @@
     private readonly Dictionary<Guid, string> prompts = [];
     private string? error;
     private bool busy;
+    private bool detailsUnavailable;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -61,9 +66,12 @@
         error = null;
         foreach (var report in reports.Where(report => !prompts.ContainsKey(report.QuestionId)))
         {
-            // Details are best effort: the moderation list stays usable when a question cannot be read.
+            // Question text lives behind the Editor-only content admin API, so a Moderator gets 403 here.
+            // Fall back deliberately to the question id and say so; counts, reasons and Dismiss stay usable.
+            if (detailsUnavailable) break;
             var question = await State.GetAsync<QuestionResponse>($"/api/admin/questions/{report.QuestionId}");
             if (question.Success && question.Value is not null) prompts[report.QuestionId] = question.Value.Prompt;
+            else detailsUnavailable = true;
         }
     }
 

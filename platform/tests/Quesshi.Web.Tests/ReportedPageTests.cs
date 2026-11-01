@@ -84,6 +84,27 @@ public sealed class ReportedPageTests : BunitContext
         Assert.Contains((HttpMethod.Post, $"/api/admin/x/reports/{First}/dismiss"), handler.Requests);
     }
 
+    [Fact]
+    public async Task Reported_page_falls_back_to_ids_and_stays_usable_when_question_lookup_is_forbidden()
+    {
+        var handler = new Handler("{}") { ForbidQuestions = true };
+        var cut = await RenderPageAsync(handler);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid=reported-details-unavailable]"));
+            Assert.Equal(First.ToString(), cut.Find($"[data-testid=reported-prompt-{First}]").TextContent);
+            Assert.Equal("3", cut.Find($"[data-testid=reported-count-{First}]").TextContent);
+            Assert.Equal(["WrongAnswer", "Unclear"], cut.FindAll($"[data-testid=reported-reasons-{First}] .chip").Select(chip => chip.TextContent));
+            Assert.False(cut.Find($"[data-testid=dismiss-reported-{First}]").HasAttribute("disabled"));
+        });
+        Assert.Single(handler.Requests, request => request.Path.StartsWith("/api/admin/questions/", StringComparison.Ordinal));
+
+        cut.Find($"[data-testid=dismiss-reported-{First}]").Click();
+
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll($"[data-testid=reported-{First}]")));
+    }
+
     private async Task<IRenderedComponent<Reported>> RenderPageAsync(Handler? handler = null)
     {
         var state = await StateAsync(handler ?? new Handler("{}"));
@@ -105,11 +126,15 @@ public sealed class ReportedPageTests : BunitContext
 
         public List<(HttpMethod Method, string Path)> Requests { get; } = [];
 
+        public bool ForbidQuestions { get; init; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
             Requests.Add((request.Method, path));
             if (request.Method == HttpMethod.Post && path.EndsWith("/dismiss", StringComparison.Ordinal)) dismissed = true;
+            if (ForbidQuestions && path.StartsWith("/api/admin/questions/", StringComparison.Ordinal))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
             var json = path switch
             {
                 "/api/config" => config,
