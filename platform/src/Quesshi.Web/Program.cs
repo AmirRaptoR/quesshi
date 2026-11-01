@@ -31,7 +31,9 @@ builder.Services.AddScoped<IClientTranslationRegistry>(services => services.GetR
 builder.Services.AddScoped<IClientRegistry>(services =>
 {
     var registry = new ClientRegistry(services.GetRequiredService<IClientAssemblyLoader>());
-    new WebPluginsEntry().Register(registry);
+    var entry = new WebPluginsEntry();
+    entry.Register(registry);
+    entry.RegisterSlots(registry);
     registry.RegisterLazy("map_pick", "Quesshi.Kinds.MapPick.Client.dll");
     return registry;
 });
