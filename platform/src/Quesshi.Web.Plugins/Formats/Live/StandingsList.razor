@@ -1,0 +1,35 @@
+@* The result's standings list — every player with place, score and outcome. Rows arrive ordered by place
+   (see StandingsPresentation.Standings); this only draws them, with "me" picked out and an abandoner
+   labelled as one rather than left to look like an ordinary finisher. *@
+@using Quesshi.Shared
+@inject IClientTranslator L
+@inject IClientViewer Viewer
+
+<div class="stack" style="gap:0">
+    @foreach (var row in Rows)
+    {
+        <div class="stand-row @(row.Place == 1 ? "stand-row--first" : null) @(row.Id == MeId ? "stand-row--me" : null)" data-standing="@row.Id" @key="row.Id">
+            <span class="stand-row__place numeral" data-standing-place>@Place(row)</span>
+            <span class="avatar avatar--sm">@Initial(row.Name)</span>
+            <span class="grow" style="min-width:0">
+                <div class="stand-row__name" dir="auto">@row.Name</div>
+                @if (StandingsPresentation.Abandoned(row))
+                {
+                    <div class="faint" style="font-size:var(--step--1)" data-standing-abandoned>@L["result.abandoned"]</div>
+                }
+            </span>
+            <span class="numeral stand-row__score">@Viewer.Num(row.Score)</span>
+            <span class="chip @StandingsPresentation.ChipClass(row.Outcome)">@L[StandingsPresentation.OutcomeKey(row.Outcome)]</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SessionRosterSeat> Rows { get; set; } = [];
+    [Parameter] public string MeId { get; set; } = "";
+
+    private string Place(SessionRosterSeat row) =>
+        row.Place is { } place ? RankOrdinal.Format(Viewer.Num(place), place, Viewer.LanguageCode) : "–";
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+}
