@@ -17,3 +17,8 @@ PLATFORM_BROWSER_HOST_DIRECTORY=platform/artifacts/browser-platform/wwwroot \
 
 When `PLATFORM_BROWSER_HOST_DIRECTORY` is omitted, the harness uses its small
 committed fixture so the harness can be developed without publishing the app.
+
+`service-worker.test.mjs` runs the real worker script against a manifest (the
+published one when `PLATFORM_BROWSER_HOST_DIRECTORY` is set) with in-memory
+caches. `service-worker.browser.test.mjs` covers lazy-asset caching and a
+release landing under an open tab in Chromium.

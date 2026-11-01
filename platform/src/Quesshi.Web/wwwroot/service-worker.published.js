@@ -1,14 +1,17 @@
 self.importScripts('./service-worker-assets.js');
 
 const assetCache = `offline-assets-${self.assetsManifest.version}`;
+const lazyCache = `lazy-assets-${self.assetsManifest.version}`;
 const dynamicCache = 'tenant-resources-v1';
+// Lazy-loaded assemblies and the world map (served under the map client's static content path) stay
+// out of the install list and are cached the first time a page asks for them.
+const lazyPattern = /Quesshi\.Web\.Admin|Quesshi\.Kinds\.MapPick\.Client/;
 const dynamicPaths = new Set(['/theme.css', '/manifest.webmanifest', '/api/config']);
 const assetPatterns = [/\.dll$/, /\.wasm$/, /\.html$/, /\.js$/, /\.json$/, /\.css$/, /\.dat$/, /\.woff2?$/, /\.png$/, /\.ico$/];
 const base = new URL('/', self.location.origin);
 const assetUrls = self.assetsManifest.assets
   .filter(asset => !dynamicPaths.has(new URL(asset.url, base).pathname))
-  .filter(asset => !asset.url.includes('Quesshi.Web.Admin'))
-  .filter(asset => !asset.url.includes('Quesshi.Kinds.MapPick.Client'))
+  .filter(asset => !lazyPattern.test(asset.url))
   .filter(asset => assetPatterns.some(pattern => pattern.test(asset.url)))
   .map(asset => new Request(asset.url, { integrity: asset.hash, cache: 'no-cache' }));
 
@@ -31,11 +34,27 @@ async function install() {
   }));
 }
 
+// A tab left open across a release still asks for the previous build's fingerprinted files, so the
+// newest superseded caches stay until the release after next. Caches are listed oldest first.
 async function activate() {
-  await Promise.all((await caches.keys())
-    .filter(key => key.startsWith('offline-assets-') && key !== assetCache)
-    .map(key => caches.delete(key)));
+  const keys = await caches.keys();
+  const stale = key => keys.filter(k => k.startsWith(key) && k !== (key === 'offline-assets-' ? assetCache : lazyCache));
+  const superseded = [...stale('offline-assets-').slice(0, -1), ...stale('lazy-assets-').slice(0, -1)];
+  await Promise.all(superseded.map(key => caches.delete(key)));
   await self.clients.claim();
+}
+
+async function cachedAsset(request, current) {
+  return (await current.match(request)) || (await caches.match(request));
+}
+
+async function lazyAsset(request) {
+  const cache = await caches.open(lazyCache);
+  const cached = await cachedAsset(request, cache);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) await cache.put(request, response.clone());
+  return response;
 }
 
 function dynamicRequest(pathname) {
@@ -71,6 +90,7 @@ async function fetchRequest(event) {
       return (await cache.match('index.html')) || Response.error();
     }
   }
+  if (lazyPattern.test(url.pathname)) return lazyAsset(event.request);
   const cache = await caches.open(assetCache);
-  return (await cache.match(event.request)) || fetch(event.request);
+  return (await cachedAsset(event.request, cache)) || fetch(event.request);
 }
