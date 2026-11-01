@@ -14,12 +14,11 @@ public sealed class BenchmarkDatabaseSweepTests
     public async Task Sweep_drops_old_bench_databases_and_leaves_test_young_and_busy_ones()
     {
         Skip.If(string.IsNullOrWhiteSpace(Admin), "PostgreSQL is not configured.");
+        await using var sweepLock = await LockSweepWindowAsync();
         var old = await CreateAsync("quesshi_bench_sweep_old_");
         var busy = await CreateAsync("quesshi_bench_sweep_busy_");
         var test = await CreateAsync("quesshi_test_sweep_bench_");
         await using var held = await OpenAsync(busy);
-        // Held open so a concurrent PostgresFixture sweep in another test process cannot drop it.
-        await using var heldTest = await OpenAsync(test);
         await Task.Delay(Threshold + TimeSpan.FromSeconds(1.5));
         var young = await CreateAsync("quesshi_bench_sweep_young_");
         try
@@ -34,7 +33,6 @@ public sealed class BenchmarkDatabaseSweepTests
         finally
         {
             await held.CloseAsync();
-            await heldTest.CloseAsync();
             foreach (var name in new[] { old, busy, test, young }) await DropAsync(name);
         }
     }
@@ -43,6 +41,17 @@ public sealed class BenchmarkDatabaseSweepTests
     public async Task Sweep_ignores_an_unreachable_server()
     {
         await LiveBenchmarkRunner.SweepStaleDatabasesAsync("Host=127.0.0.1;Port=1;Timeout=1", Threshold);
+    }
+
+    // Both sweep-test classes run with a 2-second threshold in separate test processes; this cross-process lock keeps one
+    // from dropping the other's cross-prefix database, so those databases need no open connection to survive.
+    private static async Task<NpgsqlConnection> LockSweepWindowAsync()
+    {
+        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(Admin) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT pg_advisory_lock(476001)", connection);
+        await command.ExecuteNonQueryAsync();
+        return connection;
     }
 
     private static async Task<string> CreateAsync(string prefix)

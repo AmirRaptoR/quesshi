@@ -14,6 +14,7 @@ public sealed class PostgresFixtureSweepTests
     public async Task Start_drops_an_old_test_database_and_keeps_a_young_one_with_an_open_connection()
     {
         Skip.If(string.IsNullOrWhiteSpace(Admin), "PostgreSQL is not configured.");
+        await using var sweepLock = await LockSweepWindowAsync();
         var old = await CreateAsync("quesshi_test_sweep_old_");
         await Task.Delay(Threshold + TimeSpan.FromSeconds(1.5));
         var young = await CreateAsync("quesshi_test_sweep_young_");
@@ -39,6 +40,7 @@ public sealed class PostgresFixtureSweepTests
     public async Task Start_leaves_an_old_test_database_that_still_has_a_connection_and_still_succeeds()
     {
         Skip.If(string.IsNullOrWhiteSpace(Admin), "PostgreSQL is not configured.");
+        await using var sweepLock = await LockSweepWindowAsync();
         var busy = await CreateAsync("quesshi_test_sweep_busy_");
         await using var held = await OpenAsync(busy);
         await Task.Delay(Threshold + TimeSpan.FromSeconds(1.5));
@@ -62,10 +64,9 @@ public sealed class PostgresFixtureSweepTests
     public async Task Start_only_sweeps_databases_named_quesshi_test()
     {
         Skip.If(string.IsNullOrWhiteSpace(Admin), "PostgreSQL is not configured.");
+        await using var sweepLock = await LockSweepWindowAsync();
         var bench = await CreateAsync("quesshi_bench_sweep_other_");
         var other = await CreateAsync("quesshi_other_sweep_");
-        // Held open so a concurrent benchmark sweep in another test process cannot drop it.
-        await using var heldBench = await OpenAsync(bench);
         await Task.Delay(Threshold + TimeSpan.FromSeconds(1.5));
         var fixture = new PostgresFixture(Admin, isCi: false, Threshold);
         try
@@ -78,10 +79,20 @@ public sealed class PostgresFixtureSweepTests
         finally
         {
             await fixture.DisposeAsync();
-            await heldBench.CloseAsync();
             await DropAsync(bench);
             await DropAsync(other);
         }
+    }
+
+    // Both sweep-test classes run with a 2-second threshold in separate test processes; this cross-process lock keeps one
+    // from dropping the other's cross-prefix database, so those databases need no open connection to survive.
+    private static async Task<NpgsqlConnection> LockSweepWindowAsync()
+    {
+        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(Admin) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT pg_advisory_lock(476001)", connection);
+        await command.ExecuteNonQueryAsync();
+        return connection;
     }
 
     private static async Task<string> CreateAsync(string prefix)
