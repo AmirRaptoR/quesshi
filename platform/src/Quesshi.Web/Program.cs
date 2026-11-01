@@ -23,6 +23,7 @@ builder.Services.AddScoped<PlatformState>(services => new PlatformState(
     services.GetRequiredService<AppConfig>(), services.GetRequiredService<StreamClient>()));
 builder.Services.AddScoped<LanguageSelection>();
 builder.Services.AddScoped<Translator>();
+builder.Services.AddScoped<IClientViewer, ClientViewer>();
 builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<IClientLanguage>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<Sounds>();

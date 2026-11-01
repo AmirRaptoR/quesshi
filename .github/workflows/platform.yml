@@ -45,6 +45,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      # Each test host holds an application pool of 40 and a system pool of 10. With four parallel test
+      # classes and two concurrent runs, PostgreSQL's default of 100 connections is too few.
+      - name: Allow enough PostgreSQL connections for the concurrent test runs
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -c "ALTER SYSTEM SET max_connections = 600"
+          docker restart ${{ job.services.postgres.id }}
+          until docker exec ${{ job.services.postgres.id }} pg_isready -U postgres -d postgres; do sleep 1; done
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -tAc "SHOW max_connections" | grep -qx 600
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
