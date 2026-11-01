@@ -1,5 +1,6 @@
 using Quesshi.Shared;
 using Quesshi.Web.Plugins.Features.Friends;
+using Quesshi.Web.Plugins.Formats.Live;
 using ChoiceComponents = Quesshi.Web.Plugins.Choice;
 using OrderComponents = Quesshi.Web.Plugins.Order;
 using PollChoiceComponents = Quesshi.Web.Plugins.PollChoice;
@@ -17,6 +18,12 @@ public sealed class WebPluginsEntry : IKindClientAssemblyEntry
         registry.Register(new OrderKindClient());
         registry.Register(new PollChoiceKindClient());
         registry.Register(new PollRosterKindClient());
+    }
+
+    /// <summary>Registers the format clients compiled into the Web shell.</summary>
+    public void RegisterFormats(IFormatClientRegistry registry)
+    {
+        registry.RegisterFormat(new LiveClient());
     }
 
     /// <summary>Adds the feature contributions to the shell's client slots.</summary>

@@ -578,6 +578,7 @@
   "admin.lobbyCapacity": "Maximum trivia lobby size",
   "lobby.openSeats": "{0} open seats",
   "lobby.badCapacity": "Choose a valid lobby size.",
+  "lobby.capacity": "Players",
   "lobby.capacityRange": "{0}–{1} players",
   "admin.shell.title": "Administration",
   "admin.nav.label": "Administration navigation",

@@ -578,6 +578,7 @@
   "admin.lobbyCapacity": "Maximale grootte van een trivia-lobby",
   "lobby.openSeats": "{0} vrije plaatsen",
   "lobby.badCapacity": "Kies een geldige lobbygrootte.",
+  "lobby.capacity": "Spelers",
   "lobby.capacityRange": "{0}–{1} spelers",
   "admin.shell.title": "Beheer",
   "admin.nav.label": "Beheernavigatie",
