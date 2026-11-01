@@ -59,10 +59,12 @@ public interface IAdminClientRegistry
     IReadOnlyList<Type> Pages { get; }
     IReadOnlyList<System.Reflection.Assembly> PageAssemblies { get; }
     IReadOnlyList<AdminNavigation> Navigation { get; }
+    IReadOnlyList<AdminPageContribution> FeaturePages { get; }
     Task LoadAsync();
     void RegisterRoot(Type component);
     void RegisterPage(Type component);
     void RegisterNavigation(AdminNavigation navigation);
+    void RegisterFeaturePage(AdminPageContribution page);
     void RegisterTranslation(ClientTranslation translation);
 }
 
@@ -77,8 +79,31 @@ public sealed record AdminNavigation(
         Roles.Any(role => string.Equals(role, context.Role, StringComparison.OrdinalIgnoreCase)) && (IsAvailable?.Invoke(context) ?? true);
 }
 
-/// <summary>The admin identity details a registered screen may use for navigation availability.</summary>
-public sealed record AdminNavigationContext(string? Role, bool IsPlatform);
+/// <summary>The admin identity details a registered screen may use for navigation availability; <paramref name="Capabilities"/> are the tenant's enabled capabilities by kind.</summary>
+public sealed record AdminNavigationContext(string? Role, bool IsPlatform, IReadOnlyDictionary<string, string[]>? Capabilities = null);
+
+/// <summary>A tenant capability (kind and value) that must be on for a feature page to be offered.</summary>
+public sealed record AdminCapability(string Kind, string Value);
+
+/// <summary>
+/// The admin.page slot: a feature's own admin page, served under <c>/admin/feature/{Path}</c>, with its navigation item.
+/// It is offered only to the listed roles and only while <paramref name="Capability"/> is on for the tenant.
+/// </summary>
+public sealed record AdminPageContribution(
+    string Path,
+    string LabelKey,
+    Type Component,
+    IReadOnlySet<string> Roles,
+    AdminCapability? Capability = null)
+{
+    public const string RoutePrefix = "/admin/feature/";
+
+    public string Href => RoutePrefix + Path;
+
+    public bool IsVisibleTo(AdminNavigationContext context) =>
+        Roles.Any(role => string.Equals(role, context.Role, StringComparison.OrdinalIgnoreCase))
+        && (Capability is null || context.Capabilities?.GetValueOrDefault(Capability.Kind)?.Contains(Capability.Value, StringComparer.Ordinal) == true);
+}
 
 public sealed class AdminClientRegistry : IAdminClientRegistry
 {
@@ -87,6 +112,7 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
     private readonly Lazy<Task> load;
     private readonly List<Type> pages = [];
     private readonly List<AdminNavigation> navigation = [];
+    private readonly List<AdminPageContribution> featurePages = [];
 
     public AdminClientRegistry(IClientAssemblyLoader loader, IClientTranslationRegistry translations)
     {
@@ -105,6 +131,7 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
         .Distinct()
         .ToArray();
     public IReadOnlyList<AdminNavigation> Navigation => navigation;
+    public IReadOnlyList<AdminPageContribution> FeaturePages => featurePages;
 
     public Task LoadAsync() => load.Value;
 
@@ -127,6 +154,20 @@ public sealed class AdminClientRegistry : IAdminClientRegistry
         if (string.IsNullOrWhiteSpace(contribution.Href)) throw new ArgumentException("An admin navigation URL is required.", nameof(contribution));
         if (string.IsNullOrWhiteSpace(contribution.LabelKey)) throw new ArgumentException("An admin navigation label key is required.", nameof(contribution));
         navigation.Add(contribution);
+    }
+
+    public void RegisterFeaturePage(AdminPageContribution page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(page.Component);
+        ArgumentNullException.ThrowIfNull(page.Roles);
+        if (string.IsNullOrWhiteSpace(page.Path) || page.Path != page.Path.Trim('/') || page.Path.Contains("//", StringComparison.Ordinal))
+            throw new ArgumentException("An admin feature page path must be a non-empty relative path without leading, trailing or repeated slashes.", nameof(page));
+        if (string.IsNullOrWhiteSpace(page.LabelKey)) throw new ArgumentException("An admin feature page label key is required.", nameof(page));
+        if (featurePages.Any(existing => string.Equals(existing.Path, page.Path, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"The admin feature page '{page.Path}' is already registered.");
+        featurePages.Add(page);
+        navigation.Add(new AdminNavigation(page.Href, page.LabelKey, page.Roles, page.IsVisibleTo));
     }
 
     public void RegisterTranslation(ClientTranslation translation)

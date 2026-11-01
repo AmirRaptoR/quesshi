@@ -18,6 +18,20 @@ public sealed class AdminApi(ClientHttp client)
         return await ReadAsync<AdminSession>(response, cancellationToken);
     }
 
+    /// <summary>Reads the tenant's enabled capabilities; an unreadable config means none are on.</summary>
+    public async Task<IReadOnlyDictionary<string, string[]>> CapabilitiesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var config = await client.GetFromJsonAsync<TenantCapabilities>("/api/config", cancellationToken);
+            return config?.Capabilities ?? new Dictionary<string, string[]>();
+        }
+        catch (HttpRequestException)
+        {
+            return new Dictionary<string, string[]>();
+        }
+    }
+
     public async Task<AdminResult<LoginResult>> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
     {
         var result = await SendMutationAsync(HttpMethod.Post, "/api/admin/auth/login", new LoginRequest(username, password), cancellationToken);
@@ -200,6 +214,7 @@ public sealed class AdminApi(ClientHttp client)
     private sealed record CreateRequest(string Username, string Email, string Password);
 }
 
+internal sealed record TenantCapabilities(IReadOnlyDictionary<string, string[]>? Capabilities);
 public sealed record AdminResult<T>(bool Success, T? Value, string? Error, AdminFailure? Failure = null);
 public sealed record AdminFailure(HttpStatusCode StatusCode, string? Code);
 public sealed record LoginResult(bool MustChangePassword);

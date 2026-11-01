@@ -11,7 +11,7 @@
             {
                 <NavLink class="admin-nav__link" ActiveClass="is-active" href="/admin/accounts">@Text["admin.nav.accounts"]</NavLink>
             }
-            @foreach (var contribution in Registry.Navigation.Where(contribution => contribution.IsVisibleTo(new AdminNavigationContext(State.Session.Role, State.Session.IsPlatform))))
+            @foreach (var contribution in Registry.Navigation.Where(contribution => contribution.IsVisibleTo(new AdminNavigationContext(State.Session.Role, State.Session.IsPlatform, State.Capabilities))))
             {
                 <NavLink class="admin-nav__link" ActiveClass="is-active" href="@contribution.Href">@Text[contribution.LabelKey]</NavLink>
             }
@@ -28,6 +28,12 @@
 
 @code {
     [CascadingParameter] public AdminState? State { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State is { Status: AdminSessionStatus.SignedIn } && Registry.FeaturePages.Any(page => page.Capability is not null))
+            await State.LoadCapabilitiesAsync();
+    }
 
     private async Task SignOutAsync()
     {

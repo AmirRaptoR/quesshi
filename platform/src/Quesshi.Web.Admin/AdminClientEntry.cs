@@ -13,5 +13,6 @@ public sealed class AdminClientEntry : IAdminClientAssemblyEntry
         registry.RegisterPage(typeof(AdminReset));
         registry.RegisterPage(typeof(AdminPassword));
         registry.RegisterPage(typeof(AdminAccounts));
+        registry.RegisterPage(typeof(AdminFeaturePage));
     }
 }
