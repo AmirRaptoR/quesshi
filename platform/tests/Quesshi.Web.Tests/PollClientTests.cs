@@ -49,6 +49,24 @@ public sealed class PollClientTests : BunitContext
     }
 
     [Fact]
+    public void The_registered_screen_and_result_components_accept_the_format_parameters()
+    {
+        var client = registry.ResolveFormat("poll")!;
+        var session = LobbyViews.Parse("amir", ["amir", "sara"], status: "finished", format: "poll");
+
+        var screen = Render<DynamicComponent>(p => p.Add(c => c.Type, client.Screen)
+            .Add(c => c.Parameters, new Dictionary<string, object> { ["Parameters"] = new FormatScreenParameters(session) }));
+        var result = Render<DynamicComponent>(p => p.Add(c => c.Type, client.Result)
+            .Add(c => c.Parameters, new Dictionary<string, object> { ["Parameters"] = new FormatScreenParameters(session) }));
+        var settings = Render<DynamicComponent>(p => p.Add(c => c.Type, client.Settings)
+            .Add(c => c.Parameters, new Dictionary<string, object> { ["Parameters"] = new FormatSettingsParameters(session, true) }));
+
+        Assert.Single(screen.FindAll("[data-poll-screen]"));
+        Assert.Single(result.FindAll("[data-poll-result]"));
+        Assert.NotEmpty(settings.FindAll("[data-poll-count]"));
+    }
+
+    [Fact]
     public async Task An_enabled_poll_format_is_offered_for_new_play()
     {
         server.Enabled = ["poll"];
