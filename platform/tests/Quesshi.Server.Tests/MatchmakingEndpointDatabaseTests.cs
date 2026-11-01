@@ -85,7 +85,15 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
         var clients = new List<(HttpClient Client, Guid PlayerId)> { (Host.Player, Host.PlayerId) };
         for (var i = 1; i < 50; i++) clients.Add(await Host.CreateSecondPlayerClientAsync());
 
-        var responses = await Task.WhenAll(clients.SelectMany(c => new[] { c, c }).Select(c => Enqueue(c.Client, 10)));
+        // Bounded in-flight requests keep the test within a small share of PostgreSQL's connection slots
+        // (two Server test processes share one server in CI) while all 100 requests still overlap.
+        using var inFlight = new SemaphoreSlim(16);
+        var responses = await Task.WhenAll(clients.SelectMany(c => new[] { c, c }).Select(async c =>
+        {
+            await inFlight.WaitAsync();
+            try { return await Enqueue(c.Client, 10); }
+            finally { inFlight.Release(); }
+        }));
         var statuses = responses.Select(response => response.StatusCode).ToArray();
         foreach (var response in responses) response.Dispose();
         var sessions = await WaitForAsync(async () => await SessionsAsync(), found => found.Count >= 25 && EntriesAsync().Result.Count == 0, TimeSpan.FromSeconds(40));
