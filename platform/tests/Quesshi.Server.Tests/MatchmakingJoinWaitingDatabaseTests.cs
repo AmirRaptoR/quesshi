@@ -203,6 +203,30 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
         await AssertNoLockOrderViolationAsync();
     }
 
+    [SkippableFact]
+    public async Task The_scheduled_job_pairs_two_waiters_who_never_met_into_the_earlier_waiters_session()
+    {
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        using var first = await Enqueue(Host.Player, 10);
+        var firstSession = Assert.Single(await SessionsAsync());
+        // A live lease from someone else keeps the second player from pairing on their own request.
+        await Host.ExecuteOwnerAsync(
+            "update matchmaking_entries set claimed_by = @token, claimed_until = now() + interval '5 seconds' where player_id = @owner",
+            new { token = Guid.NewGuid(), owner = Host.PlayerId });
+        using var other = await Enqueue(second, 10);
+        Assert.Equal(2, (await EntriesAsync()).Count);
+        Assert.Equal(0, _seating.Calls);
+        await Host.ExecuteOwnerAsync("update matchmaking_entries set claimed_by = null, claimed_until = null where player_id = @owner", new { owner = Host.PlayerId });
+
+        var entries = await WaitForAsync(EntriesAsync, found => found.Count == 0, TimeSpan.FromSeconds(20));
+
+        Assert.Empty(entries);
+        Assert.Equal(1, _seating.Calls);
+        // The later waiter joined the earlier waiter's session, and their own open session is not the one played.
+        Assert.Equivalent(new[] { Host.PlayerId, secondId }, await ParticipantsAsync(firstSession.Id));
+        await AssertNoLockOrderViolationAsync();
+    }
+
     private PlatformHttpFixture Host
     {
         get
