@@ -4,6 +4,7 @@
 @using Quesshi.Web.Services
 @inject Translator L
 @inject LobbyActions Actions
+@inject LobbyInviteCandidates Candidates
 @inject IFormatClientRegistry Formats
 @inject NavigationManager Nav
 @inject IJSRuntime Js
@@ -53,12 +54,12 @@ else
             <FormatSettings Session="view" IsOwner="isOwner" Registry="Formats" />
         </section>
 
-        @if (Invitees.Count > 0)
+        @if (candidates.Count > 0)
         {
             <section class="enter" style="margin-top:1.5rem">
                 <p class="muted" style="margin:0 0 .5rem;font-size:var(--step--1)">@L["lobby.invite.title"]</p>
                 <div class="row" style="flex-wrap:wrap;gap:.5rem">
-                    @foreach (var invitee in Invitees)
+                    @foreach (var invitee in candidates)
                     {
                         var state = LobbyPresentation.InviteState(view, invitee, invited.Contains(invitee.Id));
                         <button type="button" class="btn btn--ghost btn--pill" data-invitee="@invitee.Id" disabled="@(busy || state != LobbyPresentation.InviteTileState.Available)"
@@ -99,6 +100,8 @@ else
     private readonly HashSet<string> invited = new(StringComparer.Ordinal);
     private bool copied, busy;
     private string? error;
+    private IReadOnlyList<LobbyInvitee> candidates = [];
+    private IReadOnlyList<LobbyInvitee>? merged;
 
     /// <summary>The lobby to show; the hosting page passes each newer accepted view.</summary>
     [Parameter, EditorRequired]
@@ -107,6 +110,15 @@ else
     /// <summary>People the viewer may invite; eligibility itself is decided by the server.</summary>
     [Parameter]
     public IReadOnlyList<LobbyInvitee> Invitees { get; set; } = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(Invitees, merged)) return;
+        merged = Invitees;
+        candidates = Invitees;
+        if (!Candidates.FriendsEnabled) return;
+        candidates = await Candidates.MergeAsync(Invitees);
+    }
 
     private string ShareLink => LobbyPresentation.ShareLink(Nav.BaseUri, SessionView);
 

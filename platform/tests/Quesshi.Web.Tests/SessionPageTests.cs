@@ -25,6 +25,7 @@ public sealed class SessionPageTests : BunitContext
         registry.RegisterSlot(ClientSlots.SessionResult, typeof(BrokenContribution));
         Services.AddSingleton(new Translator(http));
         Services.AddSingleton(new LobbyActions(new PlayerApi(http)));
+        Services.AddSingleton(new LobbyInviteCandidates(new PlayerApi(http), new AppConfig(http, null!)));
         Services.AddSingleton<IFormatClientRegistry>(registry);
         Services.AddSingleton(state);
     }
