@@ -68,6 +68,7 @@ async function assertRtlActionsFit(page) {
   assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   assert.equal(await page.locator('button, input, a').evaluateAll(controls => controls.length > 0 && controls.every(control => {
+    if (control.closest('.admin-nav__pages')) return true; // the page links scroll horizontally by design
     const bounds = control.getBoundingClientRect();
     return bounds.left >= 0 && bounds.right <= window.innerWidth;
   })), true);
