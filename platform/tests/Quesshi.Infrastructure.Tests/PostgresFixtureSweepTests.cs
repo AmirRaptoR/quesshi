@@ -64,6 +64,8 @@ public sealed class PostgresFixtureSweepTests
         Skip.If(string.IsNullOrWhiteSpace(Admin), "PostgreSQL is not configured.");
         var bench = await CreateAsync("quesshi_bench_sweep_other_");
         var other = await CreateAsync("quesshi_other_sweep_");
+        // Held open so a concurrent benchmark sweep in another test process cannot drop it.
+        await using var heldBench = await OpenAsync(bench);
         await Task.Delay(Threshold + TimeSpan.FromSeconds(1.5));
         var fixture = new PostgresFixture(Admin, isCi: false, Threshold);
         try
@@ -76,6 +78,7 @@ public sealed class PostgresFixtureSweepTests
         finally
         {
             await fixture.DisposeAsync();
+            await heldBench.CloseAsync();
             await DropAsync(bench);
             await DropAsync(other);
         }

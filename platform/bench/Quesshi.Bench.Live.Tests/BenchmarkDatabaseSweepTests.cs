@@ -18,6 +18,8 @@ public sealed class BenchmarkDatabaseSweepTests
         var busy = await CreateAsync("quesshi_bench_sweep_busy_");
         var test = await CreateAsync("quesshi_test_sweep_bench_");
         await using var held = await OpenAsync(busy);
+        // Held open so a concurrent PostgresFixture sweep in another test process cannot drop it.
+        await using var heldTest = await OpenAsync(test);
         await Task.Delay(Threshold + TimeSpan.FromSeconds(1.5));
         var young = await CreateAsync("quesshi_bench_sweep_young_");
         try
@@ -32,6 +34,7 @@ public sealed class BenchmarkDatabaseSweepTests
         finally
         {
             await held.CloseAsync();
+            await heldTest.CloseAsync();
             foreach (var name in new[] { old, busy, test, young }) await DropAsync(name);
         }
     }
