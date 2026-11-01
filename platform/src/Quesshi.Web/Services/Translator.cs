@@ -9,6 +9,9 @@ public sealed class Translator(ClientHttp http) : IClientTranslator, IClientLang
     private readonly Dictionary<string, Dictionary<string, string>> tables = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<IReadOnlyDictionary<string, string>>> contributions = new(StringComparer.OrdinalIgnoreCase);
     public string Lang { get; private set; } = string.Empty;
+
+    /// <summary>The active language's text direction, set when the language is applied.</summary>
+    public string Direction { get; set; } = "ltr";
     public string this[string key] => Find(key) ?? key;
     public string Format(string key, params object[] args) => string.Format(this[key], args);
     public string Or(string key, string fallback) => Find(key) ?? fallback;

@@ -26,6 +26,8 @@ builder.Services.AddScoped<Translator>();
 builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<IClientLanguage>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<Sounds>();
+builder.Services.AddScoped<SessionCommands>();
+builder.Services.AddScoped<Quesshi.Web.Plugins.IFormatCommands>(services => services.GetRequiredService<SessionCommands>());
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddScoped<IClientAssemblyLoader, LazyAssemblyClientLoader>();
 builder.Services.AddScoped<IAdminClientRegistry>(services => new AdminClientRegistry(
