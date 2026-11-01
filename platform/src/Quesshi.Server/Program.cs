@@ -240,6 +240,7 @@ public static class Program
         builder.Services.AddSingleton<ISessions, SessionCreationService>();
         builder.Services.AddSingleton<ISessionSeating, GrainSessionSeating>();
         builder.Services.AddSingleton<ISessionInvitations, SessionInvitationService>();
+        builder.Services.AddSingleton<ISessionRematch, SessionRematchService>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
         builder.Services.AddSingleton<PostgresStreamNotificationListener>();

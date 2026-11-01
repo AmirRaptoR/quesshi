@@ -564,6 +564,7 @@
   "report.unclear": "Unclear, or more than one answer works",
   "report.why": "What's wrong with it?",
   "report.wronganswer": "The answer is wrong",
+  "result.abandoned": "Left the duel",
   "result.again": "Play again",
   "result.draw": "A draw",
   "result.expired": "Expired",
