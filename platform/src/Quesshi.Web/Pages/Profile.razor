@@ -52,7 +52,7 @@
             var page = await response.Content.ReadFromJsonAsync<SessionHistoryPage>();
             if (page is not null) history = ProfileHistory.Completed(page.Sessions);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
         {
             // The profile stays usable without its history.
         }
