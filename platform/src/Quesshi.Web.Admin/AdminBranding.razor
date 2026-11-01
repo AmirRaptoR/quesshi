@@ -1,0 +1,140 @@
+@page "/admin/branding"
+@layout AdminLayout
+@inject NavigationManager Navigation
+@inject IClientTranslator Text
+
+@if (State?.Status == AdminSessionStatus.Loading) { <p class="muted">@Text["common.loading"]</p> }
+else if (!CanManage) { <section class="card"><p>@Text[BrandingAdminText.Denied]</p></section> }
+else
+{
+    <section class="stack" aria-labelledby="admin-branding-title">
+        <h1 id="admin-branding-title">@Text[BrandingAdminText.Title]</h1>
+        @if (error is not null) { <p class="form-error" role="alert">@Text[error]</p> }
+        @if (saved) { <p role="status" data-testid="branding-saved">@Text[BrandingAdminText.Saved]</p> }
+
+        <div id="branding-form" class="stack">
+            <fieldset class="card stack">
+                <legend>@Text[BrandingAdminText.Theme]</legend>
+                @foreach (var token in Tokens)
+                {
+                    var name = token;
+                    <label>@name <InputText id="@($"branding-color-{name}")" @bind-Value="model.Palette[name]" placeholder="#RRGGBB" /></label>
+                }
+            </fieldset>
+
+            <fieldset class="card stack" data-testid="branding-logo">
+                <legend>@Text[BrandingAdminText.Logo]</legend>
+                @if (model.LogoUrl is not null) { <img src="@model.LogoUrl" alt="" /> }
+                <MediaChooser Value="model.LogoMediaId" ValueChanged="id => model.LogoMediaId = id" />
+            </fieldset>
+
+            <fieldset class="card stack" data-testid="branding-icon">
+                <legend>@Text[BrandingAdminText.Icon]</legend>
+                @if (model.IconUrl is not null) { <img src="@model.IconUrl" alt="" /> }
+                <MediaChooser Value="model.IconMediaId" ValueChanged="id => model.IconMediaId = id" />
+            </fieldset>
+
+            @foreach (var code in languages)
+            {
+                var language = code;
+                <fieldset class="card stack">
+                    <legend>@language</legend>
+                    <label>@Text[BrandingAdminText.AppName] <InputText id="@($"branding-app-name-{language}")" @bind-Value="model.AppNames[language]" /></label>
+                    <label>@Text[BrandingAdminText.LandingText] <InputTextArea id="@($"branding-landing-{language}")" @bind-Value="model.LandingTexts[language]" /></label>
+                </fieldset>
+            }
+
+            <button id="branding-save" class="btn" type="button" @onclick="SaveAsync">@Text[BrandingAdminText.Save]</button>
+        </div>
+    </section>
+}
+
+@code {
+    private static readonly string[] Tokens = ["shab", "lajevard", "lajevard-up", "firouzeh", "zaferan", "anaar", "sadaf"];
+
+    [CascadingParameter] public AdminState? State { get; set; }
+
+    private readonly List<string> languages = [];
+    private BrandingModel model = new();
+    private string? error;
+    private bool saved;
+    private bool loaded;
+
+    private bool CanManage => State?.Session is { IsPlatform: true } || string.Equals(State?.Session?.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State?.Status == AdminSessionStatus.SignedOut) { Navigation.NavigateTo("/admin/login"); return; }
+        if (State?.Session?.MustChangePassword == true) { Navigation.NavigateTo("/admin/password"); return; }
+        if (CanManage && !loaded) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (State is null) return;
+        var branding = await State.GetAsync<BrandingResponse>("/api/admin/branding");
+        var offered = await State.GetAsync<List<LanguageResponse>>("/api/admin/languages");
+        if (!branding.Success || branding.Value is null || !offered.Success || offered.Value is null)
+        {
+            error = BrandingAdminText.LoadFailed;
+            return;
+        }
+
+        languages.Clear();
+        languages.AddRange(offered.Value.Select(language => language.Code));
+        model = BrandingModel.From(branding.Value, languages);
+        loaded = true;
+        error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (State is null) return;
+        saved = false;
+        var result = await State.MutateAsync<BrandingResponse>(HttpMethod.Put, "/api/admin/branding", model.ToRequest());
+        if (!result.Success)
+        {
+            error = result.Failure?.Code ?? BrandingAdminText.SaveFailed;
+            return;
+        }
+
+        error = null;
+        saved = true;
+        if (result.Value is not null) model = BrandingModel.From(result.Value, languages);
+    }
+
+    private sealed record LanguageResponse(string Code);
+
+    private sealed record BrandingResponse(
+        Dictionary<string, string> Palette,
+        Guid? LogoMediaId,
+        string? LogoUrl,
+        Guid? IconMediaId,
+        string? IconUrl,
+        Dictionary<string, string> AppNames,
+        Dictionary<string, string> LandingTexts);
+
+    private sealed class BrandingModel
+    {
+        public Dictionary<string, string> Palette { get; init; } = [];
+        public Guid? LogoMediaId { get; set; }
+        public string? LogoUrl { get; init; }
+        public Guid? IconMediaId { get; set; }
+        public string? IconUrl { get; init; }
+        public Dictionary<string, string> AppNames { get; init; } = [];
+        public Dictionary<string, string> LandingTexts { get; init; } = [];
+
+        public static BrandingModel From(BrandingResponse response, IEnumerable<string> languages) => new()
+        {
+            Palette = Tokens.ToDictionary(token => token, token => response.Palette.GetValueOrDefault(token, string.Empty)),
+            LogoMediaId = response.LogoMediaId,
+            LogoUrl = response.LogoUrl,
+            IconMediaId = response.IconMediaId,
+            IconUrl = response.IconUrl,
+            AppNames = languages.ToDictionary(code => code, code => response.AppNames.GetValueOrDefault(code, string.Empty)),
+            LandingTexts = languages.ToDictionary(code => code, code => response.LandingTexts.GetValueOrDefault(code, string.Empty)),
+        };
+
+        public object ToRequest() => new { Palette, LogoMediaId, IconMediaId, AppNames, LandingTexts };
+    }
+}
