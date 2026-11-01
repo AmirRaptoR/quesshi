@@ -163,7 +163,14 @@
         _loading = false;
     }
 
-    private string BoardName(string board) => board == LeaderboardApi.AllBoard ? L["ranks.board.all"] : L[$"format.{board}"];
+    private string BoardName(string board)
+    {
+        if (board == LeaderboardApi.AllBoard)
+            return L["ranks.board.all"];
+        var key = $"format.{board}";
+        var name = L[key];
+        return name == key ? board : name;
+    }
 
     private string PeriodName(string period) => period switch
     {

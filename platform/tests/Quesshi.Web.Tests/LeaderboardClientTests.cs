@@ -44,6 +44,17 @@ public sealed class LeaderboardClientTests : BunitContext
     }
 
     [Fact]
+    public void The_board_picker_falls_back_to_the_format_id_when_no_format_translation_exists()
+    {
+        var cut = RenderPage(formats: ["live"]);
+
+        cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("[data-test='ranks-board'] option").Count));
+        var options = cut.FindAll("[data-test='ranks-board'] option").Select(o => o.TextContent).ToArray();
+        Assert.Contains("live", options);
+        Assert.DoesNotContain("format.live", options);
+    }
+
+    [Fact]
     public void Changing_the_period_reloads_the_list_for_that_period()
     {
         var cut = RenderPage();
