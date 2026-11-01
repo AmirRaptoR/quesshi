@@ -19,6 +19,7 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/start", StartAsync).AllowGuests();
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/leave", LeaveAsync).AllowGuests();
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites", InviteAsync);
+        routes.PlayerRoutes.MapPost("/sessions/{id:guid}/rematch", RematchAsync);
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites/accept", AcceptInviteAsync);
         routes.PlayerRoutes.MapPost("/sessions/{id:guid}/invites/decline", DeclineInviteAsync);
     }
@@ -73,6 +74,33 @@ public sealed class SessionLobbyEndpoints : ICoreRouteModule
             SessionInviteStatus.InviteeUnavailable => Error("invitee_unavailable", 404),
             SessionInviteStatus.AlreadySeated => Error("already_seated", 409),
             _ => Error("not_in_lobby", 409),
+        };
+    }
+
+    private static async Task<IResult> RematchAsync(
+        Guid id,
+        HttpContext context,
+        ITenantDb database,
+        ISessionRematch rematches,
+        CancellationToken cancellationToken)
+    {
+        var player = context.Player();
+        var tenant = TenantResolutionMiddleware.GetTenant(context);
+        if (player is null) return Error("identity_required", 401);
+        if (tenant is null) return Error("not_found", 404);
+        var result = await database.InTenantAsync(
+            tenant.Id,
+            transaction => rematches.RematchAsync(transaction, id, player.PlayerId, cancellationToken),
+            cancellationToken: cancellationToken);
+        return result.Status switch
+        {
+            SessionRematchStatus.Created or SessionRematchStatus.Existing => Results.Json(new { id = result.SessionId, code = "rematch" }),
+            SessionRematchStatus.NotFound => Error("not_found", 404),
+            SessionRematchStatus.NotSeated => Error("absent_seat", 403),
+            SessionRematchStatus.GuestNotAllowed => Error("guest_not_allowed", 403),
+            SessionRematchStatus.NotFinished => Error("not_finished", 409),
+            SessionRematchStatus.NotOffered => Error("rematch_not_offered", 409),
+            _ => Error(result.Error ?? "rematch_failed", 400),
         };
     }
 
