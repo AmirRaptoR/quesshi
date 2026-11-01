@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
@@ -148,6 +149,50 @@ public sealed class StaticPageHostTests(PostgresFixture postgres) : IAsyncLifeti
 
         Assert.Contains("Cookie", response.Headers.Vary);
         Assert.Contains("Accept-Language", response.Headers.Vary);
+    }
+
+    [SkippableFact]
+    public async Task Both_pages_are_readable_in_a_real_browser_with_javascript_disabled()
+    {
+        var browserTests = FindBrowserTests();
+        var installed = browserTests is not null && Directory.Exists(Path.Combine(browserTests, "node_modules", "playwright"));
+        // The Platform workflow installs Playwright before this runs, so a missing install there is a failure.
+        Skip.If(!installed && Environment.GetEnvironmentVariable("CI") != "true", "Playwright is not installed under tests/browser.");
+        Assert.True(installed, "Playwright is not installed under tests/browser.");
+
+        var start = new ProcessStartInfo("node", Path.Combine(browserTests!, "src", "static-pages-check.mjs"))
+        {
+            WorkingDirectory = browserTests!,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.Environment["PLATFORM_STATIC_PAGES_HOST"] = Host.TenantOrigin.Host;
+        start.Environment["PLATFORM_STATIC_PAGES_PORT"] = Host.HttpPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("node did not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var errors = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw;
+        }
+
+        Assert.True(process.ExitCode == 0, $"{await output}\n{await errors}");
+    }
+
+    private static string? FindBrowserTests()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "tests", "browser", "src", "static-pages-check.mjs");
+            if (File.Exists(candidate)) return Path.Combine(directory.FullName, "tests", "browser");
+        }
+        return null;
     }
 
     private PlatformHttpFixture Host
