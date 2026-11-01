@@ -590,6 +590,7 @@
   "admin.lobbyCapacity": "حداکثر اندازه اتاق مسابقه",
   "lobby.openSeats": "{0} جای خالی",
   "lobby.badCapacity": "اندازه معتبر برای اتاق انتخاب کن.",
+  "lobby.capacity": "بازیکنان",
   "lobby.capacityRange": "{0} تا {1} بازیکن",
   "admin.shell.title": "مدیریت",
   "admin.nav.label": "ناوبری مدیریت",

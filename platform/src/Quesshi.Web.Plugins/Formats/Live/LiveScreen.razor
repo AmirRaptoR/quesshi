@@ -1,0 +1,7 @@
+@using Quesshi.Shared
+
+<section class="card stack" data-live-screen="@Parameters.Session.Id"></section>
+
+@code {
+    [Parameter, EditorRequired] public FormatScreenParameters Parameters { get; set; } = default!;
+}

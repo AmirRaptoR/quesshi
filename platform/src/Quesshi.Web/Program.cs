@@ -36,6 +36,7 @@ builder.Services.AddScoped<IClientRegistry>(services =>
     var registry = new ClientRegistry(services.GetRequiredService<IClientAssemblyLoader>());
     var entry = new WebPluginsEntry();
     entry.Register(registry);
+    entry.RegisterFormats(registry);
     entry.RegisterSlots(registry);
     registry.RegisterLazy("map_pick", "Quesshi.Kinds.MapPick.Client.dll");
     Quesshi.Web.Plugins.Features.Leaderboard.LeaderboardClient.Register(registry);
