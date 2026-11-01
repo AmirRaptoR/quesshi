@@ -1,0 +1,11 @@
+@using Quesshi.Shared
+@inject IClientTranslator L
+
+<a class="card stack" href="/ranks" data-test="home-tile-ranks">
+    <strong>@L["nav.ranks"]</strong>
+    <span class="muted">@L["ranks.tile"]</span>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public HomeTileParameters Parameters { get; set; } = default!;
+}

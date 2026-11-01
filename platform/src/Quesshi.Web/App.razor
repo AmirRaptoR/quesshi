@@ -63,7 +63,7 @@ else
                 <ClientSlotHost TParameters="NavItemParameters" Slot="ClientSlots.NavItem"
                                 Value="@(new NavItemParameters(Navigation.ToBaseRelativePath(Navigation.Uri)))" />
             </nav>
-            <Router AppAssembly="@typeof(App).Assembly">
+            <Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="PluginAssemblies">
                 <Found Context="routeData">
                     <RouteView RouteData="@routeData" />
                 </Found>
@@ -76,6 +76,7 @@ else
 }
 
 @code {
+    private static readonly System.Reflection.Assembly[] PluginAssemblies = [typeof(Quesshi.Web.Plugins.ClientRegistry).Assembly];
     private bool authInitialized;
     private bool disposed;
     private bool languageInitialized;

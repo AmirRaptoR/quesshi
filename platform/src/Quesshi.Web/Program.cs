@@ -11,7 +11,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddScoped<IClientReloader, JsClientReloader>();
 builder.Services.AddScoped<ClientHttp>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<PlayerApi>();
+builder.Services.AddScoped<Quesshi.Web.Plugins.Features.Leaderboard.LeaderboardApi>();
 builder.Services.AddScoped<LobbyActions>();
 builder.Services.AddScoped<LobbyInviteCandidates>();
 builder.Services.AddScoped<StreamClient>(services => new StreamClient(services.GetRequiredService<ClientHttp>()));
@@ -36,6 +38,7 @@ builder.Services.AddScoped<IClientRegistry>(services =>
     entry.Register(registry);
     entry.RegisterSlots(registry);
     registry.RegisterLazy("map_pick", "Quesshi.Kinds.MapPick.Client.dll");
+    Quesshi.Web.Plugins.Features.Leaderboard.LeaderboardClient.Register(registry);
     return registry;
 });
 
