@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="../Quesshi.Application/Quesshi.Application.csproj" />
     <ProjectReference Include="../Quesshi.Plugin.Api/Quesshi.Plugin.Api.csproj" />
   </ItemGroup>
   <ItemGroup>
