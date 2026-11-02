@@ -20,6 +20,38 @@
         </div>
     </div>
 
+    @if (PacksAvailable)
+    {
+        <div class="field" data-source-choice>
+            <label>@T["packs.source"]</label>
+            <div class="segmented" role="group" aria-label="@T["packs.source"]">
+                <button type="button" class="segmented__option @(UsesPack ? null : "is-on")" data-source="bank" aria-pressed="@Pressed(!UsesPack)"
+                        disabled="@ReadOnly" @onclick="() => Change(Settings with { PackId = null })">@T["packs.sourceBank"]</button>
+                <button type="button" class="segmented__option @(UsesPack ? "is-on" : null)" data-source="pack" aria-pressed="@Pressed(UsesPack)"
+                        disabled="@(ReadOnly || Packs.Count == 0)" @onclick="() => Change(Settings with { PackId = Packs[0].Id })">@T["packs.sourcePack"]</button>
+            </div>
+            @if (UsesPack && ReadOnly)
+            {
+                <p class="faint" data-pack-readonly>@T["packs.fromPack"]</p>
+            }
+            else if (UsesPack)
+            {
+                <select class="input" data-pack-picker aria-label="@T["packs.pick"]" disabled="@ReadOnly" @onchange="PickPack">
+                    @foreach (var pack in Packs)
+                    {
+                        <option value="@pack.Id" selected="@(pack.Id == Settings.PackId)">@pack.Title</option>
+                    }
+                </select>
+            }
+            else if (!ReadOnly && Packs.Count == 0)
+            {
+                <p class="faint" data-no-packs>@T["packs.none"]</p>
+            }
+        </div>
+    }
+
+    @if (!UsesPack)
+    {
     <div class="field">
         <label>@T["home.levels"]</label>
         <p class="faint" data-levels-text>@(Levels.IsWhole ? T["questions.rampsUp"] : DuelSettingsLine.Difficulty(Summary, Words))</p>
@@ -49,6 +81,7 @@
             @(Settings.CategoryIds.Count == 0 ? T["home.anyCategory"] : Words.Format("home.pickedCount", Language.Num(Settings.CategoryIds.Count)))
         </p>
     </div>
+    }
 
     <div class="field">
         <label for="duel-capacity">@T["asyncDuel.capacity"]</label>
@@ -64,6 +97,15 @@
     [Parameter] public int? Capacity { get; set; }
     [Parameter] public EventCallback<int> CapacityChanged { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>The owner's packs; offered as a content source only while <see cref="PacksAvailable"/>.</summary>
+    [Parameter] public IReadOnlyList<PickerPack> Packs { get; set; } = [];
+    [Parameter] public bool PacksAvailable { get; set; }
+
+    private bool UsesPack => PacksAvailable && Settings.PackId is not null;
+
+    private Task PickPack(ChangeEventArgs e) =>
+        ReadOnly || e.Value?.ToString() is not { Length: > 0 } id ? Task.CompletedTask : SettingsChanged.InvokeAsync(Settings with { PackId = id });
 
     private ClientWords? words;
     private ClientWords Words => words ??= new ClientWords(T, Language);

@@ -17,12 +17,9 @@ public sealed record AsyncDuelSettingsRequest(JsonElement Rules, JsonElement Con
     public static AsyncDuelSettingsRequest From(DuelSettings settings, int? capacity)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        var content = new
-        {
-            source = "bank",
-            parameters = new { categories = settings.CategoryIds, levels = settings.Levels },
-            count = settings.QuestionCount
-        };
+        object content = settings.PackId is { } packId
+            ? new { source = "pack", parameters = new { packId }, count = settings.QuestionCount }
+            : new { source = "bank", parameters = new { categories = settings.CategoryIds, levels = settings.Levels }, count = settings.QuestionCount };
         return new(
             JsonSerializer.SerializeToElement(new { }, Json),
             JsonSerializer.SerializeToElement(content, Json),
@@ -34,6 +31,11 @@ public sealed record AsyncDuelSettingsRequest(JsonElement Rules, JsonElement Con
 public interface IAsyncDuelSettingsApi
 {
     Task<IReadOnlyList<PickerCategory>> CategoriesAsync(string language, CancellationToken cancellationToken = default);
+
+    /// <summary>True when the viewer may pick one of their packs as content: signed in, not a guest, and <c>custom_questions</c> on.</summary>
+    bool PacksAvailable { get; }
+
+    Task<IReadOnlyList<PickerPack>> PacksAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Returns null on success, else the server's stable error code.</summary>
     Task<string?> SaveAsync(string sessionId, AsyncDuelSettingsRequest request, CancellationToken cancellationToken = default);
