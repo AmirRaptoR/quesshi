@@ -1,0 +1,98 @@
+@*
+    The shamseh — a twelve-ray Persian rosette — is the whole scoreboard.
+    Half the rays are yours and half are theirs, one ray per question:
+    saffron for right, dim pomegranate for wrong, dashed for a question not yet reached.
+    The star only completes when both of you have played, which is exactly what a duel is.
+*@
+<svg class="shamseh @(Ignite ? "shamseh--ignite" : null)" viewBox="0 0 100 100" width="@Size" height="@Size"
+     role="img" aria-label="@Label">
+@if (Slots > MaxRays)
+{
+    @* Past twenty a ray is thinner than the line around it. Two rings say the same thing —
+       how much of each run is done, and how much of it was right — at any length. *@
+    <g class="shamseh__rings">
+        @foreach (var ring in new[] { (Run: Mine, R: 42.0, Hide: false), (Run: Theirs, R: 30.0, Hide: HideTheirs) })
+        {
+            var circumference = 2 * Math.PI * ring.R;
+            var right = ring.Hide ? 0 : Count(ring.Run, true);
+            var wrong = ring.Hide ? 0 : Count(ring.Run, false);
+
+            <circle class="shamseh__track" cx="50" cy="50" r="@F(ring.R)" />
+            <circle class="shamseh__arc shamseh__arc--right" cx="50" cy="50" r="@F(ring.R)"
+                    stroke-dasharray="@F(circumference * right / Slots) @F(circumference)" />
+            <circle class="shamseh__arc shamseh__arc--wrong" cx="50" cy="50" r="@F(ring.R)"
+                    stroke-dasharray="@F(circumference * wrong / Slots) @F(circumference)"
+                    stroke-dashoffset="@F(-circumference * right / Slots)" />
+        }
+    </g>
+}
+else
+{
+    <g>
+        @for (var i = 0; i < Slots * 2; i++)
+        {
+            var mine = i < Slots;
+            var slot = mine ? i : i - Slots;
+            var state = mine ? StateOf(Mine, slot) : (HideTheirs ? "hidden" : StateOf(Theirs, slot));
+            <polygon class="shamseh__ray shamseh__ray--@state" points="@Ray(i, Slots * 2)"
+                     style="@(Ignite ? $"animation-delay:{i * 55}ms" : null)" />
+        }
+    </g>
+}
+    <line class="shamseh__seam" x1="50" y1="2" x2="50" y2="98" />
+    <circle class="shamseh__hub" cx="50" cy="50" r="13" />
+    @* Razor reserves <text>, so the SVG label is emitted as markup. *@
+    @if (!string.IsNullOrEmpty(Centre))
+    {
+        @(new MarkupString($"""<text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="var(--sadaf)" font-size="11" font-weight="800" font-family="Vazirmatn, sans-serif">{Centre}</text>"""))
+    }
+</svg>
+
+@code {
+    /// <summary>One entry per question: true correct, false wrong, absent not answered yet.</summary>
+    [Parameter] public IReadOnlyList<bool?>? Mine { get; set; }
+    [Parameter] public IReadOnlyList<bool?>? Theirs { get; set; }
+    [Parameter] public bool HideTheirs { get; set; }
+    [Parameter] public bool Ignite { get; set; }
+    [Parameter] public string Size { get; set; } = "100%";
+    [Parameter] public string? Centre { get; set; }
+    [Parameter] public string Label { get; set; } = "Match progress";
+
+    /// <summary>Questions per player. The rosette grows rays to match instead of silently truncating.</summary>
+    [Parameter] public int Slots { get; set; } = 6;
+
+    /// <summary>Beyond this many questions the rays stop being legible and the rings take over.</summary>
+    private const int MaxRays = 20;
+
+    private static int Count(IReadOnlyList<bool?>? run, bool right)
+        => run is null ? 0 : run.Count(answer => answer == right);
+
+    private static string F(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string StateOf(IReadOnlyList<bool?>? run, int slot)
+        => run is null || slot >= run.Count || run[slot] is null ? "idle" : (run[slot]!.Value ? "right" : "wrong");
+
+    // Ray 0 points up; the first half sweeps clockwise down the right side, the rest back up the left.
+    private static string Ray(int index, int total)
+    {
+        const double cx = 50, cy = 50, tip = 46, shoulder = 27, inner = 15;
+        var step = 360.0 / total;
+        var angle = index * step - 90;
+
+        var points = new[]
+        {
+            Point(cx, cy, tip, angle),
+            Point(cx, cy, shoulder, angle - step / 2),
+            Point(cx, cy, inner, angle),
+            Point(cx, cy, shoulder, angle + step / 2)
+        };
+
+        return string.Join(' ', points);
+    }
+
+    private static string Point(double cx, double cy, double radius, double degrees)
+    {
+        var radians = degrees * Math.PI / 180;
+        return $"{cx + radius * Math.Cos(radians):0.##},{cy + radius * Math.Sin(radians):0.##}";
+    }
+}
