@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Data.Common;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Quesshi.Application.Sessions;
 using Quesshi.Engine.Contracts;
@@ -161,22 +162,24 @@ public sealed class SessionGrainBehaviorTests
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
         var database = new HeldFailingDatabase(new TenantCommitOutcomeUnknownException(new IOException("connection lost")));
         var deadlines = new HoldingDeadlines();
-        var grain = CreateGrain(new ToggleSnapshotLoader { State = State() }, new MutatingFormat(), deadlines, now, database: database);
+        Task<SessionCommandResult>? third = null;
+        TestSessionGrain? grain = null;
+        // The warning is logged inside the gate while the failed batch is processed, before the flush loop releases it.
+        // Accepting the third answer there queues it behind that gate, so it arrives after the batch failed but before
+        // the loop's requeue decision, whatever the runner speed.
+        var logger = new CallbackLogger("Answer batch has an unknown commit outcome", () => third = grain!.ExecuteAsync(Command(now)));
+        grain = CreateGrain(new ToggleSnapshotLoader { State = State() }, new MutatingFormat(), deadlines, now, database: database, logger: logger);
 
         var first = grain.ExecuteAsync(Command(now));
         await database.WriteHeld;
         deadlines.HoldNext();
         var second = grain.ExecuteAsync(Command(now));
         await deadlines.Held;
-        // The failed batch queues for the gate that the second answer holds. Completing the first answer is the grain's
-        // signal that the batch failure was processed; that happens inside the gate, so the third answer is accepted
-        // after the batch failed but before its flush loop has finished.
         database.FailHeldWrite();
         deadlines.Release();
         Assert.Equal("retryable", (await first.WaitAsync(TimeSpan.FromSeconds(30))).Code);
-        var third = grain.ExecuteAsync(Command(now));
-
         Assert.Equal("retryable", (await second.WaitAsync(TimeSpan.FromSeconds(30))).Code);
+        Assert.NotNull(third);
         Assert.Equal("retryable", (await third.WaitAsync(TimeSpan.FromSeconds(30))).Code);
         Assert.Equal(2, database.WriteCount);
     }
@@ -468,19 +471,19 @@ public sealed class SessionGrainBehaviorTests
         Assert.Equal(1, store.CallCount);
     }
 
-    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, IFormatRegistry? formatRegistry = null, IClock? clock = null)
+    private static TestSessionGrain CreateGrain(SessionState state, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, IFormatRegistry? formatRegistry = null, IClock? clock = null, ILogger<SessionGrain>? logger = null)
     {
         var loader = new CurrentSnapshotLoader();
-        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state, formatRegistry, clock);
+        var grain = CreateGrain(loader, format, deadlines, now, database, renderer, kinds, state, formatRegistry, clock, logger);
         loader.Current = () => StateOf(grain);
         return grain;
     }
 
-    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null, IFormatRegistry? formatRegistry = null, IClock? clock = null)
+    private static TestSessionGrain CreateGrain(ISessionSnapshotLoader loader, IFormat format, ISessionDeadlineReconciler deadlines, DateTimeOffset now, ITenantDb? database = null, IViewRenderer? renderer = null, IKindRegistry? kinds = null, SessionState? initialState = null, IFormatRegistry? formatRegistry = null, IClock? clock = null, ILogger<SessionGrain>? logger = null)
     {
         var grain = new TestSessionGrain(loader, new SessionStateStore(database ?? new ThrowingDatabase()),
             formatRegistry ?? new FormatRegistry([format]), kinds ?? new KindRegistry([]), clock ?? new TestClock(now), renderer ?? new Renderer(), deadlines,
-            NullLogger<SessionGrain>.Instance);
+            logger ?? NullLogger<SessionGrain>.Instance);
         if (initialState is not null) typeof(SessionGrain).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(grain, initialState);
         return grain;
     }
@@ -630,6 +633,17 @@ public sealed class SessionGrainBehaviorTests
     }
 
     private sealed class KnownDatabaseException : DbException { }
+
+    private sealed class CallbackLogger(string messagePrefix, Action onMatch) : ILogger<SessionGrain>
+    {
+        private int _fired;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (formatter(state, exception).StartsWith(messagePrefix, StringComparison.Ordinal) && Interlocked.Exchange(ref _fired, 1) == 0) onMatch();
+        }
+    }
 
     private sealed class HeldFailingDatabase(Exception exception) : ITenantDb
     {
