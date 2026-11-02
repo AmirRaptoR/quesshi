@@ -678,5 +678,6 @@
   "packs.sourceBank": "Vragenbank",
   "packs.sourcePack": "Mijn pakket",
   "packs.pick": "Kies een pakket",
+  "packs.fromPack": "Deze lobby gebruikt de vragen van een pakket.",
   "packs.none": "Je hebt nog geen pakketten."
 }

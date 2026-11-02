@@ -118,10 +118,9 @@
 
     private Task MoveAsync(int index, int direction) => RunAsync(async () =>
     {
-        var order = cards.Select(card => card.Id).ToList();
+        var order = cards.ToList();
         (order[index], order[index + direction]) = (order[index + direction], order[index]);
-        var ids = order.OfType<Guid>().ToArray();
-        if (ids.Length != order.Count) return "request_failed";
+        var ids = order.Select(card => card.Id).OfType<Guid>().ToArray();
         var response = await Api.ReorderAsync(Id, ids);
         if (!response.IsSuccess) return response.Error ?? "request_failed";
         (cards[index], cards[index + direction]) = (cards[index + direction], cards[index]);

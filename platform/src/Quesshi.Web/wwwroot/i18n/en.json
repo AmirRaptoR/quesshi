@@ -678,5 +678,6 @@
   "packs.sourceBank": "Question bank",
   "packs.sourcePack": "My pack",
   "packs.pick": "Pick a pack",
+  "packs.fromPack": "This lobby draws its questions from a pack.",
   "packs.none": "You have no packs yet."
 }

@@ -30,7 +30,11 @@
                 <button type="button" class="segmented__option @(UsesPack ? "is-on" : null)" data-source="pack" aria-pressed="@Pressed(UsesPack)"
                         disabled="@(ReadOnly || Packs.Count == 0)" @onclick="() => Change(Settings with { PackId = Packs[0].Id })">@T["packs.sourcePack"]</button>
             </div>
-            @if (UsesPack)
+            @if (UsesPack && ReadOnly)
+            {
+                <p class="faint" data-pack-readonly>@T["packs.fromPack"]</p>
+            }
+            else if (UsesPack)
             {
                 <select class="input" data-pack-picker aria-label="@T["packs.pick"]" disabled="@ReadOnly" @onchange="PickPack">
                     @foreach (var pack in Packs)
@@ -39,7 +43,7 @@
                     }
                 </select>
             }
-            else if (Packs.Count == 0)
+            else if (!ReadOnly && Packs.Count == 0)
             {
                 <p class="faint" data-no-packs>@T["packs.none"]</p>
             }

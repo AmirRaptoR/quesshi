@@ -678,5 +678,6 @@
   "packs.sourceBank": "بانک پرسش",
   "packs.sourcePack": "بسته‌ی من",
   "packs.pick": "یک بسته انتخاب کن",
+  "packs.fromPack": "پرسش‌های این لابی از یک بسته می‌آید.",
   "packs.none": "هنوز بسته‌ای نداری."
 }

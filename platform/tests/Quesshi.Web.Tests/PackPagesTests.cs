@@ -110,6 +110,22 @@ public sealed class PackPagesTests : BunitContext
     }
 
     [Fact]
+    public async Task Reordering_saved_questions_works_while_an_unsaved_draft_is_open()
+    {
+        var pack = server.AddPack("Ordered");
+        var first = server.AddQuestion(pack, "choice", "First");
+        var second = server.AddQuestion(pack, "choice", "Second");
+        var cut = RenderEditor(pack);
+        cut.Find("[data-add-kind='order']").Click();
+
+        await cut.Find($"[data-question='{second}'] [data-action='up']").ClickAsync();
+
+        Assert.Equal([second, first], server.Questions(pack).Select(question => question.Id));
+        Assert.Equal([second.ToString(), first.ToString(), "new"], cut.FindAll("[data-question]").Select(e => e.GetAttribute("data-question")));
+        Assert.Empty(cut.FindAll("[role='alert']"));
+    }
+
+    [Fact]
     public async Task Removing_a_question_deletes_it_from_the_pack()
     {
         var pack = server.AddPack("Ordered");
@@ -190,6 +206,19 @@ public sealed class PackPagesTests : BunitContext
     }
 
     [Fact]
+    public void A_non_owner_viewing_a_pack_lobby_sees_no_picker_and_none_of_their_own_packs()
+    {
+        server.AddPack("Viewer pack");
+
+        var cut = RenderSettings(isOwner: false, content: new { source = "pack", parameters = new { packId = Guid.NewGuid().ToString() }, count = 10 });
+
+        Assert.Empty(cut.FindAll("[data-pack-picker]"));
+        Assert.DoesNotContain("Viewer pack", cut.Markup);
+        Assert.NotEmpty(cut.FindAll("[data-pack-readonly]"));
+        Assert.True(cut.Find("[data-source='bank']").HasAttribute("disabled"));
+    }
+
+    [Fact]
     public void A_signed_in_player_sees_the_my_packs_entry()
     {
         Assert.NotEmpty(RenderHome().FindAll("[data-test='my-packs-link']"));
@@ -221,10 +250,10 @@ public sealed class PackPagesTests : BunitContext
         return Render<Home>();
     }
 
-    private IRenderedComponent<AsyncDuelSettings> RenderSettings()
+    private IRenderedComponent<AsyncDuelSettings> RenderSettings(bool isOwner = true, object? content = null)
     {
         Wire();
-        return Render<AsyncDuelSettings>(p => p.Add(c => c.Parameters, new FormatSettingsParameters(Session(), IsOwner: true)));
+        return Render<AsyncDuelSettings>(p => p.Add(c => c.Parameters, new FormatSettingsParameters(Session(content), IsOwner: isOwner)));
     }
 
     private bool wired;
@@ -259,10 +288,10 @@ public sealed class PackPagesTests : BunitContext
         Services.AddSingleton<IFormatClientRegistry>(registry);
     }
 
-    private static SessionView Session() => new(
+    private static SessionView Session(object? content = null) => new(
         "s1", "ABCD", "async_duel", "lobby", "lobby", 0, 0, 1, 1, DateTimeOffset.UnixEpoch, null,
         new MySeat("p1", 1, "player", "active", 0, null, null), new CompleteRosterView([]),
-        JsonSerializer.SerializeToElement(new { source = "bank", parameters = new { }, count = 10 }),
+        JsonSerializer.SerializeToElement(content ?? new { source = "bank", parameters = new { }, count = 10 }),
         JsonSerializer.SerializeToElement(new { }), JsonSerializer.SerializeToElement(new { }));
 
     private sealed class NoLoader : IClientAssemblyLoader
