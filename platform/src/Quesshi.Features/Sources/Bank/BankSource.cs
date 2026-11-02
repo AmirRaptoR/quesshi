@@ -116,6 +116,7 @@ public sealed class BankSource : ISource
             from questions
             where status = 'approved'
               and owner_id is null
+              and source <> 'pack'
               and lang = @language
               and kind = any(@kinds)
               and category_id = @category

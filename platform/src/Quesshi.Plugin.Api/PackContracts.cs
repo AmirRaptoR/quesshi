@@ -87,5 +87,6 @@ public interface IPacks
     Task<bool> ReorderAsync(ITenantTx transaction, Guid packId, IReadOnlyList<Guid> questionIds, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<Pack>> ListOwnedAsync(ITenantTx transaction, Guid ownerId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Pack>> ListTenantOwnedAsync(ITenantTx transaction, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PackItem>> ListQuestionsAsync(ITenantTx transaction, Guid packId, CancellationToken cancellationToken = default);
 }

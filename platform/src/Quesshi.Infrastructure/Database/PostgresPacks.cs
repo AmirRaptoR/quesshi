@@ -84,6 +84,10 @@ public sealed class PostgresPacks(ILocks locks) : IPacks
         (await transaction.QueryAsync<PackRow>($"select {Columns} from packs where owner_id = @ownerId order by created_at, id", new { ownerId }, cancellationToken))
             .Select(row => row.ToPack()).ToArray();
 
+    public async Task<IReadOnlyList<Pack>> ListTenantOwnedAsync(ITenantTx transaction, CancellationToken cancellationToken = default) =>
+        (await transaction.QueryAsync<PackRow>($"select {Columns} from packs where owner_id is null order by created_at, id", null, cancellationToken))
+            .Select(row => row.ToPack()).ToArray();
+
     public async Task<IReadOnlyList<PackItem>> ListQuestionsAsync(ITenantTx transaction, Guid packId, CancellationToken cancellationToken = default) =>
         await transaction.QueryAsync<PackItem>("select question_id as QuestionId, position as Position from pack_items where pack_id = @packId order by position", new { packId }, cancellationToken);
 

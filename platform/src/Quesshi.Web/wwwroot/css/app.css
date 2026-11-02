@@ -2196,8 +2196,8 @@ input[type='range'] { accent-color: var(--firouzeh); }
 .admin-page-head__product { color:var(--firouzeh); font-size:var(--step--1); font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
 .admin-page-content { padding-top:1.25rem; }
 
-.admin-nav { position:relative; display:flex; align-items:center; gap:.85rem; border-block:1px solid var(--line); }
-.admin-nav__pages { display:flex; align-items:center; gap:.15rem; overflow-x:auto; scrollbar-width:thin; }
+.admin-nav { position:relative; min-inline-size:0; max-inline-size:100%; display:flex; align-items:center; gap:.85rem; border-block:1px solid var(--line); }
+.admin-nav__pages { min-inline-size:0; display:flex; align-items:center; gap:.15rem; overflow-x:auto; scrollbar-width:thin; }
 .admin-nav__link { flex:none; padding:.8rem .75rem; border-bottom:2px solid transparent; color:var(--sadaf-2); font-size:var(--step--1); font-weight:700; }
 .admin-nav__link.is-active { color:var(--sadaf); border-bottom-color:var(--firouzeh); }
 .admin-nav__account { position:relative; margin-inline-start:auto; flex:none; }
