@@ -137,6 +137,11 @@ public sealed class JoinTakeoverTests(PostgresFixture postgres) : IAsyncLifetime
 
     private async Task<int> RunAsync(string scenario, string code, string? playerCookie)
     {
+#if QUESSHI_TEST_IDENTITY
+        // The identity build reads players from a test header, so the browser's session cookie opens no stream:
+        // the app would sign the player out right after the takeover. The normal run covers these scenarios.
+        Skip.If(true, "The browser identifies the player by cookie, which the test-identity build does not read.");
+#endif
         // Both lookups yield the platform directory that holds the path.
         var scriptRoot = Find(Path.Combine("tests", "browser", "src", "join-takeover-check.mjs"))?.Root;
         var clientRoot = Find(Path.Combine("artifacts", "browser-platform", "wwwroot", "takeover.js"))?.Root;
