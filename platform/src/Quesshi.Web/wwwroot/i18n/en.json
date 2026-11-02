@@ -679,5 +679,17 @@
   "packs.sourcePack": "My pack",
   "packs.pick": "Pick a pack",
   "packs.fromPack": "This lobby draws its questions from a pack.",
-  "packs.none": "You have no packs yet."
+  "packs.none": "You have no packs yet.",
+  "format.flashcards": "Study",
+  "flashcards.pack": "Pack to study",
+  "flashcards.start": "Start studying",
+  "flashcards.flip": "Flip",
+  "flashcards.rate": "Rate how well you knew it",
+  "flashcards.progress": "Card {0} of {1}",
+  "flashcards.front": "Front of the card",
+  "flashcards.again": "Study again",
+  "flashcards.ratings": "Your ratings",
+  "flashcards.rating": "Rating {0}",
+  "flashcards.noCards": "Pick a pack with at least one card.",
+  "flashcards.cards": "Cards"
 }

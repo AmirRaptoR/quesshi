@@ -1,0 +1,88 @@
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.Flashcard
+@using Quesshi.Shared
+@inject IClientTranslator L
+@inject IFormatCommands Commands
+
+<section class="flashcards-screen stack" dir="@L.Direction" data-flashcards-screen="@Parameters.Session.Id">
+    <header class="topbar game-hud">
+        <span class="muted numeral" data-flashcards-progress>@string.Format(L["flashcards.progress"], L.Num(_body.Slot + 1), L.Num(_body.Total))</span>
+        <progress max="@_body.Total" value="@(_body.Slot)" aria-label="@L["flashcards.cards"]" data-flashcards-bar></progress>
+    </header>
+
+    <section class="card card--taq game-stage" @key="_body.Slot" data-flashcards-card data-side="@_body.Side">
+        @if (_body.Front is { Length: > 0 } front)
+        {
+            <p dir="auto" data-flashcards-front>@front</p>
+        }
+        else
+        {
+            <p class="faint" data-flashcards-front>@L["flashcards.front"]</p>
+        }
+
+        @if (!_body.Flipped)
+        {
+            <button type="button" class="btn" data-flashcards-flip disabled="@_busy" @onclick="FlipAsync">@L["flashcards.flip"]</button>
+        }
+        else if (_card is null || _reveal is null)
+        {
+            <p role="alert">@L["common.error"]</p>
+        }
+        else
+        {
+            <KindReveal Card="_card" Reveal="_reveal" Answers="@(Array.Empty<FlashcardStored>())" />
+            <p class="faint">@L["flashcards.rate"]</p>
+            <KindPlay Card="_card" OnAnswer="RateAsync" Disabled="@_busy" />
+        }
+    </section>
+
+    @if (_failed)
+    {
+        <p class="notice notice--bad" role="alert" data-flashcards-send-failed>@L["live.sendFailed"]</p>
+    }
+</section>
+
+@code {
+    private SessionView? _current;
+    private FlashcardsBodyView _body = FlashcardsBodyView.Empty;
+    private KindCard? _card;
+    private FlashcardReveal? _reveal;
+    private bool _busy;
+    private bool _failed;
+
+    [Parameter, EditorRequired] public FormatScreenParameters Parameters { get; set; } = default!;
+
+    protected override void OnParametersSet()
+    {
+        var next = Parameters.Session;
+        if (ReferenceEquals(next, _current)) return;
+        _current = next;
+        _body = FlashcardsBodyView.From(next);
+        _card = FlashcardsKinds.Card(_body);
+        _reveal = FlashcardsKinds.Reveal(_body.Back);
+    }
+
+    private Task FlipAsync() => RunAsync(() => Commands.ActionAsync("flip"));
+
+    private Task RateAsync(object? answer) =>
+        FlashcardsKinds.Answer(answer) is { } payload ? RunAsync(() => Commands.SendAsync("answer", payload)) : Task.CompletedTask;
+
+    private async Task RunAsync(Func<Task<bool>> send)
+    {
+        if (_busy) return;
+        _busy = true;
+        _failed = false;
+        try
+        {
+            _failed = !await send();
+        }
+        catch (HttpRequestException)
+        {
+            _failed = true;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

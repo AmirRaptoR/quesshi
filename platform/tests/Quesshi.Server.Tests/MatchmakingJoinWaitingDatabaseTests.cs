@@ -1,11 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Orleans;
 using Quesshi.Features.Features.Matchmaking;
 using Quesshi.Grains.Abstractions;
 using Quesshi.Plugin.Api;
 using Quesshi.Server.Api;
+using Quesshi.Server.Jobs;
 using Quesshi.Testing;
 
 namespace Quesshi.Server.Tests;
@@ -17,6 +19,7 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
         string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase));
     private readonly ScriptedSeating _seating = new();
     private PlatformHttpFixture? _host;
+    private bool _scheduledJobsStarted;
 
     public async Task InitializeAsync()
     {
@@ -24,11 +27,20 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
 
         _host = new PlatformHttpFixture([new MatchmakingFeature()])
         {
-            ConfigureServices = services => services.AddSingleton<ISessionSeating>(provider =>
+            ConfigureServices = services =>
             {
-                _seating.Inner = new GrainSessionSeating(provider.GetRequiredService<IGrainFactory>());
-                return _seating;
-            }),
+                services.AddSingleton<ISessionSeating>(provider =>
+                {
+                    _seating.Inner = new GrainSessionSeating(provider.GetRequiredService<IGrainFactory>());
+                    return _seating;
+                });
+                // The sweep must not run on its own timer: tests that exercise the join path would race it
+                // for stale entries. Tests that need the job start it explicitly with StartScheduledJobsAsync.
+                var scheduler = services.Single(service => service.ServiceType == typeof(IHostedService)
+                    && service.ImplementationType == typeof(JobScheduleService));
+                services.Remove(scheduler);
+                services.AddSingleton<JobScheduleService>();
+            },
         };
         await _host.StartAsync();
         await SeedBankAsync();
@@ -36,7 +48,11 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        if (_host is not null) await _host.DisposeAsync();
+        if (_host is not null)
+        {
+            if (_scheduledJobsStarted) await _host.Services.GetRequiredService<JobScheduleService>().StopAsync(CancellationToken.None);
+            await _host.DisposeAsync();
+        }
     }
 
     [SkippableFact]
@@ -197,6 +213,7 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
         var session = Assert.Single(await SessionsAsync());
         await Host.ExecuteOwnerAsync("update sessions set due_at = now() - interval '1 minute' where id = @id", new { id = session.Id });
 
+        await StartScheduledJobsAsync();
         var entries = await WaitForAsync(EntriesAsync, found => found.Count == 0, TimeSpan.FromSeconds(12));
 
         Assert.Empty(entries);
@@ -218,6 +235,7 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
         Assert.Equal(0, _seating.Calls);
         await Host.ExecuteOwnerAsync("update matchmaking_entries set claimed_by = null, claimed_until = null where player_id = @owner", new { owner = Host.PlayerId });
 
+        await StartScheduledJobsAsync();
         var entries = await WaitForAsync(EntriesAsync, found => found.Count == 0, TimeSpan.FromSeconds(20));
 
         Assert.Empty(entries);
@@ -243,12 +261,19 @@ public sealed class MatchmakingJoinWaitingDatabaseTests : IAsyncLifetime
         await Host.ExecuteOwnerAsync($"update players set {column} = now() where id = @owner", new { owner = Host.PlayerId });
         await Host.ExecuteOwnerAsync("update matchmaking_entries set claimed_by = null, claimed_until = null where player_id = @owner", new { owner = Host.PlayerId });
 
+        await StartScheduledJobsAsync();
         var entries = await WaitForAsync(EntriesAsync, found => found.Count == 1, TimeSpan.FromSeconds(20));
 
         Assert.Equal([secondId], entries.Select(entry => entry.PlayerId));
         Assert.Equal(0, _seating.Calls);
         Assert.DoesNotContain(secondId, await ParticipantsAsync(firstSession.Id));
         await AssertNoLockOrderViolationAsync();
+    }
+
+    private async Task StartScheduledJobsAsync()
+    {
+        await Host.Services.GetRequiredService<JobScheduleService>().StartAsync(CancellationToken.None);
+        _scheduledJobsStarted = true;
     }
 
     private PlatformHttpFixture Host

@@ -11,4 +11,7 @@ public interface IFormatCommands
 
     /// <summary>Sends a command that carries the revision of the stored answer it replaces; true when the server accepted it, or when a revision conflict was settled by refreshing the stored view (nothing to retry).</summary>
     Task<bool> SendAsync(string type, object? payload, int revision, CancellationToken cancellationToken = default);
+
+    /// <summary>Sends a named format action (a command of type <c>action</c>) that carries no data; true when the server accepted it.</summary>
+    Task<bool> ActionAsync(string name, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }

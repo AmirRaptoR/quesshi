@@ -14,6 +14,9 @@ public interface IFormatClient
 
     /// <summary>Whether the format declares a server-side <c>MatchRule</c>, so Home offers a random opponent for it.</summary>
     bool Matchmaking => false;
+
+    /// <summary>Whether the format has no lobby, so Home offers its <see cref="Settings"/> component to start a session instead of a plain new-session button.</summary>
+    bool StartsFromSettings => false;
 }
 
 /// <summary>Registers and resolves format clients, slot contributions and client pages.</summary>

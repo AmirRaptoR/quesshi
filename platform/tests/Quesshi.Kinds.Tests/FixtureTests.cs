@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Quesshi.Kinds.Choice;
+using Quesshi.Kinds.Flashcard;
 using Quesshi.Kinds.MapPick;
 using Quesshi.Kinds.PollChoice;
 using Quesshi.Kinds.PollRoster;
@@ -22,6 +23,11 @@ public sealed class FixtureTests
     [Fact]
     public void Poll_choice_fixtures_cover_runtime_behavior() =>
         KindFixtureRunner.Run("poll_choice", new PollChoiceKind(), payload => payload);
+
+    [Fact]
+    public void Flashcard_fixtures_cover_runtime_behavior_and_card_noninterference() =>
+        KindFixtureRunner.Run("flashcard", new FlashcardKind(), payload =>
+            JsonSerializer.SerializeToElement(new FlashcardPayload("Changed"), FlashcardJsonContext.Default.FlashcardPayload));
 
     [Fact]
     public void Poll_roster_fixtures_cover_runtime_behavior() =>

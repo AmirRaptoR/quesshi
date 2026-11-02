@@ -25,11 +25,12 @@ public sealed class SessionEndpoints : ICoreRouteModule
         HttpContext context,
         [FromServices] ITenantDb database,
         [FromServices] ISessions sessions,
+        [FromServices] IFormatRegistry formats,
         CancellationToken cancellationToken)
     {
         var tenant = TenantResolutionMiddleware.GetTenant(context) ?? throw new InvalidOperationException("Session creation requires tenant resolution.");
         var player = context.Player() ?? throw new InvalidOperationException("Session creation requires player authentication.");
-        var request = body.ToRequest();
+        var request = body.ToRequest(player.PlayerId, formats);
         if (request is null) return Error("invalid_request", StatusCodes.Status400BadRequest);
 
         try
@@ -96,13 +97,16 @@ public sealed class SessionEndpoints : ICoreRouteModule
         [JsonExtensionData]
         public IDictionary<string, JsonElement>? AdditionalProperties { get; init; }
 
-        public SessionCreateRequest? ToRequest()
+        public SessionCreateRequest? ToRequest(Guid creator, IFormatRegistry formats)
         {
             if (Id == Guid.Empty || string.IsNullOrWhiteSpace(Format) || Content is null || string.IsNullOrWhiteSpace(Content.Source)
                 || Rules.ValueKind != JsonValueKind.Object || Content.Parameters.ValueKind != JsonValueKind.Object
                 || AdditionalProperties is { Count: > 0 })
                 return null;
-            return new SessionCreateRequest(Id, Format, new SessionContent(Content.Source, Content.Parameters, Content.Count), Rules, Capacity, SessionShape.Lobby);
+            // A format without a lobby has nothing to wait for, so its session starts running with the creator seated.
+            var started = formats.TryGet(Format, out var format) && format is { Spec.Lobby: false };
+            return new SessionCreateRequest(Id, Format, new SessionContent(Content.Source, Content.Parameters, Content.Count), Rules, Capacity,
+                started ? SessionShape.Started : SessionShape.Lobby, started ? [new SessionParticipant(creator)] : null);
         }
     }
 
