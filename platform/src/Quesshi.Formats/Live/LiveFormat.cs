@@ -33,7 +33,7 @@ public sealed class LiveFormat : IFormat
         Scored: true,
         Accepts: kind => kind.Gradable,
         Guests: true,
-        Matchmaking: new MatchRule(["language", "questionCount"], RequireOnline: true),
+        Matchmaking: new MatchRule(["language", "questionCount"], RequireOnline: true, Lifetime: TimeSpan.FromMinutes(10)),
         Rematch: true,
         Roles,
         MatchRules.NetworkGrace,

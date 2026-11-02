@@ -16,7 +16,8 @@ public enum CoreEndReason { Owner, Admin, Expired, Fault, Outage }
 public enum SeatStatus { Active, Done, Left, Eliminated }
 
 public sealed record Role(string Id, bool Plays = true);
-public sealed record MatchRule(IReadOnlyList<string> Settings, bool RequireOnline);
+/// <summary>Which settings two players must share, whether both must be online, and how long a waiting entry lives (null: until removed).</summary>
+public sealed record MatchRule(IReadOnlyList<string> Settings, bool RequireOnline, TimeSpan? Lifetime = null);
 public sealed record FormatVersions(int State, int Rules, int Result);
 public sealed record Position(int Phase, int Slot, int Step = 0);
 public sealed record ContentSpec(string Source, JsonElement Params, int Count);
