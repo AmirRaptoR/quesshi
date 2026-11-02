@@ -184,7 +184,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         if (write.OwnerId.HasValue || write.Source == QuestionSource.Pack) return false;
         var existing = await transaction.QueryAsync<string>("""
             select prompt from questions
-            where owner_id is null and lang = @language
+            where owner_id is null and source <> 'pack' and lang = @language
               and category_id is not distinct from @categoryId
               and (@exceptId is null or id <> @exceptId)
             """, new { write.Language, write.CategoryId, exceptId }, cancellationToken);
@@ -202,7 +202,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
             """, new { write.Language, write.Family, write.Topic }, cancellationToken);
         return await transaction.QuerySingleOrDefaultAsync<int?>("""
             select 1 from questions
-            where owner_id is null and lang = @language and family = @family and topic = @topic
+            where owner_id is null and source <> 'pack' and lang = @language and family = @family and topic = @topic
               and (@exceptId is null or id <> @exceptId)
             limit 1
             """, new { write.Language, write.Family, write.Topic, exceptId }, cancellationToken) is not null;

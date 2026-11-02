@@ -152,6 +152,18 @@ public sealed class PackAdminEndpointTests(PostgresFixture fixture)
         Assert.Equal([packQuestion], explicitPack!.Items.Select(q => q.Id));
     }
 
+    [SkippableFact]
+    public async Task Pack_questions_do_not_make_a_bank_question_a_duplicate()
+    {
+        Skip.If(fixture.ConnectionString is null, "PostgreSQL is not configured.");
+        await using var harness = await StartAsync("editor");
+        await harness.CreateQuestionAsync("Capital of France?", "pack");
+
+        var bank = await harness.CreateQuestionAsync("Capital of France?", "admin");
+
+        Assert.NotEqual(Guid.Empty, bank);
+    }
+
     private async Task<Harness> StartAsync(string role)
     {
         await Quesshi.Server.Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
