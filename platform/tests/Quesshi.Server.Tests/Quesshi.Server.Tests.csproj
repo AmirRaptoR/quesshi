@@ -3,6 +3,7 @@
     <ProjectReference Include="../../src/Quesshi.Server/Quesshi.Server.csproj" />
     <ProjectReference Include="../../tools/Quesshi.BankExport/Quesshi.BankExport.csproj" />
     <ProjectReference Include="../../bench/Quesshi.Bench.Live/Quesshi.Bench.Live.csproj" />
+    <ProjectReference Include="../../src/Quesshi.Formats.Testing/Quesshi.Formats.Testing.csproj" />
     <ProjectReference Include="../Quesshi.Testing/Quesshi.Testing.csproj" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
     <PackageReference Include="bunit" Version="2.9.0" />

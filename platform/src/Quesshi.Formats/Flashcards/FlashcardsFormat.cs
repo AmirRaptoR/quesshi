@@ -113,6 +113,7 @@ public sealed class FlashcardsFormat : IFormat
         var item = viewing.Items.SingleOrDefault(candidate => candidate.Slot == position.Slot);
         return new FlashcardsRunningView(
             position.Slot,
+            position.Phase,
             back ? "back" : "front",
             viewing.Card(position.Slot),
             back ? viewing.Reveal(position.Slot) : null,
@@ -180,9 +181,10 @@ public sealed record FlashcardsResult(int[] Counts);
 
 public sealed record FlashcardsUnavailableView;
 
-/// <summary>The current card. <c>Back</c> is null until the player flips; <c>Side</c> is <c>front</c> or <c>back</c>.</summary>
+/// <summary>The current card. <c>Back</c> is null until the player flips; <c>Side</c> is <c>front</c> or <c>back</c>; commands address <c>Phase</c> (0 front, 1 back) and <c>Slot</c>.</summary>
 public sealed record FlashcardsRunningView(
     int Slot,
+    int Phase,
     string Side,
     JsonElement Card,
     JsonElement? Back,
