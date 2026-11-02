@@ -53,8 +53,32 @@ public sealed class SessionCommands(PlayerApi api, PlatformState state) : Quessh
     async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, CancellationToken cancellationToken) =>
         (await SendAsync(type, payload, cancellationToken: cancellationToken)).Succeeded;
 
-    async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, int revision, CancellationToken cancellationToken) =>
-        (await SendAsync(type, payload, revision, cancellationToken: cancellationToken)).Succeeded;
+    /// <summary>
+    /// A <c>revision_conflict</c> means the stored answer is newer than the sender's view. The authoritative view is
+    /// fetched and accepted, and the command reports as settled so the caller never retries the stale answer.
+    /// </summary>
+    async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, int revision, CancellationToken cancellationToken)
+    {
+        var outcome = await SendAsync(type, payload, revision, cancellationToken: cancellationToken);
+        if (outcome.Succeeded) return true;
+        return outcome.ErrorCode == "revision_conflict" && await RefreshAsync(cancellationToken);
+    }
+
+    private async Task<bool> RefreshAsync(CancellationToken cancellationToken)
+    {
+        if (state.View is not { } view) return false;
+        try
+        {
+            var response = await api.GetAsync<JsonElement>($"/api/sessions/{view.Id}", cancellationToken);
+            if (!response.IsSuccess || PlatformState.ParseView(response.Value.GetRawText()) is not { } fresh) return false;
+            state.AcceptView(fresh);
+            return true;
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException)
+        {
+            return false;
+        }
+    }
 
     private static bool IsRetryable(ApiResponse<JsonElement> response) =>
         response.Error is { } code && RetryableCodes.Contains(code);

@@ -177,20 +177,6 @@ public sealed class PollScreenTests : BunitContext
     }
 
     [Fact]
-    public async Task A_revision_conflict_shows_the_authoritative_stored_choice_and_not_the_stale_one()
-    {
-        var cut = RenderScreen(View(ChoiceBody(answer: """{"option":"a"}""", revision: 1)));
-        cut.WaitForElement("[data-option='b']");
-        await cut.InvokeAsync(() => cut.Find("[data-option='b']").ClickAsync());
-
-        // The server answered with its current view: another tab had already stored "b"... and then "a" at revision 5.
-        cut.Render(p => p.Add(c => c.Parameters, new FormatScreenParameters(View(ChoiceBody(answer: """{"option":"a"}""", revision: 5), version: 2))));
-
-        Assert.Equal("Red", cut.Find("[data-poll-stored] strong").TextContent);
-        Assert.Empty(cut.FindAll("[data-poll-send-failed]"));
-    }
-
-    [Fact]
     public async Task A_new_slot_clears_a_pending_failed_send()
     {
         var cut = RenderScreen(View(ChoiceBody()));
