@@ -28,14 +28,17 @@ public sealed record BankParameters(IReadOnlyList<Guid>? Categories, IReadOnlyLi
 /// <summary>The inbox payload shown while a player waits for an opponent.</summary>
 public sealed record WaitingItem(string Format, DateTimeOffset EnqueuedAt);
 
-/// <summary>How a format's players are matched. Only the create-started mode exists so far.</summary>
+/// <summary>How a format's players are matched: <c>live</c> creates a started session for a pair, <c>async_duel</c> joins a waiter's open one.</summary>
 internal static class MatchmakingRules
 {
     public const string Live = "live";
+    public const string AsyncDuel = "async_duel";
 
     private static readonly int[] QuestionCounts = [10, 20, 30, 40, 50, 100];
 
     public static bool IsCreateStarted(string format) => string.Equals(format, Live, StringComparison.Ordinal);
+
+    public static bool IsJoinWaiting(string format) => string.Equals(format, AsyncDuel, StringComparison.Ordinal);
 
     /// <summary>Parses and validates the client's request, adding the player's language.</summary>
     public static LiveQueueSettings? ParseLive(JsonElement raw, string language)
@@ -54,6 +57,7 @@ internal static class MatchmakingRules
 
     /// <summary>The key two waiting players share: the format's match rule applied to their settings.</summary>
     public static string MatchKey(string format, LiveQueueSettings settings) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            $"{format}\n{settings.Language}\n{settings.QuestionCount}"))).ToLowerInvariant();
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(IsJoinWaiting(format)
+            ? $"{format}\n{settings.Language}"
+            : $"{format}\n{settings.Language}\n{settings.QuestionCount}"))).ToLowerInvariant();
 }

@@ -1,4 +1,4 @@
-using Quesshi.Application.Packs;
+using Quesshi.Plugin.Api;
 
 namespace Quesshi.Application.Tests;
 

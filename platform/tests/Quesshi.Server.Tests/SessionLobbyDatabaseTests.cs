@@ -18,6 +18,7 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
     private const string Shared = "lobby_shared";
     private const string Personal = "lobby_personal";
     private const string NoGuests = "lobby_noguests";
+    private const string PackFormat = "lobby_pack";
 
     [SkippableFact]
     public async Task Second_player_joins_by_code_and_repeating_the_join_keeps_one_seat()
@@ -498,6 +499,197 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
         }
     }
 
+    [SkippableFact]
+    public async Task A_session_started_from_a_pack_receives_its_two_kinds_in_position_order()
+    {
+        var (second, _) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var first = await InsertQuestionAsync("choice");
+        var middle = await InsertQuestionAsync("order");
+        var last = await InsertQuestionAsync("choice");
+        var pack = await InsertPackAsync(host.Fixture.PlayerId, "private", last, first, middle);
+        var lobby = await CreatePackLobbyAsync(pack, 3);
+        _ = await JoinAsync(second, lobby.Code);
+
+        var started = await host.Fixture.Player.PostAsync($"/api/sessions/{lobby.Id}/start", null);
+
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        Assert.Equal([last, first, middle], await SessionQuestionsAsync(lobby.Id));
+    }
+
+    [SkippableFact]
+    public async Task Pack_source_skips_questions_of_kinds_the_format_does_not_accept()
+    {
+        var choice = await InsertQuestionAsync("choice");
+        var map = await InsertQuestionAsync("map_pick");
+        var order = await InsertQuestionAsync("order");
+        var pack = await InsertPackAsync(host.Fixture.PlayerId, "private", map, choice, order);
+
+        var picked = await PickAsync(pack, host.Fixture.PlayerId, 2, new SourceKind("choice", "trivia"), new SourceKind("order", "trivia"));
+
+        Assert.Equal([choice, order], picked.Ids);
+    }
+
+    [SkippableFact]
+    public async Task Pack_source_returns_at_most_the_plans_count_in_position_order()
+    {
+        var questions = new List<Guid>();
+        for (var number = 0; number < 5; number++) questions.Add(await InsertQuestionAsync("choice"));
+        var pack = await InsertPackAsync(host.Fixture.PlayerId, "private", [.. questions]);
+
+        var picked = await PickAsync(pack, host.Fixture.PlayerId, 3, new SourceKind("choice", "trivia"));
+
+        Assert.Equal(questions.Take(3), picked.Ids);
+    }
+
+    [SkippableFact]
+    public async Task Pack_source_reports_not_enough_questions_when_the_pack_cannot_fill_the_count()
+    {
+        var pack = await InsertPackAsync(host.Fixture.PlayerId, "private", await InsertQuestionAsync("order"));
+
+        var error = await Assert.ThrowsAsync<NotEnoughQuestionsException>(() => PickAsync(pack, host.Fixture.PlayerId, 1, new SourceKind("choice", "trivia")));
+
+        Assert.Equal((0, 1), (error.Found, error.Needed));
+    }
+
+    [SkippableFact]
+    public async Task Pack_source_locks_the_pack_row_and_evaluates_access_under_the_lock()
+    {
+        var (_, otherId) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var pack = await InsertPackAsync(otherId, "unlisted", await InsertQuestionAsync("choice"));
+        await using var holder = await host.Fixture.OpenOwnerAsync();
+        await using var transaction = await holder.BeginTransactionAsync();
+        await ExecuteAsync(holder, transaction, "select id from packs where id = @pack for update", pack);
+
+        var pick = PickAsync(pack, host.Fixture.PlayerId, 1, new SourceKind("choice", "trivia"));
+        var finished = await Task.WhenAny(pick, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.NotSame(pick, finished);
+
+        await ExecuteAsync(holder, transaction, "update packs set visibility = 'private' where id = @pack", pack);
+        await transaction.CommitAsync();
+
+        await Assert.ThrowsAsync<SourceUnavailableException>(() => pick);
+    }
+
+    [SkippableFact]
+    public async Task A_non_owner_cannot_draw_from_a_private_pack()
+    {
+        var (_, otherId) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var pack = await InsertPackAsync(otherId, "private", await InsertQuestionAsync("choice"));
+
+        await Assert.ThrowsAsync<SourceUnavailableException>(() => PickAsync(pack, host.Fixture.PlayerId, 1, new SourceKind("choice", "trivia")));
+        Assert.Single((await PickAsync(pack, otherId, 1, new SourceKind("choice", "trivia"))).Ids);
+    }
+
+    [SkippableFact]
+    public async Task A_non_owner_draws_from_an_unlisted_pack_by_id_and_a_tenant_pack_as_a_tenant_player()
+    {
+        var (_, otherId) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var unlisted = await InsertPackAsync(otherId, "unlisted", await InsertQuestionAsync("choice"));
+        var shared = await InsertPackAsync(otherId, "tenant", await InsertQuestionAsync("choice"));
+        var kind = new SourceKind("choice", "trivia");
+
+        var byId = await PickAsync(unlisted, Guid.Empty, 1, kind);
+        var asPlayer = await PickAsync(shared, host.Fixture.PlayerId, 1, kind);
+
+        Assert.Equal((1, 1), (byId.Ids.Count, asPlayer.Ids.Count));
+        await Assert.ThrowsAsync<SourceUnavailableException>(() => PickAsync(shared, Guid.Empty, 1, kind));
+    }
+
+    [SkippableFact]
+    public async Task A_pack_made_private_before_start_fails_a_non_owners_start_and_the_lobby_stays_open()
+    {
+        var (second, otherId) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var pack = await InsertPackAsync(otherId, "unlisted", await InsertQuestionAsync("choice"), await InsertQuestionAsync("choice"));
+        var lobby = await CreatePackLobbyAsync(pack, 2);
+        _ = await JoinAsync(second, lobby.Code);
+        await host.Fixture.ExecuteOwnerAsync("update packs set visibility = 'private' where id = @pack", new { pack });
+
+        var start = await host.Fixture.Player.PostAsync($"/api/sessions/{lobby.Id}/start", null);
+
+        Assert.Equal((HttpStatusCode.ServiceUnavailable, "source_unavailable", "lobby", 0), (start.StatusCode, await ErrorAsync(start), (await StateAsync(lobby.Id)).Status, await ItemsAsync(lobby.Id)));
+    }
+
+    [SkippableFact]
+    public async Task With_custom_questions_off_an_existing_pack_still_starts_a_session_for_its_owner()
+    {
+        var (second, _) = await host.Fixture.CreateSecondPlayerClientAsync();
+        var questions = new[] { await InsertQuestionAsync("choice"), await InsertQuestionAsync("choice") };
+        var pack = await InsertPackAsync(host.Fixture.PlayerId, "private", questions);
+        var lobby = await CreatePackLobbyAsync(pack, 2);
+        _ = await JoinAsync(second, lobby.Code);
+        await host.Fixture.SetCapabilityAsync("switch", "custom_questions", false);
+        try
+        {
+            var start = await host.Fixture.Player.PostAsync($"/api/sessions/{lobby.Id}/start", null);
+
+            Assert.Equal(HttpStatusCode.OK, start.StatusCode);
+            Assert.Equal(questions, await SessionQuestionsAsync(lobby.Id));
+        }
+        finally { await host.Fixture.SetCapabilityAsync("switch", "custom_questions", true); }
+    }
+
+    private async Task<Guid> InsertQuestionAsync(string kind)
+    {
+        var id = Guid.NewGuid();
+        var payload = kind == "order"
+            ? """{"items":[{"id":"a","text":"A"},{"id":"b","text":"B"},{"id":"c","text":"C"},{"id":"d","text":"D"}],"criterion":"size"}"""
+            : """{"options":["a","b","c","d"],"correctIndex":0}""";
+        await host.Fixture.ExecuteOwnerAsync("""
+            insert into questions(tenant_id, id, kind, kind_version, family, lang, level, prompt, payload, fingerprint, status, source)
+            values (@t, @id, @kind, 1, 'trivia', 'en', 1, 'Pack prompt', @payload::jsonb, @fingerprint, 'approved', 'admin')
+            """, new { t = host.Fixture.TenantId, id, kind, payload, fingerprint = $"pack-{id}" });
+        return id;
+    }
+
+    private async Task<Guid> InsertPackAsync(Guid owner, string visibility, params Guid[] questions)
+    {
+        var id = Guid.NewGuid();
+        await host.Fixture.ExecuteOwnerAsync(
+            "insert into packs(tenant_id, id, owner_id, title, lang, visibility) values (@t, @id, @owner, 'Pack', 'en', @visibility)",
+            new { t = host.Fixture.TenantId, id, owner, visibility });
+        for (var position = 0; position < questions.Length; position++)
+            await host.Fixture.ExecuteOwnerAsync(
+                "insert into pack_items(tenant_id, pack_id, question_id, position) values (@t, @id, @question, @position)",
+                new { t = host.Fixture.TenantId, id, question = questions[position], position });
+        return id;
+    }
+
+    private async Task<(Guid Id, string Code)> CreatePackLobbyAsync(Guid pack, int count)
+    {
+        var id = Guid.NewGuid();
+        var created = await host.Fixture.Player.PostAsJsonAsync("/api/sessions", new
+        {
+            id,
+            format = PackFormat,
+            content = new { source = "pack", parameters = new { packId = pack }, count },
+            rules = new { },
+            capacity = 3,
+        });
+        var body = await created.Content.ReadAsStringAsync();
+        Assert.True(created.StatusCode == HttpStatusCode.Created, body);
+        using var document = JsonDocument.Parse(body);
+        return (id, document.RootElement.GetProperty("code").GetString()!);
+    }
+
+    private async Task<Guid[]> SessionQuestionsAsync(Guid session) =>
+        [.. await host.Fixture.QueryOwnerAsync<Guid>("select question_id from session_items where session_id = @session order by slot", new { session })];
+
+    private async Task<PickedQuestionIds> PickAsync(Guid pack, Guid actor, int count, params SourceKind[] kinds)
+    {
+        var database = host.Fixture.Services.GetRequiredService<ITenantDb>();
+        var source = host.Fixture.Services.GetRequiredService<ISourceRegistry>().Get("pack");
+        var plan = new SourceDrawPlan(count, "en", kinds, null, 1);
+        var picked = await database.InTenantAsync(host.Fixture.TenantId, tx => source.PickAsync(tx, JsonSerializer.SerializeToElement(new { packId = pack }), plan, actor));
+        return Assert.IsType<PickedQuestionIds>(picked);
+    }
+
+    private static async Task ExecuteAsync(Npgsql.NpgsqlConnection connection, Npgsql.NpgsqlTransaction transaction, string sql, Guid pack)
+    {
+        await using var command = new Npgsql.NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("pack", pack);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private async Task<(Guid Id, string Code)> CreateAsync(string format, int capacity = 2, int count = 10)
     {
         var id = Guid.NewGuid();
@@ -591,11 +783,13 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
             if (Environment.GetEnvironmentVariable("QUESSHI_TEST_POSTGRES") is null) return;
             Fixture = new PlatformHttpFixture([new LobbyFeature()])
             {
-                Formats = new FormatRegistry([new AsyncDuelFormat(), new PollFormat(), new LobbyFormat(Shared, Pacing.Shared, true), new LobbyFormat(Personal, Pacing.Personal, true), new LobbyFormat(NoGuests, Pacing.Shared, false)]),
+                Formats = new FormatRegistry([new AsyncDuelFormat(), new PollFormat(), new LobbyFormat(Shared, Pacing.Shared, true), new LobbyFormat(Personal, Pacing.Personal, true), new LobbyFormat(NoGuests, Pacing.Shared, false), new LobbyFormat(PackFormat, Pacing.Shared, true, ["choice", "order"])]),
             };
             await Fixture.StartAsync();
-            foreach (var format in new[] { "async_duel", Shared, Personal, NoGuests }) await Fixture.SetCapabilityAsync("format", format, true);
+            foreach (var format in new[] { "async_duel", Shared, Personal, NoGuests, PackFormat }) await Fixture.SetCapabilityAsync("format", format, true);
             await Fixture.SetCapabilityAsync("kind", "choice", true);
+            await Fixture.SetCapabilityAsync("kind", "order", true);
+            await Fixture.SetCapabilityAsync("source", "pack", true);
             var category = Guid.NewGuid();
             await Fixture.ExecuteOwnerAsync("""
                 insert into categories(tenant_id, id, slug, names) values (@t, @category, 'lobby-category', '{"en":"Lobby"}'::jsonb);
@@ -624,13 +818,13 @@ public sealed class SessionLobbyDatabaseTests(SessionLobbyDatabaseTests.LobbyHos
 
     private sealed record LobbySettings;
 
-    private sealed class LobbyFormat(string id, Pacing pacing, bool guests) : IFormat
+    private sealed class LobbyFormat(string id, Pacing pacing, bool guests, string[]? acceptedKinds = null) : IFormat
     {
         public string Id => id;
         public FormatSpec Spec { get; } = new(pacing, 2, 4, true, false, _ => true, guests, null, false, [new Role("player")], TimeSpan.Zero, new Dictionary<string, Type>());
         public FormatVersions Versions { get; } = new(1, 1, 1);
         public JsonElement ReadRules(JsonElement raw) => raw.ValueKind == JsonValueKind.Object ? raw.Clone() : throw new ArgumentException("Rules must be an object.");
-        public DrawPlan Plan(ContentSpec content, JsonElement rules) => new(content.Count, ["choice"]);
+        public DrawPlan Plan(ContentSpec content, JsonElement rules) => new(content.Count, acceptedKinds ?? ["choice"]);
         public void Start(ISession session)
         {
             if (pacing == Pacing.Shared) session.SetPosition(0, 0);

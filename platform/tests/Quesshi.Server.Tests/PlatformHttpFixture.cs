@@ -92,6 +92,14 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     }
 
     /// <summary>Executes setup SQL as the database owner for a hosted route test.</summary>
+    /// <summary>Opens a database-owner connection the caller disposes, for tests that hold a lock or transaction open.</summary>
+    public async Task<NpgsqlConnection> OpenOwnerAsync(CancellationToken cancellationToken = default)
+    {
+        var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));
+        await owner.OpenAsync(cancellationToken);
+        return owner;
+    }
+
     public async Task ExecuteOwnerAsync(string sql, object parameters, CancellationToken cancellationToken = default)
     {
         await using var owner = new NpgsqlConnection(_postgres.ConnectionStringForRole("quesshi_owner"));

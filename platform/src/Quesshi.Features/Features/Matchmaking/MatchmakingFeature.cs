@@ -41,16 +41,16 @@ public sealed class MatchmakingFeature : IFeature
         ITenantDb database,
         ILocks locks,
         ISessions sessions,
+        ISessionSeating seating,
         IInbox inbox,
         IMatchPolicies policies,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId, out var tenantId)) return Results.Unauthorized();
-        // Join-waiting formats (async duel) arrive with the follow-up; until then they are refused.
-        if (request.Format is null || !MatchmakingRules.IsCreateStarted(request.Format))
+        if (request.Format is null || !MatchmakingRules.IsCreateStarted(request.Format) && !MatchmakingRules.IsJoinWaiting(request.Format))
             return Results.BadRequest(new { error = "unsupported_format" });
 
-        var outcome = await new MatchmakingQueue(database, locks, sessions, inbox, policies)
+        var outcome = await new MatchmakingQueue(database, locks, sessions, seating, inbox, policies)
             .EnqueueAsync(tenantId, playerId, request.Format, request.Settings, cancellationToken);
         return outcome switch
         {
@@ -58,6 +58,7 @@ public sealed class MatchmakingFeature : IFeature
             EnqueueOutcome.InvalidSettings => Results.BadRequest(new { error = "invalid_settings" }),
             EnqueueOutcome.FormatUnavailable => Results.BadRequest(new { error = "format_unavailable" }),
             EnqueueOutcome.AlreadyPlaying => Results.Conflict(new { error = "already_playing" }),
+            EnqueueOutcome.TryAgain => Results.Conflict(new { error = "try_again" }),
             _ => Results.NotFound(),
         };
     }
@@ -68,12 +69,13 @@ public sealed class MatchmakingFeature : IFeature
         ITenantDb database,
         ILocks locks,
         ISessions sessions,
+        ISessionSeating seating,
         IInbox inbox,
         IMatchPolicies policies,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId, out var tenantId)) return Results.Unauthorized();
-        await new MatchmakingQueue(database, locks, sessions, inbox, policies).LeaveAsync(tenantId, playerId, format, cancellationToken);
+        await new MatchmakingQueue(database, locks, sessions, seating, inbox, policies).LeaveAsync(tenantId, playerId, format, cancellationToken);
         return Results.Ok();
     }
 
@@ -86,6 +88,7 @@ public sealed class MatchmakingFeature : IFeature
             context.Database,
             services.GetRequiredService<ILocks>(),
             services.GetRequiredService<ISessions>(),
+            services.GetRequiredService<ISessionSeating>(),
             services.GetRequiredService<IInbox>(),
             services.GetRequiredService<IMatchPolicies>()).SweepAsync(tenantId, cancellationToken);
     }

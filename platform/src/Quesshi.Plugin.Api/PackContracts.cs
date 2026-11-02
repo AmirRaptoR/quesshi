@@ -1,6 +1,5 @@
-using Quesshi.Plugin.Api;
 
-namespace Quesshi.Application.Packs;
+namespace Quesshi.Plugin.Api;
 
 public enum PackVisibility
 {

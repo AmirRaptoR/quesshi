@@ -4,11 +4,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Quesshi.Application;
-using Quesshi.Application.Packs;
+using Quesshi.Plugin.Api;
 using Quesshi.Features.Sources.Bank;
 using Quesshi.Infrastructure.Database;
 using Quesshi.Infrastructure.Jobs;
-using Quesshi.Plugin.Api;
 using Quesshi.Server.Accounts;
 using Quesshi.Testing;
 
