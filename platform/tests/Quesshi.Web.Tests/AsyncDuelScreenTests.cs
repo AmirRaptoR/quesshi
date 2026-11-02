@@ -280,6 +280,9 @@ public sealed class AsyncDuelScreenTests : BunitContext
             Sent.Add((type, payload));
             return Task.FromResult(true);
         }
+
+        public Task<bool> SendAsync(string type, object? payload, int revision, CancellationToken cancellationToken = default) =>
+            SendAsync(type, payload, cancellationToken);
     }
 
     private sealed class Tables : HttpMessageHandler
