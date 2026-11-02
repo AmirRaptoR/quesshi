@@ -215,6 +215,27 @@ public sealed class AsyncDuelFormatTests
     }
 
     [Fact]
+    public void The_viewers_own_view_names_the_served_items_kind_and_the_total_and_others_carry_none_of_it()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(State(["a", "b"], slots: 1), clock, viewer: "a");
+        var format = Started(session);
+        Assert.Null(Assert.IsType<AsyncDuelView>(format.View(session)).You!.Kind);
+
+        format.Apply(session, Next("a"));
+        var question = Assert.IsType<AsyncDuelView>(format.View(session)).You!;
+        Assert.NotNull(question.Kind);
+        Assert.NotNull(question.KindVersion);
+        Assert.Equal(1, question.Total);
+
+        format.Apply(session, Answer("a", 0, clock.Now));
+        format.Apply(session, Next("a", 0));
+        var done = Assert.IsType<AsyncDuelView>(format.View(session));
+        Assert.Null(done.Others[0].Kind);
+        Assert.Null(done.Others[0].Total);
+    }
+
+    [Fact]
     public void Completes_only_after_two_player_runs_and_uses_competition_places_and_outcomes()
     {
         var clock = new TestClock(Created);
