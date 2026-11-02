@@ -168,14 +168,14 @@ public sealed class SessionGrainBehaviorTests
         deadlines.HoldNext();
         var second = grain.ExecuteAsync(Command(now));
         await deadlines.Held;
-        // The failed batch queues for the gate that the second answer holds, and the third answer queues behind it,
-        // so the third is accepted after the batch failed but before its flush loop has finished.
+        // The failed batch queues for the gate that the second answer holds. Completing the first answer is the grain's
+        // signal that the batch failure was processed; that happens inside the gate, so the third answer is accepted
+        // after the batch failed but before its flush loop has finished.
         database.FailHeldWrite();
-        await Task.Delay(100);
-        var third = grain.ExecuteAsync(Command(now));
         deadlines.Release();
-
         Assert.Equal("retryable", (await first.WaitAsync(TimeSpan.FromSeconds(30))).Code);
+        var third = grain.ExecuteAsync(Command(now));
+
         Assert.Equal("retryable", (await second.WaitAsync(TimeSpan.FromSeconds(30))).Code);
         Assert.Equal("retryable", (await third.WaitAsync(TimeSpan.FromSeconds(30))).Code);
         Assert.Equal(2, database.WriteCount);

@@ -144,15 +144,29 @@ public sealed class StreamPresenceDatabaseTests(PostgresFixture postgres) : IAsy
         using var client = watcherClient;
         var sessionId = await CreateLobbyAsync(Host.PlayerId, watcherId);
         await using var watcher = await OpenStreamAsync(client, watcherId, sessionId);
-        _ = await ReadFrameAsync(watcher.Reader);
+        var initial = await ReadFrameAsync(watcher.Reader);
         await using var presence = await OpenStreamAsync(Host.Player, Host.PlayerId);
         await WaitForAsync(() => Hub.SubscriptionCount == 2);
 
-        await Hub.ReconcileAsync();
+        // The hub's own timer can refresh presence before the player's stream was subscribed and then throttle this
+        // reconcile, so reconcile with a refresh due until the player's presence is observably recorded.
+        await WaitForAsync(async () =>
+        {
+            _clock.Advance(PresenceTiming.RefreshInterval);
+            await Hub.ReconcileAsync();
+            return await PlayerLastSeenAtAsync() == _clock.Now;
+        });
 
-        var refreshed = await ReadFrameAsync(watcher.Reader);
+        // A refresh forced before the player was recorded can still be queued with the old mark.
+        SseFrame refreshed;
+        do refreshed = await ReadFrameAsync(watcher.Reader);
+        while (!IsOnline(refreshed, Host.PlayerId));
         Assert.True(IsOnline(refreshed, Host.PlayerId));
+        Assert.Equal(Version(initial), Version(refreshed));
     }
+
+    private async Task<DateTimeOffset?> PlayerLastSeenAtAsync() => Assert.Single(await Host.QueryOwnerAsync<DateTimeOffset?>(
+        "select last_seen_at from players where id = @playerId", new { playerId = Host.PlayerId }));
 
     private PlatformHttpFixture Host
     {
@@ -252,11 +266,13 @@ public sealed class StreamPresenceDatabaseTests(PostgresFixture postgres) : IAsy
         return document.RootElement.GetProperty("Version").GetInt64();
     }
 
-    private static async Task WaitForAsync(Func<bool> condition)
+    private static Task WaitForAsync(Func<bool> condition) => WaitForAsync(() => Task.FromResult(condition()));
+
+    private static async Task WaitForAsync(Func<Task<bool>> condition)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
-            if (condition()) return;
+            if (await condition()) return;
             await Task.Delay(25);
         }
         throw new TimeoutException("The expected stream subscription state was not reached.");
