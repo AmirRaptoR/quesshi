@@ -27,7 +27,7 @@ public sealed class AsyncDuelFormat : IFormat
         Scored: true,
         Accepts: kind => kind.Gradable,
         Guests: true,
-        Matchmaking: new MatchRule(["language"], RequireOnline: false),
+        Matchmaking: new MatchRule(["language"], RequireOnline: false, Lifetime: MatchRules.ForfeitAfter),
         Rematch: false,
         Roles,
         MatchRules.NetworkGrace,
