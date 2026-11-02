@@ -41,6 +41,15 @@ internal sealed class CorePlayerCleanup(ILocks locks, IPlayerCleanup pluginClean
                 avatarSeed = DeletedAvatarSeed
             }, cancellationToken);
 
+        // Packs and player-written questions go with the player; sessions already played keep
+        // their own item snapshots, and only the link to the question is cleared.
+        var owned = (await transaction.QueryAsync<Guid>(
+            "select id from packs where owner_id = @playerId union select id from questions where owner_id = @playerId",
+            new { playerId }, cancellationToken)).ToArray();
+        await locks.ContentAsync(transaction, owned, cancellationToken);
+        await transaction.ExecuteAsync("delete from packs where owner_id = @playerId", new { playerId }, cancellationToken);
+        await transaction.ExecuteAsync("delete from questions where owner_id = @playerId", new { playerId }, cancellationToken);
+
         // Enqueuing occurs in the same tenant transaction as the scrub, so plugin handlers
         // cannot observe a live player and do not become runnable before this commit.
         // A worker crash after this transaction commits can replay the core job; avoid

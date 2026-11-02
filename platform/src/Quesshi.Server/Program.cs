@@ -38,6 +38,7 @@ using Quesshi.Infrastructure.Otp;
 using Quesshi.Infrastructure.Security;
 using Quesshi.Infrastructure.Media;
 using Quesshi.Application.Media;
+using Quesshi.Application.Packs;
 using Quesshi.Server.Media;
 using Quesshi.Server.Streaming;
 using System.Net;
@@ -219,6 +220,7 @@ public static class Program
         builder.Services.AddSingleton<ILeadImageProvider, WikipediaImageProvider>();
         builder.Services.AddSingleton<ICategoryService, CategoryService>();
         builder.Services.AddSingleton<IContent, ContentService>();
+        builder.Services.AddSingleton<IPacks, PostgresPacks>();
         builder.Services.AddSingleton<SourceResultValidator>();
         builder.Services.AddSingleton<SessionSnapshotFactory>();
         builder.Services.AddSingleton<IGoogleSignInSettings, GoogleSignInSettingsProvider>();

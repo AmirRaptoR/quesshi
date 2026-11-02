@@ -25,6 +25,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
               and (@level is null or level = @level)
               and (@status is null or status = @status)
               and (@source is null or source = @source)
+              and (@includePlayerWritten or owner_id is null)
               and (@prompt is null or strpos(lower(prompt), lower(@prompt)) > 0)
             order by created_at, id
             """, FilterParameters(filter), cancellationToken);
@@ -120,6 +121,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
               and (@level is null or level = @level)
               and (@status is null or status = @status)
               and (@source is null or source = @source)
+              and (@includePlayerWritten or owner_id is null)
               and (@prompt is null or strpos(lower(prompt), lower(@prompt)) > 0)
             group by lang, category_id, level, kind
             order by lang, category_id, level, kind
@@ -251,6 +253,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         status = filter?.Status is { } status ? StatusValue(status) : null,
         source = filter?.Source is { } source ? SourceValue(source) : null,
         prompt = TrimOrNull(filter?.Prompt),
+        includePlayerWritten = filter is { IncludePlayerWritten: true } || filter?.Source == QuestionSource.Player,
     };
 
     private static QuestionEnvelope? ToEnvelope(PersistedQuestion? question) => question is null ? null : new(

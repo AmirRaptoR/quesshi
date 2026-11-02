@@ -110,6 +110,7 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
     private static async Task ResetNewContractAsync(NpgsqlConnection owner)
     {
         await RewindFriendsMigrationAsync(owner);
+        await RewindPacksMigrationAsync(owner);
         await RewindMatchmakingMigrationAsync(owner);
         await RewindInboxMigrationAsync(owner);
         await RewindLeaderboardMigrationAsync(owner);
@@ -127,6 +128,9 @@ public sealed class AdminIdentityAuditDatabaseTests(PostgresFixture fixture)
 
     private static Task RewindInboxMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, $"drop table session_invites; drop table player_inbox; delete from schema_migrations where name = '{InboxMigrationName}'");
+
+    private static Task RewindPacksMigrationAsync(NpgsqlConnection owner) =>
+        ExecuteAsync(owner, "drop table if exists pack_items; drop table if exists packs; delete from schema_migrations where name = '20261024T0100_core_packs.sql'");
 
     private static Task RewindMatchmakingMigrationAsync(NpgsqlConnection owner) =>
         ExecuteAsync(owner, "drop table if exists matchmaking_entries; delete from schema_migrations where name = '20261101T1000_matchmaking_entries.sql'");
