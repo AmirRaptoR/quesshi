@@ -36,6 +36,47 @@ public sealed class LiveBenchmarkRunner
     private const string RolePassword = "quesshi-benchmark-only";
     private const long BootstrapLockKey = 869_327_625_914_302_761;
 
+    private const string DatabasePrefix = "quesshi_bench_";
+    private static readonly TimeSpan StaleDatabaseThreshold = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// Drops <c>quesshi_bench_*</c> databases created more than <paramref name="threshold"/> ago, left by killed runs.
+    /// PostgreSQL records no creation time, so the age is the file time of the database's PG_VERSION, written once at creation.
+    /// The drop is plain (no FORCE): a database still in use refuses it and is left alone. Failures are ignored.
+    /// </summary>
+    public static async Task SweepStaleDatabasesAsync(string administrationConnection, TimeSpan threshold, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var connection = new NpgsqlConnection(administrationConnection);
+            await connection.OpenAsync(cancellationToken);
+            var stale = (await connection.QueryAsync<string>(new CommandDefinition(
+                """
+                SELECT datname FROM pg_database
+                WHERE starts_with(datname, @prefix)
+                  AND (pg_stat_file('base/' || oid || '/PG_VERSION', true)).modification < now() - make_interval(secs => @seconds)
+                """,
+                new { prefix = DatabasePrefix, seconds = threshold.TotalSeconds },
+                cancellationToken: cancellationToken))).ToList();
+            foreach (var name in stale)
+            {
+                try
+                {
+                    await connection.ExecuteAsync(new CommandDefinition(
+                        $"drop database if exists \"{name.Replace("\"", "\"\"")}\"", cancellationToken: cancellationToken));
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // In use or already gone: leave it for a later run.
+                }
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Best effort: a failed sweep must not stop the benchmark.
+        }
+    }
+
     public async Task<BenchmarkReport> RunAsync(BenchmarkOptions options, CancellationToken cancellationToken = default)
     {
         var configuredConnection = options.PostgreSql
@@ -436,8 +477,9 @@ public sealed class LiveBenchmarkRunner
 
         public static async Task<BenchmarkDatabase> CreateAsync(string administrationConnection, CancellationToken cancellationToken)
         {
-            var databaseName = $"quesshi_bench_{Guid.NewGuid():N}";
+            var databaseName = $"{DatabasePrefix}{Guid.NewGuid():N}";
             var admin = new NpgsqlConnectionStringBuilder(administrationConnection) { Pooling = false };
+            await SweepStaleDatabasesAsync(admin.ConnectionString, StaleDatabaseThreshold, cancellationToken);
             await using (var connection = new NpgsqlConnection(admin.ConnectionString))
             {
                 await connection.OpenAsync(cancellationToken);
