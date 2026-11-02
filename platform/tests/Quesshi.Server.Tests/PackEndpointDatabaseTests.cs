@@ -90,6 +90,20 @@ public sealed class PackEndpointDatabaseTests : IAsyncLifetime
         var remaining = await ListQuestionsAsync(Host.Player, pack.Id);
         Assert.Equal([third.Id, second.Id], remaining.Select(question => question.Id));
         Assert.Equal([0, 1], remaining.Select(question => question.Position));
+        Assert.Empty(await Host.QueryOwnerAsync<Guid>("select id from questions where id = @id", new { id = first.Id }));
+    }
+
+    [SkippableFact]
+    public async Task Deleting_a_pack_deletes_the_questions_written_for_it()
+    {
+        var pack = await CreatePackAsync(Host.Player, "Doomed");
+        var one = await AddQuestionAsync(Host.Player, pack.Id, ChoiceBody("One?"));
+        var two = await AddQuestionAsync(Host.Player, pack.Id, OrderBody("Two"));
+
+        using var deleted = await Host.Player.DeleteAsync($"/api/packs/{pack.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Empty(await Host.QueryOwnerAsync<Guid>("select id from questions where id = any(@ids)", new { ids = new[] { one.Id, two.Id } }));
     }
 
     [SkippableTheory]

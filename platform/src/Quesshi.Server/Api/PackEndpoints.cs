@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Quesshi.Application;
-using Quesshi.Application.Packs;
 using Quesshi.Application.Profiles;
 using Quesshi.Application.Tenancy;
 using Quesshi.Plugin.Api;
@@ -116,6 +115,7 @@ public sealed class PackEndpoints : ICoreRouteModule
         Guid id,
         [FromServices] ITenantDb database,
         [FromServices] IPacks packs,
+        [FromServices] IContent content,
         [FromServices] ICapabilities capabilities,
         CancellationToken cancellationToken)
     {
@@ -125,7 +125,10 @@ public sealed class PackEndpoints : ICoreRouteModule
         {
             var denied = await EditablePackAsync(transaction, packs, id, player, cancellationToken);
             if (denied.Result is not null) return denied.Result;
-            return await packs.DeleteAsync(transaction, id, cancellationToken) ? Results.NoContent() : Results.NotFound();
+            var items = await packs.ListQuestionsAsync(transaction, id, cancellationToken);
+            if (!await packs.DeleteAsync(transaction, id, cancellationToken)) return Results.NotFound();
+            foreach (var item in items) await DeleteOwnQuestionAsync(transaction, content, item.QuestionId, player, cancellationToken);
+            return Results.NoContent();
         }, cancellationToken: cancellationToken);
     }
 
@@ -215,6 +218,7 @@ public sealed class PackEndpoints : ICoreRouteModule
         Guid questionId,
         [FromServices] ITenantDb database,
         [FromServices] IPacks packs,
+        [FromServices] IContent content,
         [FromServices] ICapabilities capabilities,
         CancellationToken cancellationToken)
     {
@@ -224,7 +228,9 @@ public sealed class PackEndpoints : ICoreRouteModule
         {
             var denied = await EditablePackAsync(transaction, packs, id, player, cancellationToken);
             if (denied.Result is not null) return denied.Result;
-            return await packs.RemoveQuestionAsync(transaction, id, questionId, cancellationToken) ? Results.NoContent() : Results.NotFound();
+            if (!await packs.RemoveQuestionAsync(transaction, id, questionId, cancellationToken)) return Results.NotFound();
+            await DeleteOwnQuestionAsync(transaction, content, questionId, player, cancellationToken);
+            return Results.NoContent();
         }, cancellationToken: cancellationToken);
     }
 
@@ -246,6 +252,14 @@ public sealed class PackEndpoints : ICoreRouteModule
             if (denied.Result is not null) return denied.Result;
             return await packs.ReorderAsync(transaction, id, ids, cancellationToken) ? Results.NoContent() : Error("invalid_order", StatusCodes.Status400BadRequest);
         }, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Player-written questions are reachable only through packs, so one removed from its pack is deleted with it.</summary>
+    private static async Task DeleteOwnQuestionAsync(ITenantTx transaction, IContent content, Guid questionId, PlayerIdentity player, CancellationToken cancellationToken)
+    {
+        var question = await content.GetAsync(transaction, questionId, cancellationToken);
+        if (question is { Source: QuestionSource.Player } && question.OwnerId == player.PlayerId)
+            await content.DeleteAsync(transaction, questionId, cancellationToken);
     }
 
     /// <summary>Loads the pack and applies <see cref="PackAccess.CanEdit"/>: a pack the caller cannot even use is hidden, one they can use but not edit is forbidden.</summary>
