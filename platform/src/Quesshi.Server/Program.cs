@@ -27,6 +27,7 @@ using Quesshi.Application.Sessions;
 using Quesshi.Formats;
 using Quesshi.Kinds.Choice;
 using Quesshi.Kinds.MapPick;
+using Quesshi.Server.StaticPages;
 using Quesshi.Kinds.Order;
 using Quesshi.Kinds.PollChoice;
 using Quesshi.Kinds.PollRoster;
@@ -246,6 +247,7 @@ public static class Program
         builder.Services.AddSingleton<ISessionRematch, SessionRematchService>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
+        builder.Services.AddSingleton<StaticPageRenderer>();
         builder.Services.AddSingleton<PostgresStreamNotificationListener>();
         builder.Services.AddSingleton<IStreamNotificationSource>(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
         builder.Services.AddHostedService(provider => provider.GetRequiredService<PostgresStreamNotificationListener>());
@@ -362,6 +364,7 @@ public static class Program
             return report.IsHealthy ? Results.Ok(report) : Results.Json(report, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
         app.MapTenantResources();
+        app.MapStaticPages();
         app.MapRoutes();
         app.MapStream();
         app.UseForwardedHeaders();
