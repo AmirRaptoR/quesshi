@@ -53,6 +53,9 @@ public sealed class SessionCommands(PlayerApi api, PlatformState state) : Quessh
     async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, CancellationToken cancellationToken) =>
         (await SendAsync(type, payload, cancellationToken: cancellationToken)).Succeeded;
 
+    async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, int revision, CancellationToken cancellationToken) =>
+        (await SendAsync(type, payload, revision, cancellationToken: cancellationToken)).Succeeded;
+
     private static bool IsRetryable(ApiResponse<JsonElement> response) =>
         response.Error is { } code && RetryableCodes.Contains(code);
 }

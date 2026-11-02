@@ -243,6 +243,9 @@ public sealed class LiveScreenTests : BunitContext
             Sent.Add((type, payload));
             return Task.FromResult(Accept);
         }
+
+        public Task<bool> SendAsync(string type, object? payload, int revision, CancellationToken cancellationToken = default) =>
+            SendAsync(type, payload, cancellationToken);
     }
 
     private sealed class Tables : HttpMessageHandler

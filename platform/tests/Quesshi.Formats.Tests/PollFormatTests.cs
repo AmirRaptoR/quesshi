@@ -83,6 +83,21 @@ public sealed class PollFormatTests
     }
 
     [Fact]
+    public void Running_view_names_the_served_items_kind_and_the_slot_position()
+    {
+        var format = new PollFormat();
+        var session = Harness(State(2, ChoiceItem(0), ChoiceItem(1)), viewer: "a");
+        format.Start(session);
+
+        var view = Assert.IsType<PollRunningView>(format.View(session));
+
+        Assert.Equal("poll_choice", view.Kind);
+        Assert.Equal(1, view.KindVersion);
+        Assert.Equal(0, view.Slot);
+        Assert.Equal(2, view.TotalSlots);
+    }
+
+    [Fact]
     public void Running_view_shows_only_the_viewers_answer_and_recovers_from_answer_rows()
     {
         var format = new PollFormat();

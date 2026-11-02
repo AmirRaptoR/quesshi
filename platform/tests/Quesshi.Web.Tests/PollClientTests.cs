@@ -37,6 +37,8 @@ public sealed class PollClientTests : BunitContext
         Services.AddSingleton(new LobbyInviteCandidates(new PlayerApi(http), config));
         Services.AddSingleton<IFormatClientRegistry>(registry);
         Services.AddSingleton(state);
+        Services.AddSingleton<IFormatCommands>(new SessionCommands(new PlayerApi(http), state));
+        Services.AddSingleton<IClientRegistry>(registry);
     }
 
     [Fact]
