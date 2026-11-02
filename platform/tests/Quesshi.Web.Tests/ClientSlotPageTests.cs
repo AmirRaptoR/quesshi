@@ -57,6 +57,7 @@ public sealed class ClientSlotPageTests : BunitContext
         JSInterop.SetupVoid("quesshi.applyLanguage", _ => true).SetVoidResult();
         JSInterop.Setup<string?>("quesshi.get", _ => true).SetResult(null);
         JSInterop.Setup<string[]>("quesshi.browserLanguages").SetResult([]);
+        JSInterop.Setup<bool>("quesshi.takeover.claim").SetResult(false);
         Services.AddSingleton(http);
         Services.AddSingleton(config);
         Services.AddSingleton(translator);
@@ -66,6 +67,7 @@ public sealed class ClientSlotPageTests : BunitContext
         var auth = new AuthState(api);
         Services.AddSingleton(auth);
         Services.AddSingleton(new PackAvailability(config, auth));
+        Services.AddSingleton(new InviteTakeover(JSInterop.JSRuntime));
         Services.AddSingleton(new PlatformState(config));
         Services.AddSingleton(new StreamClient(http));
         Services.AddSingleton(new PlatformState(config));
