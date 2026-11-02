@@ -1,6 +1,7 @@
 using Quesshi.Shared;
 using Quesshi.Web.Plugins.Features.Friends;
 using Quesshi.Web.Plugins.Formats.Live;
+using Quesshi.Web.Plugins.Formats.Flashcards;
 using Quesshi.Web.Plugins.Formats.Poll;
 using Quesshi.Web.Plugins.Formats.AsyncDuel;
 using ChoiceComponents = Quesshi.Web.Plugins.Choice;
@@ -30,6 +31,7 @@ public sealed class WebPluginsEntry : IKindClientAssemblyEntry
         registry.RegisterFormat(new LiveClient());
         registry.RegisterFormat(new PollClient());
         registry.RegisterFormat(new AsyncDuelClient());
+        registry.RegisterFormat(new FlashcardsClient());
     }
 
     /// <summary>Adds the feature contributions to the shell's client slots.</summary>
