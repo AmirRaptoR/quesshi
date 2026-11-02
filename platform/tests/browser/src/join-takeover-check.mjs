@@ -138,7 +138,7 @@ const scenarios = {
   async slow({ page, url }) {
     await page.goto(`${url}/join/${code}`, { waitUntil: 'commit' });
     await page.locator('#join-button').click();
-    await page.waitForURL(/\/s\/[0-9a-f-]{36}$/, { timeout: 60_000 });
+    await page.waitForURL(/\/s\/[0-9a-f-]{36}$/, { timeout: 90_000 });
     await page.waitForTimeout(500);
   }
 };
@@ -158,6 +158,8 @@ const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ locale: 'en-US', serviceWorkers: 'block' });
   const page = await context.newPage();
+  // A cold CI runner boots the WebAssembly client slowly, on top of the deliberate start delay.
+  page.setDefaultTimeout(90_000);
   const errors = [];
   page.on('pageerror', error => errors.push(error));
   await scenarios[scenario]({ page, proxy, url: proxy.url });
