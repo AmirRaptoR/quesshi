@@ -132,8 +132,16 @@ public sealed class LiveFormat : IFormat
             ? viewing.Card(position.Slot) : (JsonElement?)null;
         var reveal = position is { Phase: RevealPhase } && position.Slot < viewing.ItemCount
             ? viewing.Reveal(position.Slot) : null;
-        return new LiveView(position, state.Expected, state.Answered, card, reveal);
+        var item = position is { Phase: QuestionPhase or RevealPhase } && position.Slot < viewing.ItemCount
+            ? viewing.Items.SingleOrDefault(candidate => candidate.Slot == position.Slot) : null;
+        var mine = card is not null ? viewing.Answer(viewing.Viewer, position!.Slot)?.Value : null;
+        var current = reveal is not null ? Round(viewing, position!.Slot) : null;
+        var previous = position is { Phase: QuestionPhase or RevealPhase, Slot: > 0 } ? Round(viewing, position.Slot - 1) : null;
+        return new LiveView(position, state.Expected, state.Answered, card, reveal, item?.Kind, item?.KindVersion, mine, current, previous);
     }
+
+    private static LiveRound Round(IViewing viewing, int slot) => new(slot,
+        viewing.Seats.Where(seat => seat.Role == "player" && viewing.HasAnswered(seat.Player, slot)).Select(seat => seat.Player).ToArray());
 
     public DateTimeOffset? Deadline(IViewing viewing)
     {
@@ -282,4 +290,7 @@ public sealed class LiveFormat : IFormat
 public sealed record LiveSeatResult(bool Abandoned, int? ExitRound, int StandingScore);
 public sealed record LiveStanding(string Player, int Score, int Place, string Outcome);
 public sealed record LiveResult(IReadOnlyList<LiveStanding> Standings);
-public sealed record LiveView(Position? Position, IReadOnlyList<string> Expected, IReadOnlyList<string> Answered, JsonElement? Card, JsonElement? Reveal);
+/// <summary>Who answered one slot. Answers themselves stay private to their owner until the session ends.</summary>
+public sealed record LiveRound(int Slot, IReadOnlyList<string> Responded);
+public sealed record LiveView(Position? Position, IReadOnlyList<string> Expected, IReadOnlyList<string> Answered, JsonElement? Card, JsonElement? Reveal,
+    string? Kind = null, int? KindVersion = null, JsonElement? Mine = null, LiveRound? Current = null, LiveRound? Previous = null);

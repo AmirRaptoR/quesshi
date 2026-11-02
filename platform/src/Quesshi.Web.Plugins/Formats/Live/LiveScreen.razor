@@ -1,7 +1,336 @@
+@implements IDisposable
+@using Quesshi.Domain
 @using Quesshi.Shared
+@inject IClientTranslator L
+@inject IFormatCommands Commands
+@inject Microsoft.JSInterop.IJSRuntime Js
 
-<section class="card stack" data-live-screen="@Parameters.Session.Id"></section>
+@{
+    var view = Parameters.Session;
+    var body = LivePhaseSelector.Select(view.Phase);
+    var me = view.Me.Id;
+    var gone = LiveElimination.IsEliminated(view.Me.Status);
+    var left = LiveElimination.HasLeft(view.Me.Status);
+    var seats = VisibleSeats;
+}
+
+<section class="live-screen stack" dir="@L.Direction" data-live-screen="@view.Id" data-live-phase="@PhaseWord">
+    @if (left)
+    {
+        <p class="notice notice--bad enter" role="status" data-live-left>@L["live.left.notice"]</p>
+    }
+    else if (gone)
+    {
+        <p class="notice notice--bad enter" role="status" data-live-eliminated>@L["live.eliminated.notice"]</p>
+    }
+
+    @if (body == LiveBody.Countdown)
+    {
+        <section class="card card--taq game-stage game-countdown" style="text-align:center" data-live-countdown>
+            <div class="row" style="flex-wrap:wrap;justify-content:center;gap:1rem">
+                @foreach (var seat in seats)
+                {
+                    <div class="stack" style="justify-items:center;gap:.35rem" @key="seat.Id">
+                        <span class="avatar avatar--lg">@Initial(seat.Name)</span>
+                        <span dir="auto">@seat.Name</span>
+                    </div>
+                }
+            </div>
+            @if (MoreSeats > 0)
+            {
+                <p class="faint" data-roster-more>@string.Format(L["live.roster.more"], L.Num(MoreSeats))</p>
+            }
+            <p class="faint" style="margin-top:1rem">@L["live.countdown.starting"]</p>
+            <p class="numeral" style="font-size:var(--step-4);margin-top:.5rem" data-live-countdown-digit>@L.Num(RemainingSeconds)</p>
+        </section>
+    }
+    else if (body == LiveBody.Question)
+    {
+        <header class="topbar game-hud">
+            <span class="muted numeral" data-live-slot>@L.Num(view.Slot + 1)@(TotalRounds is { } total ? " / " + L.Num(total) : "")</span>
+            <div class="topbar__spacer"></div>
+            <span data-live-ring><Ring EndsAt="view.Deadline" Skew="_skew" Total="(int)MatchRules.QuestionTime.TotalSeconds" Size="38" /></span>
+        </header>
+
+        <section class="card card--taq game-stage" @key="view.Slot" data-live-question>
+            <p class="game-kicker">@L["play.question"] <span class="numeral">@L.Num(view.Slot + 1)</span></p>
+            @if (_card is null)
+            {
+                <p role="alert">@L["common.error"]</p>
+            }
+            else if (!left)
+            {
+                <KindPlay Card="_card" OnAnswer="SubmitAsync" Disabled="@AnswerClosed" />
+            }
+        </section>
+
+        <p class="game-status enter" data-live-status>
+            @if (gone || left)
+            {
+                @L["live.question.waitingForThem"]
+            }
+            else if (HasAnswered)
+            {
+                @(AllActiveAnswered ? L["live.question.theyAnswered"] : L["live.question.waitingForThem"])
+            }
+            else if (TimeUp)
+            {
+                @L["play.timeUp"]
+            }
+            else
+            {
+                @L["live.question.locked"]
+            }
+        </p>
+
+        @if (_failed)
+        {
+            <p class="notice notice--bad" role="alert" data-live-send-failed>@L["live.sendFailed"]</p>
+        }
+
+        @if (_opponentAnswered)
+        {
+            <p class="chip chip--live enter" role="status" data-effect="opponent-answered">@L["live.question.theyAnswered"]</p>
+        }
+
+        <ul class="stack" style="list-style:none;padding:0;margin:.4rem 0 0" data-live-answered-list>
+            @foreach (var seat in seats)
+            {
+                var answered = _body.Answered.Contains(seat.Id);
+                <li class="row" style="gap:.5rem" @key="seat.Id" data-seat="@seat.Id" data-answered="@(answered ? "true" : "false")">
+                    <span class="avatar">@Initial(seat.Name)</span>
+                    <span class="grow" dir="auto">@(seat.Id == me ? L["result.you"] : seat.Name)</span>
+                    @if (answered)
+                    {
+                        <span class="chip chip--win">@L["live.answered"]</span>
+                    }
+                    else if (_body.Expected.Contains(seat.Id))
+                    {
+                        <span class="chip">@L["live.waiting"]</span>
+                    }
+                </li>
+            }
+        </ul>
+        @if (MoreSeats > 0)
+        {
+            <p class="faint" data-roster-more>@string.Format(L["live.roster.more"], L.Num(MoreSeats))</p>
+        }
+    }
+    else if (body == LiveBody.Reveal)
+    {
+        <header class="topbar game-hud">
+            <span class="muted numeral" data-live-slot>@L.Num(view.Slot + 1)@(TotalRounds is { } total ? " / " + L.Num(total) : "")</span>
+        </header>
+
+        <section class="card card--taq game-stage game-stage--reveal" @key="view.Slot" data-live-reveal>
+            @if (_card is null)
+            {
+                <p role="alert">@L["common.error"]</p>
+            }
+            else
+            {
+                <KindReveal Card="_card" Reveal="_reveal" Answers="_mine" />
+            }
+        </section>
+
+        <section class="card card--flat enter" style="margin-top:.85rem" data-live-scores>
+            @if (_body.Current is { } current && current.Responded.Count < 2)
+            {
+                <p class="faint" data-live-agreement>@L["live.players.notEnoughAnswers"]</p>
+            }
+            <ul class="stack" style="list-style:none;padding:0;margin:0">
+                @foreach (var seat in seats)
+                {
+                    var responded = _body.Current?.Responded.Contains(seat.Id) ?? false;
+                    var gain = GainOf(seat.Id);
+                    <li class="row row--between" @key="seat.Id" data-reveal-player="@seat.Id" data-answered="@(responded ? "true" : "false")">
+                        <span dir="auto">@(seat.Id == me ? L["result.you"] : seat.Name)</span>
+                        @if (!responded)
+                        {
+                            <span class="faint">@L["live.noAnswer"]</span>
+                        }
+                        <span class="numeral @(gain > 0 ? "score-pop" : null)" data-score-gain="@gain">+@L.Num(gain) · @L.Num(seat.Score)</span>
+                    </li>
+                }
+            </ul>
+            @if (MoreSeats > 0)
+            {
+                <p class="faint" data-roster-more>@string.Format(L["live.roster.more"], L.Num(MoreSeats))</p>
+            }
+        </section>
+    }
+
+    @if (_skipped && _body.Previous is { } previous && body != LiveBody.Countdown)
+    {
+        <section class="card card--flat enter" data-previous-outcome="@previous.Slot">
+            <p class="muted" style="margin:0 0 .4rem">@L["live.previous"] <span class="numeral">@L.Num(previous.Slot + 1)</span></p>
+            <ul class="stack" style="list-style:none;padding:0;margin:0">
+                @foreach (var seat in seats)
+                {
+                    var responded = previous.Responded.Contains(seat.Id);
+                    <li class="row row--between" @key="seat.Id" data-previous-player="@seat.Id" data-answered="@(responded ? "true" : "false")">
+                        <span dir="auto">@(seat.Id == me ? L["result.you"] : seat.Name)</span>
+                        <span class="@(responded ? null : "faint")">@(responded ? L["live.answered"] : L["live.noAnswer"])</span>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+</section>
 
 @code {
+    private static readonly TimeSpan TickEvery = TimeSpan.FromMilliseconds(250);
+
+    private LiveSounds? _sounds;
+    private LiveSounds Sounds => _sounds ??= new LiveSounds(Js);
+    private SessionView? _current;
+    private LiveBodyView _body = LiveBodyView.Empty;
+    private KindCard? _card;
+    private object? _reveal;
+    private object _mine = Array.Empty<object>();
+    private Dictionary<string, int> _gains = [];
+    private TimeSpan _skew;
+    private bool _opponentAnswered;
+    private bool _skipped;
+    private bool _failed;
+    private bool _submitting;
+    private int _submittedSlot = -1;
+    private int? _lastTicked;
+    private Timer? _ticker;
+
     [Parameter, EditorRequired] public FormatScreenParameters Parameters { get; set; } = default!;
+
+    private string PhaseWord => LivePhaseSelector.Select(Parameters.Session.Phase) switch
+    {
+        LiveBody.Countdown => "countdown",
+        LiveBody.Question => "question",
+        LiveBody.Reveal => "reveal",
+        LiveBody.Ended => "over",
+        _ => "lobby",
+    };
+
+    private IReadOnlyList<SessionRosterSeat> VisibleSeats => [.. LiveElimination.Seats(Parameters.Session.Roster)];
+
+    private int MoreSeats => Math.Max(0, Parameters.Session.Roster.Total - VisibleSeats.Count);
+
+    private int? TotalRounds => Parameters.Session.Content.ValueKind == System.Text.Json.JsonValueKind.Object
+        && Parameters.Session.Content.TryGetProperty("count", out var count) && count.TryGetInt32(out var value) ? value : null;
+
+    private int RemainingSeconds => Parameters.Session.Deadline is { } deadline
+        ? LiveRingClock.RemainingSeconds(deadline, DateTimeOffset.UtcNow, _skew) : 0;
+
+    private bool TimeUp => RemainingSeconds <= 0;
+
+    private bool HasAnswered => _submittedSlot == Parameters.Session.Slot || _body.Answered.Contains(Parameters.Session.Me.Id);
+
+    private bool AllActiveAnswered => _body.Expected.Count > 0 && _body.Expected.All(_body.Answered.Contains);
+
+    private bool AnswerClosed => _submitting || HasAnswered || TimeUp || LiveElimination.IsEliminated(Parameters.Session.Me.Status);
+
+    private int GainOf(string player) => _gains.TryGetValue(player, out var gain) ? gain : 0;
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1];
+
+    protected override void OnParametersSet()
+    {
+        var next = Parameters.Session;
+        if (ReferenceEquals(next, _current)) return;
+
+        var previous = _current;
+        _current = next;
+        _body = LiveBodyView.From(next);
+        _card = LiveKinds.Card(_body.Kind, _body.KindVersion, _body.Card);
+        _reveal = LiveKinds.Reveal(_body.Kind, _body.Reveal);
+        _mine = LiveKinds.Answers(_body.Kind, _body.Mine);
+        _skew = next.Now - DateTimeOffset.UtcNow;
+        Observe(previous, next);
+        if (previous is not null && previous.Slot != next.Slot)
+        {
+            _failed = false;
+            _lastTicked = null;
+        }
+        UpdateTicker(next);
+    }
+
+    /// <summary>Everything the screen shows because of a change, found by comparing the view it had with the view it has.</summary>
+    private void Observe(SessionView? previous, SessionView next)
+    {
+        _opponentAnswered = false;
+        _gains = [];
+        if (previous is null || previous.Id != next.Id) _skipped = true;
+        else if (Order(next) != Order(previous)) _skipped = Order(next) - Order(previous) > 1;
+        if (previous is null || previous.Id != next.Id) return;
+
+        var before = LiveBodyView.From(previous);
+        if (previous.Phase == next.Phase && previous.Slot == next.Slot
+            && _body.Answered.Any(player => player != next.Me.Id && !before.Answered.Contains(player)))
+            _opponentAnswered = true;
+
+        var scores = LiveElimination.Seats(previous.Roster).ToDictionary(seat => seat.Id, seat => seat.Score);
+        foreach (var seat in LiveElimination.Seats(next.Roster))
+            if (scores.TryGetValue(seat.Id, out var old) && seat.Score > old) _gains[seat.Id] = seat.Score - old;
+
+        var phase = LivePhaseSelector.Select(next.Phase);
+        if (Order(next) == Order(previous)) return;
+        if (phase == LiveBody.Question) _ = Sounds.RoundStart();
+        else if (phase == LiveBody.Reveal && !LiveElimination.IsEliminated(next.Me.Status) && !LiveElimination.HasLeft(next.Me.Status))
+            _ = GainOf(next.Me.Id) > 0 ? Sounds.Correct() : Sounds.Wrong();
+    }
+
+    /// <summary>Where a view sits in the run of a duel: the countdown, then each round's question and reveal in turn.</summary>
+    private static int Order(SessionView view) => LivePhaseSelector.Select(view.Phase) switch
+    {
+        LiveBody.Question => view.Slot * 2,
+        LiveBody.Reveal => view.Slot * 2 + 1,
+        _ => -1,
+    };
+
+    private void UpdateTicker(SessionView view)
+    {
+        var running = view.Deadline is not null && LivePhaseSelector.Select(view.Phase) is LiveBody.Countdown or LiveBody.Question;
+        if (!running)
+        {
+            _ticker?.Dispose();
+            _ticker = null;
+            return;
+        }
+
+        _ticker ??= new Timer(_ => _ = InvokeAsync(Tick), null, TickEvery, TickEvery);
+    }
+
+    private void Tick()
+    {
+        var view = Parameters.Session;
+        if (LivePhaseSelector.Select(view.Phase) == LiveBody.Question && !HasAnswered && SoundTicks.ShouldTick(RemainingSeconds, _lastTicked))
+        {
+            _lastTicked = RemainingSeconds;
+            _ = Sounds.Tick();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task SubmitAsync(object? answer)
+    {
+        var view = Parameters.Session;
+        if (AnswerClosed || _card is null || LiveKinds.Answer(_card.Kind, answer) is not { } payload) return;
+
+        _submitting = true;
+        _failed = false;
+        try
+        {
+            if (await Commands.SendAsync("answer", payload)) _submittedSlot = view.Slot;
+            else _failed = true;
+        }
+        catch (HttpRequestException)
+        {
+            _failed = true;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    public void Dispose() => _ticker?.Dispose();
 }

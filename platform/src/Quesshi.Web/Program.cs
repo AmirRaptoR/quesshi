@@ -30,6 +30,8 @@ builder.Services.AddScoped<IClientLanguage>(services => services.GetRequiredServ
 builder.Services.AddScoped<IClientLanguageInfo, ClientLanguageInfo>();
 builder.Services.AddScoped<IAsyncDuelSettingsApi, AsyncDuelSettingsApi>();
 builder.Services.AddScoped<Sounds>();
+builder.Services.AddScoped<SessionCommands>();
+builder.Services.AddScoped<Quesshi.Web.Plugins.IFormatCommands>(services => services.GetRequiredService<SessionCommands>());
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddScoped<IClientAssemblyLoader, LazyAssemblyClientLoader>();
 builder.Services.AddScoped<IAdminClientRegistry>(services => new AdminClientRegistry(

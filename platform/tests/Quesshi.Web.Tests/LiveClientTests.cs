@@ -31,6 +31,7 @@ public sealed class LiveClientTests : BunitContext
         Services.AddSingleton(new LobbyInviteCandidates(new PlayerApi(http), new AppConfig(http, null!)));
         Services.AddSingleton<IFormatClientRegistry>(registry);
         Services.AddSingleton(state);
+        Services.AddSingleton<IFormatCommands>(new SessionCommands(new PlayerApi(http), state));
     }
 
     [Fact]
