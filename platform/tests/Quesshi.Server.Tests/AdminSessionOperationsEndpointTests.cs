@@ -17,7 +17,14 @@ public sealed class AdminSessionOperationsEndpointTests : IAsyncLifetime
     private Guid _lobbyId;
     private Guid _foreignId;
 
-    private PlatformHttpFixture Host => _host ?? throw new InvalidOperationException("The host was not started.");
+    private PlatformHttpFixture Host
+    {
+        get
+        {
+            Skip.If(!IsPostgresConfigured, "PostgreSQL is not configured.");
+            return _host ?? throw new InvalidOperationException("The host was not started.");
+        }
+    }
 
     public async Task InitializeAsync()
     {
