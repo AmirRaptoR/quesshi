@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Quesshi.Application;
 using Quesshi.Infrastructure.Database;
+using Quesshi.Infrastructure.Migrations;
 using Quesshi.Infrastructure.Security;
 using Quesshi.Server.Security;
 using Quesshi.Testing;
@@ -155,6 +157,13 @@ public sealed class PackAdminEndpointTests(PostgresFixture fixture)
         await Quesshi.Server.Program.MigrateAsync(fixture.ConnectionStringForRole("quesshi_owner"));
         var owner = new NpgsqlConnection(fixture.ConnectionStringForRole("quesshi_owner"));
         await owner.OpenAsync();
+        // TenantDatabaseTests swaps packs for a stand-in table in the shared database; put the real pack tables back.
+        if (!await owner.ScalarAsync<bool>("select exists (select 1 from information_schema.columns where table_name = 'packs' and column_name = 'owner_id')"))
+        {
+            var packs = MigrationRunner.Discover(typeof(ApplicationMarker).Assembly).Single(script => script.Name == "20261024T0100_core_packs.sql");
+            await owner.ExecuteAsync("drop table if exists pack_items; drop table if exists packs");
+            await owner.ExecuteAsync(System.Text.Encoding.UTF8.GetString(packs.Contents.Span));
+        }
         await owner.ExecuteAsync("delete from session_answers; delete from session_items; delete from session_participants; delete from sessions; delete from questions; delete from categories; delete from auth_sessions; delete from admin_memberships; delete from admins; delete from tenant_languages; delete from tenants");
         await owner.ExecuteAsync("insert into tenants (id, slug, name, default_language) values (@t, 'packs-admin', 'Packs', 'en')", ("t", Tenant));
         await owner.ExecuteAsync("insert into tenant_languages (tenant_id, code, name, english_name) values (@t, 'en', 'English', 'English')", ("t", Tenant));
