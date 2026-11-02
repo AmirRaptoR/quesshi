@@ -42,6 +42,7 @@ public sealed class MatchmakingFeature : IFeature
         ILocks locks,
         ISessions sessions,
         IInbox inbox,
+        IMatchPolicies policies,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId, out var tenantId)) return Results.Unauthorized();
@@ -49,7 +50,7 @@ public sealed class MatchmakingFeature : IFeature
         if (request.Format is null || !MatchmakingRules.IsCreateStarted(request.Format))
             return Results.BadRequest(new { error = "unsupported_format" });
 
-        var outcome = await new MatchmakingQueue(database, locks, sessions, inbox)
+        var outcome = await new MatchmakingQueue(database, locks, sessions, inbox, policies)
             .EnqueueAsync(tenantId, playerId, request.Format, request.Settings, cancellationToken);
         return outcome switch
         {
@@ -68,10 +69,11 @@ public sealed class MatchmakingFeature : IFeature
         ILocks locks,
         ISessions sessions,
         IInbox inbox,
+        IMatchPolicies policies,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId, out var tenantId)) return Results.Unauthorized();
-        await new MatchmakingQueue(database, locks, sessions, inbox).LeaveAsync(tenantId, playerId, format, cancellationToken);
+        await new MatchmakingQueue(database, locks, sessions, inbox, policies).LeaveAsync(tenantId, playerId, format, cancellationToken);
         return Results.Ok();
     }
 
@@ -84,7 +86,8 @@ public sealed class MatchmakingFeature : IFeature
             context.Database,
             services.GetRequiredService<ILocks>(),
             services.GetRequiredService<ISessions>(),
-            services.GetRequiredService<IInbox>()).SweepAsync(tenantId, cancellationToken);
+            services.GetRequiredService<IInbox>(),
+            services.GetRequiredService<IMatchPolicies>()).SweepAsync(tenantId, cancellationToken);
     }
 
     private static async Task<IReadOnlyList<InboxItem>> GetInboxItemsAsync(

@@ -83,10 +83,13 @@ async function withProfile(enabled, body) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const assertNoPageErrors = capturePageErrors(page);
+  // The friends section always asks for the list; registering the wait first means its answer cannot be missed.
+  const friendsList = page.waitForResponse(response => new URL(response.url()).pathname === '/api/x/friends');
+  friendsList.catch(() => {});
   try {
     await page.goto(`${host.tenantUrl('friends.localhost')}profile`);
     await page.locator('#profile-title').waitFor();
-    await body(page, tenant);
+    await body(page, tenant, friendsList);
     assertNoPageErrors();
   } finally {
     await context.close();
@@ -128,8 +131,13 @@ test('removing a friend makes the friends list omit it', { skip: !runsPublishedC
 });
 
 test('the profile has no friends section when the tenant disables friends', { skip: !runsPublishedClient }, async () => {
-  await withProfile(false, async page => {
-    await page.waitForLoadState('load');
-    assert.equal(await page.locator('[data-test="friends-section"]').count(), 0);
+  await withProfile(false, async (page, tenant, friendsList) => {
+    // The signed-in shell keeps its event stream open, so the network never goes idle; wait for the
+    // refused friends list instead. Afterwards the section must stay absent while the client handles it.
+    assert.equal((await friendsList).status(), 404);
+    for (let check = 0; check < 5; check++) {
+      assert.equal(await page.locator('[data-test="friends-section"]').count(), 0);
+      await page.waitForTimeout(100);
+    }
   });
 });

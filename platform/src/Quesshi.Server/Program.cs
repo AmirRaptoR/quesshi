@@ -237,7 +237,9 @@ public static class Program
         builder.Services.AddSingleton<ISessionLobby, SessionLobbyService>();
         builder.Services.AddSingleton<ISessionCodeGenerator, SessionCodeGenerator>();
         builder.Services.AddSingleton<ISessions, SessionCreationService>();
+        builder.Services.AddSingleton<IMatchPolicies, FormatMatchPolicies>();
         builder.Services.AddSingleton<ISessionInvitations, SessionInvitationService>();
+        builder.Services.AddSingleton<ISessionRematch, SessionRematchService>();
         builder.Services.AddSingleton<SessionStateStore>();
         builder.Services.AddSingleton<IViewRenderer, ViewRenderer>();
         builder.Services.AddSingleton<PostgresStreamNotificationListener>();
