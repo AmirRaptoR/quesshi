@@ -117,7 +117,9 @@ export async function startPublishedPlatformHost({ directory, tenants = {} }) {
       return `http://${tenantHost}:${port}${path}`;
     },
     async close() {
-      await new Promise(resolveClose => server.close(resolveClose));
+      const closed = new Promise(resolveClose => server.close(resolveClose));
+      server.closeAllConnections();
+      await closed;
     }
   };
 }

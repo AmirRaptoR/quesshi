@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test --test-timeout=300000"
   },
   "devDependencies": {
     "playwright": "1.64.0"

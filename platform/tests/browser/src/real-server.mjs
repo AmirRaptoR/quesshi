@@ -10,6 +10,8 @@ export async function startRealServer({ hostDll }) {
     stdio: ['pipe', 'pipe', 'inherit'],
     env: { ...process.env, SECRET_KEY: 'browser-test-secret-key-0123456789abcdef', ASPNETCORE_ENVIRONMENT: 'Development' }
   });
+  // A test that fails or times out never reaches close(); the host must still not outlive this process.
+  process.once('exit', () => child.kill('SIGKILL'));
   const codes = [];
   const waiters = [];
   let ready;
@@ -28,7 +30,7 @@ export async function startRealServer({ hostDll }) {
   });
   const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('The real server host did not become ready in time.')), 180000); });
   const info = await Promise.race([started, timeout]).catch(error => {
-    child.kill();
+    child.kill('SIGKILL');
     throw error;
   }).finally(() => clearTimeout(timer));
   return {
@@ -46,7 +48,7 @@ export async function startRealServer({ hostDll }) {
       if (child.exitCode !== null) return;
       const exited = new Promise(resolve => child.once('exit', resolve));
       child.stdin.end();
-      const killer = setTimeout(() => child.kill(), 30000);
+      const killer = setTimeout(() => child.kill('SIGKILL'), 20000);
       await exited;
       clearTimeout(killer);
     }

@@ -25,16 +25,20 @@ async function serverLobbies(context, url) {
   return (await response.json()).lobbies.map(lobby => lobby.id);
 }
 
-test('creating an async_duel session from Home opens the session the real server created', { skip: !runsAgainstRealServer }, async () => {
-  const server = await startRealServer({ hostDll });
-  const host = await startPublishedPlatformHost({
-    directory: publishedDirectory,
-    tenants: { [server.tenantHost]: { upstream: { host: server.tenantHost, port: server.port } } }
-  });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const assertNoPageErrors = capturePageErrors(page);
+test('creating an async_duel session from Home opens the session the real server created', { skip: !runsAgainstRealServer, timeout: 240000 }, async () => {
+  let server;
+  let host;
+  let context;
   try {
+    server = await startRealServer({ hostDll });
+    host = await startPublishedPlatformHost({
+      directory: publishedDirectory,
+      tenants: { [server.tenantHost]: { upstream: { host: server.tenantHost, port: server.port } } }
+    });
+    context = await browser.newContext();
+    const page = await context.newPage();
+    page.setDefaultTimeout(30000);
+    const assertNoPageErrors = capturePageErrors(page);
     const url = host.tenantUrl(server.tenantHost);
     await page.goto(url);
     await page.locator('#email').fill(server.email);
@@ -55,8 +59,8 @@ test('creating an async_duel session from Home opens the session the real server
     assert.equal(new URL(page.url()).pathname, `/s/${created[0]}`);
     assertNoPageErrors();
   } finally {
-    await context.close();
-    await host.close();
-    await server.close();
+    await context?.close();
+    await host?.close();
+    await server?.close();
   }
 });
