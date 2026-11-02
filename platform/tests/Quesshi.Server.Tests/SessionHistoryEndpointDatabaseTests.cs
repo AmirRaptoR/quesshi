@@ -92,6 +92,25 @@ public sealed class SessionHistoryEndpointDatabaseTests : IAsyncLifetime
         Assert.Equal(3, second.Items[1].Answers.Single().GetProperty("index").GetInt32());
     }
 
+    [SkippableFact]
+    public async Task The_question_history_returns_the_bank_question_id_of_a_slot_and_null_when_it_has_none()
+    {
+        var (client, playerId) = await Host.CreateSecondPlayerClientAsync();
+        var sessionId = await SeedSessionAsync(playerId, "finished", "now()", questions: 2);
+        var questionId = Guid.NewGuid();
+        await Host.ExecuteOwnerAsync("""
+            insert into questions(tenant_id, id, kind, family, lang, prompt, payload, status, source)
+            values (@tenantId, @questionId, 'choice', 'general', 'en', 'Bank question', '{}'::jsonb, 'approved', 'seed');
+            update session_items set question_id = @questionId where session_id = @sessionId and slot = 0;
+            """, new { tenantId = Host.TenantId, questionId, sessionId });
+
+        var page = await GetQuestionsAsync(client, $"/api/sessions/{sessionId}/history");
+
+        Assert.Equal([0, 1], page.Items.Select(item => item.Slot));
+        Assert.Equal(questionId, page.Items[0].QuestionId);
+        Assert.Null(page.Items[1].QuestionId);
+    }
+
     /// <summary>AC-6.</summary>
     [SkippableFact]
     public async Task A_player_who_was_not_seated_cannot_read_the_question_history()
