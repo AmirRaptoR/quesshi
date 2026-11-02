@@ -33,6 +33,7 @@ public sealed class PollClientTests : BunitContext
         Services.AddSingleton(config);
         Services.AddSingleton(translator);
         Services.AddSingleton<IClientTranslator>(translator);
+        Services.AddSingleton<IClientViewer>(new ClientViewer(new LanguageSelection(config, translator, JSInterop.JSRuntime), config, translator, new AuthState(new PlayerApi(http))));
         Services.AddSingleton(new LobbyActions(new PlayerApi(http)));
         Services.AddSingleton(new LobbyInviteCandidates(new PlayerApi(http), config));
         Services.AddSingleton<IFormatClientRegistry>(registry);
@@ -51,8 +52,9 @@ public sealed class PollClientTests : BunitContext
     }
 
     [Fact]
-    public void The_registered_screen_and_result_components_accept_the_format_parameters()
+    public async Task The_registered_screen_and_result_components_accept_the_format_parameters()
     {
+        await Services.GetRequiredService<AppConfig>().LoadAsync();
         var client = registry.ResolveFormat("poll")!;
         var session = LobbyViews.Parse("amir", ["amir", "sara"], status: "finished", format: "poll");
 
