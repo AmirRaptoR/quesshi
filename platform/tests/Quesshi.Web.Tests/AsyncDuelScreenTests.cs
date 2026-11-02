@@ -99,7 +99,7 @@ public sealed class AsyncDuelScreenTests : BunitContext
     [Fact]
     public async Task When_the_clock_runs_out_the_screen_shows_a_miss_and_offers_next()
     {
-        var cut = RenderScreen(View("0", deadline: Now.AddSeconds(-1), body: Body()));
+        var cut = RenderScreen(View("0", deadline: Now.AddSeconds(-3), body: Body()));
 
         Assert.Single(cut.FindAll("[data-duel-timeup]"));
         cut.WaitForAssertion(() => Assert.All(cut.FindAll("[data-choice]"), b => Assert.True(b.HasAttribute("disabled"))));
@@ -110,6 +110,17 @@ public sealed class AsyncDuelScreenTests : BunitContext
             View("1", body: Body([Answer(credit: 0, points: 0, miss: true)], true), version: 2))));
         Assert.Equal("missed", cut.Find("[data-duel-outcome]").GetAttribute("data-duel-outcome"));
         Assert.Single(cut.FindAll("[data-duel-next]"));
+    }
+
+    [Fact]
+    public async Task The_time_up_next_button_stays_disabled_until_the_server_grace_has_passed()
+    {
+        var cut = RenderScreen(View("0", deadline: Now.AddSeconds(-1), body: Body()));
+
+        Assert.Single(cut.FindAll("[data-duel-timeup]"));
+        Assert.True(cut.Find("[data-duel-next]").HasAttribute("disabled"));
+        await cut.Find("[data-duel-next]").ClickAsync();
+        Assert.Empty(commands.Sent);
     }
 
     [Fact]

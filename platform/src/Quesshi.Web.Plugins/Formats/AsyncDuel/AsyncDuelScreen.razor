@@ -41,7 +41,7 @@
         @if (TimeUp)
         {
             <p class="game-status enter" data-duel-timeup>@L["play.timeUp"]</p>
-            <button type="button" class="btn btn--block" data-duel-next disabled="@_busy" @onclick="NextAsync">@L["play.next"]</button>
+            <button type="button" class="btn btn--block" data-duel-next disabled="@(_busy || !ServerAcceptsNext)" @onclick="NextAsync">@L["play.next"]</button>
         }
 
         @if (_failed)
@@ -126,6 +126,11 @@
 
     private bool TimeUp => RemainingSeconds <= 0;
 
+    // The server records a miss only once the deadline plus its network grace has passed; an earlier
+    // `next` is a silent no-op, so the button stays disabled until then.
+    private bool ServerAcceptsNext => Parameters.Session.Deadline is not { } deadline
+        || deadline + MatchRules.NetworkGrace <= DateTimeOffset.UtcNow + _skew;
+
     private bool AnswerClosed => _busy || TimeUp || _submittedSlot == Parameters.Session.Slot;
 
     protected override void OnParametersSet()
@@ -181,7 +186,7 @@
         if (await SendAsync("answer", payload)) _submittedSlot = view.Slot;
     }
 
-    private Task NextAsync() => _busy ? Task.CompletedTask : SendAsync("next", null);
+    private Task NextAsync() => _busy || (Phase == "question" && !ServerAcceptsNext) ? Task.CompletedTask : SendAsync("next", null);
 
     private async Task<bool> SendAsync(string type, object? payload)
     {
