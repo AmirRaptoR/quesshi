@@ -22,5 +22,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Quesshi.Server.Tests" />
     <InternalsVisibleTo Include="Quesshi.Bench.Live" />
+    <InternalsVisibleTo Include="Quesshi.Browser.Host" />
   </ItemGroup>
 </Project>

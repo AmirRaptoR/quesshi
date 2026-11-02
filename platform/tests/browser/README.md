@@ -17,3 +17,11 @@ PLATFORM_BROWSER_HOST_DIRECTORY=platform/artifacts/browser-platform/wwwroot \
 
 When `PLATFORM_BROWSER_HOST_DIRECTORY` is omitted, the harness uses its small
 committed fixture so the harness can be developed without publishing the app.
+
+`home-create.test.mjs` also needs the real platform server. Build
+`tests/Quesshi.Browser.Host` and point `PLATFORM_BROWSER_REAL_SERVER_DLL` at its
+`Quesshi.Browser.Host.dll`, with `QUESSHI_TEST_POSTGRES` set to an administrator
+connection string. The host migrates a throw-away database, seeds a tenant with
+the `async_duel` format enabled and one player, and runs the real server; the
+test serves the published client in front of it and signs in with the email
+code the server logs. Without those variables the test is skipped.

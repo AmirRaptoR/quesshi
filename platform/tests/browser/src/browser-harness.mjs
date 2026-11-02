@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, normalize, resolve, sep } from 'node:path';
 
@@ -43,9 +43,28 @@ function tenantFor(request, tenants) {
   return tenants[host] ?? tenants.default;
 }
 
+// Forwards a request to a real server listening on 127.0.0.1, presenting the tenant's host name the way a proxy would.
+function forward(request, response, tenantHost, upstreamPort) {
+  const upstream = httpRequest(
+    { host: '127.0.0.1', port: upstreamPort, method: request.method, path: request.url, headers: { ...request.headers, host: tenantHost, origin: `http://${tenantHost}` } },
+    reply => {
+      response.writeHead(reply.statusCode, reply.headers);
+      reply.pipe(response);
+    });
+  upstream.on('error', () => response.destroyed || response.writeHead(502).end());
+  response.on('close', () => upstream.destroy());
+  request.pipe(upstream);
+}
+
+const upstreamPaths = pathname => pathname.startsWith('/api/') || pathname === '/theme.css' || pathname === '/manifest.webmanifest';
+
 function dynamicResource(request, response, tenant) {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   if (!tenant) return false;
+  if (tenant.upstream && upstreamPaths(pathname)) {
+    forward(request, response, tenant.upstream.host, tenant.upstream.port);
+    return true;
+  }
   const handler = tenant.handlers?.[pathname];
   if (handler) {
     handler(request, response);

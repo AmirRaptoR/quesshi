@@ -70,6 +70,8 @@ jobs:
       - run: npm test --prefix platform/tests/browser
         env:
           PLATFORM_BROWSER_HOST_DIRECTORY: ${{ github.workspace }}/platform/artifacts/browser-platform/wwwroot
+          PLATFORM_BROWSER_REAL_SERVER_DLL: ${{ github.workspace }}/platform/tests/Quesshi.Browser.Host/bin/Release/net10.0/Quesshi.Browser.Host.dll
+          QUESSHI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
       - run: dotnet test platform/Quesshi.Platform.slnx --no-build --configuration Release --blame-hang-timeout 10m --blame-hang-dump-type none --results-directory platform/artifacts/coverage/normal --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
         env:
           QUESSHI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres
