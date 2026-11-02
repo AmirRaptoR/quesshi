@@ -205,6 +205,7 @@ public sealed class AsyncDuelFormat : IFormat
         var slot = position?.Slot;
         var served = includePrivateContent && slot is { } value && value >= 0 && value < viewing.ItemCount;
         var revealed = served && seat.ReleasedSlot >= slot;
+        var item = served ? viewing.Items.SingleOrDefault(candidate => candidate.Slot == slot) : null;
         return new AsyncDuelRunView(
             seat.Player,
             position,
@@ -214,7 +215,12 @@ public sealed class AsyncDuelFormat : IFormat
             seat.Outcome,
             served ? viewing.Card(slot!.Value) : null,
             revealed ? viewing.Reveal(slot!.Value) : null,
-            includeAnswers ? viewing.Answers(seat.Player) : []);
+            includeAnswers ? viewing.Answers(seat.Player) : [],
+            item?.Kind,
+            item?.KindVersion,
+            item?.Category,
+            item?.Level,
+            served ? viewing.ItemCount : null);
     }
 
     private static IReadOnlyList<Seat> PlayerSeats(ISession session) => session.Seats.Where(seat => seat.Role == "player").ToArray();
@@ -240,5 +246,10 @@ public sealed record AsyncDuelRunView(
     string? Outcome,
     JsonElement? Card,
     JsonElement? Reveal,
-    IReadOnlyList<AnswerRecord> Answers);
+    IReadOnlyList<AnswerRecord> Answers,
+    string? Kind = null,
+    int? KindVersion = null,
+    string? Category = null,
+    int? Level = null,
+    int? Total = null);
 public sealed record AsyncDuelView(AsyncDuelRunView? You, IReadOnlyList<AsyncDuelRunView> Others);

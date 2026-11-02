@@ -1,5 +1,213 @@
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Domain
 @using Quesshi.Shared
+@using Quesshi.Web.Plugins.Formats.Live
+@inject IClientTranslator L
+@inject IFormatCommands Commands
+@inject Microsoft.JSInterop.IJSRuntime Js
+
+@{
+    var view = Parameters.Session;
+}
+
+<section class="duel-screen game-shell stack" dir="@L.Direction" data-duel-screen="@view.Id" data-duel-phase="@Phase">
+    @if (Phase == "idle")
+    {
+        <section class="card card--taq game-stage" style="text-align:center" data-duel-idle>
+            <button type="button" class="btn btn--block" data-duel-start disabled="@_busy" @onclick="NextAsync">@L["lobby.start"]</button>
+        </section>
+    }
+    else if (Phase == "question")
+    {
+        <header class="topbar game-hud">
+            <span class="muted numeral" data-duel-slot>@L.Num(view.Slot + 1)@(_body.Total is { } total ? " / " + L.Num(total) : "")</span>
+            <div class="topbar__spacer"></div>
+            <span data-duel-ring><Ring EndsAt="view.Deadline" Skew="_skew" Total="(int)MatchRules.QuestionTime.TotalSeconds" Size="38" /></span>
+        </header>
+
+        <section class="card card--taq game-stage" @key="view.Slot" data-duel-question>
+            <p class="game-kicker">@L["play.question"] <span class="numeral">@L.Num(view.Slot + 1)</span></p>
+            @if (_card is null)
+            {
+                <p role="alert">@L["common.error"]</p>
+            }
+            else
+            {
+                <KindPlay Card="_card" OnAnswer="AnswerAsync" Disabled="@AnswerClosed" />
+            }
+        </section>
+
+        @if (TimeUp)
+        {
+            <p class="game-status enter" data-duel-timeup>@L["play.timeUp"]</p>
+            <button type="button" class="btn btn--block" data-duel-next disabled="@(_busy || !ServerAcceptsNext)" @onclick="NextAsync">@L["play.next"]</button>
+        }
+
+        @if (_failed)
+        {
+            <p class="notice notice--bad" role="alert" data-duel-send-failed>@L["common.error"]</p>
+        }
+    }
+    else if (Phase == "answered")
+    {
+        <header class="topbar game-hud">
+            <span class="muted numeral" data-duel-slot>@L.Num(view.Slot + 1)@(_body.Total is { } total ? " / " + L.Num(total) : "")</span>
+        </header>
+
+        <section class="card card--taq game-stage game-stage--reveal" @key="view.Slot" data-duel-reveal>
+            <p class="game-status enter" data-duel-outcome="@OutcomeWord">
+                <strong>@(_body.Outcome switch { RunOutcome.Correct => L["play.correct"], RunOutcome.Missed => L["play.timeUp"], _ => L["play.wrong"] })</strong>
+                <span class="numeral" data-duel-points>+@L.Num(_body.Points)</span>
+            </p>
+            @if (_card is null)
+            {
+                <p role="alert">@L["common.error"]</p>
+            }
+            else
+            {
+                <KindReveal Card="_card" Reveal="_reveal" Answers="_mine" />
+            }
+        </section>
+
+        <button type="button" class="btn btn--block" data-duel-next disabled="@_busy" @onclick="NextAsync">
+            @(view.Slot + 1 >= (_body.Total ?? 0) ? L["play.finish"] : L["play.next"])
+        </button>
+
+        @if (_failed)
+        {
+            <p class="notice notice--bad" role="alert" data-duel-send-failed>@L["common.error"]</p>
+        }
+    }
+    else
+    {
+        <section class="card card--taq game-stage" style="text-align:center" data-duel-waiting>
+            <p class="faint">@L["home.waiting"]</p>
+        </section>
+    }
+</section>
 
 @code {
+    private static readonly TimeSpan TickEvery = TimeSpan.FromMilliseconds(250);
+
+    private AsyncDuelSounds? _sounds;
+    private AsyncDuelSounds Sounds => _sounds ??= new AsyncDuelSounds(Js);
+    private SessionView? _current;
+    private AsyncDuelBodyView _body = AsyncDuelBodyView.Empty;
+    private KindCard? _card;
+    private object? _reveal;
+    private object _mine = Array.Empty<object>();
+    private TimeSpan _skew;
+    private bool _busy;
+    private bool _failed;
+    private int _submittedSlot = -1;
+    private int? _lastTicked;
+    private Timer? _ticker;
+
     [Parameter, EditorRequired] public FormatScreenParameters Parameters { get; set; } = default!;
+
+    private string Phase => Parameters.Session.Phase switch
+    {
+        "idle" => "idle",
+        "0" => "question",
+        "1" => "answered",
+        _ => "done",
+    };
+
+    private string OutcomeWord => _body.Outcome switch
+    {
+        RunOutcome.Correct => "correct",
+        RunOutcome.Missed => "missed",
+        _ => "wrong",
+    };
+
+    private int RemainingSeconds => Parameters.Session.Deadline is { } deadline
+        ? LiveRingClock.RemainingSeconds(deadline, DateTimeOffset.UtcNow, _skew) : 0;
+
+    private bool TimeUp => RemainingSeconds <= 0;
+
+    // The server records a miss only once the deadline plus its network grace has passed; an earlier
+    // `next` is a silent no-op, so the button stays disabled until then.
+    private bool ServerAcceptsNext => Parameters.Session.Deadline is not { } deadline
+        || deadline + MatchRules.NetworkGrace <= DateTimeOffset.UtcNow + _skew;
+
+    private bool AnswerClosed => _busy || TimeUp || _submittedSlot == Parameters.Session.Slot;
+
+    protected override void OnParametersSet()
+    {
+        var next = Parameters.Session;
+        if (ReferenceEquals(next, _current)) return;
+
+        var previous = _current;
+        _current = next;
+        _body = AsyncDuelBodyView.From(next);
+        _card = LiveKinds.Card(_body.Kind, _body.KindVersion, _body.Card);
+        _reveal = LiveKinds.Reveal(_body.Kind, _body.Reveal);
+        _mine = LiveKinds.Answers(_body.Kind, _body.Stored);
+        _skew = next.Now - DateTimeOffset.UtcNow;
+        if (previous is null || previous.Slot != next.Slot || previous.Phase != next.Phase)
+        {
+            _failed = false;
+            _lastTicked = null;
+        }
+        if (previous is { Phase: "0" } && next.Phase == "1" && previous.Id == next.Id && previous.Slot == next.Slot)
+            _ = _body.Outcome == RunOutcome.Correct ? Sounds.Correct() : Sounds.Wrong();
+        UpdateTicker(next);
+    }
+
+    private void UpdateTicker(SessionView view)
+    {
+        if (view.Phase != "0" || view.Deadline is null)
+        {
+            _ticker?.Dispose();
+            _ticker = null;
+            return;
+        }
+
+        _ticker ??= new Timer(_ => _ = InvokeAsync(Tick), null, TickEvery, TickEvery);
+    }
+
+    private void Tick()
+    {
+        var view = Parameters.Session;
+        if (view.Phase == "0" && _submittedSlot != view.Slot && SoundTicks.ShouldTick(RemainingSeconds, _lastTicked))
+        {
+            _lastTicked = RemainingSeconds;
+            _ = Sounds.Tick();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task AnswerAsync(object? answer)
+    {
+        var view = Parameters.Session;
+        if (AnswerClosed || _card is null || LiveKinds.Answer(_card.Kind, answer) is not { } payload) return;
+        if (await SendAsync("answer", payload)) _submittedSlot = view.Slot;
+    }
+
+    private Task NextAsync() => _busy || (Phase == "question" && !ServerAcceptsNext) ? Task.CompletedTask : SendAsync("next", null);
+
+    private async Task<bool> SendAsync(string type, object? payload)
+    {
+        _busy = true;
+        _failed = false;
+        try
+        {
+            var accepted = await Commands.SendAsync(type, payload);
+            _failed = !accepted;
+            return accepted;
+        }
+        catch (HttpRequestException)
+        {
+            _failed = true;
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => _ticker?.Dispose();
 }
