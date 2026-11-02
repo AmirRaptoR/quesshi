@@ -122,6 +122,10 @@ public sealed class AsyncDuelClientTests : BunitContext
     {
         public List<(string Session, AsyncDuelSettingsRequest Request)> Saved { get; } = [];
 
+        public bool PacksAvailable => false;
+
+        public Task<IReadOnlyList<PickerPack>> PacksAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<PickerPack>>([]);
+
         public Task<IReadOnlyList<PickerCategory>> CategoriesAsync(string language, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<PickerCategory>>([.. new[] { "c1", "c2", "c3", "c4" }.Select(id => new PickerCategory(id, id, "🌍", "#2FBFB0"))]);
 

@@ -9,12 +9,17 @@
 @inject PlayerApi Api
 @inject PlatformState State
 @inject AppConfig Config
+@inject PackAvailability Packs
 @inject IFormatClientRegistry Registry
 
 <section class="card stack" aria-labelledby="home-title">
     <h1 id="home-title">@Translator["home.title"]</h1>
     <p class="muted">@Auth.Player?.DisplayName</p>
     <button class="btn" type="button" @onclick="OpenProfile">@Translator["nav.profile"]</button>
+    @if (Packs.Available)
+    {
+        <a class="btn btn--ghost" href="/packs" data-test="my-packs-link">@Translator["packs.title"]</a>
+    }
 </section>
 
 <section class="card stack" aria-labelledby="home-new" data-test="home-new">

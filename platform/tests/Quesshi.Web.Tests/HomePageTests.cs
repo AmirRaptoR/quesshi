@@ -244,6 +244,7 @@ public sealed class HomePageTests : BunitContext
         Services.AddSingleton(translator);
         Services.AddSingleton(auth);
         Services.AddSingleton(api);
+        Services.AddSingleton(new PackAvailability(config, auth));
         Services.AddSingleton(new PlatformState(config));
         var registry = new ClientRegistry(new NoLoader());
         foreach (var id in registered ?? enabled) registry.RegisterFormat(new FakeFormat(id, matchRule?.Contains(id) == true));

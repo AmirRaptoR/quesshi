@@ -5,7 +5,7 @@
 @inject IClientTranslator T
 @inject IClientLanguageInfo Language
 
-<DuelSettingsPicker Settings="settings" SettingsChanged="value => settings = value" Categories="categories"
+<DuelSettingsPicker Settings="settings" SettingsChanged="value => settings = value" Categories="categories" Packs="packs" PacksAvailable="Api.PacksAvailable"
                     Capacity="capacity" CapacityChanged="value => capacity = value" ReadOnly="@(!Parameters.IsOwner)" />
 @if (Parameters.IsOwner)
 {
@@ -21,6 +21,7 @@
 
     private DuelSettings settings = new(10, [], []);
     private IReadOnlyList<PickerCategory> categories = [];
+    private IReadOnlyList<PickerPack> packs = [];
     private int? capacity;
     private bool saving;
     private string? error;
@@ -30,6 +31,12 @@
         settings = Read(Parameters.Session.Content);
         try { categories = await Api.CategoriesAsync(Language.Code); }
         catch (HttpRequestException) { categories = []; }
+        if (Api.PacksAvailable)
+        {
+            try { packs = await Api.PacksAsync(); }
+            catch (HttpRequestException) { packs = []; }
+        }
+
         settings = settings with { CategoryIds = TopicPicks.Prune(settings.CategoryIds, categories) };
     }
 
@@ -39,7 +46,7 @@
         error = null;
         try
         {
-            var code = await Api.SaveAsync(Parameters.Session.Id, AsyncDuelSettingsRequest.From(settings, capacity));
+            var code = await Api.SaveAsync(Parameters.Session.Id, AsyncDuelSettingsRequest.From(Api.PacksAvailable ? settings : settings with { PackId = null }, capacity));
             error = code is null ? null : T["asyncDuel.saveFailed"];
         }
         catch (HttpRequestException)
@@ -68,6 +75,12 @@
                     levels = [.. ls.EnumerateArray().Where(e => e.TryGetInt32(out _)).Select(e => e.GetInt32())];
             }
         }
-        return new(count, picked, levels);
+        string? packId = null;
+        if (content.ValueKind == JsonValueKind.Object
+            && content.TryGetProperty("source", out var source) && source.GetString() == "pack"
+            && content.TryGetProperty("parameters", out var parameters) && parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("packId", out var id) && id.ValueKind == JsonValueKind.String)
+            packId = id.GetString();
+        return new(count, picked, levels) { PackId = packId };
     }
 }

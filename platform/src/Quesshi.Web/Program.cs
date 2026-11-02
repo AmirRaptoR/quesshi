@@ -28,6 +28,8 @@ builder.Services.AddScoped<IClientViewer, ClientViewer>();
 builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<IClientLanguage>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<IClientLanguageInfo, ClientLanguageInfo>();
+builder.Services.AddScoped<PackAvailability>();
+builder.Services.AddScoped<PackApi>();
 builder.Services.AddScoped<IAsyncDuelSettingsApi, AsyncDuelSettingsApi>();
 builder.Services.AddScoped<Sounds>();
 builder.Services.AddScoped<SessionCommands>();

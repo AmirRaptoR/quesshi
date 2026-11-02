@@ -1,0 +1,100 @@
+@page "/packs"
+@using Quesshi.Web.Services
+@inject PackAvailability Access
+@inject PackApi Api
+@inject Translator Translator
+
+<section class="card stack" aria-labelledby="packs-title">
+    <h1 id="packs-title">@Translator["packs.title"]</h1>
+    @if (!Access.Available)
+    {
+        <p class="muted" data-test="packs-unavailable">@Translator["packs.unavailable"]</p>
+    }
+    else
+    {
+        <form class="row" @onsubmit="CreateAsync" @onsubmit:preventDefault="true" aria-label="@Translator["packs.create"]">
+            <input class="input" name="title" maxlength="120" autocomplete="off" data-test="pack-title"
+                   aria-label="@Translator["packs.titleLabel"]" placeholder="@Translator["packs.titleLabel"]" @bind="title" @bind:event="oninput" />
+            <button class="btn" type="submit" data-test="pack-create" disabled="@(busy || title.Trim().Length == 0)">@Translator["packs.create"]</button>
+        </form>
+        @if (error is not null)
+        {
+            <p role="alert" class="notice notice--bad" data-test="packs-error">@error</p>
+        }
+        @if (failed)
+        {
+            <p role="alert" data-test="packs-load-error">@Translator["packs.loadFailed"]</p>
+        }
+        else if (loaded && packs.Count == 0)
+        {
+            <p class="muted" data-test="packs-empty">@Translator["packs.empty"]</p>
+        }
+        else
+        {
+            <ul class="stack" data-test="pack-list">
+                @foreach (var pack in packs)
+                {
+                    var id = pack.Id;
+                    <li class="row" data-pack="@id">
+                        <a href="/packs/@id" data-field="title">@pack.Title</a>
+                        <button class="btn btn--ghost" type="button" data-action="delete" disabled="@busy" @onclick="() => DeleteAsync(id)">@Translator["packs.delete"]</button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</section>
+
+@code {
+    private readonly List<PackSummary> packs = [];
+    private string title = "";
+    private string? error;
+    private bool loaded, failed, busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Access.Available) return;
+        try
+        {
+            var response = await Api.ListAsync();
+            if (response.IsSuccess && response.Value is { } list) packs.AddRange(list);
+            else failed = true;
+        }
+        catch (HttpRequestException) { failed = true; }
+        loaded = true;
+    }
+
+    private async Task CreateAsync()
+    {
+        if (busy || title.Trim().Length == 0) return;
+        busy = true;
+        error = null;
+        try
+        {
+            var response = await Api.CreateAsync(title.Trim(), Translator.Lang);
+            if (response.IsSuccess && response.Value is { } created)
+            {
+                packs.Add(created);
+                title = "";
+            }
+            else error = Translator["common.error"];
+        }
+        catch (HttpRequestException) { error = Translator["common.error"]; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try
+        {
+            var response = await Api.DeleteAsync(id);
+            if (response.IsSuccess) packs.RemoveAll(pack => pack.Id == id);
+            else error = Translator["common.error"];
+        }
+        catch (HttpRequestException) { error = Translator["common.error"]; }
+        finally { busy = false; }
+    }
+}

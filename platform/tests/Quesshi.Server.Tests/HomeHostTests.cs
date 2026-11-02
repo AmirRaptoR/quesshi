@@ -168,6 +168,7 @@ public sealed class HomeHostTests(PostgresFixture postgres) : IAsyncLifetime, IC
             _context.Services.AddSingleton(translator);
             _context.Services.AddSingleton(auth);
             _context.Services.AddSingleton(api);
+            _context.Services.AddSingleton(new PackAvailability(config, auth));
             var state = new PlatformState(config);
             _context.Services.AddSingleton(state);
             Sessions = new HomeSessions(api, state, config);
