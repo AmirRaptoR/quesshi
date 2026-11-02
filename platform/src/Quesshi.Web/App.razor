@@ -8,6 +8,7 @@
 @inject LanguageSelection Languages
 @inject Translator Translator
 @inject NavigationManager Navigation
+@inject InviteTakeover Takeover
 
 @if (!languageInitialized)
 {
@@ -97,6 +98,8 @@ else
             await Languages.InitializeAsync();
             languageInitialized = true;
             changed = true;
+            // Booted and showing its own screens: take over from the invite page's preview before identity is known.
+            await Takeover.ReadyAsync();
         }
 
         if (!authInitialized && !IsAdminRoute)

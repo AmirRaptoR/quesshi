@@ -1,7 +1,7 @@
 @*
     Where an invite link lands, as static HTML. It never looks the lobby up: the preview is the same
     generic per-tenant card for every code. The app boots into the empty #app container and takes
-    over from #preview; that hand-off is not done here.
+    over from #preview; wwwroot/takeover.js does that hand-off.
 *@
 <!DOCTYPE html>
 <html lang="@Page.Language" dir="@Page.Direction" translate="no" class="notranslate">
@@ -51,6 +51,8 @@
     </div>
 </div>
 <div id="app"></div>
+<script src="quesshi.js"></script>
+<script src="takeover.js"></script>
 <script src="_framework/blazor.webassembly.js"></script>
 </body>
 </html>

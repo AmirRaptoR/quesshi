@@ -16,6 +16,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<PlayerApi>();
 builder.Services.AddScoped<Quesshi.Web.Plugins.Features.Leaderboard.LeaderboardApi>();
 builder.Services.AddScoped<Quesshi.Web.Plugins.Features.Reports.ReportsApi>();
+builder.Services.AddScoped<InviteTakeover>();
 builder.Services.AddScoped<LobbyActions>();
 builder.Services.AddScoped<LobbyInviteCandidates>();
 builder.Services.AddScoped<StreamClient>(services => new StreamClient(services.GetRequiredService<ClientHttp>()));
