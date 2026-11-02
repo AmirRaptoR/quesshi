@@ -1,6 +1,7 @@
 using Quesshi.Shared;
 using Quesshi.Web.Plugins.Features.Friends;
 using Quesshi.Web.Plugins.Formats.Live;
+using Quesshi.Web.Plugins.Formats.Poll;
 using Quesshi.Web.Plugins.Formats.AsyncDuel;
 using ChoiceComponents = Quesshi.Web.Plugins.Choice;
 using OrderComponents = Quesshi.Web.Plugins.Order;
@@ -25,6 +26,7 @@ public sealed class WebPluginsEntry : IKindClientAssemblyEntry
     public void RegisterFormats(IFormatClientRegistry registry)
     {
         registry.RegisterFormat(new LiveClient());
+        registry.RegisterFormat(new PollClient());
         registry.RegisterFormat(new AsyncDuelClient());
     }
 
