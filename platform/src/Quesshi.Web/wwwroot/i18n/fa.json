@@ -652,5 +652,9 @@
   "home.invitedBy": "به یک نشست دعوت شده‌اید",
   "home.accept": "پذیرفتن",
   "home.decline": "رد کردن",
-  "home.inviteFailed": "پاسخ به این دعوت انجام نشد."
+  "home.inviteFailed": "پاسخ به این دعوت انجام نشد.",
+  "home.randomOpponent": "حریف تصادفی",
+  "home.searching": "در جستجوی حریف…",
+  "home.cancelSearch": "لغو",
+  "home.matchmakingFailed": "جستجوی حریف انجام نشد. دوباره تلاش کنید."
 }

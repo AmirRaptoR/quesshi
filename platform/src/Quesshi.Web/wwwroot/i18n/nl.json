@@ -652,5 +652,9 @@
   "home.invitedBy": "Je bent uitgenodigd voor een sessie",
   "home.accept": "Accepteren",
   "home.decline": "Weigeren",
-  "home.inviteFailed": "Die uitnodiging kon niet worden beantwoord."
+  "home.inviteFailed": "Die uitnodiging kon niet worden beantwoord.",
+  "home.randomOpponent": "Willekeurige tegenstander",
+  "home.searching": "Op zoek naar een tegenstander…",
+  "home.cancelSearch": "Annuleren",
+  "home.matchmakingFailed": "Zoeken naar een tegenstander is mislukt. Probeer het opnieuw."
 }

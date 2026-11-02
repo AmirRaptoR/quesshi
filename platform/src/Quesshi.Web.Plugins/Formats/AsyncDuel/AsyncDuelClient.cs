@@ -9,4 +9,5 @@ public sealed class AsyncDuelClient : IFormatClient
     public Type Settings => typeof(AsyncDuelSettings);
     public Type Screen => typeof(AsyncDuelScreen);
     public Type Result => typeof(AsyncDuelResult);
+    public bool Matchmaking => true;
 }

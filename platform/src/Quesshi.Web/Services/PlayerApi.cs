@@ -87,7 +87,7 @@ public sealed class PlayerApi(ClientHttp client)
     private static async Task<ApiResponse<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var error = response.IsSuccessStatusCode ? null : await ReadErrorAsync(response, cancellationToken);
-        var value = response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NoContent
+        var value = response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NoContent && response.Content.Headers.ContentLength != 0
             ? await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken)
             : default;
         return new ApiResponse<T>(response.StatusCode, value, error);

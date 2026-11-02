@@ -652,5 +652,9 @@
   "home.invitedBy": "You're invited to a session",
   "home.accept": "Accept",
   "home.decline": "Decline",
-  "home.inviteFailed": "That invitation couldn't be answered."
+  "home.inviteFailed": "That invitation couldn't be answered.",
+  "home.randomOpponent": "Random opponent",
+  "home.searching": "Looking for an opponent…",
+  "home.cancelSearch": "Cancel",
+  "home.matchmakingFailed": "We couldn't look for an opponent. Try again."
 }

@@ -11,6 +11,9 @@ public interface IFormatClient
     Type Settings { get; }
     Type Screen { get; }
     Type Result { get; }
+
+    /// <summary>Whether the format declares a server-side <c>MatchRule</c>, so Home offers a random opponent for it.</summary>
+    bool Matchmaking => false;
 }
 
 /// <summary>Registers and resolves format clients, slot contributions and client pages.</summary>
