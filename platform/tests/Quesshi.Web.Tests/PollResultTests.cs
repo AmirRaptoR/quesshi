@@ -50,6 +50,36 @@ public sealed class PollResultTests : BunitContext
     }
 
     [Fact]
+    public async Task Choice_counts_and_answers_are_labelled_with_the_option_text()
+    {
+        await language.UseAsync("en");
+        var card = "{\"options\":[{\"id\":\"a\",\"text\":\"Tea\"},{\"id\":\"b\",\"text\":\"Coffee\"}]}";
+        var body = Finished.Replace("\"slots\":[{\"slot\":0,\"answers\"", "\"slots\":[{\"slot\":0,\"kind\":\"poll_choice\",\"kindVersion\":1,\"card\":" + card + ",\"answers\"")
+            .Replace("{\"slot\":1,\"answers\"", "{\"slot\":1,\"kind\":\"poll_choice\",\"kindVersion\":1,\"card\":" + card + ",\"answers\"");
+        var cut = Render(body);
+
+        Assert.Equal(["Tea", "Coffee", "Not applicable"], cut.FindAll("[data-poll-slot='1'] [data-poll-count] span:first-child").Select(n => n.TextContent));
+        Assert.Equal("Coffee", cut.Find("[data-poll-slot='1'] [data-poll-answer='sara'] span:last-child").TextContent);
+    }
+
+    [Fact]
+    public async Task Roster_several_and_none_answers_and_count_rows_are_labelled()
+    {
+        await language.UseAsync("en");
+        var card = "{\"options\":[{\"seat\":0,\"name\":\"Amir\"},{\"seat\":1,\"name\":\"Sara\"}]}";
+        var body = """
+            {"result":{"slots":[{"slot":0,"counts":[0,0,1,1,0],"allAgreed":false}],"pairStats":[{"firstPlayer":"amir","secondPlayer":"sara","same":0,"different":1,"agreementPercent":0}],"allAgreedCount":0},
+             "slots":[{"slot":0,"kind":"poll_roster","kindVersion":1,"card":CARD,"answers":[{"player":"amir","value":{"several":true}},{"player":"sara","value":{"none":true}}],"counts":[0,0,1,1,0],"allAgreed":false}],
+             "seats":[{"player":"amir","active":true},{"player":"sara","active":true}]}
+            """.Replace("CARD", card);
+        var cut = Render(body);
+
+        Assert.Equal(["Amir", "Sara", "More than one person", "No one", "Not applicable"], cut.FindAll("[data-poll-count] span:first-child").Select(n => n.TextContent));
+        Assert.Equal("More than one person", cut.Find("[data-poll-answer='amir'] span:last-child").TextContent);
+        Assert.Equal("No one", cut.Find("[data-poll-answer='sara'] span:last-child").TextContent);
+    }
+
+    [Fact]
     public async Task The_finished_result_shows_pairwise_agreement_and_not_applicable_is_labelled_not_counted()
     {
         await language.UseAsync("en");

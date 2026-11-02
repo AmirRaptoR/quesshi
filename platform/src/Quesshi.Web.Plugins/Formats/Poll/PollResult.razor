@@ -1,5 +1,7 @@
 @using System.Text.Json
 @using Quesshi.Formats.Poll
+@using Quesshi.Kinds.PollChoice
+@using Quesshi.Kinds.PollRoster
 @using Quesshi.Shared
 @inject IClientTranslator L
 @inject IClientViewer Viewer
@@ -16,6 +18,8 @@
         {
             var counts = _view.Result.Slots.FirstOrDefault(s => s.Slot == slot.Slot) ?? new PollSlotResult(slot.Slot, slot.Counts, slot.AllAgreed);
             var naIndex = counts.Counts.Count - 1;
+            var card = PollKinds.Card(slot.Kind, slot.KindVersion, slot.Card);
+            var labels = CountLabels(card, counts.Counts.Count);
             var ownNotApplicable = IsNotApplicable(slot.Answers.FirstOrDefault(a => a.Player == Parameters.Session.Me.Id)?.Value);
             <div class="stack" data-poll-slot="@slot.Slot">
                 <p class="muted" data-poll-agreement>@L[PollAgreementText.Key(counts, naIndex, ownNotApplicable)]</p>
@@ -23,7 +27,7 @@
                     @for (var index = 0; index < counts.Counts.Count; index++)
                     {
                         <div class="row row--between" data-poll-count="@index">
-                            <span>@(index == naIndex ? L["voting.answer.notApplicable"] : L.Num(index + 1))</span>
+                            <span dir="auto">@(labels[index] ?? (index == naIndex ? L["voting.answer.notApplicable"] : L.Num(index + 1)))</span>
                             <span class="numeral">@L.Num(counts.Counts[index])</span>
                         </div>
                     }
@@ -33,7 +37,7 @@
                     {
                         <div class="row row--between" data-poll-answer="@answer.Player">
                             <span dir="auto">@(answer.Player == Parameters.Session.Me.Id ? L["result.you"] : Name(answer.Player))</span>
-                            <span>@AnswerText(answer.Value)</span>
+                            <span>@AnswerText(card, answer.Value)</span>
                         </div>
                     }
                 </div>
@@ -88,12 +92,33 @@
     private static bool IsNotApplicable(JsonElement? value) => value is { ValueKind: JsonValueKind.Object } v
         && v.TryGetProperty("notApplicable", out var na) && na.ValueKind == JsonValueKind.True;
 
-    private string AnswerText(JsonElement? value)
+    private string?[] CountLabels(KindCard? card, int count)
+    {
+        var labels = new string?[count];
+        switch (card?.Value)
+        {
+            case PollChoiceCard choice:
+                for (var i = 0; i < choice.Options.Count && i < count; i++) labels[i] = choice.Options[i].Text;
+                break;
+            case PollRosterCard roster:
+                for (var i = 0; i < roster.Options.Count && i < count; i++) labels[i] = roster.Options[i].Name;
+                if (roster.Options.Count < count) labels[roster.Options.Count] = L["voting.answer.multiplePeople"];
+                if (roster.Options.Count + 1 < count) labels[roster.Options.Count + 1] = L["voting.answer.noOne"];
+                break;
+        }
+        if (count > 0) labels[count - 1] = L["voting.answer.notApplicable"];
+        return labels;
+    }
+
+    private string AnswerText(KindCard? card, JsonElement? value)
     {
         if (value is not { ValueKind: JsonValueKind.Object } v) return string.Empty;
+        if (PollKinds.Stored(card, v) is { } stored) return stored.IsKey ? L[stored.Value] : stored.Value;
         if (IsNotApplicable(v)) return L["voting.answer.notApplicable"];
         if (v.TryGetProperty("option", out var option)) return option.ToString();
         if (v.TryGetProperty("seat", out var seat)) return Name(SeatId(seat.GetInt32()));
+        if (v.TryGetProperty("several", out _)) return L["voting.answer.multiplePeople"];
+        if (v.TryGetProperty("none", out _)) return L["voting.answer.noOne"];
         return string.Empty;
     }
 

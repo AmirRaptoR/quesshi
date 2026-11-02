@@ -179,14 +179,19 @@ public sealed class PollFormat : IFormat
     {
         var result = JsonSerializer.Deserialize<PollResult>(viewing.Session.Result!.Value)
             ?? throw new JsonException("Stored poll result is invalid.");
-        var slots = result.Slots.Select(slot => new PollReleasedSlot(
-            slot.Slot,
+        var slots = result.Slots.Select(slot => (slot, item: viewing.Items.SingleOrDefault(candidate => candidate.Slot == slot.Slot))).Select(pair => new PollReleasedSlot(
+            pair.slot.Slot,
             viewing.Seats.Where(seat => seat.Role == "player")
-                .Select(seat => new PollSubmittedAnswer(seat.Player, viewing.Answer(seat.Player, slot.Slot)?.Value?.Clone()))
+                .Select(seat => new PollSubmittedAnswer(seat.Player, viewing.Answer(seat.Player, pair.slot.Slot)?.Value?.Clone()))
                 .Where(answer => answer.Value is not null)
                 .ToArray(),
-            slot.Counts,
-            slot.AllAgreed)).ToArray();
+            pair.slot.Counts,
+            pair.slot.AllAgreed,
+            viewing.Card(pair.slot.Slot).Clone(),
+            pair.item?.Kind,
+            pair.item?.KindVersion,
+            pair.item?.Category,
+            pair.item?.Level)).ToArray();
         var seats = viewing.Seats.Where(seat => seat.Role == "player")
             .Select(seat => new PollSeatView(seat.Player, !seat.Eliminated)).ToArray();
         return new PollFinishedView(result, slots, seats);
@@ -230,7 +235,16 @@ public sealed record PollRunningView(
 
 public sealed record PollUnavailableView;
 public sealed record PollSubmittedAnswer(string Player, JsonElement? Value);
-public sealed record PollReleasedSlot(int Slot, IReadOnlyList<PollSubmittedAnswer> Answers, IReadOnlyList<int> Counts, bool AllAgreed);
+public sealed record PollReleasedSlot(
+    int Slot,
+    IReadOnlyList<PollSubmittedAnswer> Answers,
+    IReadOnlyList<int> Counts,
+    bool AllAgreed,
+    JsonElement? Card = null,
+    string? Kind = null,
+    int? KindVersion = null,
+    string? Category = null,
+    int? Level = null);
 public sealed record PollSeatView(string Player, bool Active);
 public sealed record PollFinishedView(PollResult Result, IReadOnlyList<PollReleasedSlot> Slots, IReadOnlyList<PollSeatView> Seats);
 

@@ -315,6 +315,20 @@ public sealed class PollFormatTests
     }
 
     [Fact]
+    public void Completed_view_carries_each_released_slots_kind_and_card_so_option_text_can_be_read()
+    {
+        var format = new PollFormat();
+        var session = Harness(State(3, RosterItem(0)));
+        format.Start(session);
+        foreach (var player in new[] { "a", "b", "c" }) format.Apply(session, Answer(player, 0, "{\"none\":true}"));
+
+        var slot = Assert.IsType<PollFinishedView>(format.View(session)).Slots.Single();
+        Assert.Equal("poll_roster", slot.Kind);
+        Assert.Equal(1, slot.KindVersion);
+        Assert.Equal("Bea", slot.Card!.Value.GetProperty("options")[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
     public void Results_leave_not_applicable_out_of_pair_comparisons_and_round_deterministically()
     {
         var format = new PollFormat();
