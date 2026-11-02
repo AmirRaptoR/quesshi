@@ -96,7 +96,7 @@ public sealed class SessionHistoryReader(ITenantDb database)
 
             var items = await transaction.QueryAsync<ItemRow>("""
                 select slot as Slot, kind as Kind, kind_version::int as KindVersion, prompt as Prompt,
-                       card::text as Card, reveal::text as Reveal
+                       card::text as Card, reveal::text as Reveal, question_id as QuestionId
                 from session_items
                 where session_id = @sessionId and slot > @afterSlot
                 order by slot
@@ -115,7 +115,7 @@ public sealed class SessionHistoryReader(ITenantDb database)
             var bySlot = answers.ToLookup(answer => answer.Slot, answer => Parse(answer.Answer));
             return new SessionQuestionHistoryResult(SessionQuestionHistoryStatus.Found, new SessionQuestionHistoryPage(
                 page.Select(item => new SessionQuestionHistoryItem(
-                    item.Slot, item.Kind, item.KindVersion, item.Prompt, Parse(item.Card), Parse(item.Reveal), bySlot[item.Slot].ToArray())).ToArray(),
+                    item.Slot, item.Kind, item.KindVersion, item.Prompt, Parse(item.Card), Parse(item.Reveal), bySlot[item.Slot].ToArray(), item.QuestionId)).ToArray(),
                 items.Count > size ? page[^1].Slot : null));
         }, cancellationToken: cancellationToken, readOnly: true);
     }
@@ -145,6 +145,6 @@ public sealed class SessionHistoryReader(ITenantDb database)
     }
 
     private sealed record SessionRow(Guid Id, string Format, string Status, DateTime JoinedAt, int Score, int? Place, string? Outcome);
-    private sealed record ItemRow(int Slot, string Kind, int KindVersion, string Prompt, string Card, string Reveal);
+    private sealed record ItemRow(int Slot, string Kind, int KindVersion, string Prompt, string Card, string Reveal, Guid? QuestionId);
     private sealed record AnswerRow(int Slot, string Answer);
 }

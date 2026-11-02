@@ -30,6 +30,7 @@ public sealed class PollClientTests : BunitContext
         translator = new Translator(http);
         new WebPluginsEntry().RegisterFormats(registry);
         Services.AddSingleton(http);
+        Services.AddSingleton(new Quesshi.Web.Plugins.Features.Reports.ReportsApi(http));
         Services.AddSingleton(config);
         Services.AddSingleton(translator);
         Services.AddSingleton<IClientTranslator>(translator);

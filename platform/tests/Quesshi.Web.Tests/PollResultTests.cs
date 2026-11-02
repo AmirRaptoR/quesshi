@@ -25,6 +25,8 @@ public sealed class PollResultTests : BunitContext
         Services.AddSingleton<IClientViewer>(new ClientViewer(language, config, translator, new AuthState(new PlayerApi(http))));
         config.LoadAsync().GetAwaiter().GetResult();
         Services.AddSingleton(translator);
+        Services.AddSingleton(http);
+        Services.AddSingleton(new Quesshi.Web.Plugins.Features.Reports.ReportsApi(http));
         Services.AddSingleton<IClientTranslator>(translator);
     }
 

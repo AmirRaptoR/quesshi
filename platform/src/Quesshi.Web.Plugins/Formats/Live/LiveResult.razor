@@ -3,6 +3,7 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Web
 @using Quesshi.Shared
+@using Quesshi.Web.Plugins.Features.Reports
 @using Quesshi.Web.Services
 @inject ClientHttp Http
 @inject IClientTranslator L
@@ -16,6 +17,7 @@
     {
         <button type="button" class="btn" data-live-rematch disabled="@_busy" @onclick="RematchAsync">@L["live.rematch.button"]</button>
     }
+    <ReportableQuestions SessionId="@Parameters.Session.Id" />
     @if (_error)
     {
         <p role="alert" data-live-rematch-error>@L["live.rematch.failed"]</p>

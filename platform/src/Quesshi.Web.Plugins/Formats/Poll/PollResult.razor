@@ -3,6 +3,7 @@
 @using Quesshi.Kinds.PollChoice
 @using Quesshi.Kinds.PollRoster
 @using Quesshi.Shared
+@using Quesshi.Web.Plugins.Features.Reports
 @inject IClientTranslator L
 @inject IClientViewer Viewer
 
@@ -57,6 +58,7 @@
             <p class="muted" data-poll-overall>@string.Format(L["voting.results.allAgreed"], L.Num(agreed), L.Num(_view.Slots.Count))</p>
         }
     }
+    <ReportableQuestions SessionId="@Parameters.Session.Id" />
 </section>
 
 @code {

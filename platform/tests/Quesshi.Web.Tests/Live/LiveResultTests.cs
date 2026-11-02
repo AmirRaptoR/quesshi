@@ -33,6 +33,7 @@ public sealed class LiveResultTests : BunitContext
         state = new PlatformState(config);
         new WebPluginsEntry().RegisterFormats(registry);
         Services.AddSingleton(http);
+        Services.AddSingleton(new Quesshi.Web.Plugins.Features.Reports.ReportsApi(http));
         Services.AddSingleton(translator);
         Services.AddSingleton<IClientTranslator>(translator);
         Services.AddSingleton<IClientViewer>(new ClientViewer(language, config, translator, auth));

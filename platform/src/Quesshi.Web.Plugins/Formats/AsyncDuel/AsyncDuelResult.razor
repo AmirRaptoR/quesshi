@@ -3,6 +3,7 @@
 @using System.Text.Json
 @using Quesshi.Shared
 @using Quesshi.Web.Plugins.Formats.Live
+@using Quesshi.Web.Plugins.Features.Reports
 @using Quesshi.Web.Services
 @inject ClientHttp Http
 @inject IClientTranslator L
@@ -36,6 +37,10 @@
                 var card = LiveKinds.Card(item.Kind, item.KindVersion, item.Card);
                 <li @key="item.Slot" data-duel-question-result="@item.Slot">
                     <p data-field="prompt" dir="auto">@item.Prompt</p>
+                    @if (item.QuestionId is { } questionId)
+                    {
+                        <ReportQuestion QuestionId="questionId" />
+                    }
                     @if (card is null)
                     {
                         <p role="alert">@L["common.error"]</p>
