@@ -114,12 +114,19 @@ public sealed class PollFormat : IFormat
             .Where(seat => seat.Role == "player" && !seat.Eliminated && viewing.HasAnswered(seat.Player, position.Slot))
             .Select(seat => seat.Player)
             .ToArray();
+        var item = viewing.Items.SingleOrDefault(candidate => candidate.Slot == position.Slot);
         return new PollRunningView(
             viewing.Card(position.Slot),
             answer?.Value?.Clone(),
             answer?.Revision,
             answeredSeats,
-            viewing.Session.DueAt);
+            viewing.Session.DueAt,
+            item?.Kind,
+            item?.KindVersion,
+            item?.Category,
+            item?.Level,
+            position.Slot,
+            viewing.ItemCount);
     }
 
     public JsonElement UpgradeState(int from, JsonElement state) => Upgrade(from, state);
@@ -213,7 +220,13 @@ public sealed record PollRunningView(
     JsonElement? Answer,
     int? Revision,
     IReadOnlyList<string> AnsweredSeats,
-    DateTimeOffset? Deadline);
+    DateTimeOffset? Deadline,
+    string? Kind = null,
+    int? KindVersion = null,
+    string? Category = null,
+    int? Level = null,
+    int? Slot = null,
+    int? TotalSlots = null);
 
 public sealed record PollUnavailableView;
 public sealed record PollSubmittedAnswer(string Player, JsonElement? Value);

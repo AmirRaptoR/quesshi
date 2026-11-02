@@ -77,6 +77,31 @@ public sealed class SessionCommandsTests
         Assert.Equal(4, state.View.Slot);
     }
 
+    [Fact]
+    public async Task A_revision_conflict_refreshes_the_stored_view_and_reports_nothing_to_retry()
+    {
+        var (commands, handler, state) = Create(
+            Json(HttpStatusCode.BadRequest, """{"error":"revision_conflict"}"""),
+            Json(HttpStatusCode.OK, View(5, slot: 3, step: 4)));
+
+        var settled = await ((Quesshi.Web.Plugins.IFormatCommands)commands).SendAsync("answer", new { option = "b" }, 2);
+
+        Assert.True(settled);
+        Assert.Equal(["POST", "GET"], handler.Methods);
+        Assert.Equal($"/api/sessions/{Session}", handler.Commands[1].Path);
+        Assert.Equal(5, state.View!.Version);
+    }
+
+    [Fact]
+    public async Task A_revision_conflict_whose_refresh_fails_still_reports_failure()
+    {
+        var (commands, _, _) = Create(
+            Json(HttpStatusCode.BadRequest, """{"error":"revision_conflict"}"""),
+            Json(HttpStatusCode.InternalServerError, """{"error":"view_unavailable"}"""));
+
+        Assert.False(await ((Quesshi.Web.Plugins.IFormatCommands)commands).SendAsync("answer", new { option = "b" }, 2));
+    }
+
     private static (SessionCommands, Handler, PlatformState) Create(params HttpResponseMessage[] responses)
     {
         var handler = new Handler(responses);
@@ -96,13 +121,15 @@ public sealed class SessionCommandsTests
     {
         private readonly Queue<HttpResponseMessage> queue = new(responses);
         public List<Captured> Commands { get; } = [];
+        public List<string> Methods { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.PathAndQuery;
             if (path == "/api/antiforgery") return Json(HttpStatusCode.OK, """{"token":"t"}""");
+            Methods.Add(request.Method.Method);
             Commands.Add(new Captured(path, request.Headers.TryGetValues("X-Client-Build", out var b) ? b.Single() : null,
-                await request.Content!.ReadAsStringAsync(cancellationToken)));
+                request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken)));
             return queue.Dequeue();
         }
     }
