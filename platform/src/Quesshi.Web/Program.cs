@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Quesshi.Web;
 using Quesshi.Web.Services;
 using Quesshi.Web.Plugins;
+using Quesshi.Web.Plugins.Formats.AsyncDuel;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -26,6 +27,8 @@ builder.Services.AddScoped<Translator>();
 builder.Services.AddScoped<IClientViewer, ClientViewer>();
 builder.Services.AddScoped<IClientTranslator>(services => services.GetRequiredService<Translator>());
 builder.Services.AddScoped<IClientLanguage>(services => services.GetRequiredService<Translator>());
+builder.Services.AddScoped<IClientLanguageInfo, ClientLanguageInfo>();
+builder.Services.AddScoped<IAsyncDuelSettingsApi, AsyncDuelSettingsApi>();
 builder.Services.AddScoped<Sounds>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddScoped<IClientAssemblyLoader, LazyAssemblyClientLoader>();

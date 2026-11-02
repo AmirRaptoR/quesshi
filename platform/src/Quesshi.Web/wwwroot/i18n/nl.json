@@ -253,6 +253,8 @@
   "account.deleteBody": "Dit verwijdert je spelersprofiel voor deze tenant definitief.",
   "account.deletePrompt": "Typ DELETE om door te gaan",
   "account.deleteTitle": "Account verwijderen",
+  "asyncDuel.capacity": "Spelers",
+  "asyncDuel.saveFailed": "De instellingen konden niet worden opgeslagen.",
   "auth.addressTaken": "Dit e-mailadres hoort al bij een andere speler in deze tenant.",
   "auth.back": "Ander e-mailadres gebruiken",
   "auth.badCode": "Die code klopt niet of is verlopen.",

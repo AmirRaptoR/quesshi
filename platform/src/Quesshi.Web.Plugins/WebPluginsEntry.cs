@@ -1,6 +1,7 @@
 using Quesshi.Shared;
 using Quesshi.Web.Plugins.Features.Friends;
 using Quesshi.Web.Plugins.Formats.Live;
+using Quesshi.Web.Plugins.Formats.AsyncDuel;
 using ChoiceComponents = Quesshi.Web.Plugins.Choice;
 using OrderComponents = Quesshi.Web.Plugins.Order;
 using PollChoiceComponents = Quesshi.Web.Plugins.PollChoice;
@@ -24,6 +25,7 @@ public sealed class WebPluginsEntry : IKindClientAssemblyEntry
     public void RegisterFormats(IFormatClientRegistry registry)
     {
         registry.RegisterFormat(new LiveClient());
+        registry.RegisterFormat(new AsyncDuelClient());
     }
 
     /// <summary>Adds the feature contributions to the shell's client slots.</summary>

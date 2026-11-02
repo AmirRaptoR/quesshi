@@ -253,6 +253,8 @@
   "account.deleteBody": "این کار نمایهٔ بازیکن شما را از این میزبان برای همیشه حذف می‌کند.",
   "account.deletePrompt": "برای ادامه DELETE را بنویسید",
   "account.deleteTitle": "حذف حساب",
+  "asyncDuel.capacity": "ظرفیت بازیکنان",
+  "asyncDuel.saveFailed": "ذخیره تنظیمات ممکن نشد.",
   "auth.addressTaken": "این ایمیل پیش‌تر متعلق به بازیکن دیگری در این میزبان است.",
   "auth.back": "ایمیل دیگر",
   "auth.badCode": "کد درست نیست یا منقضی شده.",
