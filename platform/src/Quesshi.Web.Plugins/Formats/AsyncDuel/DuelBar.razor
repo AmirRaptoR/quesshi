@@ -1,0 +1,58 @@
+@* The duel bar: every score on one line. Plain flex + DOM order (see .duelbar in app.css) is already
+   direction-aware, so this needs no separate rtl rule.
+
+   A capacity-2 duel (Others.Count == 1) renders the two-column markup; beyond that, Others becomes a
+   horizontally-scrollable strip of the same side markup. *@
+@using Quesshi.Shared
+@inject IClientTranslator L
+
+@if (Mine is { } mine)
+{
+    <div class="duelbar" data-duelbar>
+        <div class="duelbar__side">
+            <span class="avatar" style="background:@Tint(mine.Name)">@Initial(mine.Name)</span>
+            <span class="duelbar__name" dir="auto">@mine.Name</span>
+            <span class="numeral duelbar__score duelbar__score--mine">@L.Num(mine.Score)</span>
+        </div>
+
+        @if (Others.Count == 1)
+        {
+            var theirs = Others[0];
+            <div class="duelbar__side duelbar__side--theirs">
+                <span class="numeral duelbar__score">@L.Num(theirs.Score)</span>
+                <span class="duelbar__name" dir="auto">@theirs.Name</span>
+                <span class="avatar" style="background:@Tint(theirs.Name)">@Initial(theirs.Name)</span>
+            </div>
+        }
+        else if (Others.Count > 1)
+        {
+            <div class="duelbar__others">
+                @foreach (var side in Others)
+                {
+                    <div class="duelbar__side duelbar__side--theirs" @key="side.PlayerId">
+                        <span class="numeral duelbar__score">@L.Num(side.Score)</span>
+                        <span class="duelbar__name" dir="auto">@side.Name</span>
+                        <span class="avatar" style="background:@Tint(side.Name)">@Initial(side.Name)</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SessionRosterSeat> Players { get; set; } = [];
+    [Parameter] public string MeId { get; set; } = "";
+
+    private DuelBarSide? Mine => DuelBarScores.Split(Players, MeId).Mine;
+    private List<DuelBarSide> Others => DuelBarScores.Split(Players, MeId).Others;
+
+    private static string Initial(string name) => name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+    private static string Tint(string seed)
+    {
+        var hash = 0;
+        foreach (var character in seed) hash = unchecked(hash * 31 + character);
+        return $"hsl({Math.Abs(hash % 360)} 55% 45%)";
+    }
+}

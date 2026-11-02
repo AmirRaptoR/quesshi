@@ -1,5 +1,148 @@
+@using Microsoft.AspNetCore.Components.Web
+@using System.Net.Http.Json
+@using System.Text.Json
 @using Quesshi.Shared
+@using Quesshi.Web.Plugins.Formats.Live
+@using Quesshi.Web.Services
+@inject ClientHttp Http
+@inject IClientTranslator L
+
+@{
+    var session = Parameters.Session;
+    var players = StandingsPresentation.Standings(session.Roster);
+}
+
+<section class="duel-result card stack" dir="@L.Direction" data-duel-result="@session.Id">
+    <h2>@L["result.standings"]</h2>
+    <DuelBar Players="players" MeId="@session.Me.Id" />
+    <StandingsList Rows="players" MeId="@session.Me.Id" />
+
+    @if (_view.You is { } you)
+    {
+        <div data-duel-shamseh="@(_view.Total > MaxRays ? "rings" : "rays")" style="max-width:16rem;margin-inline:auto">
+            <Shamseh Slots="_view.Total" Mine="you.Outcomes" Theirs="_view.Others.FirstOrDefault()?.Outcomes" Label="@L["result.standings"]" />
+        </div>
+    }
+
+    @if (_unavailable)
+    {
+        <p role="alert" data-duel-history-unavailable>@L["history.session.unavailable"]</p>
+    }
+    else
+    {
+        <ol class="stack" data-duel-questions>
+            @foreach (var item in _items)
+            {
+                var card = LiveKinds.Card(item.Kind, item.KindVersion, item.Card);
+                <li @key="item.Slot" data-duel-question-result="@item.Slot">
+                    <p data-field="prompt" dir="auto">@item.Prompt</p>
+                    @if (card is null)
+                    {
+                        <p role="alert">@L["common.error"]</p>
+                    }
+                    else
+                    {
+                        var reveal = LiveKinds.Reveal(item.Kind, item.Reveal);
+                        <div data-answers-of="@session.Me.Id">
+                            <span class="muted">@L["result.you"]</span>
+                            <KindReveal Card="card" Reveal="reveal" Answers="LiveKinds.Answers(item.Kind, Last(item.Answers))" />
+                        </div>
+                        @foreach (var other in _view.Others)
+                        {
+                            <div data-answers-of="@other.Player" @key="other.Player">
+                                <span class="muted" dir="auto">@NameOf(other.Player)</span>
+                                <KindReveal Card="card" Reveal="reveal" Answers="LiveKinds.Answers(item.Kind, other.Stored.ElementAtOrDefault(item.Slot))" />
+                            </div>
+                        }
+                    }
+                </li>
+            }
+        </ol>
+    }
+
+    @if (_failed)
+    {
+        <p role="alert" data-duel-history-error>@L["history.error"]</p>
+    }
+
+    @if (_next is not null)
+    {
+        <button type="button" class="btn" data-duel-more disabled="@_loading" @onclick="LoadAsync">@L["history.more"]</button>
+    }
+</section>
 
 @code {
+    private const int MaxRays = 20;
+    private const int PageSize = 10;
+
+    private readonly List<SessionQuestionHistoryItem> _items = [];
+    private AsyncDuelResultView _view = AsyncDuelResultView.Empty;
+    private SessionView? _current;
+    private string? _loadedId;
+    private int? _next;
+    private bool _loading;
+    private bool _failed;
+    private bool _unavailable;
+
     [Parameter, EditorRequired] public FormatScreenParameters Parameters { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var session = Parameters.Session;
+        if (!ReferenceEquals(session, _current))
+        {
+            _current = session;
+            _view = AsyncDuelResultView.From(session);
+        }
+
+        if (_loadedId == session.Id) return;
+        _loadedId = session.Id;
+        _items.Clear();
+        _next = null;
+        _failed = false;
+        _unavailable = false;
+        await LoadAsync();
+    }
+
+    private string NameOf(string player) =>
+        StandingsPresentation.Standings(Parameters.Session.Roster).FirstOrDefault(seat => seat.Id == player)?.Name ?? L["result.them"];
+
+    private static JsonElement? Last(IReadOnlyList<JsonElement> answers) => answers.Count == 0 ? null : answers[^1];
+
+    private async Task LoadAsync()
+    {
+        if (_loading) return;
+        _loading = true;
+        _failed = false;
+        var id = Parameters.Session.Id;
+        try
+        {
+            var path = $"/api/sessions/{Uri.EscapeDataString(id)}/history?limit={PageSize}" + (_next is { } after ? $"&after={after}" : "");
+            using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Get, path));
+            if (id != Parameters.Session.Id) return;
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Conflict)
+            {
+                _unavailable = true;
+                return;
+            }
+
+            var page = response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<SessionQuestionHistoryPage>() : null;
+            if (page is null)
+            {
+                _failed = true;
+                return;
+            }
+
+            _items.AddRange(page.Items);
+            _next = page.Next;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
+        {
+            _failed = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
 }
