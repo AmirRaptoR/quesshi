@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace Quesshi.Web.Plugins.Formats.AsyncDuel;
 
-/// <summary>The body of <c>PUT /api/sessions/{id}/settings</c> for an async duel: rules, content and capacity.</summary>
-public sealed record AsyncDuelSettingsRequest(JsonElement Rules, JsonElement Content, int Capacity)
+/// <summary>The body of <c>PUT /api/sessions/{id}/settings</c> for an async duel: rules, content and, only when the owner changed it, capacity.</summary>
+public sealed record AsyncDuelSettingsRequest(JsonElement Rules, JsonElement Content, int? Capacity)
 {
     /// <summary>Mirrors <c>MatchRules.MinParticipants</c> and <c>MaxParticipants</c>; the server enforces the tenant's own cap.</summary>
     public const int MinCapacity = 2;
@@ -14,7 +14,7 @@ public sealed record AsyncDuelSettingsRequest(JsonElement Rules, JsonElement Con
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public static AsyncDuelSettingsRequest From(DuelSettings settings, int capacity)
+    public static AsyncDuelSettingsRequest From(DuelSettings settings, int? capacity)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var content = new
@@ -26,7 +26,7 @@ public sealed record AsyncDuelSettingsRequest(JsonElement Rules, JsonElement Con
         return new(
             JsonSerializer.SerializeToElement(new { }, Json),
             JsonSerializer.SerializeToElement(content, Json),
-            Math.Clamp(capacity, MinCapacity, MaxCapacity));
+            capacity is { } seats ? Math.Clamp(seats, MinCapacity, MaxCapacity) : null);
     }
 }
 

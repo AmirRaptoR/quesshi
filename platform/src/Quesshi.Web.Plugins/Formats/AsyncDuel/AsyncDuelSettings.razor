@@ -21,7 +21,7 @@
 
     private DuelSettings settings = new(10, [], []);
     private IReadOnlyList<PickerCategory> categories = [];
-    private int capacity = AsyncDuelSettingsRequest.MinCapacity;
+    private int? capacity;
     private bool saving;
     private string? error;
 

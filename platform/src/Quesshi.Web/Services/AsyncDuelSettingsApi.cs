@@ -17,9 +17,12 @@ public sealed class AsyncDuelSettingsApi(PlayerApi api) : IAsyncDuelSettingsApi
 
     public async Task<string?> SaveAsync(string sessionId, AsyncDuelSettingsRequest request, CancellationToken cancellationToken = default)
     {
+        // A null capacity is left out so the server keeps the lobby's current seat count.
+        object body = request.Capacity is { } capacity
+            ? new { rules = request.Rules, content = request.Content, capacity }
+            : new { rules = request.Rules, content = request.Content };
         var response = await api.SendMutationAsync<object>(
-            HttpMethod.Put, $"/api/sessions/{Uri.EscapeDataString(sessionId)}/settings",
-            new { rules = request.Rules, content = request.Content, capacity = request.Capacity }, cancellationToken);
+            HttpMethod.Put, $"/api/sessions/{Uri.EscapeDataString(sessionId)}/settings", body, cancellationToken);
         return response.IsSuccess ? null : response.Error ?? "request_failed";
     }
 }

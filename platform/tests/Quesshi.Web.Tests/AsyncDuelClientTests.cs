@@ -81,8 +81,19 @@ public sealed class AsyncDuelClientTests : BunitContext
         Assert.Equal(count, plan.Count);
         Assert.Equal(["c1", "c2"], parameters.GetProperty("categories").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal([2, 3, 4], parameters.GetProperty("levels").EnumerateArray().Select(e => e.GetInt32()));
-        Assert.InRange(request.Capacity, format.Spec.MinPlayers, format.Spec.MaxPlayers);
+        Assert.InRange(request.Capacity!.Value, format.Spec.MinPlayers, format.Spec.MaxPlayers);
         Assert.Equal(6, request.Capacity);
+    }
+
+    [Fact]
+    public async Task Saving_without_touching_capacity_emits_no_capacity()
+    {
+        var cut = RenderSettings();
+        cut.Find("[data-count='20']").Click();
+        await cut.Find("[data-save-settings]").ClickAsync();
+
+        var (_, request) = Assert.Single(api.Saved);
+        Assert.Null(request.Capacity);
     }
 
     [Fact]

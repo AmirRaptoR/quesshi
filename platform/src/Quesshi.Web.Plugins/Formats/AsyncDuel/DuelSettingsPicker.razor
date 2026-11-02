@@ -61,7 +61,7 @@
     [Parameter, EditorRequired] public DuelSettings Settings { get; set; } = new(10, [], []);
     [Parameter] public EventCallback<DuelSettings> SettingsChanged { get; set; }
     [Parameter, EditorRequired] public IReadOnlyList<PickerCategory> Categories { get; set; } = [];
-    [Parameter] public int Capacity { get; set; } = AsyncDuelSettingsRequest.MinCapacity;
+    [Parameter] public int? Capacity { get; set; }
     [Parameter] public EventCallback<int> CapacityChanged { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
 
