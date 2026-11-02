@@ -23,7 +23,7 @@ internal sealed class QuestionAdminApi(ClientHttp http)
     public Task<QuestionApiResult<object>> DeleteAsync(Guid id, CancellationToken cancellationToken = default) => SendAsync<object>(HttpMethod.Delete, $"/api/admin/questions/{id}", null, cancellationToken);
     public Task<QuestionApiResult<object>> BulkApproveAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken = default) => SendAsync<object>(HttpMethod.Post, "/api/admin/questions/approve", new { ids }, cancellationToken);
 
-    private async Task<QuestionApiResult<T>> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    public async Task<QuestionApiResult<T>> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
     {
         try
         {

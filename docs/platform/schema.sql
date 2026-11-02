@@ -278,7 +278,7 @@ create table questions (
   fingerprint  text,                                     -- normalised prompt words
   media_id     uuid,
   status       text not null default 'pending' check (status in ('draft', 'pending', 'approved', 'rejected')),
-  source       text not null check (source in ('seed', 'import', 'ai', 'admin', 'player')),
+  source       text not null check (source in ('seed', 'import', 'ai', 'admin', 'player', 'pack')),
   owner_id     uuid,                                     -- player author; null means the tenant's bank
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),

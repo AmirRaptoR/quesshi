@@ -26,6 +26,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
               and (@status is null or status = @status)
               and (@source is null or source = @source)
               and (@includePlayerWritten or owner_id is null)
+              and (@includePackQuestions or source <> 'pack')
               and (@prompt is null or strpos(lower(prompt), lower(@prompt)) > 0)
             order by created_at, id
             """, FilterParameters(filter), cancellationToken);
@@ -122,6 +123,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
               and (@status is null or status = @status)
               and (@source is null or source = @source)
               and (@includePlayerWritten or owner_id is null)
+              and (@includePackQuestions or source <> 'pack')
               and (@prompt is null or strpos(lower(prompt), lower(@prompt)) > 0)
             group by lang, category_id, level, kind
             order by lang, category_id, level, kind
@@ -173,13 +175,13 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
 
         return new(Write: new NormalizedWrite(
             kind.Id, kind.Version, kind.Family, request.Language.Trim(), request.CategoryId, request.Level,
-            request.Prompt.Trim(), payload.Clone(), TrimOrNull(request.Explanation), TrimOrNull(request.Topic),
+            request.Prompt.Trim(), payload.Clone(), TrimOrNull(request.Explanation), request.Source == QuestionSource.Pack ? null : TrimOrNull(request.Topic),
             PromptFingerprint.Normalise(request.Prompt), request.Status, request.Source, request.OwnerId, request.MediaId));
     }
 
     private static async Task<bool> CollidesAsync(ITenantTx transaction, NormalizedWrite write, Guid? exceptId, CancellationToken cancellationToken)
     {
-        if (write.OwnerId.HasValue) return false;
+        if (write.OwnerId.HasValue || write.Source == QuestionSource.Pack) return false;
         var existing = await transaction.QueryAsync<string>("""
             select prompt from questions
             where owner_id is null and lang = @language
@@ -254,6 +256,7 @@ internal sealed class ContentService(IKindRegistry kinds) : IContent
         source = filter?.Source is { } source ? SourceValue(source) : null,
         prompt = TrimOrNull(filter?.Prompt),
         includePlayerWritten = filter is { IncludePlayerWritten: true } || filter?.Source == QuestionSource.Player,
+        includePackQuestions = filter is { IncludePackQuestions: true } || filter?.Source == QuestionSource.Pack,
     };
 
     private static QuestionEnvelope? ToEnvelope(PersistedQuestion? question) => question is null ? null : new(
