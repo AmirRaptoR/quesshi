@@ -7,4 +7,5 @@ public sealed class LiveClient : IFormatClient
     public Type Settings => typeof(LiveSettings);
     public Type Screen => typeof(LiveScreen);
     public Type Result => typeof(LiveResult);
+    public bool Matchmaking => true;
 }

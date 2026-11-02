@@ -9,15 +9,25 @@ public sealed record HomeSession(Guid Id, string Code, string Format);
 public sealed record HomeInvitation(Guid SessionId, Guid InvitedBy);
 
 /// <summary>What Home shows from the inbox: invitations, lobbies the player sits in and sessions waiting for their move.</summary>
-public sealed record HomeInbox(IReadOnlyList<HomeInvitation> Invitations, IReadOnlyList<HomeSession> Lobbies, IReadOnlyList<HomeSession> Turns)
+public sealed record HomeInbox(IReadOnlyList<HomeInvitation> Invitations, IReadOnlyList<HomeSession> Lobbies, IReadOnlyList<HomeSession> Turns, IReadOnlyList<string> Waiting)
 {
-    public static HomeInbox Empty { get; } = new([], [], []);
+    /// <summary>The inbox item type the matchmaking feature contributes while a player looks for an opponent.</summary>
+    public const string WaitingItemType = "matchmaking.waiting";
+
+    public static HomeInbox Empty { get; } = new([], [], [], []);
 
     public static HomeInbox From(JsonElement data) => new(
         Items(data, "invitations", item => Guid.TryParse(Text(item, "sessionId"), out var session) && Guid.TryParse(Text(item, "invitedBy"), out var by)
             ? new HomeInvitation(session, by) : null),
         Items(data, "lobbies", Session),
-        Items(data, "turns", Session));
+        Items(data, "turns", Session),
+        Items(data, "items", WaitingFormat).Select(format => format.Value).ToArray());
+
+    private static StringBox? WaitingFormat(JsonElement item) =>
+        Text(item, "type") == WaitingItemType && item.TryGetProperty("payload", out var payload) && Text(payload, "format") is { Length: > 0 } format
+            ? new StringBox(format) : null;
+
+    private sealed record StringBox(string Value);
 
     private static HomeSession? Session(JsonElement item) =>
         Guid.TryParse(Text(item, "id"), out var id) ? new HomeSession(id, Text(item, "code") ?? "", Text(item, "format") ?? "") : null;
@@ -100,6 +110,33 @@ public sealed class HomeSessions(PlayerApi api, PlatformState state, AppConfig c
         return HomeInbox.From(response.Value);
     }
 
+    /// <summary>Whether the tenant has the matchmaking feature on.</summary>
+    public bool MatchmakingEnabled =>
+        config.Current.Capabilities.TryGetValue("feature", out var features) && features.Contains("matchmaking", StringComparer.Ordinal);
+
+    /// <summary>Joins the format's matchmaking queue; returns null on success, else the server's stable error code.</summary>
+    public async Task<string?> JoinQueueAsync(string format, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await api.SendMutationAsync<JsonElement>(HttpMethod.Post, "/api/x/matchmaking",
+                new { format, settings = new { questionCount = DefaultCount } }, cancellationToken);
+            return response.IsSuccess ? null : response.Error ?? "request_failed";
+        }
+        catch (HttpRequestException) { return "network_error"; }
+    }
+
+    /// <summary>Leaves the format's matchmaking queue; returns null on success, else the server's stable error code.</summary>
+    public async Task<string?> LeaveQueueAsync(string format, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await api.SendMutationAsync<JsonElement>(HttpMethod.Delete, $"/api/x/matchmaking/{Uri.EscapeDataString(format)}", null, cancellationToken);
+            return response.IsSuccess ? null : response.Error ?? "request_failed";
+        }
+        catch (HttpRequestException) { return "network_error"; }
+    }
+
     public async Task<HomeOutcome> AcceptAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         try
@@ -119,4 +156,57 @@ public sealed class HomeSessions(PlayerApi api, PlatformState state, AppConfig c
         }
         catch (HttpRequestException) { return false; }
     }
+}
+
+/// <summary>
+/// Where a random-opponent search stands. It starts when the player asks for one (or the inbox already shows them waiting)
+/// and ends when they cancel or the inbox shows the pairing's session.
+/// </summary>
+public sealed class HomeSearch
+{
+    private HashSet<Guid> known = [];
+    private bool sawWaiting;
+
+    /// <summary>The format being searched for, or null when Home is in its normal state.</summary>
+    public string? Format { get; private set; }
+
+    public void Start(string format, HomeInbox inbox)
+    {
+        Format = format;
+        sawWaiting = false;
+        known = Sessions(inbox, format).Select(s => s.Id).ToHashSet();
+    }
+
+    public void Cancel() => Format = null;
+
+    /// <summary>Folds an inbox update in; returns the session to open once the search has been paired.</summary>
+    public Guid? Observe(HomeInbox inbox)
+    {
+        if (Format is null)
+        {
+            // A reload while queued: the inbox is the source of truth for the waiting state.
+            if (inbox.Waiting.FirstOrDefault() is { } waiting)
+            {
+                Start(waiting, inbox);
+                sawWaiting = true;
+            }
+
+            return null;
+        }
+
+        if (inbox.Waiting.Contains(Format, StringComparer.Ordinal))
+        {
+            sawWaiting = true;
+            return null;
+        }
+
+        var sessions = Sessions(inbox, Format);
+        var paired = sessions.FirstOrDefault(s => !known.Contains(s.Id)) ?? (sawWaiting ? sessions.FirstOrDefault() : null);
+        if (paired is null) return null;
+        Format = null;
+        return paired.Id;
+    }
+
+    private static IEnumerable<HomeSession> Sessions(HomeInbox inbox, string format) =>
+        inbox.Lobbies.Concat(inbox.Turns).Where(s => string.Equals(s.Format, format, StringComparison.Ordinal));
 }

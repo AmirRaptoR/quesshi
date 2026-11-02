@@ -149,10 +149,89 @@ public sealed class HomePageTests : BunitContext
         Assert.Equal("tile:async_duel", cut.Find("[data-test='home-tile']").TextContent);
     }
 
-    private IRenderedComponent<Home> RenderHome(string[]? enabled = null, string[]? registered = null, bool tile = false)
+    [Fact]
+    public void A_random_opponent_action_is_offered_only_for_formats_with_a_match_rule()
+    {
+        var cut = RenderHome(enabled: ["async_duel", "poll"], registered: ["async_duel", "poll"], matchmaking: true, matchRule: ["async_duel"]);
+
+        Assert.Equal(["async_duel"], cut.FindAll("[data-random]").Select(e => e.GetAttribute("data-random")));
+    }
+
+    [Fact]
+    public void With_the_matchmaking_capability_off_no_random_opponent_action_is_shown()
+    {
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], matchmaking: false, matchRule: ["async_duel"]);
+
+        Assert.Empty(cut.FindAll("[data-random]"));
+        Assert.Empty(cut.FindAll("[data-test='home-searching']"));
+    }
+
+    [Fact]
+    public void With_the_matchmaking_capability_off_a_waiting_inbox_item_shows_no_waiting_state()
+    {
+        server.WaitingFormat = "async_duel";
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], matchmaking: false, matchRule: ["async_duel"]);
+
+        Assert.Empty(cut.FindAll("[data-test='home-searching']"));
+    }
+
+    [Fact]
+    public async Task Choosing_the_random_opponent_action_posts_format_and_settings_and_shows_waiting()
+    {
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], matchmaking: true, matchRule: ["async_duel"]);
+
+        await cut.Find("[data-random='async_duel']").ClickAsync();
+
+        var posted = server.Queued.Single();
+        Assert.Equal("async_duel", posted.GetProperty("format").GetString());
+        Assert.Equal(JsonValueKind.Object, posted.GetProperty("settings").ValueKind);
+        Assert.NotNull(cut.Find("[data-test='home-searching']"));
+        Assert.Empty(cut.FindAll("[data-random]"));
+    }
+
+    [Fact]
+    public async Task Cancelling_the_waiting_state_deletes_the_queue_entry_and_restores_home()
+    {
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], matchmaking: true, matchRule: ["async_duel"]);
+        await cut.Find("[data-random='async_duel']").ClickAsync();
+
+        await cut.Find("[data-action='cancel-search']").ClickAsync();
+
+        Assert.Equal(["/api/x/matchmaking/async_duel"], server.Left);
+        Assert.Empty(cut.FindAll("[data-test='home-searching']"));
+        Assert.Single(cut.FindAll("[data-random='async_duel']"));
+        Assert.Equal("/", new Uri(Services.GetRequiredService<NavigationManager>().Uri).AbsolutePath);
+    }
+
+    [Fact]
+    public async Task An_inbox_session_created_by_pairing_opens_that_session()
+    {
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], matchmaking: true, matchRule: ["async_duel"]);
+        await cut.Find("[data-random='async_duel']").ClickAsync();
+        var paired = Guid.Parse("7f3c1d52-0000-4000-8000-000000000009");
+
+        var state = Services.GetRequiredService<PlatformState>();
+        var inbox = JsonDocument.Parse(
+            $$"""{"version":5,"invitations":[],"lobbies":[],"turns":[{"id":"{{paired}}","code":"PAIR","format":"async_duel"}],"items":[]}""").RootElement.Clone();
+        await cut.InvokeAsync(() => state.AcceptInbox(new InboxState(5, inbox)));
+
+        Assert.Equal($"/s/{paired}", new Uri(Services.GetRequiredService<NavigationManager>().Uri).AbsolutePath);
+    }
+
+    [Fact]
+    public void An_inbox_waiting_item_shows_the_waiting_state_on_load()
+    {
+        server.WaitingFormat = "async_duel";
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], matchmaking: true, matchRule: ["async_duel"]);
+
+        Assert.NotNull(cut.Find("[data-test='home-searching']"));
+    }
+
+    private IRenderedComponent<Home> RenderHome(string[]? enabled = null, string[]? registered = null, bool tile = false, bool matchmaking = false, string[]? matchRule = null)
     {
         enabled ??= [];
         server.Enabled = enabled;
+        server.MatchmakingOn = matchmaking;
         var http = new ClientHttp(new HttpClient(server) { BaseAddress = new Uri("https://tenant.example/") }, new NullReloader());
         var config = new AppConfig(http, JSInterop.JSRuntime);
         config.LoadAsync().GetAwaiter().GetResult();
@@ -167,7 +246,7 @@ public sealed class HomePageTests : BunitContext
         Services.AddSingleton(api);
         Services.AddSingleton(new PlatformState(config));
         var registry = new ClientRegistry(new NoLoader());
-        foreach (var id in registered ?? enabled) registry.RegisterFormat(new FakeFormat(id));
+        foreach (var id in registered ?? enabled) registry.RegisterFormat(new FakeFormat(id, matchRule?.Contains(id) == true));
         if (tile) registry.RegisterSlot(ClientSlots.HomeTile, typeof(TileContribution));
         Services.AddSingleton<IFormatClientRegistry>(registry);
         return Render<Home>();
@@ -185,8 +264,9 @@ public sealed class HomePageTests : BunitContext
 
     private sealed class Screen : ComponentBase { }
 
-    private sealed class FakeFormat(string id) : IFormatClient
+    private sealed class FakeFormat(string id, bool matchmaking = false) : IFormatClient
     {
+        public bool Matchmaking => matchmaking;
         public string Id => id;
         public Type Settings => typeof(Screen);
         public Type Screen => typeof(Home);
@@ -208,6 +288,10 @@ public sealed class HomePageTests : BunitContext
         public HttpStatusCode CreateStatus { get; set; } = HttpStatusCode.Created;
         public HttpStatusCode JoinStatus { get; set; } = HttpStatusCode.OK;
         public HttpStatusCode DeclineStatus { get; set; } = HttpStatusCode.OK;
+        public bool MatchmakingOn { get; set; }
+        public string? WaitingFormat { get; set; }
+        public List<JsonElement> Queued { get; } = [];
+        public List<string> Left { get; } = [];
         public bool JoinedAfterCode { get; set; }
         public string? JoinedCode { get; private set; }
         private bool joined;
@@ -219,23 +303,32 @@ public sealed class HomePageTests : BunitContext
             switch (path)
             {
                 case "/api/config":
-                    return Json($$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"}],"defaultLanguage":"en","capabilities":{"format":{{JsonSerializer.Serialize(Enabled)}},"source":["bank"]},"signInMethods":[],"configVersion":1,"serverBuildId":"test"}""");
+                    return Json($$"""{"name":"Tenant","languages":[{"code":"en","displayName":"English","direction":"ltr"}],"defaultLanguage":"en","capabilities":{"format":{{JsonSerializer.Serialize(Enabled)}},"source":["bank"],"feature":{{FeatureCapabilities()}}},"signInMethods":[],"configVersion":1,"serverBuildId":"test"}""");
                 case "/api/me":
                     return Json($$"""{"id":"{{PlayerId}}","displayName":"North player","avatarSeed":"avatar-7","lang":"en"}""");
                 case "/api/antiforgery":
                     return Json("""{"token":"csrf"}""");
                 case "/api/me/inbox":
                     var lobbies = joined ? $$"""[{"id":"{{Lobby}}","code":"ABCD","format":"async_duel"}]""" : "[]";
-                    return Json($$"""{"version":1,"invitations":[{"sessionId":"{{Invited}}","invitedBy":"{{Guid.NewGuid()}}","expiresAt":"2030-01-01T00:00:00Z"}],"lobbies":{{lobbies}},"turns":[{"id":"{{Waiting}}","code":"WXYZ","format":"async_duel"}],"items":[]}""");
+                    return Json($$"""{"version":1,"invitations":[{"sessionId":"{{Invited}}","invitedBy":"{{Guid.NewGuid()}}","expiresAt":"2030-01-01T00:00:00Z"}],"lobbies":{{lobbies}},"turns":[{"id":"{{Waiting}}","code":"WXYZ","format":"async_duel"}],"items":{{WaitingItems()}}}""");
                 case "/api/sessions":
                     if (CreateStatus != HttpStatusCode.Created) return Json("""{"error":"format_unavailable"}""", CreateStatus);
                     Created.Add(JsonDocument.Parse(body).RootElement.Clone());
                     return Json("""{"id":"00000000-0000-0000-0000-000000000000","code":"ABCD"}""", HttpStatusCode.Created);
+                case "/api/x/matchmaking":
+                    Queued.Add(JsonDocument.Parse(body).RootElement.Clone());
+                    return new HttpResponseMessage(HttpStatusCode.OK);
                 case "/api/sessions/join":
                     if (JoinStatus != HttpStatusCode.OK) return Json("""{"error":"not_found"}""", JoinStatus);
                     JoinedCode = JsonDocument.Parse(body).RootElement.GetProperty("code").GetString();
                     joined = JoinedAfterCode;
                     return Json("""{"code":"joined","version":2}""");
+            }
+
+            if (path.StartsWith("/api/x/matchmaking/", StringComparison.Ordinal) && request.Method == HttpMethod.Delete)
+            {
+                Left.Add(path);
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 
             if (path.EndsWith("/invites/accept", StringComparison.Ordinal))
@@ -252,6 +345,12 @@ public sealed class HomePageTests : BunitContext
 
             return path.StartsWith("/i18n/", StringComparison.Ordinal) ? Json("{}") : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
         }
+
+        private string FeatureCapabilities() => MatchmakingOn ? "[\"matchmaking\"]" : "[]";
+
+        private string WaitingItems() => WaitingFormat is null
+            ? "[]"
+            : $$$"""[{"type":"matchmaking.waiting","payload":{"format":"{{{WaitingFormat}}}","enqueuedAt":"2030-01-01T00:00:00Z"}}]""";
 
         private static HttpResponseMessage Json(string json, HttpStatusCode status = HttpStatusCode.OK) =>
             new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };

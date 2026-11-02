@@ -35,6 +35,25 @@
             }
         </div>
     }
+    @if (search.Format is { } searching)
+    {
+        <div class="row" data-test="home-searching" role="status">
+            <span>@Translator["home.searching"]</span>
+            <button class="btn btn--ghost" type="button" data-action="cancel-search" disabled="@busy" @onclick="CancelSearchAsync">@Translator["home.cancelSearch"]</button>
+        </div>
+    }
+    else if (randomFormats.Count > 0)
+    {
+        <div class="row" data-test="home-random">
+            @foreach (var format in randomFormats)
+            {
+                var id = format;
+                <button class="btn" type="button" data-random="@id" disabled="@busy" @onclick="() => SearchAsync(id)">
+                    @Translator["home.randomOpponent"] · @Translator.Or($"format.{id}", id)
+                </button>
+            }
+        </div>
+    }
     <form class="row" @onsubmit="JoinAsync" @onsubmit:preventDefault="true" aria-label="@Translator["home.join"]">
         <input class="input" name="code" maxlength="64" autocomplete="off" aria-label="@Translator["home.join"]"
                placeholder="@Translator["home.joinPlaceholder"]" @bind="code" @bind:event="oninput" />
@@ -78,6 +97,8 @@
 @code {
     private HomeSessions sessions = default!;
     private IReadOnlyList<string> formats = [];
+    private IReadOnlyList<string> randomFormats = [];
+    private readonly HomeSearch search = new();
     private HomeInbox inbox = HomeInbox.Empty;
     private string code = "";
     private string? error;
@@ -88,9 +109,47 @@
     {
         sessions = new HomeSessions(Api, State, Config);
         formats = sessions.EnabledFormats(id => Registry.ResolveFormat(id) is not null);
+        randomFormats = sessions.MatchmakingEnabled ? formats.Where(id => Registry.ResolveFormat(id)?.Matchmaking == true).ToArray() : [];
         State.InboxChanged += OnInboxChanged;
         if (State.Inbox is { } known) inbox = HomeInbox.From(known.Data);
         inbox = await sessions.LoadInboxAsync();
+        Observe();
+    }
+
+    private void Observe()
+    {
+        if (!sessions.MatchmakingEnabled) return;
+        if (search.Observe(inbox) is { } id) Open(id);
+    }
+
+    private async Task SearchAsync(string format)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try
+        {
+            search.Start(format, inbox);
+            if (await sessions.JoinQueueAsync(format) is not null)
+            {
+                search.Cancel();
+                error = Translator["home.matchmakingFailed"];
+            }
+        }
+        finally { busy = false; }
+    }
+
+    private async Task CancelSearchAsync()
+    {
+        if (busy || search.Format is not { } format) return;
+        busy = true;
+        error = null;
+        try
+        {
+            if (await sessions.LeaveQueueAsync(format) is null) search.Cancel();
+            else error = Translator["home.matchmakingFailed"];
+        }
+        finally { busy = false; }
     }
 
     private void OpenProfile() => Navigation.NavigateTo("/profile");
@@ -138,6 +197,7 @@
         _ = InvokeAsync(() =>
         {
             inbox = HomeInbox.From(state.Data);
+            Observe();
             StateHasChanged();
         });
     }
