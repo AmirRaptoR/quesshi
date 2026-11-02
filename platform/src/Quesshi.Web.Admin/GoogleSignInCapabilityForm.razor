@@ -1,0 +1,14 @@
+@inherits CapabilityFormBase
+@inject IClientTranslator Text
+
+<CapabilityFormFrame Type="@Row.Type" Key="@Row.Key" Entitled="@Row.Entitled" @bind-Enabled="Enabled" Messages="Messages" Saved="Saved" OnSubmit="SubmitAsync">
+    <label>@Text[CapabilitiesAdminText.GoogleClientId] <input id="capability-google-client-id" type="text" value="@clientId" @onchange="change => clientId = change.Value?.ToString() ?? string.Empty" /></label>
+</CapabilityFormFrame>
+
+@code {
+    private string clientId = string.Empty;
+
+    protected override void Load(System.Text.Json.JsonElement settings) => clientId = ReadString(settings, "clientId") ?? string.Empty;
+
+    protected override object BuildSettings() => new { clientId };
+}

@@ -192,7 +192,7 @@ public sealed class AdminApi(ClientHttp client)
             catch (System.Text.Json.JsonException) { }
         }
         var code = error?.Code ?? error?.Error;
-        return new(false, default, LocalizedError(code, response.StatusCode), new AdminFailure(response.StatusCode, code));
+        return new(false, default, LocalizedError(code, response.StatusCode), new AdminFailure(response.StatusCode, code, error?.Messages));
     }
 
     private static string LocalizedError(string? error, HttpStatusCode statusCode) => error switch
@@ -206,7 +206,7 @@ public sealed class AdminApi(ClientHttp client)
     };
 
     private sealed record AntiforgeryToken(string? Token);
-    private sealed record ErrorResponse(string? Code, string? Error);
+    private sealed record ErrorResponse(string? Code, string? Error, IReadOnlyList<string>? Messages = null);
     private sealed record LoginRequest(string Username, string Password);
     private sealed record ForgotRequest(string UsernameOrEmail);
     private sealed record ResetRequest(string Token, string NewPassword);
@@ -216,7 +216,7 @@ public sealed class AdminApi(ClientHttp client)
 
 internal sealed record TenantCapabilities(IReadOnlyDictionary<string, string[]>? Capabilities);
 public sealed record AdminResult<T>(bool Success, T? Value, string? Error, AdminFailure? Failure = null);
-public sealed record AdminFailure(HttpStatusCode StatusCode, string? Code);
+public sealed record AdminFailure(HttpStatusCode StatusCode, string? Code, IReadOnlyList<string>? Messages = null);
 public sealed record LoginResult(bool MustChangePassword);
 public sealed record AdminSession(Guid Id, string? Role, bool IsPlatform, bool MustChangePassword)
 {

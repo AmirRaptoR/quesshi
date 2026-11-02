@@ -213,3 +213,25 @@ test('two players play a ten-question duel at different times and both reach the
     await host.close();
   }
 });
+
+test('a running session in a format the tenant has since turned off stays playable', { skip: !runsPublishedClient }, async () => {
+  const shared = duel();
+  const disabled = tenant('ada', shared);
+  disabled.config.capabilities = { format: [], source: ['bank'] };
+  const host = await startPublishedPlatformHost({ directory: publishedDirectory, tenants: { 'ada.localhost': disabled } });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  page.pick = players.ada.pick;
+  const assertClean = capturePageErrors(page);
+  try {
+    await page.goto(host.tenantUrl('ada.localhost', `/s/${sessionId}`));
+    await page.locator('[data-duel-start]').click();
+    await page.locator(`[data-duel-slot]:has-text("1 / ${total}")`).waitFor();
+    await page.locator(`[data-duel-question] [data-choice='${page.pick}']`).click();
+    await page.locator('[data-duel-reveal]').waitFor();
+    assertClean();
+  } finally {
+    await context.close();
+    await host.close();
+  }
+});

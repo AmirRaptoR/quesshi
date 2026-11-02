@@ -220,6 +220,17 @@ public sealed class CapabilityEndpointTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Owner_saves_a_valid_sessions_capacity_that_the_list_returns()
+    {
+        using var update = await UpdateAsync(Host.Owner, "switch", "sessions", new { enabled = true, settings = new { capacity = 35 } });
+        using var response = await Host.Owner.GetAsync("/api/admin/capabilities");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var sessions = document.RootElement.EnumerateArray().Single(row => row.GetProperty("key").GetString() == "sessions");
+
+        Assert.Equal((HttpStatusCode.NoContent, 35), (update.StatusCode, sessions.GetProperty("settings").GetProperty("capacity").GetInt32()));
+    }
+
+    [SkippableFact]
     public async Task Capability_update_role_matrix_admits_owner_and_denies_moderator()
     {
         await RoleMatrix.ForOwnerOnlyNoContentMutation(Host).AssertAsync(client =>

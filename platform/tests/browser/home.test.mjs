@@ -129,3 +129,33 @@ test('declining an invitation removes its card without seating the player', { sk
     assert.equal(new URL(page.url()).pathname, '/');
   });
 });
+
+test('turning a format off removes it from an already-open Home within the config reconcile window', { skip: !runsPublishedClient }, async () => {
+  const tenant = homeTenant();
+  tenant.config.capabilities = { format: ['async_duel'], source: ['bank'] };
+  const open = new Set();
+  const stream = tenant.handlers['/api/stream'];
+  tenant.handlers['/api/stream'] = (request, response) => {
+    stream(request, response);
+    open.add(response);
+    response.on('close', () => open.delete(response));
+  };
+  const host = await startPublishedPlatformHost({ directory: publishedDirectory, tenants: { 'home.localhost': tenant } });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const assertNoPageErrors = capturePageErrors(page);
+  try {
+    await page.goto(host.tenantUrl('home.localhost'));
+    await page.locator('[data-format="async_duel"]').waitFor();
+
+    tenant.config.capabilities = { format: [], source: ['bank'] };
+    tenant.config.configVersion = 2;
+    for (const response of open) response.write('event: config\ndata: {"version":2}\n\n');
+
+    await page.locator('[data-format="async_duel"]').waitFor({ state: 'detached', timeout: 10000 });
+    assertNoPageErrors();
+  } finally {
+    await context.close();
+    await host.close();
+  }
+});
