@@ -57,7 +57,8 @@ public sealed record QuestionFilter(
     int? Level = null,
     QuestionStatus? Status = null,
     QuestionSource? Source = null,
-    string? Prompt = null);
+    string? Prompt = null,
+    bool IncludePlayerWritten = false);
 
 public sealed record QuestionBucketCount(string Language, Guid? CategoryId, int? Level, string Kind, int Approved, int Pending);
 

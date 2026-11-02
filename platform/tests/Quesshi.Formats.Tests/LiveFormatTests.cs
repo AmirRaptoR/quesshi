@@ -57,6 +57,27 @@ public sealed class LiveFormatTests
     }
 
     [Fact]
+    public void The_view_names_the_kind_the_viewers_own_answer_and_who_answered_the_revealed_slot()
+    {
+        var clock = new TestClock(Created);
+        var session = Harness(["a", "b"], 1, clock);
+        var format = Start(format: new LiveFormat(), session);
+        AdvanceToQuestion(format, session, clock);
+
+        var question = Assert.IsType<LiveView>(format.View(session));
+        Assert.NotNull(question.Kind);
+        Assert.NotNull(question.KindVersion);
+        Assert.Null(question.Current);
+
+        format.Apply(session, Answer("a", 0, clock.Now));
+        format.Apply(session, Answer("b", 0, clock.Now));
+        var reveal = Assert.IsType<LiveView>(format.View(session));
+
+        Assert.NotNull(reveal.Mine);
+        Assert.Equal(["a", "b"], reveal.Current!.Responded.Order());
+    }
+
+    [Fact]
     public void A_missing_answer_closes_at_question_deadline_plus_grace_and_reveal_ends_on_schedule()
     {
         var clock = new TestClock(Created);

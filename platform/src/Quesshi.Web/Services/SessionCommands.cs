@@ -15,7 +15,7 @@ public sealed record SessionCommandOutcome(bool Succeeded, string? ErrorCode, Se
 /// accepted view, its response goes through <see cref="PlatformState.AcceptView"/>, and a retryable
 /// server error is retried exactly once.
 /// </summary>
-public sealed class SessionCommands(PlayerApi api, PlatformState state)
+public sealed class SessionCommands(PlayerApi api, PlatformState state) : Quesshi.Web.Plugins.IFormatCommands
 {
     private static readonly HashSet<string> RetryableCodes = new(StringComparer.Ordinal)
     {
@@ -49,6 +49,9 @@ public sealed class SessionCommands(PlayerApi api, PlatformState state)
         if (accepted is null) return SessionCommandOutcome.Failure("malformed_response");
         return new SessionCommandOutcome(true, null, accepted, state.AcceptView(accepted));
     }
+
+    async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, CancellationToken cancellationToken) =>
+        (await SendAsync(type, payload, cancellationToken: cancellationToken)).Succeeded;
 
     private static bool IsRetryable(ApiResponse<JsonElement> response) =>
         response.Error is { } code && RetryableCodes.Contains(code);

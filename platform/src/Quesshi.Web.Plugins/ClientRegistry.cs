@@ -7,6 +7,12 @@ namespace Quesshi.Web.Plugins;
 public interface IClientTranslator
 {
     string this[string key] { get; }
+
+    /// <summary>Digits in the active language's numerals.</summary>
+    string Num(object? value) => value?.ToString() ?? string.Empty;
+
+    /// <summary>The active language's text direction, <c>ltr</c> or <c>rtl</c>.</summary>
+    string Direction => "ltr";
 }
 
 /// <summary>The tenant language the shell currently renders in.</summary>
