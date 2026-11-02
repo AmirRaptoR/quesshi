@@ -9,16 +9,22 @@ public sealed class PostgresFixture : IAsyncLifetime
     public const string RolePassword = "quesshi-test-role-password";
     private const long BootstrapLockKey = 869_327_625_914_302_761;
 
+    private const string DatabasePrefix = "quesshi_test_";
+
+    public static readonly TimeSpan DefaultSweepThreshold = TimeSpan.FromHours(6);
+
     private readonly string? _adminConnectionString;
+    private readonly TimeSpan _sweepThreshold;
 
     public PostgresFixture()
         : this(Environment.GetEnvironmentVariable(AdminConnectionStringEnvironmentVariable), IsCi())
     {
     }
 
-    internal PostgresFixture(string? adminConnectionString, bool isCi)
+    internal PostgresFixture(string? adminConnectionString, bool isCi, TimeSpan? sweepThreshold = null)
     {
         _adminConnectionString = adminConnectionString;
+        _sweepThreshold = sweepThreshold ?? DefaultSweepThreshold;
         IsConfigured(adminConnectionString, isCi);
     }
 
@@ -44,7 +50,8 @@ public sealed class PostgresFixture : IAsyncLifetime
             return;
         }
 
-        DatabaseName = $"quesshi_test_{Guid.NewGuid():N}";
+        await SweepStaleDatabasesAsync();
+        DatabaseName = $"{DatabasePrefix}{Guid.NewGuid():N}";
         try
         {
             await using var connection = new NpgsqlConnection(_adminConnectionString);
@@ -100,6 +107,50 @@ public sealed class PostgresFixture : IAsyncLifetime
         if (string.IsNullOrWhiteSpace(_adminConnectionString) || string.IsNullOrWhiteSpace(databaseName)) return;
 
         await DropDatabaseAsync(databaseName);
+    }
+
+    // A killed test process never disposes its database, so each start drops leftovers older than the
+    // threshold. PostgreSQL records no creation time; PG_VERSION is written once when the database is
+    // created and never touched again, so its file time is the creation time. The drop is deliberately
+    // plain (no FORCE, no backend termination): a database another process still uses refuses the drop
+    // and is left alone.
+    private async Task SweepStaleDatabasesAsync()
+    {
+        try
+        {
+            await using var connection = new NpgsqlConnection(_adminConnectionString);
+            await connection.OpenAsync();
+            var stale = new List<string>();
+            await using (var list = new NpgsqlCommand(
+                """
+                SELECT datname FROM pg_database
+                WHERE starts_with(datname, @prefix)
+                  AND (pg_stat_file('base/' || oid || '/PG_VERSION', true)).modification < now() - make_interval(secs => @seconds)
+                """, connection))
+            {
+                list.Parameters.AddWithValue("prefix", DatabasePrefix);
+                list.Parameters.AddWithValue("seconds", _sweepThreshold.TotalSeconds);
+                await using var reader = await list.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) stale.Add(reader.GetString(0));
+            }
+
+            foreach (var name in stale)
+            {
+                try
+                {
+                    await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {QuoteIdentifier(name)}", connection);
+                    await drop.ExecuteNonQueryAsync();
+                }
+                catch
+                {
+                    // In use or already gone: leave it for a later start.
+                }
+            }
+        }
+        catch
+        {
+            // The sweep is best effort and must never fail fixture initialization.
+        }
     }
 
     private async Task DropDatabaseAsync(string? databaseName)

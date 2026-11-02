@@ -58,7 +58,8 @@ public sealed record QuestionFilter(
     QuestionStatus? Status = null,
     QuestionSource? Source = null,
     string? Prompt = null,
-    bool IncludePlayerWritten = false);
+    bool IncludePlayerWritten = false,
+    bool IncludePackQuestions = false);
 
 public sealed record QuestionBucketCount(string Language, Guid? CategoryId, int? Level, string Kind, int Approved, int Pending);
 
@@ -96,4 +97,6 @@ public enum QuestionSource
     Ai,
     Admin,
     Player,
+    /// <summary>Written for a tenant-owned pack; never part of the bank list or bank draws.</summary>
+    Pack,
 }

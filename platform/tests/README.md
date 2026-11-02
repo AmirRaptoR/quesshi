@@ -24,6 +24,13 @@ can run independently without sharing state. The `PostgreSQL` collection is a
 legacy collection fixture; do not add new tests to it just to obtain a
 database.
 
+A killed test process never disposes its database, so on a shared server
+leftovers pile up. When `PostgresFixture` starts it therefore drops
+`quesshi_test_*` databases created more than 6 hours ago, using a plain
+`DROP DATABASE` (no `WITH (FORCE)`): a database another process still uses is
+left alone, and any drop failure is ignored. `LiveBenchmarkRunner` does the
+same for `quesshi_bench_*` when it creates its benchmark database.
+
 Migrate the temporary database, then call the production service or repository
 and assert its observed result. Do not prove a database behavior by issuing a
 second, hand-written query that duplicates the production SQL.

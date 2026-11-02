@@ -1,0 +1,23 @@
+@using Microsoft.AspNetCore.Components
+@using Quesshi.Kinds.Flashcard
+
+@if (RevealValue is { } reveal)
+{
+    <section data-kind="flashcard" data-version="1" class="answer-reveal">
+        <p data-flashcard-back dir="auto">@reveal.Back</p>
+        <ul>
+            @foreach (var answer in StoredAnswers)
+            {
+                <li data-rating="@answer.Rating">@answer.Rating</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public object? Reveal { get; set; }
+    [Parameter, EditorRequired] public object? Answers { get; set; }
+    private Quesshi.Kinds.Flashcard.FlashcardReveal? RevealValue => Reveal as Quesshi.Kinds.Flashcard.FlashcardReveal;
+    private IEnumerable<FlashcardStored> StoredAnswers => Answers as IEnumerable<FlashcardStored> ?? [];
+}

@@ -1,0 +1,87 @@
+@*
+    The signed-out front door as static HTML: the content and look of the client's Landing.razor,
+    readable with no WebAssembly and no JavaScript. The "I have a code" toggle and the language
+    picker need script, so they stay with the app; everything else is plain links.
+*@
+<!DOCTYPE html>
+<html lang="@Page.Language" dir="@Page.Direction" translate="no" class="notranslate">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <base href="/" />
+    <title>@Page.AppName — @Page["app.tagline"]</title>
+    <meta name="description" content="@Lede" />
+    <meta name="google" content="notranslate" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="/theme.css" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+</head>
+<body>
+<div class="shell" style="--shell:46rem">
+
+    <section class="hero enter">
+        <div class="hero__mark">
+            <Rosette Mine="Mine" Theirs="Theirs" Label="@Page.AppName" />
+        </div>
+        <h1>@Page.AppName</h1>
+        <p class="hero__lede">@Lede</p>
+
+        <div class="hero__cta">
+            <a class="btn" href="/signin?next=/play">@Page["landing.cta"]</a>
+        </div>
+        <p class="faint" style="margin-top:.7rem;font-size:var(--step--1)">@Page["landing.ctaHint"]</p>
+    </section>
+
+    <section class="section enter">
+        <h2>@Page["landing.how"]</h2>
+        <div class="card card--taq">
+            <div class="steps">
+                @foreach (var step in Steps)
+                {
+                    <div class="step">
+                        <div>
+                            <h3>@Page[$"landing.{step}.title"]</h3>
+                            <p class="muted" style="margin:.2rem 0 0">@Page[$"landing.{step}.body"]</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="section enter">
+        <h2>@Page["landing.why"]</h2>
+        <div class="grid-3" style="margin-top:.8rem">
+            @foreach (var feature in Features)
+            {
+                <div class="card card--flat">
+                    <h3 style="font-size:var(--step-0)">@Page[$"landing.{feature}.title"]</h3>
+                    <p class="muted" style="margin:.3rem 0 0;font-size:var(--step--1)">@Page[$"landing.{feature}.body"]</p>
+                </div>
+            }
+        </div>
+    </section>
+
+    <footer class="landing__foot enter">
+        <a class="btn btn--block" href="/signin?next=/play">@Page["landing.cta"]</a>
+        <div class="row" style="justify-content:center;margin-top:1rem">
+            <a class="btn btn--ghost btn--sm" href="/signin?next=/play">@Page["auth.title"]</a>
+        </div>
+        <p class="faint" style="margin-top:1.2rem;font-size:var(--step--1)">@Page["landing.foot"]</p>
+    </footer>
+</div>
+</body>
+</html>
+
+@code {
+    // A duel caught mid-play: four of mine answered, two of theirs. The mark says what the game is.
+    private static readonly IReadOnlyList<bool?> Mine = [true, true, false, true, null, null];
+    private static readonly IReadOnlyList<bool?> Theirs = [true, false, null, null, null, null];
+    private static readonly string[] Steps = ["step1", "step2", "step3"];
+    private static readonly string[] Features = ["async", "bilingual", "speed", "guest"];
+
+    [Parameter, EditorRequired] public StaticPageModel Page { get; set; } = null!;
+
+    private string Lede => Page.LandingText ?? Page["landing.lede"];
+}

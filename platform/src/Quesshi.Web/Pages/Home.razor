@@ -1,4 +1,5 @@
 @page "/"
+@using Microsoft.AspNetCore.Components.Web
 @using Quesshi.Shared
 @using Quesshi.Web.Plugins
 @using Quesshi.Web.Services
@@ -9,12 +10,17 @@
 @inject PlayerApi Api
 @inject PlatformState State
 @inject AppConfig Config
+@inject PackAvailability Packs
 @inject IFormatClientRegistry Registry
 
 <section class="card stack" aria-labelledby="home-title">
     <h1 id="home-title">@Translator["home.title"]</h1>
     <p class="muted">@Auth.Player?.DisplayName</p>
     <button class="btn" type="button" @onclick="OpenProfile">@Translator["nav.profile"]</button>
+    @if (Packs.Available)
+    {
+        <a class="btn btn--ghost" href="/packs" data-test="my-packs-link">@Translator["packs.title"]</a>
+    }
 </section>
 
 <section class="card stack" aria-labelledby="home-new" data-test="home-new">
@@ -26,13 +32,21 @@
     else
     {
         <div class="row">
-            @foreach (var format in formats)
+            @foreach (var format in formats.Where(id => !StartsFromSettings(id)))
             {
                 var id = format;
                 <button class="btn" type="button" data-format="@id" disabled="@busy" @onclick="() => CreateAsync(id)">
                     @Translator.Or($"format.{id}", id)
                 </button>
             }
+        </div>
+    }
+    @foreach (var format in formats.Where(StartsFromSettings))
+    {
+        var id = format;
+        <div class="stack" data-study="@id">
+            <h3>@Translator.Or($"format.{id}", id)</h3>
+            <DynamicComponent Type="Registry.ResolveFormat(id)!.Settings" Parameters="@StudyParameters" />
         </div>
     }
     @if (search.Format is { } searching)
@@ -115,6 +129,17 @@
         inbox = await sessions.LoadInboxAsync();
         Observe();
     }
+
+    private bool StartsFromSettings(string id) => Registry.ResolveFormat(id)?.StartsFromSettings == true;
+
+    /// <summary>A format without a lobby starts from its settings component, which creates the session itself, so there is no session view yet.</summary>
+    private IDictionary<string, object> StudyParameters => new Dictionary<string, object>
+    {
+        [ClientSlotComponent.ParameterName] = new FormatSettingsParameters(
+            new SessionView("", "", "", "", "", 0, 0, 0, 0, default, null, new MySeat("", 0, "player", "", 0, null, null),
+                new CompleteRosterView([]), default, default, default),
+            true),
+    };
 
     private void Observe()
     {

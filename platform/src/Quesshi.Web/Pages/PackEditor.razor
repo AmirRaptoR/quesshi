@@ -1,0 +1,160 @@
+@page "/packs/{Id:guid}"
+@using Quesshi.Web.Plugins
+@using Quesshi.Web.Services
+@inject PackAvailability Access
+@inject PackApi Api
+@inject Translator Translator
+
+<section class="card stack" aria-labelledby="pack-editor-title" data-test="pack-editor">
+    @if (!Access.Available)
+    {
+        <h1 id="pack-editor-title">@Translator["packs.title"]</h1>
+        <p class="muted" data-test="packs-unavailable">@Translator["packs.unavailable"]</p>
+    }
+    else if (failed)
+    {
+        <h1 id="pack-editor-title">@Translator["packs.title"]</h1>
+        <p role="alert" data-test="packs-load-error">@Translator["packs.loadFailed"]</p>
+    }
+    else if (pack is not null)
+    {
+        <a href="/packs" data-test="packs-back">@Translator["packs.title"]</a>
+        <h1 id="pack-editor-title" data-test="pack-title">@pack.Title</h1>
+        <label>@Translator["packs.visibility"]
+            <select class="input" data-test="pack-visibility" value="@pack.Visibility" disabled="@busy" @onchange="ChangeVisibilityAsync">
+                @foreach (var visibility in Visibilities)
+                {
+                    <option value="@visibility">@Translator["packs.visibility." + visibility]</option>
+                }
+            </select>
+        </label>
+        @if (error is not null)
+        {
+            <p role="alert" class="notice notice--bad" data-test="packs-error">@error</p>
+        }
+        <ol class="stack" data-test="question-list">
+            @foreach (var (card, index) in cards.Select((card, index) => (card, index)))
+            {
+                <li class="card stack" @key="card.Key" data-question="@(card.Id?.ToString() ?? "new")" data-position="@index">
+                    <label>@Translator["packs.prompt"]
+                        <input class="input" data-field="prompt" value="@card.Prompt" @oninput="e => card.Prompt = e.Value?.ToString() ?? string.Empty" />
+                    </label>
+                    <KindEditor Kind="@card.Kind" Payload="@card.Payload" PayloadChanged="value => card.Payload = value ?? card.Payload" Lang="@pack.Language" />
+                    <div class="row">
+                        <button class="btn" type="button" data-action="save" disabled="@busy" @onclick="() => SaveAsync(card)">@Translator["packs.saveQuestion"]</button>
+                        @if (card.Id is not null)
+                        {
+                            <button class="btn btn--ghost" type="button" data-action="up" disabled="@(busy || index == 0 || cards[index - 1].Id is null)" @onclick="() => MoveAsync(index, -1)">@Translator["packs.moveUp"]</button>
+                            <button class="btn btn--ghost" type="button" data-action="down" disabled="@(busy || index == cards.Count - 1 || cards[index + 1].Id is null)" @onclick="() => MoveAsync(index, 1)">@Translator["packs.moveDown"]</button>
+                        }
+                        <button class="btn btn--ghost" type="button" data-action="remove" disabled="@busy" @onclick="() => RemoveAsync(card)">@Translator["packs.removeQuestion"]</button>
+                    </div>
+                </li>
+            }
+        </ol>
+        <div class="row" data-test="question-add">
+            @foreach (var kind in PackPayloads.Kinds)
+            {
+                var chosen = kind;
+                <button class="btn" type="button" data-add-kind="@chosen" disabled="@busy" @onclick="() => AddDraft(chosen)">@Translator["packs.add"] · @Translator.Or($"kind.{chosen}", chosen)</button>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly string[] Visibilities = ["private", "unlisted", "tenant"];
+
+    private readonly List<Card> cards = [];
+    private PackSummary? pack;
+    private string? error;
+    private bool failed, busy;
+
+    [Parameter] public Guid Id { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Access.Available) return;
+        failed = false;
+        try
+        {
+            var loadedPack = await Api.GetAsync(Id);
+            var loadedQuestions = await Api.QuestionsAsync(Id);
+            if (!loadedPack.IsSuccess || loadedPack.Value is null || !loadedQuestions.IsSuccess || loadedQuestions.Value is null)
+            {
+                failed = true;
+                return;
+            }
+
+            pack = loadedPack.Value;
+            cards.Clear();
+            cards.AddRange(loadedQuestions.Value.OrderBy(question => question.Position).Select(Card.From));
+        }
+        catch (HttpRequestException) { failed = true; }
+    }
+
+    private void AddDraft(string kind) => cards.Add(new Card(null, kind, 1, string.Empty, PackPayloads.New(kind)));
+
+    private Task SaveAsync(Card card) => RunAsync(async () =>
+    {
+        var draft = new PackQuestionDraft(card.Kind, card.KindVersion, pack!.Language, card.Prompt, PackPayloads.Write(card.Kind, card.Payload), null);
+        var response = card.Id is { } id ? await Api.UpdateQuestionAsync(Id, id, draft) : await Api.AddQuestionAsync(Id, draft);
+        if (!response.IsSuccess || response.Value is null) return response.Error ?? "request_failed";
+        card.Id = response.Value.Id;
+        return null;
+    });
+
+    private Task RemoveAsync(Card card) => RunAsync(async () =>
+    {
+        if (card.Id is { } id)
+        {
+            var response = await Api.RemoveQuestionAsync(Id, id);
+            if (!response.IsSuccess) return response.Error ?? "request_failed";
+        }
+
+        cards.Remove(card);
+        return null;
+    });
+
+    private Task MoveAsync(int index, int direction) => RunAsync(async () =>
+    {
+        var order = cards.ToList();
+        (order[index], order[index + direction]) = (order[index + direction], order[index]);
+        var ids = order.Select(card => card.Id).OfType<Guid>().ToArray();
+        var response = await Api.ReorderAsync(Id, ids);
+        if (!response.IsSuccess) return response.Error ?? "request_failed";
+        (cards[index], cards[index + direction]) = (cards[index + direction], cards[index]);
+        return null;
+    });
+
+    private Task ChangeVisibilityAsync(ChangeEventArgs change) => RunAsync(async () =>
+    {
+        var response = await Api.UpdateAsync(Id, null, change.Value?.ToString());
+        if (!response.IsSuccess || response.Value is null) return response.Error ?? "request_failed";
+        pack = response.Value;
+        return null;
+    });
+
+    private async Task RunAsync(Func<Task<string?>> action)
+    {
+        if (busy) return;
+        busy = true;
+        error = null;
+        try { error = await action() is null ? null : Translator["common.error"]; }
+        catch (HttpRequestException) { error = Translator["common.error"]; }
+        finally { busy = false; }
+    }
+
+    private sealed class Card(Guid? id, string kind, int kindVersion, string prompt, object payload)
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public Guid? Id { get; set; } = id;
+        public string Kind { get; } = kind;
+        public int KindVersion { get; } = kindVersion;
+        public string Prompt { get; set; } = prompt;
+        public object Payload { get; set; } = payload;
+
+        public static Card From(PackQuestion question) =>
+            new(question.Id, question.Kind, question.KindVersion, question.Prompt, PackPayloads.Read(question.Kind, question.Payload));
+    }
+}

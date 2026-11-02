@@ -63,7 +63,9 @@ public sealed class ClientSlotPageTests : BunitContext
         Services.AddSingleton(new LanguageSelection(config, translator, JSInterop.JSRuntime));
         var api = new PlayerApi(http);
         Services.AddSingleton(api);
-        Services.AddSingleton(new AuthState(api));
+        var auth = new AuthState(api);
+        Services.AddSingleton(auth);
+        Services.AddSingleton(new PackAvailability(config, auth));
         Services.AddSingleton(new PlatformState(config));
         Services.AddSingleton(new StreamClient(http));
         Services.AddSingleton(new PlatformState(config));

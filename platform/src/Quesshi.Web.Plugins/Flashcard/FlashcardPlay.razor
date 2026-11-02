@@ -1,0 +1,30 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Quesshi.Kinds.Flashcard
+
+@if (Card is FlashcardCard)
+{
+    <div class="flashcard-front" data-kind="flashcard" data-version="1">
+        @if (!string.IsNullOrWhiteSpace(Front))
+        {
+            <p data-flashcard-front dir="auto">@Front</p>
+        }
+        <div class="answers" role="group" aria-label="Rate yourself">
+            @for (var rating = FlashcardKind.MinRating; rating <= FlashcardKind.MaxRating; rating++)
+            {
+                var value = rating;
+                <button type="button" class="answer game-answer" data-rating="@value" disabled="@Disabled"
+                        @onclick="() => SubmitAsync(new FlashcardAnswer(value))">@value</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public object? Card { get; set; }
+    [Parameter, EditorRequired] public EventCallback<object?> OnAnswer { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>The envelope prompt, shown as the front of the card.</summary>
+    [Parameter] public string? Front { get; set; }
+    private Task SubmitAsync(FlashcardAnswer answer) => Disabled ? Task.CompletedTask : OnAnswer.InvokeAsync(answer);
+}
