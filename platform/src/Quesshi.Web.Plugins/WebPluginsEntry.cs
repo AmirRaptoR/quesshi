@@ -5,6 +5,7 @@ using Quesshi.Web.Plugins.Formats.Poll;
 using Quesshi.Web.Plugins.Formats.AsyncDuel;
 using ChoiceComponents = Quesshi.Web.Plugins.Choice;
 using OrderComponents = Quesshi.Web.Plugins.Order;
+using FlashcardComponents = Quesshi.Web.Plugins.Flashcard;
 using PollChoiceComponents = Quesshi.Web.Plugins.PollChoice;
 using PollRosterComponents = Quesshi.Web.Plugins.PollRoster;
 
@@ -20,6 +21,7 @@ public sealed class WebPluginsEntry : IKindClientAssemblyEntry
         registry.Register(new OrderKindClient());
         registry.Register(new PollChoiceKindClient());
         registry.Register(new PollRosterKindClient());
+        registry.Register(new FlashcardKindClient());
     }
 
     /// <summary>Registers the format clients compiled into the Web shell.</summary>
@@ -87,4 +89,12 @@ public sealed class PollRosterKindClient : IKindClient
     public Type? Play(int version) => version == 1 ? typeof(PollRosterComponents.PollRosterPlay) : null;
     public Type? Reveal(int version) => version == 1 ? typeof(PollRosterComponents.PollRosterReveal) : null;
     public Type Editor => typeof(PollRosterComponents.PollRosterEditor);
+}
+
+public sealed class FlashcardKindClient : IKindClient
+{
+    public string Id => "flashcard";
+    public Type? Play(int version) => version == 1 ? typeof(FlashcardComponents.FlashcardPlay) : null;
+    public Type? Reveal(int version) => version == 1 ? typeof(FlashcardComponents.FlashcardReveal) : null;
+    public Type Editor => typeof(FlashcardComponents.FlashcardEditor);
 }
