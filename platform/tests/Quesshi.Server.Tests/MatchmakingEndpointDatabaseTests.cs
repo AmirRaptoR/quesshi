@@ -33,6 +33,7 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
     public async Task Same_language_and_question_count_pair_into_a_started_session_with_the_first_waiters_content()
     {
         var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
 
         using var first = await Enqueue(Host.Player, 10, [_firstCategory], [1, 2]);
         using var other = await Enqueue(second, 10, [_secondCategory], [3]);
@@ -53,7 +54,8 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
     [SkippableFact]
     public async Task Different_question_counts_are_not_paired()
     {
-        var (second, _) = await Host.CreateSecondPlayerClientAsync();
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
 
         using var first = await Enqueue(Host.Player, 10);
         using var other = await Enqueue(second, 20);
@@ -66,6 +68,7 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
     public async Task The_scheduled_job_pairs_entries_nobody_attempted_to_pair_within_its_interval()
     {
         var (_, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
         Assert.Equal(TimeSpan.FromSeconds(5), MatchmakingFeature.SweepInterval);
         foreach (var playerId in new[] { Host.PlayerId, secondId })
             await Host.ExecuteOwnerAsync("""
@@ -84,6 +87,7 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
     {
         var clients = new List<(HttpClient Client, Guid PlayerId)> { (Host.Player, Host.PlayerId) };
         for (var i = 1; i < 50; i++) clients.Add(await Host.CreateSecondPlayerClientAsync());
+        await SeenAsync(clients.Select(c => c.PlayerId).ToArray());
 
         // Bounded in-flight requests keep the test within a small share of PostgreSQL's connection slots
         // (two Server test processes share one server in CI) while all 100 requests still overlap.
@@ -165,7 +169,8 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
     [SkippableFact]
     public async Task A_player_in_a_running_duel_is_not_queued_again()
     {
-        var (second, _) = await Host.CreateSecondPlayerClientAsync();
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
         using var first = await Enqueue(Host.Player, 10);
         using var other = await Enqueue(second, 10);
 
@@ -173,6 +178,82 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         Assert.Empty(await EntriesAsync());
+    }
+
+    [SkippableFact]
+    public async Task A_live_entry_whose_player_is_offline_is_not_paired_and_is_removed()
+    {
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
+        using var first = await Enqueue(Host.Player, 10);
+        await Host.ExecuteOwnerAsync("update players set last_seen_at = now() - interval '5 minutes' where id = @playerId",
+            new { playerId = Host.PlayerId });
+
+        using var other = await Enqueue(second, 10);
+
+        Assert.Empty(await SessionsAsync());
+        Assert.Equal([secondId], (await EntriesAsync()).Select(entry => entry.PlayerId));
+        await AssertNoLockViolationsAsync();
+    }
+
+    [SkippableFact]
+    public async Task An_expired_entry_is_never_paired_and_is_removed()
+    {
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
+        using var first = await Enqueue(Host.Player, 10);
+        await Host.ExecuteOwnerAsync("update matchmaking_entries set enqueued_at = now() - interval '11 minutes' where player_id = @playerId",
+            new { playerId = Host.PlayerId });
+
+        using var other = await Enqueue(second, 10);
+
+        Assert.Empty(await SessionsAsync());
+        Assert.Equal([secondId], (await EntriesAsync()).Select(entry => entry.PlayerId));
+        await AssertNoLockViolationsAsync();
+    }
+
+    [SkippableFact]
+    public async Task The_scheduled_job_removes_an_expired_entry_that_has_no_candidate()
+    {
+        await SeenAsync(Host.PlayerId);
+        using var first = await Enqueue(Host.Player, 10);
+        await Host.ExecuteOwnerAsync("update matchmaking_entries set enqueued_at = now() - interval '11 minutes' where player_id = @playerId",
+            new { playerId = Host.PlayerId });
+
+        var entries = await WaitForAsync(async () => await EntriesAsync(), found => found.Count == 0, TimeSpan.FromSeconds(12));
+
+        Assert.Empty(entries);
+        await AssertNoLockViolationsAsync();
+    }
+
+    [SkippableFact]
+    public async Task An_entry_of_a_banned_player_is_never_paired_and_is_removed()
+    {
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
+        using var first = await Enqueue(Host.Player, 10);
+        await Host.ExecuteOwnerAsync("update players set banned_at = now() where id = @playerId", new { playerId = Host.PlayerId });
+
+        using var other = await Enqueue(second, 10);
+
+        Assert.Empty(await SessionsAsync());
+        Assert.Equal([secondId], (await EntriesAsync()).Select(entry => entry.PlayerId));
+        await AssertNoLockViolationsAsync();
+    }
+
+    [SkippableFact]
+    public async Task An_entry_of_a_deleted_player_is_never_paired_and_is_removed()
+    {
+        var (second, secondId) = await Host.CreateSecondPlayerClientAsync();
+        await SeenAsync(Host.PlayerId, secondId);
+        using var first = await Enqueue(Host.Player, 10);
+        await Host.ExecuteOwnerAsync("update players set deleted_at = now() where id = @playerId", new { playerId = Host.PlayerId });
+
+        using var other = await Enqueue(second, 10);
+
+        Assert.Empty(await SessionsAsync());
+        Assert.Equal([secondId], (await EntriesAsync()).Select(entry => entry.PlayerId));
+        await AssertNoLockViolationsAsync();
     }
 
     private Task<HttpResponseMessage> EnqueueDuel(HttpClient client, int questionCount) =>
@@ -189,6 +270,15 @@ public sealed class MatchmakingEndpointDatabaseTests : IAsyncLifetime
 
     private Task<HttpResponseMessage> Enqueue(HttpClient client, int questionCount, Guid[]? categories = null, int[]? levels = null) =>
         client.PostAsJsonAsync("/api/x/matchmaking", new { format = "live", settings = new { questionCount, categories, levels } });
+
+    private Task SeenAsync(params Guid[] playerIds) => Host.ExecuteOwnerAsync(
+        "update players set last_seen_at = now() where id = any(@playerIds)", new { playerIds });
+
+    private async Task AssertNoLockViolationsAsync()
+    {
+        var violations = await Host.QueryOwnerAsync<long>("select count(*) from jobs where last_error like '%LockOrderViolation%'", new { });
+        Assert.Equal(0, violations.Single());
+    }
 
     private async Task SeedBankAsync()
     {

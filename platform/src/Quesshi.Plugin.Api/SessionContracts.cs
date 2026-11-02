@@ -53,3 +53,13 @@ public interface ISessionSeating
         Guid pairingToken,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>How a format's waiting matchmaking entries behave: whether their player must be online, and how long they live.</summary>
+public sealed record MatchPolicy(bool RequireOnline, TimeSpan? Lifetime, TimeSpan OnlineWindow);
+
+/// <summary>The matchmaking policy each format declares through its match rule.</summary>
+public interface IMatchPolicies
+{
+    /// <summary>Null when the format has no random-opponent queue.</summary>
+    MatchPolicy? Find(string format);
+}

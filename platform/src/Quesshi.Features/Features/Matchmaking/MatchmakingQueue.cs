@@ -10,7 +10,7 @@ public enum EnqueueOutcome { Queued, InvalidSettings, FormatUnavailable, PlayerU
 /// players (ascending), re-reads both entries and, in the same transaction, removes them and starts the session.
 /// A join-waiting format instead seats the joiner in the waiter's open session (see MatchmakingQueue.JoinWaiting.cs).
 /// </summary>
-internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks, ISessions sessions, ISessionSeating seating, IInbox inbox)
+internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks, ISessions sessions, ISessionSeating seating, IInbox inbox, IMatchPolicies policies)
 {
     private const int AttemptsPerRequest = 3;
     private const int SweepBatch = 1000;
@@ -130,6 +130,8 @@ internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks,
             limit @batch
             """, new { batch = SweepBatch }, cancellationToken), readOnly: true, cancellationToken: cancellationToken);
 
+        await RemoveExpiredAsync(tenantId, cancellationToken);
+
         foreach (var group in waiting.GroupBy(entry => (entry.Format, entry.MatchKey)))
         {
             var queue = group.ToArray();
@@ -138,6 +140,29 @@ internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks,
                 var paired = await TryPairAsync(tenantId, group.Key.Format, group.Key.MatchKey, queue[index].PlayerId, queue[index + 1].PlayerId, cancellationToken);
                 index += paired ? 2 : 1;
             }
+        }
+    }
+
+    /// <summary>Removes expired entries even when no candidate exists, taking each player's lock first.</summary>
+    private async Task RemoveExpiredAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var formatIds = await database.InTenantAsync(tenantId, transaction => transaction.QueryAsync<string>(
+            "select distinct format from matchmaking_entries where session_id is null", cancellationToken: cancellationToken),
+            readOnly: true, cancellationToken: cancellationToken);
+        foreach (var format in formatIds)
+        {
+            if (policies.Find(format) is not { } rule) continue;
+            var expired = await database.InTenantAsync(tenantId, transaction =>
+                MatchmakingEligibility.ExpiredAsync(transaction, rule, format, SweepBatch, cancellationToken),
+                readOnly: true, cancellationToken: cancellationToken);
+            foreach (var playerId in expired)
+                await database.InTenantAsync(tenantId, async transaction =>
+                {
+                    await locks.PlayersAsync(transaction, [playerId], cancellationToken);
+                    var removed = await MatchmakingEligibility.RemoveIfExpiredAsync(transaction, rule, format, playerId, cancellationToken);
+                    if (removed) inbox.Changed(transaction, playerId);
+                    return removed;
+                }, cancellationToken: cancellationToken);
         }
     }
 
@@ -152,11 +177,18 @@ internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks,
                 await locks.PlayersAsync(transaction, ids, cancellationToken);
 
                 var parameters = new { format, matchKey, ids };
-                var entries = (await transaction.QueryAsync<Entry>("""
-                    select player_id as PlayerId, settings::text as Settings, enqueued_at as EnqueuedAt
-                    from matchmaking_entries
-                    where format = @format and match_key = @matchKey and session_id is null and player_id = any(@ids)
-                    """, parameters, cancellationToken)).OrderBy(entry => entry.EnqueuedAt).ThenBy(entry => entry.PlayerId).ToArray();
+                if (policies.Find(format) is not { } rule) return false;
+
+                var waiting = await MatchmakingEligibility.ReadAsync(transaction, rule, format, matchKey, ids, cancellationToken);
+                var dropped = waiting.Where(entry => !entry.Eligible).Select(entry => entry.PlayerId).ToArray();
+                if (dropped.Length > 0)
+                {
+                    await MatchmakingEligibility.DeleteAsync(transaction, format, dropped, cancellationToken);
+                    foreach (var playerId in dropped) inbox.Changed(transaction, playerId);
+                    return false;
+                }
+
+                var entries = waiting.OrderBy(entry => entry.EnqueuedAt).ThenBy(entry => entry.PlayerId).ToArray();
                 if (entries.Length != 2) return false;
 
                 var deleted = await transaction.ExecuteAsync("""
@@ -198,8 +230,6 @@ internal sealed partial class MatchmakingQueue(ITenantDb database, ILocks locks,
     private sealed record Candidate(Guid OpponentId, string MatchKey);
 
     private sealed record Waiting(Guid PlayerId, string Format, string MatchKey);
-
-    private sealed record Entry(Guid PlayerId, string Settings, DateTimeOffset EnqueuedAt);
 
     private sealed class PairingAbortedException : Exception;
 }

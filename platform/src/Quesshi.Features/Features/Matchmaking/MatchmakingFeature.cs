@@ -43,13 +43,14 @@ public sealed class MatchmakingFeature : IFeature
         ISessions sessions,
         ISessionSeating seating,
         IInbox inbox,
+        IMatchPolicies policies,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId, out var tenantId)) return Results.Unauthorized();
         if (request.Format is null || !MatchmakingRules.IsCreateStarted(request.Format) && !MatchmakingRules.IsJoinWaiting(request.Format))
             return Results.BadRequest(new { error = "unsupported_format" });
 
-        var outcome = await new MatchmakingQueue(database, locks, sessions, seating, inbox)
+        var outcome = await new MatchmakingQueue(database, locks, sessions, seating, inbox, policies)
             .EnqueueAsync(tenantId, playerId, request.Format, request.Settings, cancellationToken);
         return outcome switch
         {
@@ -70,10 +71,11 @@ public sealed class MatchmakingFeature : IFeature
         ISessions sessions,
         ISessionSeating seating,
         IInbox inbox,
+        IMatchPolicies policies,
         CancellationToken cancellationToken)
     {
         if (!TryGetPlayer(context.User, out var playerId, out var tenantId)) return Results.Unauthorized();
-        await new MatchmakingQueue(database, locks, sessions, seating, inbox).LeaveAsync(tenantId, playerId, format, cancellationToken);
+        await new MatchmakingQueue(database, locks, sessions, seating, inbox, policies).LeaveAsync(tenantId, playerId, format, cancellationToken);
         return Results.Ok();
     }
 
@@ -87,7 +89,8 @@ public sealed class MatchmakingFeature : IFeature
             services.GetRequiredService<ILocks>(),
             services.GetRequiredService<ISessions>(),
             services.GetRequiredService<ISessionSeating>(),
-            services.GetRequiredService<IInbox>()).SweepAsync(tenantId, cancellationToken);
+            services.GetRequiredService<IInbox>(),
+            services.GetRequiredService<IMatchPolicies>()).SweepAsync(tenantId, cancellationToken);
     }
 
     private static async Task<IReadOnlyList<InboxItem>> GetInboxItemsAsync(
