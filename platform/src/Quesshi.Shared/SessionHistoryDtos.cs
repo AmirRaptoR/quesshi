@@ -17,7 +17,7 @@ public sealed record SessionHistoryPage(IReadOnlyList<SessionHistoryEntry> Sessi
 
 /// <summary>
 /// One slot of a finished session as persisted: the public card and reveal exactly as drawn, plus the caller's
-/// stored answers for the slot (empty when they did not answer). Each kind client renders its own layout.
+/// stored answers for the slot (empty when they did not answer). <paramref name="QuestionId"/> is the bank question, when the slot has one, so it can be reported. Each kind client renders its own layout.
 /// </summary>
 public sealed record SessionQuestionHistoryItem(
     int Slot,
@@ -26,7 +26,8 @@ public sealed record SessionQuestionHistoryItem(
     string Prompt,
     JsonElement Card,
     JsonElement Reveal,
-    IReadOnlyList<JsonElement> Answers);
+    IReadOnlyList<JsonElement> Answers,
+    Guid? QuestionId = null);
 
 /// <summary>A page of a finished session's questions in slot order. <paramref name="Next"/> is the <c>after</c> slot of the following page, or null at the end.</summary>
 public sealed record SessionQuestionHistoryPage(IReadOnlyList<SessionQuestionHistoryItem> Items, int? Next);

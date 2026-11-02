@@ -2,6 +2,7 @@
 @using System.Net.Http.Json
 @using Quesshi.Shared
 @using Quesshi.Web.Plugins
+@using Quesshi.Web.Plugins.Features.Reports
 @using Quesshi.Web.Services
 @inject ClientHttp Http
 @inject Translator Translator
@@ -24,6 +25,10 @@
             {
                 <li data-slot="@item.Slot">
                     <p data-field="prompt">@item.Prompt</p>
+                    @if (item.QuestionId is { } questionId)
+                    {
+                        <ReportQuestion QuestionId="questionId" />
+                    }
                     <KindReveal Card="@(new KindCard(item.Kind, item.KindVersion, item.Card))" Reveal="@item.Reveal" Answers="@System.Text.Json.JsonSerializer.SerializeToElement(item.Answers)" />
                 </li>
             }
