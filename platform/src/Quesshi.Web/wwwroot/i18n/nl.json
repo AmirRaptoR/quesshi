@@ -679,5 +679,17 @@
   "packs.sourcePack": "Mijn pakket",
   "packs.pick": "Kies een pakket",
   "packs.fromPack": "Deze lobby gebruikt de vragen van een pakket.",
-  "packs.none": "Je hebt nog geen pakketten."
+  "packs.none": "Je hebt nog geen pakketten.",
+  "format.flashcards": "Studeren",
+  "flashcards.pack": "Pakket om te studeren",
+  "flashcards.start": "Begin met studeren",
+  "flashcards.flip": "Omdraaien",
+  "flashcards.rate": "Geef aan hoe goed je het wist",
+  "flashcards.progress": "Kaart {0} van {1}",
+  "flashcards.front": "Voorkant van de kaart",
+  "flashcards.again": "Opnieuw studeren",
+  "flashcards.ratings": "Jouw beoordelingen",
+  "flashcards.rating": "Beoordeling {0}",
+  "flashcards.noCards": "Kies een pakket met minstens één kaart.",
+  "flashcards.cards": "Kaarten"
 }

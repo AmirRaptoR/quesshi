@@ -29,6 +29,24 @@ public sealed class HomePageTests : BunitContext
     }
 
     [Fact]
+    public void Home_shows_a_Study_entry_when_the_flashcards_format_is_enabled()
+    {
+        var cut = RenderHome(enabled: ["flashcards"], registered: [], flashcards: true);
+
+        Assert.Single(cut.FindAll("[data-study='flashcards']"));
+        Assert.Single(cut.FindAll("[data-study='flashcards'] [data-flashcards-settings]"));
+        Assert.Empty(cut.FindAll("[data-format='flashcards']"));
+    }
+
+    [Fact]
+    public void Home_shows_no_Study_entry_when_the_flashcards_format_is_disabled()
+    {
+        var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel"], flashcards: true);
+
+        Assert.Empty(cut.FindAll("[data-study]"));
+    }
+
+    [Fact]
     public void A_disabled_format_is_absent_from_the_new_session_choices()
     {
         var cut = RenderHome(enabled: ["async_duel"], registered: ["async_duel", "poll"]);
@@ -227,7 +245,7 @@ public sealed class HomePageTests : BunitContext
         Assert.NotNull(cut.Find("[data-test='home-searching']"));
     }
 
-    private IRenderedComponent<Home> RenderHome(string[]? enabled = null, string[]? registered = null, bool tile = false, bool matchmaking = false, string[]? matchRule = null)
+    private IRenderedComponent<Home> RenderHome(string[]? enabled = null, string[]? registered = null, bool tile = false, bool matchmaking = false, string[]? matchRule = null, bool flashcards = false)
     {
         enabled ??= [];
         server.Enabled = enabled;
@@ -242,12 +260,15 @@ public sealed class HomePageTests : BunitContext
         auth.InitializeAsync().GetAwaiter().GetResult();
         Services.AddSingleton(config);
         Services.AddSingleton(translator);
+        Services.AddSingleton<IClientTranslator>(translator);
+        Services.AddSingleton(http);
         Services.AddSingleton(auth);
         Services.AddSingleton(api);
         Services.AddSingleton(new PackAvailability(config, auth));
         Services.AddSingleton(new PlatformState(config));
         var registry = new ClientRegistry(new NoLoader());
         foreach (var id in registered ?? enabled) registry.RegisterFormat(new FakeFormat(id, matchRule?.Contains(id) == true));
+        if (flashcards) registry.RegisterFormat(new Quesshi.Web.Plugins.Formats.Flashcards.FlashcardsClient());
         if (tile) registry.RegisterSlot(ClientSlots.HomeTile, typeof(TileContribution));
         Services.AddSingleton<IFormatClientRegistry>(registry);
         return Render<Home>();

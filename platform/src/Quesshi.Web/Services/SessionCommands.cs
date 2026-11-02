@@ -53,6 +53,9 @@ public sealed class SessionCommands(PlayerApi api, PlatformState state) : Quessh
     async Task<bool> Quesshi.Web.Plugins.IFormatCommands.SendAsync(string type, object? payload, CancellationToken cancellationToken) =>
         (await SendAsync(type, payload, cancellationToken: cancellationToken)).Succeeded;
 
+    async Task<bool> Quesshi.Web.Plugins.IFormatCommands.ActionAsync(string name, CancellationToken cancellationToken) =>
+        (await SendAsync("action", null, name: name, cancellationToken: cancellationToken)).Succeeded;
+
     /// <summary>
     /// A <c>revision_conflict</c> means the stored answer is newer than the sender's view. The authoritative view is
     /// fetched and accepted, and the command reports as settled so the caller never retries the stale answer.

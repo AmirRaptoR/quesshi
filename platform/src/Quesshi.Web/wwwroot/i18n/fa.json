@@ -679,5 +679,17 @@
   "packs.sourcePack": "بسته‌ی من",
   "packs.pick": "یک بسته انتخاب کن",
   "packs.fromPack": "پرسش‌های این لابی از یک بسته می‌آید.",
-  "packs.none": "هنوز بسته‌ای نداری."
+  "packs.none": "هنوز بسته‌ای نداری.",
+  "format.flashcards": "مطالعه",
+  "flashcards.pack": "بسته برای مطالعه",
+  "flashcards.start": "شروع مطالعه",
+  "flashcards.flip": "برگرداندن",
+  "flashcards.rate": "چقدر بلد بودی را امتیاز بده",
+  "flashcards.progress": "کارت {0} از {1}",
+  "flashcards.front": "روی کارت",
+  "flashcards.again": "دوباره مطالعه",
+  "flashcards.ratings": "امتیازهای تو",
+  "flashcards.rating": "امتیاز {0}",
+  "flashcards.noCards": "بسته‌ای با دست‌کم یک کارت انتخاب کن.",
+  "flashcards.cards": "کارت‌ها"
 }
