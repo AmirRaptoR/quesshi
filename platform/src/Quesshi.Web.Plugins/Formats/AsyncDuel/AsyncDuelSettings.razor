@@ -1,0 +1,73 @@
+@using Microsoft.AspNetCore.Components.Web
+@using System.Text.Json
+@using Quesshi.Shared
+@inject IAsyncDuelSettingsApi Api
+@inject IClientTranslator T
+@inject IClientLanguageInfo Language
+
+<DuelSettingsPicker Settings="settings" SettingsChanged="value => settings = value" Categories="categories"
+                    Capacity="capacity" CapacityChanged="value => capacity = value" ReadOnly="@(!Parameters.IsOwner)" />
+@if (Parameters.IsOwner)
+{
+    <button type="button" class="btn" data-save-settings disabled="@saving" @onclick="SaveAsync">@T["questions.done"]</button>
+    @if (error is not null)
+    {
+        <p role="alert" class="notice notice--bad" data-settings-error>@error</p>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public FormatSettingsParameters Parameters { get; set; } = default!;
+
+    private DuelSettings settings = new(10, [], []);
+    private IReadOnlyList<PickerCategory> categories = [];
+    private int? capacity;
+    private bool saving;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = Read(Parameters.Session.Content);
+        try { categories = await Api.CategoriesAsync(Language.Code); }
+        catch (HttpRequestException) { categories = []; }
+        settings = settings with { CategoryIds = TopicPicks.Prune(settings.CategoryIds, categories) };
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        error = null;
+        try
+        {
+            var code = await Api.SaveAsync(Parameters.Session.Id, AsyncDuelSettingsRequest.From(settings, capacity));
+            error = code is null ? null : T["asyncDuel.saveFailed"];
+        }
+        catch (HttpRequestException)
+        {
+            error = T["asyncDuel.saveFailed"];
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private static DuelSettings Read(JsonElement content)
+    {
+        var count = AsyncDuelSettingsRequest.QuestionCounts[0];
+        List<string> picked = [];
+        List<int> levels = [];
+        if (content.ValueKind == JsonValueKind.Object)
+        {
+            if (content.TryGetProperty("count", out var c) && c.TryGetInt32(out var n)) count = n;
+            if (content.TryGetProperty("parameters", out var p) && p.ValueKind == JsonValueKind.Object)
+            {
+                if (p.TryGetProperty("categories", out var cs) && cs.ValueKind == JsonValueKind.Array)
+                    picked = [.. cs.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!)];
+                if (p.TryGetProperty("levels", out var ls) && ls.ValueKind == JsonValueKind.Array)
+                    levels = [.. ls.EnumerateArray().Where(e => e.TryGetInt32(out _)).Select(e => e.GetInt32())];
+            }
+        }
+        return new(count, picked, levels);
+    }
+}
