@@ -80,9 +80,10 @@ public sealed class StreamPresenceDatabaseTests(PostgresFixture postgres) : IAsy
         _ = await ReadFrameAsync(second.Reader);
 
         await first.DisposeAsync();
-        await WaitForAsync(() => Hub.SubscriptionCount == 1);
+        await WaitForAsync(async () => Hub.SubscriptionCount == 1 && await PlayerLastSeenAtAsync() == _clock.Now);
         _clock.Advance(PresenceTiming.RefreshInterval);
         await Hub.ReconcileAsync();
+        await WaitForAsync(async () => await PlayerLastSeenAtAsync() == _clock.Now);
 
         var refreshed = await ReadFrameAsync(second.Reader);
         Assert.True(IsOnline(refreshed, Host.PlayerId));
