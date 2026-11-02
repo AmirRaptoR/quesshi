@@ -3,7 +3,7 @@ using System.Reflection;
 using Quesshi.Application;
 using Quesshi.Application.Inbox;
 using Quesshi.Application.Media;
-using Quesshi.Application.Packs;
+using Quesshi.Plugin.Api;
 using Quesshi.Application.Sessions;
 using Quesshi.Application.Tenancy;
 
@@ -35,13 +35,6 @@ public sealed class ApplicationVisibilityTests
                 typeof(MediaInput),
                 typeof(MediaKind),
                 typeof(MediaSniffer),
-                typeof(IPacks),
-                typeof(Pack),
-                typeof(PackAccess),
-                typeof(PackActor),
-                typeof(PackItem),
-                typeof(PackVisibilities),
-                typeof(PackVisibility),
                 typeof(AnswerKey),
                 typeof(ChangeSet),
                 typeof(ISessionDeadlineReconciler),
