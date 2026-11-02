@@ -18,8 +18,11 @@ public sealed class PollSessionApiDatabaseTests(PollSessionApiDatabaseTests.Poll
         Skip.If(host.Fixture is null, "PostgreSQL is not configured.");
         var game = await StartAsync(3, count: 2);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        using var stream = await game.Clients[0].SendAsync(new HttpRequestMessage(HttpMethod.Get, $"/api/stream?session={game.Id}"),
-            HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        var streamRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/stream?session={game.Id}");
+#if QUESSHI_TEST_IDENTITY
+        streamRequest.Headers.Add("X-Quesshi-Test-Player", game.Players[0].ToString());
+#endif
+        using var stream = await game.Clients[0].SendAsync(streamRequest, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         using var reader = new StreamReader(await stream.Content.ReadAsStreamAsync(timeout.Token), Encoding.UTF8);
 
         var second = await AnswerAsync(game, 1, "{\"option\":\"b\"}", revision: 1);
@@ -128,10 +131,17 @@ public sealed class PollSessionApiDatabaseTests(PollSessionApiDatabaseTests.Poll
         var phase = Property(view, "Phase").ToString();
         var slot = Property(view, "Slot").GetInt32();
         var step = Property(view, "Step").GetInt32();
-        return await game.Clients[player].PostAsJsonAsync($"/api/sessions/{game.Id}/commands", new
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/sessions/{game.Id}/commands")
         {
-            type, at = new { phase, slot, step }, revision, payload = answer is null ? (JsonElement?)null : JsonDocument.Parse(answer).RootElement.Clone(),
-        }, Web);
+            Content = JsonContent.Create(new
+            {
+                type, at = new { phase, slot, step }, revision, payload = answer is null ? (JsonElement?)null : JsonDocument.Parse(answer).RootElement.Clone(),
+            }, options: Web),
+        };
+#if QUESSHI_TEST_IDENTITY
+        request.Headers.Add("X-Quesshi-Test-Player", game.Players[player].ToString());
+#endif
+        return await game.Clients[player].SendAsync(request);
     }
 
     private static JsonElement Property(JsonElement element, string name) =>
