@@ -58,3 +58,16 @@ describe("admin rooms", () => {
     expect((await app.call("POST", `/api/admin/rooms/${lobby.id}/end`, undefined, admin)).status).toBe(404);
   });
 });
+
+describe("ended rooms", () => {
+  test("stay readable for a day after they end, then are forgotten", async () => {
+    const { ann, lobby, admin } = await twoRooms();
+    await app.call("POST", `/api/admin/rooms/${lobby.id}/end`, undefined, admin);
+    const endedAt = Date.parse("2026-11-03T12:00:01Z");
+
+    app.scheduler.advanceTo(endedAt + 24 * 3600_000 - 1);
+    expect((await app.call("GET", `/f/game/play/${lobby.id}`, undefined, ann)).body).toMatchObject({ phase: "ended" });
+    app.scheduler.advanceTo(endedAt + 24 * 3600_000);
+    expect((await app.call("GET", `/f/game/play/${lobby.id}`, undefined, ann)).status).toBe(404);
+  });
+});

@@ -246,6 +246,7 @@ describe("live, ended by an administrator", () => {
     await app.call("POST", `/api/admin/rooms/${id}/end`, undefined, await app.signInAdmin());
 
     expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body).toMatchObject({ phase: "ended", endedReason: "ended_by_admin", game: { standings: [{ outcome: "none" }, { outcome: "none" }] } });
-    expect(app.scheduler.pending()).toBe(0);
+    // Only the room's own eviction is left; the game's clock is gone.
+    expect(app.scheduler.pending()).toBe(1);
   });
 });

@@ -1,6 +1,8 @@
 import type { FeatureContext } from "./feature";
 import type { SessionsStore } from "./sessions.store";
 
+/** How long an ended room stays in memory, so players can still read its result and ask for a rematch. */
+const ENDED_ROOM_RETENTION_MS = 24 * 3600_000;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I, O, 0 or 1: codes are read aloud
 
 /** A started game, as the lobby sees it. */
@@ -42,6 +44,7 @@ interface Room {
   game: GameHandle | null;
   extra: Record<string, unknown>;
   cancelExpiry: () => void;
+  forgetting: boolean;
 }
 
 export type JoinResult = { ok: true; id: string } | { ok: false; error: "not_found" | "full" | "started" };
@@ -79,7 +82,13 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
   });
   const broadcast = (room: Room) => {
     // The code stays valid while the game runs, so a late joiner hears "started", not "not found".
-    if (ended(room)) byCode.delete(room.code);
+    if (ended(room)) {
+      byCode.delete(room.code);
+      if (!room.forgetting) {
+        room.forgetting = true;
+        context.schedule(now() + ENDED_ROOM_RETENTION_MS, () => rooms.delete(room.id));
+      }
+    }
     context.publish(topic(room.id), { type: "view", view: view(room, null) });
   };
 
@@ -109,7 +118,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     open<S>(type: RoomType<S>, owner: string, settings: S, capacity: number): { id: string; code: string } {
       const room: Room = {
         type: type as RoomType<unknown>, id: crypto.randomUUID(), code: newCode(), owner, capacity, settings, participants: [owner],
-        status: "lobby", endedReason: null, createdAt: now(), game: null, extra: {}, cancelExpiry: () => {},
+        status: "lobby", endedReason: null, createdAt: now(), game: null, extra: {}, cancelExpiry: () => {}, forgetting: false,
       };
       rooms.set(room.id, room);
       byCode.set(room.code, room);
