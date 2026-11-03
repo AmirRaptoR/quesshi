@@ -1,4 +1,5 @@
 import type { Clock } from "../../server/core/clock";
+import type { Media } from "../../server/core/questions.store";
 import type { Schedule } from "../../server/core/schedule";
 import type { SessionsStore } from "../../server/core/sessions.store";
 import { poll, pollResults, type PollEvent, type PollState } from "./formats/poll";
@@ -6,7 +7,7 @@ import { optionsFor, type PollKind, type PollOption } from "./options";
 
 const IDLE_MS = 48 * 3600_000;
 
-export interface PollItem { prompt: string; kind: PollKind; payload: unknown }
+export interface PollItem { prompt: string; kind: PollKind; payload: unknown; media: Media | null }
 
 interface Deps {
   sessionId: string;
@@ -55,13 +56,18 @@ export class PollGame {
     const open = current === null ? null : state.slots[current]!;
     return {
       question: current === null ? null : {
-        slot: current, total: this.#deps.items.length, prompt: this.#deps.items[current]!.prompt, options: this.#options[current]!.options, servedAt: open!.servedAt,
+        slot: current, total: this.#deps.items.length, prompt: this.#deps.items[current]!.prompt, media: this.#deps.items[current]!.media,
+        options: this.#options[current]!.options, servedAt: open!.servedAt,
       },
       // Who answered the open question, never what.
       answered: open ? Object.keys(open.answers) : [],
       mine: open && viewer !== null ? open.answers[viewer] ?? null : null,
       inactive: state.inactive,
-      ...(state.ended ? { answers: state.slots.map((slot) => slot.answers), results: pollResults(state) } : {}),
+      // The questions served, so the end screen can show each one beside its answers.
+      ...(state.ended ? {
+        answers: state.slots.map((slot) => slot.answers), results: pollResults(state),
+        review: state.slots.map((_, index) => ({ prompt: this.#deps.items[index]!.prompt, media: this.#deps.items[index]!.media, options: this.#options[index]!.options })),
+      } : {}),
     };
   }
 

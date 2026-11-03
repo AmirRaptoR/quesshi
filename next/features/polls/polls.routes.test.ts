@@ -82,6 +82,36 @@ describe("polls", () => {
     expect(view.results.allAgreedCount).toBe(9);
   });
 
+  test("the open question carries its media, and only an ended poll lists every question for review", async () => {
+    app = testApp([polls]);
+    app.questions.addCategory({ id: "fun", nameFa: "سرگرمی", nameEn: "Fun", nameNl: "Plezier", icon: "😄", color: "#e76f51" });
+    app.questions.setOffers("polls", ["fun"]);
+    const media = { kind: "image" as const, url: "/media/tea.png", attribution: null };
+    for (let i = 0; i < 10; i++) {
+      app.questions.add({
+        id: `p${i}`, kind: "poll_choice", lang: "en", categoryId: "fun", level: null, prompt: `Poll ${i}?`, media,
+        payload: { options: ["Tea", "Coffee"] }, explanation: null, status: "approved", createdAt: "2026-11-03T12:00:00Z",
+      });
+    }
+    const ann = await app.signIn("ann@example.com");
+    const bob = await app.signIn("bob@example.com");
+    const { id, code } = (await app.call("POST", "/f/polls/poll/lobby", settings, ann)).body;
+    await app.call("POST", `/f/polls/poll/join/${code}`, undefined, bob);
+    await app.call("POST", `/f/polls/poll/${id}/start`, undefined, ann);
+
+    const running = (await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body;
+    expect(running.question.media).toEqual(media);
+    expect(running.review).toBeUndefined();
+
+    for (let slot = 0; slot < 10; slot++) {
+      await app.call("POST", `/f/polls/poll/${id}/answer`, { slot, option: 0 }, ann);
+      await app.call("POST", `/f/polls/poll/${id}/answer`, { slot, option: 1 }, bob);
+    }
+    const review = (await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body.review;
+    expect(review).toHaveLength(10);
+    expect(review[0]).toEqual({ prompt: expect.stringMatching(/^Poll \d\?$/), media, options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }] });
+  });
+
   test("players see the categories polls offer", async () => {
     app = testApp([polls]);
     seedPolls();

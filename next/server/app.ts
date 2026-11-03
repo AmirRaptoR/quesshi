@@ -20,6 +20,7 @@ import { createIdentityStore, type Lang } from "./core/identity.store";
 import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
 import { hashPasswordSync } from "./core/passwords";
 import { createRooms } from "./core/rooms";
+import { roomCodeRoutes } from "./core/rooms.routes";
 import { createSessionsStore } from "./core/sessions.store";
 
 /** Checks the features, migrates the core then each feature, and mounts every feature's routes. */
@@ -68,6 +69,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(userAdminRoutes(adminAuth, identity, core.clock))
     .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
     .use(reportAdminRoutes(adminAuth, reports, questions))
+    .use(roomCodeRoutes(context.rooms))
     .use(roomAdminRoutes(adminAuth, context.rooms))
     .use(dashboardRoutes(adminAuth, core.db, context.rooms))
     .use(mediaRoutes(adminAuth, core.mediaDir));
