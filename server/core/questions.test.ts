@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { tempWorld } from "../../tests/support/temp";
 import { drawQuestions, levelForSlot, NotEnoughQuestions } from "./questions";
-import { createQuestionsStore } from "./questions.store";
+import { createQuestionsStore, MIN_APPROVED_QUESTIONS_PER_LANGUAGE } from "./questions.store";
 
 let world: ReturnType<typeof tempWorld> | undefined;
 afterEach(() => {
@@ -87,5 +87,63 @@ describe("drawQuestions", () => {
 
     expect(() => draw(store, { count: 2 })).toThrow(NotEnoughQuestions);
     expect(() => draw(store, { count: 1, categoryIds: [] })).toThrow(NotEnoughQuestions);
+  });
+});
+
+describe("offeredCategories", () => {
+  const MIN = MIN_APPROVED_QUESTIONS_PER_LANGUAGE;
+  const offered = (store: ReturnType<typeof createQuestionsStore>) => {
+    store.setOffers("trivia", ["geo", "sport"]);
+    return store.offeredCategories("trivia", ["choice"]);
+  };
+  const addMany = (add: ReturnType<typeof bank>["add"], n: number, q: Parameters<ReturnType<typeof bank>["add"]>[0] = {}) => {
+    for (let i = 0; i < n; i++) add(q);
+  };
+
+  test("the minimum is 30", () => {
+    expect(MIN).toBe(30);
+  });
+
+  test("a language with exactly the minimum of approved questions is listed", () => {
+    const { store, add } = bank();
+    addMany(add, MIN, { lang: "fa" });
+    expect(offered(store).find((c) => c.id === "geo")!.langs).toEqual(["fa"]);
+  });
+
+  test("a language one short of the minimum is not listed", () => {
+    const { store, add } = bank();
+    addMany(add, MIN - 1, { lang: "fa" });
+    expect(offered(store).find((c) => c.id === "geo")!.langs).toEqual([]);
+  });
+
+  test("pending questions do not count", () => {
+    const { store, add } = bank();
+    addMany(add, MIN - 1, { lang: "fa" });
+    addMany(add, 5, { lang: "fa", status: "pending" });
+    expect(offered(store).find((c) => c.id === "geo")!.langs).toEqual([]);
+  });
+
+  test("rejected questions do not count", () => {
+    const { store, add } = bank();
+    addMany(add, MIN - 1, { lang: "fa" });
+    addMany(add, 5, { lang: "fa", status: "rejected" });
+    expect(offered(store).find((c) => c.id === "geo")!.langs).toEqual([]);
+  });
+
+  test("questions of other kinds do not count", () => {
+    const { store, add } = bank();
+    addMany(add, MIN - 1, { lang: "fa" });
+    addMany(add, 5, { lang: "fa", kind: "poll_choice" });
+    expect(offered(store).find((c) => c.id === "geo")!.langs).toEqual([]);
+  });
+
+  test("the minimum is counted per language and per category", () => {
+    const { store, add } = bank();
+    addMany(add, MIN, { lang: "en" });
+    addMany(add, 5, { lang: "fa" });
+    addMany(add, 5, { lang: "en", categoryId: "sport" });
+    const listed = offered(store);
+    expect(listed.find((c) => c.id === "geo")!.langs).toEqual(["en"]);
+    expect(listed.find((c) => c.id === "sport")!.langs).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { testApp } from "../../tests/support/app";
+import { MIN_APPROVED_QUESTIONS_PER_LANGUAGE } from "../../server/core/questions.store";
 import polls from ".";
 
 let app: ReturnType<typeof testApp>;
@@ -10,7 +11,7 @@ const settings = { lang: "en", questions: 10, categoryIds: [], capacity: 3 };
 function seedPolls(kind: "poll_choice" | "poll_roster" = "poll_choice") {
   app.questions.addCategory({ id: "fun", nameFa: "سرگرمی", nameEn: "Fun", nameNl: "Plezier", icon: "😄", color: "#e76f51" });
   app.questions.setOffers("polls", ["fun"]);
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < MIN_APPROVED_QUESTIONS_PER_LANGUAGE; i++) {
     app.questions.add({
       id: `p${i}`, kind, lang: "en", categoryId: "fun", level: null, prompt: `Poll ${i}?`,
       payload: kind === "poll_choice" ? { options: ["Tea", "Coffee"] } : {}, explanation: null, status: "approved", createdAt: "2026-11-03T12:00:00Z",
@@ -35,7 +36,7 @@ describe("polls", () => {
     const { id, ann } = await started();
 
     expect((await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body.question).toMatchObject({
-      slot: 0, total: 10, prompt: expect.stringMatching(/^Poll \d\?$/), options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }],
+      slot: 0, total: 10, prompt: expect.stringMatching(/^Poll \d+\?$/), options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }],
     });
   });
 
@@ -87,7 +88,7 @@ describe("polls", () => {
     app.questions.addCategory({ id: "fun", nameFa: "سرگرمی", nameEn: "Fun", nameNl: "Plezier", icon: "😄", color: "#e76f51" });
     app.questions.setOffers("polls", ["fun"]);
     const media = { kind: "image" as const, url: "/media/tea.png", attribution: null };
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < MIN_APPROVED_QUESTIONS_PER_LANGUAGE; i++) {
       app.questions.add({
         id: `p${i}`, kind: "poll_choice", lang: "en", categoryId: "fun", level: null, prompt: `Poll ${i}?`, media,
         payload: { options: ["Tea", "Coffee"] }, explanation: null, status: "approved", createdAt: "2026-11-03T12:00:00Z",
@@ -109,7 +110,7 @@ describe("polls", () => {
     }
     const review = (await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body.review;
     expect(review).toHaveLength(10);
-    expect(review[0]).toEqual({ prompt: expect.stringMatching(/^Poll \d\?$/), media, options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }] });
+    expect(review[0]).toEqual({ prompt: expect.stringMatching(/^Poll \d+\?$/), media, options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }] });
   });
 
   test("players see the categories polls offer", async () => {

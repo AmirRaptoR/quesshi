@@ -30,6 +30,9 @@ const toCategory = (row: CategoryRow): Category => ({
   id: row.id, nameFa: row.name_fa, nameEn: row.name_en, nameNl: row.name_nl, icon: row.icon, color: row.color, isActive: row.active === 1, sortOrder: row.sort_order,
 });
 
+/** How many approved questions a category needs in a language before that language is offered for it. */
+export const MIN_APPROVED_QUESTIONS_PER_LANGUAGE = 30;
+
 export type QuestionsStore = ReturnType<typeof createQuestionsStore>;
 
 /** The question bank and its categories. */
@@ -68,9 +71,10 @@ export function createQuestionsStore(db: Db) {
       const rows = db.query<CategoryRow, [string]>(
         "select categories.* from category_offers join categories on categories.id = category_id where feature = ? and active = 1 order by sort_order, categories.id",
       ).all(feature);
-      const langs = db.query<{ category_id: string; lang: string }, string[]>(
-        `select distinct category_id, lang from questions where status = 'approved' and kind in (${kinds.map(() => "?").join(",")}) order by lang`,
-      ).all(...kinds);
+      const langs = db.query<{ category_id: string; lang: string }, (string | number)[]>(
+        `select category_id, lang from questions where status = 'approved' and kind in (${kinds.map(() => "?").join(",")})
+         group by category_id, lang having count(*) >= ? order by lang`,
+      ).all(...kinds, MIN_APPROVED_QUESTIONS_PER_LANGUAGE);
       return rows.map((row) => ({ ...toCategory(row), langs: langs.filter((l) => l.category_id === row.id).map((l) => l.lang) }));
     },
     setOffers(feature: string, categoryIds: readonly string[]): void {
