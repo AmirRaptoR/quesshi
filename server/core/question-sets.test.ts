@@ -136,6 +136,17 @@ describe("private set questions", () => {
     expect(store().draw(set, { kinds: ["choice"], exclude: ["annq"] })).toBeNull();
   });
 
+  test("stay out of the shared draws after an admin dismisses their reports", async () => {
+    const { set } = await twoOwners();
+    const admin = await app.signInAdmin();
+
+    const dismissed = await app.call("POST", "/api/admin/questions/annq/dismiss-reports", undefined, admin);
+
+    expect(dismissed.status).toBe(200);
+    expect(app.questions.randomApproved({ lang: "en", kinds: ["choice"], categoryIds: null, level: null, exclude: [] })).toBeNull();
+    expect(store().draw(set, { kinds: ["choice"], exclude: [] })?.id).toBe("annq");
+  });
+
   test("do not appear in the admin question list", async () => {
     await twoOwners();
     app.seedChoiceQuestions(1);
