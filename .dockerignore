@@ -1,7 +1,0 @@
-**/bin
-**/obj
-.git
-.idea
-tests
-deploy
-docs

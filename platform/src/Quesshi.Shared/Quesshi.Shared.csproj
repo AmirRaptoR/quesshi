@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <EmbeddedResource Include="maps/world.svg" LogicalName="Quesshi.Shared.maps.world.svg" />
-  </ItemGroup>
-</Project>

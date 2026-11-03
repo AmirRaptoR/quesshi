@@ -1,30 +1,11 @@
-bin/
-obj/
-*.user
+node_modules/
+dist/
+data/
+*.sqlite
+*.sqlite-*
 
-# Uploaded question media, and pictures fetched from Wikipedia. Both live outside the release on
-# the server and are symlinked in, so committing them would only bloat the repo. The seeded media
-# under wwwroot/media/seed is committed.
-src/Quesshi.Server/wwwroot/media/uploads/
-src/Quesshi.Server/wwwroot/media/sourced/
-
-# Local configuration. appsettings.Development.json holds the OpenRouter API key.
-# A comment must be on its own line: git treats a trailing one as part of the pattern.
-appsettings.Development.json
-appsettings.Local.json
-
-# Per-machine compose settings, and the media bind-mount a local stack writes into.
-.env
-.media/
-
-# Scratch written by whatever tooling someone drives this checkout with. Nothing
-# here is the project's, and an uncommitted file in the working tree is not
-# harmless: deploy refuses to ship over tracked changes, so a stray edit stops a
-# release rather than riding along with it.
-.superpowers/
-
-# Agent worktrees: scratch checkouts, never part of the repository.
+# Scratch from tools that drive this checkout.
 .claude/worktrees/
-
-# Python test bytecode.
+.superpowers/
+.serena/
 __pycache__/
