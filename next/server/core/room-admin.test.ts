@@ -45,6 +45,15 @@ describe("admin rooms", () => {
     ]);
   });
 
+  test("a running game is listed with its players", async () => {
+    const { ann, running, admin } = await twoRooms();
+    await app.call("POST", `/f/game/play/${running.id}/start`, undefined, ann);
+
+    const listed = (await app.call("GET", "/api/admin/rooms", undefined, admin)).body.find((room: { id: string }) => room.id === running.id);
+
+    expect(listed).toMatchObject({ phase: "running", participants: [{ displayName: "ann" }, { displayName: "bob" }] });
+  });
+
   test("ending a lobby closes it; ending a running game asks the game to end; both leave the list", async () => {
     const { ann, lobby, running, admin } = await twoRooms();
     await app.call("POST", `/f/game/play/${running.id}/start`, undefined, ann);

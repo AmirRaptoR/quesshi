@@ -80,6 +80,10 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
   const now = () => context.clock.now().getTime();
 
   const ended = (room: Room) => room.status === "ended" || room.game?.ended() != null;
+  const roster = (room: Room) => room.participants.map((id) => {
+    const player = context.player(id);
+    return { id, displayName: player?.displayName ?? "", avatarSeed: player?.avatarSeed ?? id, guest: player?.guest ?? false };
+  });
   const view = (room: Room, viewer: string | null, full: boolean) => ({
     id: room.id,
     format: room.type.format,
@@ -94,12 +98,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     lobbyEndsAt: room.createdAt + room.type.lobbyLifetimeMs,
     // A running game's roster no longer changes much, and with hundreds of phones it would be most
     // of every broadcast; phones keep the roster from their first full view.
-    ...(full || room.status === "lobby" ? {
-      participants: room.participants.map((id) => {
-        const player = context.player(id);
-        return { id, displayName: player?.displayName ?? "", avatarSeed: player?.avatarSeed ?? id, guest: player?.guest ?? false };
-      }),
-    } : {}),
+    ...(full || room.status === "lobby" ? { participants: roster(room) } : {}),
     ...(room.game ? room.game.view(viewer, full) : {}),
     ...room.extra,
   });
@@ -278,7 +277,9 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
 
     /** Every open lobby and running game, oldest first, as everyone sees them. */
     all() {
-      return [...rooms.values()].filter((room) => !ended(room)).sort((a, b) => a.createdAt - b.createdAt).map((room) => view(room, null, false));
+      return [...rooms.values()].filter((room) => !ended(room)).sort((a, b) => a.createdAt - b.createdAt)
+        // The monitor names everyone in each room, but needs no more of a running game than a phone does.
+        .map((room) => ({ ...view(room, null, false), participants: roster(room) }));
     },
 
     /** An administrator ends a lobby or a running game; false when it is unknown or already over. */
