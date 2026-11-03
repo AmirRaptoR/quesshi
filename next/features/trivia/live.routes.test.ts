@@ -209,3 +209,30 @@ describe("rematch", () => {
     expect((await app.call("POST", `/f/trivia/live/${id}/rematch`, undefined, guest)).body).toEqual({ error: "refused" });
   });
 });
+
+describe("trivia categories", () => {
+  test("players see the active categories trivia offers, with the languages that have approved questions", async () => {
+    app = testApp([trivia]);
+    app.seedChoiceQuestions();
+    app.questions.addCategory({ id: "art", nameFa: "هنر", nameEn: "Art", nameNl: "Kunst", icon: "🎨", color: "#e9c46a" });
+    app.questions.addCategory({ id: "old", nameFa: "قدیم", nameEn: "Old", nameNl: "Oud", icon: "📜", color: "#264653" });
+    app.questions.setOffers("trivia", ["geo", "art", "old"]);
+    app.world.db.run("update categories set active = 0 where id = 'old'");
+    const player = await app.signIn("ann@example.com");
+
+    const listed = (await app.call("GET", "/f/trivia/categories", undefined, player)).body;
+
+    expect(listed.map((c: { id: string; langs: string[] }) => [c.id, c.langs])).toEqual([["art", []], ["geo", ["en"]]]);
+  });
+
+  test("a lobby that picks a category trivia does not offer cannot start", async () => {
+    app = testApp([trivia]);
+    app.seedChoiceQuestions();
+    app.questions.setOffers("trivia", []);
+    const owner = await app.signIn("owner@example.com");
+    const { id, code } = (await app.call("POST", "/f/trivia/live/lobby", { ...settings, categoryIds: ["geo"] }, owner)).body;
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+
+    expect((await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner)).body).toEqual({ error: "not_enough_questions" });
+  });
+});

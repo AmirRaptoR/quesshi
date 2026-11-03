@@ -5,6 +5,7 @@ import { fail, lobbyRoutes } from "../../server/core/rooms.routes";
 import { createSessionsStore } from "../../server/core/sessions.store";
 import type { DuelGame } from "./duel-game";
 import type { LiveGame } from "./live-game";
+import { TRIVIA_KINDS } from "./items";
 import { duelRoomType, liveRoomType, readSettings } from "./rooms";
 
 function triviaRoutes(context: FeatureContext) {
@@ -16,6 +17,7 @@ function triviaRoutes(context: FeatureContext) {
   const { rooms } = context;
 
   return new Elysia({ prefix: "/f/trivia" })
+    .get("/categories", () => context.categories.offered(TRIVIA_KINDS))
     .use(lobbyRoutes({
       context, rooms, type: live, segment: "live", readSettings,
       // A live game takes answers on its socket.

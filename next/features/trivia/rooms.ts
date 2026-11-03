@@ -16,11 +16,11 @@ const LANGS = ["fa", "en", "nl"];
 export interface GameSettings { lang: string; questions: number; categoryIds: string[]; levels: number[] }
 interface Stores { sessions: SessionsStore; questions: QuestionsStore }
 
-function draw(stores: Stores, settings: GameSettings): StoredQuestion[] | null {
+function draw(context: FeatureContext, stores: Stores, settings: GameSettings): StoredQuestion[] | null {
   try {
     return drawQuestions(stores.questions, {
       lang: settings.lang,
-      categoryIds: settings.categoryIds.length ? settings.categoryIds : null,
+      categoryIds: context.categories.forGame(settings.categoryIds, settings.lang, TRIVIA_KINDS),
       levels: settings.levels,
       count: settings.questions,
       kinds: TRIVIA_KINDS,
@@ -42,7 +42,7 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
     lobbyLifetimeMs: 10 * 60_000,
     lobbyEnding: "lobby_expired",
     start(room, changed) {
-      const drawn = draw(stores, room.settings);
+      const drawn = draw(context, stores, room.settings);
       if (!drawn) return { ok: false, error: "not_enough_questions" };
       stores.sessions.start(room.id, room.participants);
       let last: LiveView | null = null;
@@ -79,7 +79,7 @@ export function duelRoomType(context: FeatureContext, stores: Stores, games: Map
     lobbyLifetimeMs: 48 * 3600_000,
     lobbyEnding: "forfeited",
     start(room, changed) {
-      const drawn = draw(stores, room.settings);
+      const drawn = draw(context, stores, room.settings);
       if (!drawn) return { ok: false, error: "not_enough_questions" };
       stores.sessions.start(room.id, room.participants);
       const game = new DuelGame({

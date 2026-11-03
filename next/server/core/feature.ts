@@ -3,6 +3,7 @@ import type { Clock } from "./clock";
 import type { Db } from "./db";
 import type { Lang, Player } from "./identity.store";
 import type { Mailer } from "./mailer";
+import type { Category } from "./questions.store";
 import type { Rooms } from "./rooms";
 import type { Schedule } from "./schedule";
 
@@ -34,6 +35,15 @@ export interface FeatureContext extends Core {
   publish(topic: string, message: unknown): void;
   /** Every feature's game lobbies, sharing one set of codes. */
   rooms: Rooms;
+  /** The categories an admin set this feature to offer. */
+  categories: FeatureCategories;
+}
+
+export interface FeatureCategories {
+  /** The active offered categories, each with the languages that have approved questions of these kinds. */
+  offered(kinds: readonly string[]): (Category & { langs: string[] })[];
+  /** A game's categories, by today's rule, among the offered ones with approved questions of these kinds in the language. */
+  forGame(picks: readonly string[], lang: string, kinds: readonly string[]): string[];
 }
 
 /** A self-contained feature: one folder, enabled by being listed in features/index.ts. */

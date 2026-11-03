@@ -39,9 +39,10 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
       const code = mail.at(-1)!.text.match(/\b(\d{6})\b/)![1]!;
       return (await call("POST", "/api/auth/code/verify", { email, code, lang: "en" })).cookie!;
     },
-    /** Adds approved English choice questions at every level, enough for any short game. */
+    /** Adds approved English choice questions at every level in a category every feature offers. */
     seedChoiceQuestions(count = 10) {
-      questions.addCategory({ id: "geo", nameFa: "جغرافیا", nameEn: "Geography", nameNl: "Aardrijkskunde", icon: "globe", color: "#2a9d8f" });
+      questions.addCategory({ id: "geo", nameFa: "جغرافیا", nameEn: "Geography", nameNl: "Aardrijkskunde", icon: "🌍", color: "#2a9d8f" });
+      for (const feature of features) questions.setOffers(feature.name, ["geo"]);
       for (let i = 0; i < count; i++) {
         questions.add({
           id: `q${i}`, kind: "choice", lang: "en", categoryId: "geo", level: (i % 5) + 1, prompt: `Question ${i}?`,

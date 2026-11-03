@@ -8,7 +8,8 @@ afterEach(() => app.cleanup());
 const settings = { lang: "en", questions: 10, categoryIds: [], capacity: 3 };
 
 function seedPolls(kind: "poll_choice" | "poll_roster" = "poll_choice") {
-  app.questions.addCategory({ id: "fun", nameFa: "سرگرمی", nameEn: "Fun", nameNl: "Plezier", icon: "smile", color: "#e76f51" });
+  app.questions.addCategory({ id: "fun", nameFa: "سرگرمی", nameEn: "Fun", nameNl: "Plezier", icon: "😄", color: "#e76f51" });
+  app.questions.setOffers("polls", ["fun"]);
   for (let i = 0; i < 10; i++) {
     app.questions.add({
       id: `p${i}`, kind, lang: "en", categoryId: "fun", level: null, prompt: `Poll ${i}?`,
@@ -79,6 +80,13 @@ describe("polls", () => {
     expect(view.answers[0]).toEqual({ [annId]: 0, [bobId]: 1 });
     expect(view.results.pairs).toEqual([{ players: [annId, bobId], same: 9, different: 1, percent: 90 }]);
     expect(view.results.allAgreedCount).toBe(9);
+  });
+
+  test("players see the categories polls offer", async () => {
+    app = testApp([polls]);
+    seedPolls();
+
+    expect((await app.call("GET", "/f/polls/categories")).body).toMatchObject([{ id: "fun", langs: ["en"] }]);
   });
 
   test("a poll lobby holds at most eight players", async () => {

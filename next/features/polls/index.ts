@@ -35,7 +35,7 @@ function pollRoutes(context: FeatureContext) {
       let drawn;
       try {
         drawn = drawQuestions(questions, {
-          lang: room.settings.lang, categoryIds: room.settings.categoryIds.length ? room.settings.categoryIds : null,
+          lang: room.settings.lang, categoryIds: context.categories.forGame(room.settings.categoryIds, room.settings.lang, POLL_KINDS),
           levels: null, count: room.settings.questions, kinds: POLL_KINDS,
         });
       } catch (error) {
@@ -53,6 +53,7 @@ function pollRoutes(context: FeatureContext) {
   };
 
   return new Elysia({ prefix: "/f/polls" })
+    .get("/categories", () => context.categories.offered(POLL_KINDS))
     .use(lobbyRoutes({ context, rooms: context.rooms, type, segment: "poll", readSettings }))
     .resolve(({ request }) => ({ player: context.playerFor(request.headers.get("cookie")) }))
     .post("/poll/:id/answer", ({ player, params, body, set }) => {

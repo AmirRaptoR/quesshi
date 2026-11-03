@@ -1,9 +1,12 @@
 import { Elysia } from "elysia";
-import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureContext } from "./core/feature";
+import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureCategories, type FeatureContext } from "./core/feature";
 import { createAdminAuth } from "./core/admin";
 import { adminAccountRoutes, adminAuthRoutes } from "./core/admin.routes";
 import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
+import { selectCategories } from "./core/categories";
+import { categoryAdminRoutes } from "./core/categories.routes";
+import { createQuestionsStore, type QuestionsStore } from "./core/questions.store";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
 import { createIdentityStore, type Lang } from "./core/identity.store";
 import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
@@ -22,6 +25,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
   bootstrapAdmin(core, admins);
   const adminAuth = createAdminAuth({ admins, clock: core.clock, mailer: core.mailer, origin: core.origin });
   const identity = createIdentityStore(core.db);
+  const questions = createQuestionsStore(core.db);
   const auth = createAuth({ identity, clock: core.clock, mailer: core.mailer, secret: core.secret });
   let server = new Elysia()
     // Every change must come from this site; SameSite cookies plus this check stop cross-site requests.
@@ -35,7 +39,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .get("/api/health", () => ({ status: "ok" }))
     .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()))
     .use(adminAuthRoutes(adminAuth, admins))
-    .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()));
+    .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()))
+    .use(categoryAdminRoutes(adminAuth, questions, features.map((feature) => feature.name)));
   const newId = () => crypto.randomUUID();
   const services = {
     ...core,
@@ -47,12 +52,22 @@ export function createApp(core: Core, features: readonly Feature[]) {
     },
     publish: (topic: string, message: unknown) => { server.server?.publish(topic, JSON.stringify(message)); },
   };
-  const context: FeatureContext = { ...services, rooms: createRooms(services, createSessionsStore(core.db)) };
+  const context: Omit<FeatureContext, "categories"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db)) };
   for (const feature of features) {
-    const routes = featureRoutes(feature, context);
+    const routes = featureRoutes(feature, { ...context, categories: featureCategories(questions, feature.name, core.random) });
     if (routes) server = server.use(routes);
   }
   return { server, migrations };
+}
+
+function featureCategories(questions: QuestionsStore, feature: string, random: () => number): FeatureCategories {
+  return {
+    offered: (kinds) => questions.offeredCategories(feature, kinds),
+    forGame(picks, lang, kinds) {
+      const eligible = questions.offeredCategories(feature, kinds).filter((c) => c.langs.includes(lang)).map((c) => c.id);
+      return selectCategories(eligible, picks, random);
+    },
+  };
 }
 
 /** Creates the first administrator when there is none; a generated password is logged and must be changed. */
