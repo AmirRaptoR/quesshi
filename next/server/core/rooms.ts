@@ -78,6 +78,8 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     settings: room.settings,
     phase: ended(room) ? "ended" : room.status,
     endedReason: room.endedReason ?? room.game?.ended()?.reason ?? null,
+    // The admin's monitor shows when each room opened.
+    createdAt: room.createdAt,
     lobbyEndsAt: room.createdAt + room.type.lobbyLifetimeMs,
     // A running game's roster no longer changes much, and with hundreds of phones it would be most
     // of every broadcast; phones keep the roster from their first full view.
@@ -154,6 +156,17 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     idForCode(code: string, format: string): string | null {
       const room = byCode.get(code.trim().toUpperCase());
       return room?.type.format === format ? room.id : null;
+    },
+
+    /** What anyone holding a code may know before joining: whose room it is, of which format, and whether a seat is free. */
+    byCode(code: string) {
+      const room = byCode.get(code.trim().toUpperCase());
+      if (!room) return null;
+      const owner = context.player(room.owner);
+      return {
+        id: room.id, code: room.code, format: room.type.format, phase: ended(room) ? "ended" : room.status,
+        full: room.participants.length >= room.capacity, ownerName: owner?.displayName ?? "", settings: room.settings,
+      };
     },
 
     join(code: string, format: string, player: string): JoinResult {
