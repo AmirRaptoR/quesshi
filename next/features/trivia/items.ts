@@ -1,4 +1,5 @@
 import type { Kind } from "../../server/core/kind";
+import type { Media } from "../../server/core/questions.store";
 import { choice } from "./kinds/choice";
 import { mapPick } from "./kinds/map-pick";
 import { order } from "./kinds/order";
@@ -14,4 +15,5 @@ export interface TriviaItem {
   explanation: string | null;
   kind: "choice" | "order" | "map_pick";
   payload: unknown;
+  media: Media | null;
 }

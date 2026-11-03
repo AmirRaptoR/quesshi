@@ -6,6 +6,7 @@ import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { selectCategories } from "./core/categories";
 import { categoryAdminRoutes } from "./core/categories.routes";
+import { mediaRoutes } from "./core/media.routes";
 import { dashboardRoutes } from "./core/dashboard.routes";
 import { roomAdminRoutes } from "./core/room-admin.routes";
 import { reportAdminRoutes, reportRoutes } from "./core/reports.routes";
@@ -67,7 +68,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
     .use(reportAdminRoutes(adminAuth, reports, questions))
     .use(roomAdminRoutes(adminAuth, context.rooms))
-    .use(dashboardRoutes(adminAuth, core.db, context.rooms));
+    .use(dashboardRoutes(adminAuth, core.db, context.rooms))
+    .use(mediaRoutes(adminAuth, core.mediaDir));
   for (const feature of features) {
     const routes = featureRoutes(feature, { ...context, categories: featureCategories(questions, feature.name, core.random) });
     if (routes) server = server.use(routes);

@@ -20,7 +20,7 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
   const mail: { to: string; text: string }[] = [];
   const { server } = createApp({
     db: world.db, clock: scheduler.clock, schedule: scheduler.schedule, random: seededRandom(),
-    secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } },
+    secret: "test-secret", origin: ORIGIN, mediaDir: world.mediaDir, mailer: { send: async (message) => { mail.push(message); } },
     ...(options.bootstrapAdmin ? { bootstrapAdmin: options.bootstrapAdmin } : {}),
   }, features);
   const questions = createQuestionsStore(world.db);
@@ -37,7 +37,7 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
   };
 
   /** Sends a file as the raw request body, as the admin's import form does. */
-  const upload = async (path: string, content: string, contentType: string, cookie?: string) => {
+  const upload = async (path: string, content: string | Uint8Array<ArrayBuffer>, contentType: string, cookie?: string) => {
     const response = await server.handle(new Request(`${ORIGIN}${path}`, {
       method: "POST", body: content, headers: { "content-type": contentType, origin: ORIGIN, ...(cookie ? { cookie } : {}) },
     }));

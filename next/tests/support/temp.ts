@@ -13,6 +13,8 @@ export function tempWorld() {
   const db: Db = openDatabase(path.join(root, "test.sqlite"));
   return {
     db,
+    /** A folder for uploaded media. */
+    mediaDir: path.join(root, "media"),
     /** Writes migration files into a folder of the temporary directory and returns its URL. */
     migrations(name: string, files: Record<string, string>): URL {
       const folder = path.join(root, name);
@@ -26,7 +28,7 @@ export function tempWorld() {
     },
     /** A core for the app, with a fixed clock and a mailer that drops messages. */
     core(clock: Clock = fixedClock): Core {
-      return { db, clock, schedule: () => () => {}, random: Math.random, mailer: { send: async () => {} }, secret: "test-secret", origin: "https://quesshi.example.com" };
+      return { db, clock, schedule: () => () => {}, random: Math.random, mailer: { send: async () => {} }, secret: "test-secret", origin: "https://quesshi.example.com", mediaDir: path.join(root, "media") };
     },
     cleanup(): void {
       db.close();

@@ -53,7 +53,7 @@ export class DuelGame {
     const item = this.#deps.items[result.slot]!;
     return {
       slot: result.slot, total: this.#deps.items.length, servedAt: result.servedAt, limitMs: LIMIT_MS,
-      question: { prompt: item.prompt, kind: item.kind, level: item.level, card: kinds[item.kind].card(item.payload, this.#resolved[result.slot]) },
+      question: { prompt: item.prompt, kind: item.kind, level: item.level, media: item.media, card: kinds[item.kind].card(item.payload, this.#resolved[result.slot]) },
     };
   }
 

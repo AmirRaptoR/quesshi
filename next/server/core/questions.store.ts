@@ -1,5 +1,7 @@
 import type { Db } from "./db";
 
+export interface Media { kind: "image" | "audio" | "video"; url: string; attribution: string | null }
+
 export interface StoredQuestion {
   id: string;
   kind: string;
@@ -9,11 +11,13 @@ export interface StoredQuestion {
   prompt: string;
   payload: unknown;
   explanation: string | null;
+  media?: Media | null;
 }
 
-interface QuestionRow { id: string; kind: string; lang: string; category_id: string | null; level: number | null; prompt: string; payload: string; explanation: string | null }
+interface QuestionRow { id: string; kind: string; lang: string; category_id: string | null; level: number | null; prompt: string; payload: string; explanation: string | null; media: string | null }
 const toQuestion = (row: QuestionRow): StoredQuestion => ({
   id: row.id, kind: row.kind, lang: row.lang, categoryId: row.category_id, level: row.level, prompt: row.prompt, payload: JSON.parse(row.payload), explanation: row.explanation,
+  media: row.media === null ? null : (JSON.parse(row.media) as Media),
 });
 
 export interface AdminQuestion extends StoredQuestion { status: string; createdAt: string }
@@ -77,8 +81,8 @@ export function createQuestionsStore(db: Db) {
     },
     add(question: StoredQuestion & { status: string; createdAt: string }): void {
       db.run(
-        "insert into questions (id, kind, lang, category_id, level, prompt, payload, explanation, status, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [question.id, question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.status, question.createdAt],
+        "insert into questions (id, kind, lang, category_id, level, prompt, payload, explanation, media, status, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [question.id, question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.media ? JSON.stringify(question.media) : null, question.status, question.createdAt],
       );
     },
     question(id: string): AdminQuestion | null {
@@ -113,8 +117,8 @@ export function createQuestionsStore(db: Db) {
     },
     update(question: StoredQuestion & { status: string }): void {
       db.run(
-        "update questions set kind = ?, lang = ?, category_id = ?, level = ?, prompt = ?, payload = ?, explanation = ?, status = ? where id = ?",
-        [question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.status, question.id],
+        "update questions set kind = ?, lang = ?, category_id = ?, level = ?, prompt = ?, payload = ?, explanation = ?, media = ?, status = ? where id = ?",
+        [question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.media ? JSON.stringify(question.media) : null, question.status, question.id],
       );
     },
     setStatus(id: string, status: string): boolean {

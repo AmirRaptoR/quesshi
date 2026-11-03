@@ -250,3 +250,15 @@ describe("live, ended by an administrator", () => {
     expect(app.scheduler.pending()).toBe(1);
   });
 });
+
+describe("question media", () => {
+  test("the card carries the question's media", async () => {
+    const { owner, id, code } = await lobby();
+    app.world.db.run(`update questions set media = '{"kind":"image","url":"/media/uploads/a.png","attribution":null}'`);
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+    await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner);
+    app.scheduler.advanceTo(T0 + 3_000);
+
+    expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game.question.media).toEqual({ kind: "image", url: "/media/uploads/a.png", attribution: null });
+  });
+});

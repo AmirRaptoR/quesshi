@@ -92,6 +92,17 @@ describe("admin questions", () => {
     expect(await status()).toBeUndefined();
   });
 
+  test("a question may carry an image, audio or video, with an optional credit line", async () => {
+    const admin = await asAdmin();
+    const media = { kind: "image", url: "/media/uploads/a.png", attribution: "Photo: Example" };
+
+    expect((await save(admin, question({ media }))).body.media).toEqual(media);
+    expect((await save(admin, question({ media: { kind: "image", url: "/b.png" } }))).body.media).toEqual({ kind: "image", url: "/b.png", attribution: null });
+    expect((await save(admin, question())).body.media).toBeNull();
+    expect((await save(admin, question({ media: { kind: "hologram", url: "/a.png" } }))).body).toEqual({ error: "bad_media_kind" });
+    expect((await save(admin, question({ media: { kind: "image", url: " " } }))).body).toEqual({ error: "bad_media_url" });
+  });
+
   test("the kinds each feature offers are listed for the form", async () => {
     const admin = await asAdmin();
 
@@ -141,6 +152,16 @@ describe("importing questions", () => {
     const rows = [{ lang: "en", categoryId: "geo", prompt: "Tea or coffee?" }];
 
     expect((await importing(admin, "kind=opinion&format=json", JSON.stringify(rows), "application/json")).body).toMatchObject({ accepted: 1 });
+  });
+
+  test("rows may name media; an unnamed kind is an image", async () => {
+    const admin = await asAdmin();
+    const file = ["lang,categoryId,level,prompt,yes,mediaUrl,mediaKind", "en,geo,1,Pic?,true,/media/uploads/a.png,", "en,geo,1,Song?,true,/a.mp3,audio", "en,geo,1,Bad?,true,/a.png,smell"].join("\n");
+
+    const report = (await importing(admin, "kind=yesno&format=csv&dryRun=false", file)).body;
+
+    expect(report.rows.map((r: { error: string | null }) => r.error)).toEqual([null, null, "bad_media_kind"]);
+    expect(app.questions.find({ skip: 0, take: 10 }).items.map((q) => q.media?.kind).sort()).toEqual(["audio", "image"]);
   });
 
   test("refuses a file it cannot read as a whole", async () => {

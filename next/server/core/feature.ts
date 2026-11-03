@@ -17,6 +17,8 @@ export interface Core {
   mailer: Mailer;
   /** Signs sign-in codes; set from the environment in production. */
   secret: string;
+  /** Where uploaded media files are kept. */
+  mediaDir: string;
   /** The site's own origin; changes requested from any other origin are refused. */
   origin: string;
   /** The first administrator, created when there is none; a null password is generated and must be changed. */

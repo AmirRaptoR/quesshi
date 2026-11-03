@@ -1,5 +1,6 @@
 import { parseCsv } from "./csv";
 import { numberCell, type KindRules } from "./kind";
+import type { Media } from "./questions.store";
 
 const LANGS = ["fa", "en", "nl"];
 const STATUSES = ["pending", "approved", "rejected"];
@@ -10,8 +11,9 @@ const TAIL_COLUMNS = ["explanation", "status"];
 
 export interface KindEntry { feature: string; rules: KindRules }
 export interface QuestionFields {
-  kind: string; lang: string; categoryId: string | null; level: number | null; prompt: string; payload: unknown; explanation: string | null; status: string;
+  kind: string; lang: string; categoryId: string | null; level: number | null; prompt: string; payload: unknown; explanation: string | null; media: Media | null; status: string;
 }
+const MEDIA_KINDS = ["image", "audio", "video"];
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
@@ -33,9 +35,16 @@ export function checkQuestion(input: Record<string, unknown>, kinds: ReadonlyMap
   if (categoryId && !categoryIds.includes(categoryId)) return fail("bad_category");
   const status = input.status === undefined ? "pending" : text(input.status);
   if (!STATUSES.includes(status)) return fail("bad_status");
+  let media: Media | null = null;
+  if (input.media !== undefined && input.media !== null) {
+    const { kind: mediaKind, url, attribution } = input.media as Record<string, unknown>;
+    if (typeof mediaKind !== "string" || !MEDIA_KINDS.includes(mediaKind)) return fail("bad_media_kind");
+    if (!text(url)) return fail("bad_media_url");
+    media = { kind: mediaKind as Media["kind"], url: text(url), attribution: text(attribution) || null };
+  }
   const checked = entry.rules.check(input.payload);
   if (!checked.ok) return fail(checked.error);
-  return { ok: true, value: { kind, lang, categoryId, level: level as number | null, prompt, payload: checked.payload, explanation: text(input.explanation) || null, status } };
+  return { ok: true, value: { kind, lang, categoryId, level: level as number | null, prompt, payload: checked.payload, explanation: text(input.explanation) || null, media, status } };
 }
 
 export interface ImportReport {
@@ -64,6 +73,8 @@ export function readImport(kind: string, format: string, content: string, kinds:
       ? checkQuestion({
         kind, lang: row.lang, categoryId: row.categoryid, prompt: row.prompt, explanation: row.explanation, status: row.status,
         level: row.level === undefined ? null : (numberCell(row.level) ?? Number.NaN), payload: entry.rules.fromRow(row),
+        // As today, media without a kind is an image.
+        media: row.mediaurl === undefined ? null : { kind: row.mediakind ?? "image", url: row.mediaurl },
       }, kinds, categoryIds)
       : { ok: false as const, error: "bad_row" };
     if (result.ok) questions.push(result.value);

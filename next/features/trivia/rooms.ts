@@ -31,7 +31,7 @@ function draw(context: FeatureContext, stores: Stores, settings: GameSettings): 
 }
 
 const toItems = (drawn: StoredQuestion[]): TriviaItem[] =>
-  drawn.map((q) => ({ prompt: q.prompt, level: q.level, explanation: q.explanation, kind: q.kind as TriviaItem["kind"], payload: q.payload }));
+  drawn.map((q) => ({ prompt: q.prompt, level: q.level, explanation: q.explanation, kind: q.kind as TriviaItem["kind"], payload: q.payload, media: q.media ?? null }));
 
 /** Live trivia: today's live duel; a lobby expires after ten minutes. */
 export function liveRoomType(context: FeatureContext, stores: Stores, games: Map<string, LiveGame>): RoomType<GameSettings> {
