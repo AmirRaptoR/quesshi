@@ -14,7 +14,7 @@ export interface QuestionFields {
   kind: string; lang: string; categoryId: string | null; level: number | null; prompt: string; payload: unknown; explanation: string | null; media: Media | null; status: string;
 }
 const MEDIA_KINDS = ["image", "audio", "video"];
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -94,7 +94,7 @@ export function importTemplate(rules: KindRules, format: "csv" | "json"): string
   return [Object.keys(row), Object.values(row)].map((line) => line.map(cell).join(",")).join("\r\n") + "\r\n";
 }
 
-type Row = Record<string, string> | null;
+export type Row = Record<string, string> | null;
 
 /** Lowercase keys, trimmed values, and no empty cells. */
 function clean(entries: [string, unknown][]): Record<string, string> {
@@ -106,14 +106,14 @@ function clean(entries: [string, unknown][]): Record<string, string> {
   return row;
 }
 
-function csvRows(content: string, required: readonly string[]): Result<Row[]> {
+export function csvRows(content: string, required: readonly string[]): Result<Row[]> {
   const [header, ...records] = parseCsv(content);
   const columns = header?.map((column) => column.trim().toLowerCase());
   if (!columns || !required.every((column) => columns.includes(column))) return { ok: false, error: "bad_row" };
   return { ok: true, value: records.map((record) => (record ? clean(columns.map((column, i) => [column, record[i] ?? ""])) : null)) };
 }
 
-function jsonRows(content: string): Result<Row[]> {
+export function jsonRows(content: string): Result<Row[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -122,4 +122,59 @@ function jsonRows(content: string): Result<Row[]> {
   }
   if (!Array.isArray(parsed)) return { ok: false, error: "bad_json" };
   return { ok: true, value: parsed.map((item) => (item && typeof item === "object" && !Array.isArray(item) ? clean(Object.entries(item)) : null)) };
+}
+
+/** The prompt template's example row: the one row that must always import into a set. */
+export const SET_IMPORT_EXAMPLE = {
+  prompt: "Which planet is known as the red planet?",
+  choice1: "Mars", choice2: "Venus", choice3: "Jupiter", choice4: "Mercury",
+  correctindex: 0, level: 1,
+  explanation: "Iron oxide on its surface makes Mars look red.",
+};
+
+/** The largest paste a set import reads, in bytes. */
+export const MAX_SET_IMPORT_BYTES = 200 * 1024;
+
+export interface SetImportRead {
+  /** Valid questions with the 1-based row each came from. */
+  questions: { row: number; question: QuestionFields }[];
+  rejected: { row: number; reason: string }[];
+}
+
+/**
+ * Reads a pasted JSON array or CSV of choice questions, possibly inside a Markdown code fence
+ * and with text around it, by the admin importer's choice rules.
+ */
+export function readSetImport(pasted: string, lang: string, kinds: ReadonlyMap<string, KindEntry>): Result<SetImportRead> {
+  const entry = kinds.get("choice");
+  if (!entry) return { ok: false, error: "bad_kind" };
+  if (!pasted.trim()) return { ok: false, error: "empty_file" };
+  if (Buffer.byteLength(pasted) > MAX_SET_IMPORT_BYTES) return { ok: false, error: "file_too_large" };
+  const rows = setImportRows(pasted, ["prompt", "level", ...entry.rules.columns]);
+  if (!rows.ok) return rows;
+  const read: SetImportRead = { questions: [], rejected: [] };
+  rows.value.forEach((row, index) => {
+    const result = row
+      ? checkQuestion({
+        kind: "choice", lang, prompt: row.prompt, explanation: row.explanation,
+        level: row.level === undefined ? null : (numberCell(row.level) ?? Number.NaN), payload: entry.rules.fromRow(row),
+      }, kinds, [])
+      : { ok: false as const, error: "bad_row" };
+    if (result.ok) read.questions.push({ row: index + 1, question: result.value });
+    else read.rejected.push({ row: index + 1, reason: result.error });
+  });
+  return { ok: true, value: read };
+}
+
+function setImportRows(pasted: string, required: readonly string[]): Result<Row[]> {
+  const fenced = /```[^\n`]*\r?\n([\s\S]*?)```/.exec(pasted);
+  const content = fenced ? fenced[1]! : pasted;
+  if (content.trim().startsWith("[")) return jsonRows(content);
+  const open = content.indexOf("[");
+  const close = content.lastIndexOf("]");
+  if (open >= 0 && close > open) {
+    const json = jsonRows(content.slice(open, close + 1));
+    if (json.ok) return json;
+  }
+  return csvRows(content.trim(), required);
 }
