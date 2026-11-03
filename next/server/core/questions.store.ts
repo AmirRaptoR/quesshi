@@ -16,6 +16,9 @@ const toQuestion = (row: QuestionRow): StoredQuestion => ({
   id: row.id, kind: row.kind, lang: row.lang, categoryId: row.category_id, level: row.level, prompt: row.prompt, payload: JSON.parse(row.payload), explanation: row.explanation,
 });
 
+export interface AdminQuestion extends StoredQuestion { status: string; createdAt: string }
+export interface QuestionFilter { lang?: string; categoryId?: string; level?: number; status?: string; kind?: string; text?: string; skip: number; take: number }
+
 export interface Category { id: string; nameFa: string; nameEn: string; nameNl: string; icon: string; color: string; isActive: boolean; sortOrder: number }
 
 interface CategoryRow { id: string; name_fa: string; name_en: string; name_nl: string; icon: string; color: string; active: number; sort_order: number }
@@ -77,6 +80,44 @@ export function createQuestionsStore(db: Db) {
         "insert into questions (id, kind, lang, category_id, level, prompt, payload, explanation, status, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [question.id, question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.status, question.createdAt],
       );
+    },
+    question(id: string): AdminQuestion | null {
+      const row = db.query<QuestionRow & { status: string; created_at: string }, [string]>("select * from questions where id = ?").get(id);
+      return row ? { ...toQuestion(row), status: row.status, createdAt: row.created_at } : null;
+    },
+    /** The admin's question list, newest first. */
+    find(filter: QuestionFilter): { items: AdminQuestion[]; total: number } {
+      const where: string[] = [];
+      const params: (string | number)[] = [];
+      const match = (sql: string, value: string | number | undefined) => {
+        if (value === undefined) return;
+        where.push(sql);
+        params.push(value);
+      };
+      match("lang = ?", filter.lang);
+      match("category_id = ?", filter.categoryId);
+      match("level = ?", filter.level);
+      match("status = ?", filter.status);
+      match("kind = ?", filter.kind);
+      match("instr(lower(prompt), lower(?)) > 0", filter.text);
+      const clause = where.length ? `where ${where.join(" and ")}` : "";
+      const total = db.query<{ n: number }, (string | number)[]>(`select count(*) as n from questions ${clause}`).get(...params)!.n;
+      const rows = db.query<QuestionRow & { status: string; created_at: string }, (string | number)[]>(
+        `select * from questions ${clause} order by created_at desc, id limit ? offset ?`,
+      ).all(...params, filter.take, filter.skip);
+      return { items: rows.map((row) => ({ ...toQuestion(row), status: row.status, createdAt: row.created_at })), total };
+    },
+    update(question: StoredQuestion & { status: string }): void {
+      db.run(
+        "update questions set kind = ?, lang = ?, category_id = ?, level = ?, prompt = ?, payload = ?, explanation = ?, status = ? where id = ?",
+        [question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.status, question.id],
+      );
+    },
+    setStatus(id: string, status: string): boolean {
+      return db.run("update questions set status = ? where id = ?", [status, id]).changes > 0;
+    },
+    remove(id: string): boolean {
+      return db.run("delete from questions where id = ?", [id]).changes > 0;
     },
     /** One random approved question matching the filter, or null. A null level matches any level. */
     randomApproved(filter: { lang: string; kinds: readonly string[]; categoryIds: readonly string[] | null; level: number | null; exclude: readonly string[] }): StoredQuestion | null {

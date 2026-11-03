@@ -2,6 +2,7 @@ import type { AnyElysia } from "elysia";
 import type { Clock } from "./clock";
 import type { Db } from "./db";
 import type { Lang, Player } from "./identity.store";
+import type { KindRules } from "./kind";
 import type { Mailer } from "./mailer";
 import type { Category } from "./questions.store";
 import type { Rooms } from "./rooms";
@@ -52,6 +53,8 @@ export interface Feature {
   name: string;
   /** The feature's folder of forward-only SQL migrations. */
   migrations?: URL;
+  /** The question kinds the feature plays, by id; each id belongs to one feature. */
+  kinds?: Readonly<Record<string, KindRules>>;
   /** The feature's HTTP and WebSocket routes, an Elysia instance with the prefix /f/<name>. */
   server?: (context: FeatureContext) => AnyElysia;
 }
@@ -67,7 +70,13 @@ const NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 /** Checks the listed features before anything runs. Start-up fails on the first problem. */
 export function checkFeatures(features: readonly Feature[]): void {
   const seen = new Set<string>();
+  const kinds = new Map<string, string>();
   for (const feature of features) {
+    for (const kind of Object.keys(feature.kinds ?? {})) {
+      const owner = kinds.get(kind);
+      if (owner) throw new FeatureError(`Question kind "${kind}" belongs to both "${owner}" and "${feature.name}".`);
+      kinds.set(kind, feature.name);
+    }
     if (!NAME.test(feature.name)) throw new FeatureError(`Feature name "${feature.name}" must be lowercase words joined by hyphens.`);
     if (feature.name === "core") throw new FeatureError(`Feature name "core" is reserved.`);
     if (seen.has(feature.name)) throw new FeatureError(`Feature "${feature.name}" is listed twice.`);

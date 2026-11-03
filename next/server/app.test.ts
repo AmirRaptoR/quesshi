@@ -51,6 +51,13 @@ describe("createApp", () => {
     expect(() => createApp(world.core(), [rogue])).toThrow(/must put its routes under the prefix \/f\/rogue/);
   });
 
+  test("refuses two features that claim the same question kind", () => {
+    world = tempWorld();
+    const rules = { levelled: true, check: (payload: unknown) => ({ ok: true as const, payload }) };
+
+    expect(() => createApp(world.core(), [defineFeature({ name: "one", kinds: { quiz: rules } }), defineFeature({ name: "two", kinds: { quiz: rules } })])).toThrow(FeatureError);
+  });
+
   test("refuses a feature listed twice", () => {
     world = tempWorld();
     const one = defineFeature({ name: "twice" });

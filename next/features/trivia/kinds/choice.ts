@@ -1,4 +1,4 @@
-import { MalformedAnswer, type Kind } from "../../../server/core/kind";
+import { distinctTexts, MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
 
 export interface ChoicePayload { options: string[]; correctIndex: number }
 export interface ChoiceCard { options: string[] }
@@ -8,6 +8,14 @@ export interface ChoiceReveal { correctIndex: number; correctOption: string }
 /** One correct option among four, shown in the order they were written. */
 export const choice: Kind<ChoicePayload, null, ChoiceCard, ChoiceAnswer, ChoiceReveal> = {
   id: "choice",
+  levelled: true,
+  check(payload) {
+    const { options, correctIndex } = (payload ?? {}) as Record<string, unknown>;
+    const texts = distinctTexts(options);
+    if (!texts || texts.length !== 4) return refuse("bad_choices");
+    if (!Number.isInteger(correctIndex) || (correctIndex as number) < 0 || (correctIndex as number) >= 4) return refuse("bad_correct_index");
+    return { ok: true, payload: { options: texts, correctIndex: correctIndex as number } };
+  },
   resolve: () => null,
   card: (payload) => ({ options: payload.options }),
   reveal: (payload) => ({ correctIndex: payload.correctIndex, correctOption: payload.options[payload.correctIndex]! }),

@@ -1,4 +1,4 @@
-import { MalformedAnswer, type Kind } from "../../../server/core/kind";
+import { MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
 
 export type MapTarget =
   | { shape: "country"; countryCode: string }
@@ -9,10 +9,30 @@ export type MapPickAnswer = { shape: "country"; countryCode: string } | { shape:
 export interface MapPickReveal { target: MapTarget }
 
 const EARTH_RADIUS_KM = 6371.0088;
+/** Below 10 km a target is smaller than a fingertip on a world map; above 2000 km a continent is "correct". */
+const MIN_RADIUS_KM = 10;
+const MAX_RADIUS_KM = 2000;
+const finiteIn = (value: unknown, limit: number) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= limit;
 
 /** Pick a country, or a point within a radius, on a world map. */
 export const mapPick: Kind<MapPickPayload, null, MapPickCard, MapPickAnswer, MapPickReveal> = {
   id: "map_pick",
+  levelled: true,
+  check(payload) {
+    const { baseLayer, target } = (payload ?? {}) as Record<string, unknown>;
+    if (baseLayer !== "blank" && baseLayer !== "borders") return refuse("bad_base_layer");
+    const t = (target ?? {}) as Record<string, unknown>;
+    if (t.shape === "country") {
+      // Whether the map can draw the country is checked when the map itself is part of the app.
+      if (typeof t.countryCode !== "string" || !/^[A-Z]{2}$/.test(t.countryCode)) return refuse("bad_country_code");
+      return { ok: true, payload: { baseLayer, target: { shape: "country", countryCode: t.countryCode } } };
+    }
+    if (t.shape !== "point") return refuse("bad_target_shape");
+    if (!finiteIn(t.latitude, 90)) return refuse("bad_latitude");
+    if (!finiteIn(t.longitude, 180)) return refuse("bad_longitude");
+    if (typeof t.radiusKm !== "number" || !(t.radiusKm >= MIN_RADIUS_KM && t.radiusKm <= MAX_RADIUS_KM)) return refuse("bad_radius");
+    return { ok: true, payload: { baseLayer, target: { shape: "point", latitude: t.latitude as number, longitude: t.longitude as number, radiusKm: t.radiusKm } } };
+  },
   resolve: () => null,
   card: (payload) => ({ baseLayer: payload.baseLayer, shape: payload.target.shape }),
   reveal: (payload) => ({ target: payload.target }),

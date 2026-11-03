@@ -5,7 +5,7 @@ import { fail, lobbyRoutes } from "../../server/core/rooms.routes";
 import { createSessionsStore } from "../../server/core/sessions.store";
 import type { DuelGame } from "./duel-game";
 import type { LiveGame } from "./live-game";
-import { TRIVIA_KINDS } from "./items";
+import { kinds, TRIVIA_KINDS } from "./items";
 import { duelRoomType, liveRoomType, readSettings } from "./rooms";
 
 function triviaRoutes(context: FeatureContext) {
@@ -58,5 +58,6 @@ function triviaRoutes(context: FeatureContext) {
 /** Trivia: the choice, order and map question kinds, played live or as an asynchronous duel. */
 export default defineFeature({
   name: "trivia",
+  kinds,
   server: triviaRoutes,
 });

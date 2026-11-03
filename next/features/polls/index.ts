@@ -5,7 +5,7 @@ import { createQuestionsStore } from "../../server/core/questions.store";
 import type { RoomType } from "../../server/core/rooms";
 import { fail, lobbyRoutes } from "../../server/core/rooms.routes";
 import { createSessionsStore } from "../../server/core/sessions.store";
-import { POLL_KINDS, type PollKind } from "./options";
+import { POLL_KINDS, pollKinds, type PollKind } from "./options";
 import { PollGame } from "./poll-game";
 
 const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
@@ -69,5 +69,6 @@ function pollRoutes(context: FeatureContext) {
 /** Polls: ungraded choice and roster questions, answered together and shown as counts and agreement. */
 export default defineFeature({
   name: "polls",
+  kinds: pollKinds,
   server: pollRoutes,
 });

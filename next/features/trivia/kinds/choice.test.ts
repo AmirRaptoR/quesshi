@@ -31,3 +31,16 @@ describe("choice", () => {
     }
   });
 });
+
+describe("authoring a choice question", () => {
+  test("keeps four distinct options and the correct index, and nothing else", () => {
+    expect(choice.check({ ...planets, target: { shape: "country", countryCode: "NL" } })).toEqual({ ok: true, payload: planets });
+  });
+
+  test("refuses the wrong number of options, a blank or repeated one, and an index out of range", () => {
+    expect(choice.check({ options: ["A", "B", "C"], correctIndex: 0 })).toEqual({ ok: false, error: "bad_choices" });
+    expect(choice.check({ options: ["A", "B", " ", "D"], correctIndex: 0 })).toEqual({ ok: false, error: "bad_choices" });
+    expect(choice.check({ options: ["A", "B", "A", "D"], correctIndex: 0 })).toEqual({ ok: false, error: "bad_choices" });
+    expect(choice.check({ options: ["A", "B", "C", "D"], correctIndex: 4 })).toEqual({ ok: false, error: "bad_correct_index" });
+  });
+});

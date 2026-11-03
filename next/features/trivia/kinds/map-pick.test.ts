@@ -56,3 +56,23 @@ describe("map_pick", () => {
     }
   });
 });
+
+describe("authoring a map question", () => {
+  const point = (fields: Record<string, unknown>) => mapPick.check({ baseLayer: "borders", target: { shape: "point", ...amsterdam, radiusKm: 50, ...fields } });
+
+  test("keeps a country or a point target and the base layer", () => {
+    const country: MapPickPayload = { baseLayer: "blank", target: { shape: "country", countryCode: "NL" } };
+    expect(mapPick.check({ ...country, options: ["x"] })).toEqual({ ok: true, payload: country });
+    expect(point({}).ok).toBe(true);
+  });
+
+  test("refuses each broken rule with today's code", () => {
+    expect(mapPick.check({ baseLayer: "satellite", target: { shape: "country", countryCode: "NL" } })).toEqual({ ok: false, error: "bad_base_layer" });
+    expect(mapPick.check({ baseLayer: "blank", target: { shape: "city" } })).toEqual({ ok: false, error: "bad_target_shape" });
+    expect(mapPick.check({ baseLayer: "blank", target: { shape: "country", countryCode: "nl" } })).toEqual({ ok: false, error: "bad_country_code" });
+    expect(point({ latitude: 91 })).toEqual({ ok: false, error: "bad_latitude" });
+    expect(point({ longitude: Number.NaN })).toEqual({ ok: false, error: "bad_longitude" });
+    expect(point({ radiusKm: 9 })).toEqual({ ok: false, error: "bad_radius" });
+    expect(point({ radiusKm: 2001 })).toEqual({ ok: false, error: "bad_radius" });
+  });
+});

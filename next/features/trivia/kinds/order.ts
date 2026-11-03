@@ -1,4 +1,4 @@
-import { MalformedAnswer, type Kind } from "../../../server/core/kind";
+import { distinctTexts, MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
 
 export interface OrderItem { id: string; text: string }
 /** The items in their correct order. */
@@ -11,6 +11,15 @@ export interface OrderReveal { itemIds: string[] }
 /** Put four items in the right order. */
 export const order: Kind<OrderPayload, OrderResolved, OrderCard, OrderAnswer, OrderReveal> = {
   id: "order",
+  levelled: true,
+  check(payload) {
+    const items = ((payload ?? {}) as Record<string, unknown>).items;
+    if (!Array.isArray(items) || items.length !== 4) return refuse("bad_choices");
+    const ids = items.map((item) => (item as Partial<OrderItem> | null)?.id);
+    const texts = distinctTexts(items.map((item) => (item as Partial<OrderItem> | null)?.text));
+    if (!texts || !ids.every((id) => typeof id === "string" && id) || new Set(ids).size !== 4) return refuse("bad_choices");
+    return { ok: true, payload: { items: texts.map((text, i) => ({ id: ids[i] as string, text })) } };
+  },
   // Shuffle the ids sorted by id, never the stored (correct) order, so the arrangement gives nothing away.
   resolve(payload, random) {
     const ids = payload.items.map((item) => item.id).sort();

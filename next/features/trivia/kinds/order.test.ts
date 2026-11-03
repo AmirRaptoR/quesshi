@@ -45,3 +45,18 @@ describe("order", () => {
     }
   });
 });
+
+describe("authoring an order question", () => {
+  const items = [{ id: "a", text: "First" }, { id: "b", text: "Second" }, { id: "c", text: "Third" }, { id: "d", text: "Fourth" }];
+
+  test("keeps four items in their correct order", () => {
+    expect(order.check({ items, correctIndex: 0 })).toEqual({ ok: true, payload: { items } });
+  });
+
+  test("refuses the wrong number of items, a blank or repeated text, and a repeated id", () => {
+    expect(order.check({ items: items.slice(0, 3) })).toEqual({ ok: false, error: "bad_choices" });
+    expect(order.check({ items: [...items.slice(0, 3), { id: "d", text: "" }] })).toEqual({ ok: false, error: "bad_choices" });
+    expect(order.check({ items: [...items.slice(0, 3), { id: "d", text: "First" }] })).toEqual({ ok: false, error: "bad_choices" });
+    expect(order.check({ items: [...items.slice(0, 3), { id: "a", text: "Fourth" }] })).toEqual({ ok: false, error: "bad_choices" });
+  });
+});
