@@ -50,6 +50,18 @@ cookies are `Secure`, so the site must be served over HTTPS.
 | `ADMIN_USERNAME` | no | The first administrator's name (default `admin`). |
 | `ADMIN_PASSWORD` | no | Without it a password is generated, written to the log, and must be changed at the first sign-in. |
 | `GOOGLE_CLIENT_ID` | no | Enables Google sign-in. |
+| `TELEGRAM_BOT_TOKEN` | no | Enables sign-in from the Telegram Mini App; see [Telegram Mini App](#telegram-mini-app). |
+
+## Telegram Mini App
+
+Players can open Quesshi inside Telegram and are signed in with their Telegram account.
+
+1. In Telegram, open [@BotFather](https://t.me/BotFather) and send `/newbot`; pick a name and a username. BotFather answers with the bot token.
+2. Send `/newapp`, choose the bot, and give the app a title, description and icon. When it asks for the web app URL, enter the public origin, the same as `QUESSHI_ORIGIN` (e.g. `https://quesshi.example.com`, HTTPS only). Choose a short name; the app is then at `https://t.me/<bot>/<app>`.
+3. Set `TELEGRAM_BOT_TOKEN` to the bot token and restart. Without it, Telegram sign-in is off.
+
+The server checks the signature of the launch data with the token and refuses data older than 24 hours.
+A link such as `https://t.me/<bot>/<app>?startapp=room_4821` opens the app straight into joining room `4821`.
 
 ## Restarts and deploys
 

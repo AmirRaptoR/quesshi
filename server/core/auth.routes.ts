@@ -1,7 +1,9 @@
 import { Elysia } from "elysia";
 import type { createAuth } from "./auth";
 import { SESSION_DAYS } from "./auth";
+import type { Clock } from "./clock";
 import type { Core } from "./feature";
+import { verifyInitData } from "./telegram";
 import type { IdentityStore, Lang, Player } from "./identity.store";
 
 const COOKIE = "__Host-quesshi";
@@ -32,13 +34,13 @@ export const playerJson = (player: Player) => ({
   id: player.id, email: player.email, displayName: player.displayName, avatarSeed: player.avatarSeed, lang: player.lang, guest: player.guest,
 });
 
-export function authRoutes(auth: Auth, identity: IdentityStore, google: Core["google"], newId: () => string) {
+export function authRoutes(auth: Auth, identity: IdentityStore, google: Core["google"], telegramBotToken: string | undefined, clock: Clock, newId: () => string) {
   const signedIn = (player: Player, set: { headers: Record<string, unknown> }) => {
     set.headers["set-cookie"] = sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600);
     return playerJson(player);
   };
   return new Elysia()
-    .get("/api/auth/config", () => ({ googleEnabled: Boolean(google), googleClientId: google?.clientId ?? null }))
+    .get("/api/auth/config", () => ({ googleEnabled: Boolean(google), googleClientId: google?.clientId ?? null, telegramEnabled: Boolean(telegramBotToken) }))
     .post("/api/auth/google", async ({ body, set }) => {
       if (!google) {
         set.status = 400;
@@ -51,6 +53,24 @@ export function authRoutes(auth: Auth, identity: IdentityStore, google: Core["go
         return { error: "invalid_token" };
       }
       const player = auth.signInWithGoogle(verified.email, verified.name, lang(requested), newId);
+      if (player === "banned") {
+        set.status = 400;
+        return { error: "banned" };
+      }
+      return signedIn(player, set);
+    })
+    .post("/api/auth/telegram", ({ body, set }) => {
+      if (!telegramBotToken) {
+        set.status = 400;
+        return { error: "telegram_disabled" };
+      }
+      const { initData } = (body ?? {}) as { initData?: unknown };
+      const user = typeof initData === "string" ? verifyInitData(initData, telegramBotToken, clock.now()) : null;
+      if (!user) {
+        set.status = 401;
+        return { error: "invalid_init_data" };
+      }
+      const player = auth.signInWithTelegram(user.id, user.name, user.lang ?? "fa", newId);
       if (player === "banned") {
         set.status = 400;
         return { error: "banned" };

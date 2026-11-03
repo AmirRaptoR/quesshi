@@ -1,18 +1,19 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { tempWorld } from "../../tests/support/temp";
 import { createApp } from "../app";
+import { createHmac } from "node:crypto";
 import type { Clock } from "./clock";
 
 const ORIGIN = "https://quesshi.example.com";
 let world: ReturnType<typeof tempWorld>;
 afterEach(() => world.cleanup());
 
-function setup(google?: { verify: (token: string) => Promise<{ email: string; name: string | null } | null> }) {
+function setup(google?: { verify: (token: string) => Promise<{ email: string; name: string | null } | null> }, telegramBotToken?: string) {
   world = tempWorld();
   let now = Date.parse("2026-11-03T12:00:00Z");
   const clock: Clock = { now: () => new Date(now) };
   const mail: { to: string; text: string }[] = [];
-  const { server } = createApp({ db: world.db, clock, schedule: () => () => {}, random: Math.random, secret: "test-secret", origin: ORIGIN, mediaDir: world.mediaDir, mailer: { send: async (message) => { mail.push(message); } }, ...(google ? { google: { clientId: "client-1", ...google } } : {}) }, []);
+  const { server } = createApp({ db: world.db, clock, schedule: () => () => {}, random: Math.random, secret: "test-secret", origin: ORIGIN, mediaDir: world.mediaDir, mailer: { send: async (message) => { mail.push(message); } }, ...(google ? { google: { clientId: "client-1", ...google } } : {}), ...(telegramBotToken ? { telegramBotToken } : {}) }, []);
   const call = (method: string, path: string, body?: unknown, cookie?: string, origin = ORIGIN) =>
     server.handle(new Request(`${ORIGIN}${path}`, {
       method,
@@ -173,6 +174,108 @@ describe("sign-in with Google", () => {
     world.db.run("update players set banned_at = '2026-11-03T12:00:00Z'");
 
     expect(await (await call("POST", "/api/auth/google", { idToken: "good" })).json()).toEqual({ error: "banned" });
+  });
+});
+
+describe("sign-in with Telegram", () => {
+  const BOT = "123456:test-bot-token";
+  const NOW = Date.parse("2026-11-03T12:00:00Z") / 1000;
+  /** initData as Telegram builds it: the fields, then the hash over the sorted "key=value" lines. */
+  const signed = (user: object, authDate = NOW, token = BOT, change?: (fields: Record<string, string>) => void) => {
+    const fields: Record<string, string> = { auth_date: String(authDate), query_id: "AAH", user: JSON.stringify(user) };
+    const secret = createHmac("sha256", "WebAppData").update(token).digest();
+    const hash = createHmac("sha256", secret).update(Object.keys(fields).sort().map((k) => `${k}=${fields[k]}`).join("\n")).digest("hex");
+    change?.(fields);
+    return new URLSearchParams({ ...fields, hash }).toString();
+  };
+  const bo = { id: 4242, first_name: "Bo", last_name: "Diddley", language_code: "en" };
+  const signInWith = (call: ReturnType<typeof setup>["call"], initData: string) => call("POST", "/api/auth/telegram", { initData });
+
+  test("valid initData creates a player named from first and last name and sets the session cookie", async () => {
+    const { call } = setup(undefined, BOT);
+
+    const response = await signInWith(call, signed(bo));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ displayName: "Bo Diddley", email: null, guest: false });
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+  });
+
+  test("the same Telegram user signs in as the same player, without a second one", async () => {
+    const { call } = setup(undefined, BOT);
+
+    const first = await (await signInWith(call, signed(bo))).json() as { id: string };
+    const second = await (await signInWith(call, signed({ ...bo, first_name: "Changed" }, NOW + 5))).json() as { id: string };
+
+    expect(second.id).toBe(first.id);
+    expect(world.db.query("select count(*) as n from players").get()).toEqual({ n: 1 });
+  });
+
+  test("initData with a changed field is rejected with 401", async () => {
+    const { call } = setup(undefined, BOT);
+
+    const response = await signInWith(call, signed(bo, NOW, BOT, (fields) => { fields.user = JSON.stringify({ ...bo, id: 1 }); }));
+
+    expect(response.status).toBe(401);
+  });
+
+  test("initData with a wrong hash, or signed by another bot, is rejected with 401", async () => {
+    const { call } = setup(undefined, BOT);
+
+    const wrong = signed(bo).replace(/hash=[0-9a-f]{4}/, "hash=0000");
+    expect((await signInWith(call, wrong)).status).toBe(401);
+    expect((await signInWith(call, signed(bo, NOW, "999:other-bot"))).status).toBe(401);
+    expect((await signInWith(call, "")).status).toBe(401);
+  });
+
+  test("initData older than 24 hours is rejected with 401, a little under is accepted", async () => {
+    const { call } = setup(undefined, BOT);
+
+    expect((await signInWith(call, signed(bo, NOW - 24 * 3600 - 1))).status).toBe(401);
+    expect((await signInWith(call, signed(bo, NOW - 24 * 3600 + 60))).status).toBe(200);
+  });
+
+  test("without a bot token the endpoint answers that Telegram sign-in is disabled", async () => {
+    const response = await signInWith(setup().call, signed(bo));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "telegram_disabled" });
+  });
+
+  test("the config reports Telegram sign-in as disabled without a token and enabled with one", async () => {
+    expect(await (await setup().call("GET", "/api/auth/config")).json()).toMatchObject({ telegramEnabled: false });
+    world.cleanup();
+    expect(await (await setup(undefined, BOT).call("GET", "/api/auth/config")).json()).toMatchObject({ telegramEnabled: true });
+  });
+
+  test("a banned player gets the same answer as with Google", async () => {
+    const { call } = setup(undefined, BOT);
+    await signInWith(call, signed(bo));
+    world.db.run("update players set banned_at = '2026-11-03T12:00:00Z'");
+
+    const response = await signInWith(call, signed(bo));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "banned" });
+  });
+
+  test("a new player's language follows language_code for fa, en and nl, and is the default otherwise", async () => {
+    const { call } = setup(undefined, BOT);
+    const lang = async (id: number, code?: string) =>
+      ((await (await signInWith(call, signed({ id, first_name: "P", ...(code ? { language_code: code } : {}) }))).json()) as { lang: string }).lang;
+
+    expect(await lang(1, "fa")).toBe("fa");
+    expect(await lang(2, "en")).toBe("en");
+    expect(await lang(3, "nl")).toBe("nl");
+    expect(await lang(4, "de")).toBe("fa");
+    expect(await lang(5)).toBe("fa");
+  });
+
+  test("the Telegram id is stored by migration 009 and no earlier migration was changed", () => {
+    setup(undefined, BOT);
+
+    expect(world.db.query("select name from migrations where owner = 'core' and name = '009_telegram.sql'").get()).not.toBeNull();
+    expect(world.db.query("select telegram_id from players").all()).toEqual([]);
   });
 });
 

@@ -25,6 +25,10 @@ export function createIdentityStore(db: Db) {
       const row = db.query<PlayerRow, [string]>("select * from players where email = ?").get(email);
       return row ? toPlayer(row) : null;
     },
+    playerByTelegram(telegramId: string): Player | null {
+      const row = db.query<PlayerRow, [string]>("select * from players where telegram_id = ?").get(telegramId);
+      return row ? toPlayer(row) : null;
+    },
     player(id: string): Player | null {
       const row = db.query<PlayerRow, [string]>("select * from players where id = ?").get(id);
       return row ? toPlayer(row) : null;
@@ -33,6 +37,12 @@ export function createIdentityStore(db: Db) {
       db.run(
         "insert into players (id, email, display_name, avatar_seed, lang, guest, created_at) values (?, ?, ?, ?, ?, ?, ?)",
         [player.id, player.email, player.displayName, player.id, player.lang, player.guest ? 1 : 0, player.createdAt],
+      );
+    },
+    createTelegramPlayer(player: { id: string; telegramId: string; displayName: string; lang: Lang; createdAt: string }): void {
+      db.run(
+        "insert into players (id, email, display_name, avatar_seed, lang, guest, created_at, telegram_id) values (?, null, ?, ?, ?, 0, ?, ?)",
+        [player.id, player.displayName, player.id, player.lang, player.createdAt, player.telegramId],
       );
     },
     claimEmail(id: string, email: string): void {

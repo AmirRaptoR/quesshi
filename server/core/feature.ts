@@ -27,6 +27,8 @@ export interface Core {
   origin: string;
   /** The first administrator, created when there is none; a null password is generated and must be changed. */
   bootstrapAdmin?: { username: string; email: string; password: string | null };
+  /** The Telegram bot's token, which turns on sign-in from the Telegram Mini App. */
+  telegramBotToken?: string;
   /** Google sign-in, when a client id is configured. verify returns the verified email and name. */
   google?: { clientId: string; verify(idToken: string): Promise<{ email: string; name: string | null } | null> };
 }

@@ -62,7 +62,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
       }
     })
     .get("/api/health", () => ({ status: "ok", version: core.version ?? "dev" }))
-    .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()))
+    .use(authRoutes(auth, identity, core.google, core.telegramBotToken, core.clock, () => crypto.randomUUID()))
     .use(adminAuthRoutes(adminAuth, admins))
     .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()))
     .use(categoryAdminRoutes(adminAuth, questions, features.map((feature) => feature.name)))
