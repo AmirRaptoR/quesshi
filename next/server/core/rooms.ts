@@ -1,0 +1,202 @@
+import type { FeatureContext } from "./feature";
+import type { SessionsStore } from "./sessions.store";
+
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I, O, 0 or 1: codes are read aloud
+
+/** A started game, as the lobby sees it. */
+export interface GameHandle {
+  /** A player leaves a running game; false when the format does not allow it. */
+  leave(player: string): boolean;
+  /** The ending, once the game is over. */
+  ended(): { reason: string } | null;
+  /** What one viewer (null: everyone) may see of the game; merged into the room view. */
+  view(viewer: string | null): Record<string, unknown>;
+}
+
+export interface RoomInfo<S> { id: string; code: string; owner: string; participants: readonly string[]; settings: S; createdAt: number }
+
+/** How one kind of game uses a lobby. */
+export interface RoomType<S> {
+  format: string;
+  maxCapacity: number;
+  /** How long an unstarted lobby stays open, and what its ending is called when it runs out. */
+  lobbyLifetimeMs: number;
+  lobbyEnding: string;
+  /** Starts the game; `changed` is called after every change so the room is re-broadcast. */
+  start(room: RoomInfo<S>, changed: () => void): { ok: true; game: GameHandle } | { ok: false; error: "not_enough_questions" };
+}
+
+interface Room {
+  type: RoomType<unknown>;
+  id: string;
+  code: string;
+  owner: string;
+  capacity: number;
+  settings: unknown;
+  participants: string[];
+  status: "lobby" | "running" | "ended";
+  endedReason: string | null;
+  createdAt: number;
+  game: GameHandle | null;
+  extra: Record<string, unknown>;
+  cancelExpiry: () => void;
+}
+
+export type JoinResult = { ok: true; id: string } | { ok: false; error: "not_found" | "full" | "started" };
+export type StartResult = { ok: true } | { ok: false; error: "cannot_start" | "not_enough_questions" };
+export type Rooms = ReturnType<typeof createRooms>;
+
+/**
+ * Today's lobby rules, shared by every game: a code, an owner, a capacity, joining until the start,
+ * the owner starts (two or more players), changes settings or cancels; others may leave. Rooms live
+ * in memory; their sessions are recorded in the database.
+ */
+export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" | "random" | "player" | "publish">, sessions: SessionsStore) {
+  const rooms = new Map<string, Room>();
+  const byCode = new Map<string, Room>();
+  const topic = (id: string) => `room:${id}`;
+  const now = () => context.clock.now().getTime();
+
+  const ended = (room: Room) => room.status === "ended" || room.game?.ended() != null;
+  const view = (room: Room, viewer: string | null) => ({
+    id: room.id,
+    format: room.type.format,
+    code: room.code,
+    owner: room.owner,
+    capacity: room.capacity,
+    settings: room.settings,
+    phase: ended(room) ? "ended" : room.status,
+    endedReason: room.endedReason ?? room.game?.ended()?.reason ?? null,
+    lobbyEndsAt: room.createdAt + room.type.lobbyLifetimeMs,
+    participants: room.participants.map((id) => {
+      const player = context.player(id);
+      return { id, displayName: player?.displayName ?? "", avatarSeed: player?.avatarSeed ?? id, guest: player?.guest ?? false };
+    }),
+    ...(room.game ? room.game.view(viewer) : {}),
+    ...room.extra,
+  });
+  const broadcast = (room: Room) => {
+    // The code stays valid while the game runs, so a late joiner hears "started", not "not found".
+    if (ended(room)) byCode.delete(room.code);
+    context.publish(topic(room.id), { type: "view", view: view(room, null) });
+  };
+
+  const end = (room: Room, reason: string) => {
+    room.status = "ended";
+    room.endedReason = reason;
+    room.cancelExpiry();
+    sessions.finish({ sessionId: room.id, endedAt: new Date(now()).toISOString(), reason, result: null });
+    broadcast(room);
+  };
+
+  const newCode = () => {
+    for (;;) {
+      const code = Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(context.random() * CODE_ALPHABET.length)]).join("");
+      if (!byCode.has(code)) return code;
+    }
+  };
+
+  const find = (id: string, format: string) => {
+    const room = rooms.get(id);
+    return room?.type.format === format ? room : undefined;
+  };
+
+  return {
+    topic,
+
+    open<S>(type: RoomType<S>, owner: string, settings: S, capacity: number): { id: string; code: string } {
+      const room: Room = {
+        type: type as RoomType<unknown>, id: crypto.randomUUID(), code: newCode(), owner, capacity, settings, participants: [owner],
+        status: "lobby", endedReason: null, createdAt: now(), game: null, extra: {}, cancelExpiry: () => {},
+      };
+      rooms.set(room.id, room);
+      byCode.set(room.code, room);
+      sessions.createLobby({ id: room.id, code: room.code, format: type.format, createdAt: new Date(room.createdAt).toISOString() });
+      room.cancelExpiry = context.schedule(room.createdAt + type.lobbyLifetimeMs, () => {
+        if (room.status === "lobby") end(room, type.lobbyEnding);
+      });
+      return { id: room.id, code: room.code };
+    },
+
+    view(id: string, format: string, viewer: string | null) {
+      const room = find(id, format);
+      return room ? view(room, viewer) : null;
+    },
+
+    idForCode(code: string, format: string): string | null {
+      const room = byCode.get(code.trim().toUpperCase());
+      return room?.type.format === format ? room.id : null;
+    },
+
+    join(code: string, format: string, player: string): JoinResult {
+      const room = byCode.get(code.trim().toUpperCase());
+      if (!room || room.type.format !== format) return { ok: false, error: "not_found" };
+      if (room.participants.includes(player)) return { ok: true, id: room.id };
+      if (room.status !== "lobby") return { ok: false, error: "started" };
+      if (room.participants.length >= room.capacity) return { ok: false, error: "full" };
+      room.participants.push(player);
+      broadcast(room);
+      return { ok: true, id: room.id };
+    },
+
+    leave(id: string, format: string, player: string): boolean {
+      const room = find(id, format);
+      if (!room || !room.participants.includes(player)) return false;
+      if (room.game) return room.game.leave(player);
+      // The owner cannot leave a lobby; they cancel it.
+      if (room.status !== "lobby" || player === room.owner) return false;
+      room.participants = room.participants.filter((candidate) => candidate !== player);
+      broadcast(room);
+      return true;
+    },
+
+    cancel(id: string, format: string, player: string): boolean {
+      const room = find(id, format);
+      if (!room || room.status !== "lobby" || player !== room.owner) return false;
+      end(room, "owner_cancelled");
+      return true;
+    },
+
+    start(id: string, format: string, player: string): StartResult {
+      const room = find(id, format);
+      if (!room || room.status !== "lobby" || player !== room.owner || room.participants.length < 2) return { ok: false, error: "cannot_start" };
+      const started = room.type.start(
+        { id: room.id, code: room.code, owner: room.owner, participants: room.participants, settings: room.settings, createdAt: room.createdAt },
+        () => broadcast(room),
+      );
+      if (!started.ok) return started;
+      room.status = "running";
+      room.cancelExpiry();
+      room.game = started.game;
+      broadcast(room);
+      return { ok: true };
+    },
+
+    updateSettings(id: string, format: string, player: string, settings: unknown, capacity: number | null): boolean {
+      const room = find(id, format);
+      if (!room || room.status !== "lobby" || player !== room.owner) return false;
+      if (capacity !== null && (capacity < 2 || capacity > room.type.maxCapacity || capacity < room.participants.length)) return false;
+      room.settings = settings;
+      if (capacity !== null) room.capacity = capacity;
+      broadcast(room);
+      return true;
+    },
+
+    /** The room's facts and game, for format-specific actions. */
+    room(id: string, format: string) {
+      const room = find(id, format);
+      if (!room) return null;
+      return {
+        info: { id: room.id, code: room.code, owner: room.owner, participants: room.participants, settings: room.settings, createdAt: room.createdAt, capacity: room.capacity },
+        game: room.game,
+        ended: ended(room),
+        /** Adds fields to the room's view, such as a rematch, and re-broadcasts it. */
+        set(key: string, value: unknown) {
+          room.extra[key] = value;
+          broadcast(room);
+        },
+        extra: room.extra,
+      };
+    },
+  };
+}

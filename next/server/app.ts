@@ -2,8 +2,10 @@ import { Elysia } from "elysia";
 import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureContext } from "./core/feature";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
-import { createIdentityStore } from "./core/identity.store";
+import { createIdentityStore, type Lang } from "./core/identity.store";
 import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
+import { createRooms } from "./core/rooms";
+import { createSessionsStore } from "./core/sessions.store";
 
 /** Checks the features, migrates the core then each feature, and mounts every feature's routes. */
 export function createApp(core: Core, features: readonly Feature[]) {
@@ -26,16 +28,17 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .get("/api/health", () => ({ status: "ok" }))
     .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()));
   const newId = () => crypto.randomUUID();
-  const context: FeatureContext = {
+  const services = {
     ...core,
-    playerFor: (header) => auth.playerFor(tokenFromCookies(header)),
-    player: (id) => identity.player(id),
-    signInGuest(name, lang) {
+    playerFor: (header: string | null) => auth.playerFor(tokenFromCookies(header)),
+    player: (id: string) => identity.player(id),
+    signInGuest(name: string, lang: Lang) {
       const player = auth.createGuest(name, lang, newId);
       return { player, cookie: sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600) };
     },
-    publish: (topic, message) => { server.server?.publish(topic, JSON.stringify(message)); },
+    publish: (topic: string, message: unknown) => { server.server?.publish(topic, JSON.stringify(message)); },
   };
+  const context: FeatureContext = { ...services, rooms: createRooms(services, createSessionsStore(core.db)) };
   for (const feature of features) {
     const routes = featureRoutes(feature, context);
     if (routes) server = server.use(routes);

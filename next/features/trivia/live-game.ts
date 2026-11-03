@@ -19,6 +19,7 @@ export interface LiveView {
   reveal: { answer: unknown; explanation: string | null; answers: { player: string; value: unknown; points: number }[] } | null;
   players: { player: string; status: SeatStatus; score: number; answered: boolean }[];
   standings: Standing[] | null;
+  endedReason: "completed" | "no_contest" | null;
 }
 
 export type AnswerResult = { ok: true; answer: unknown } | { ok: false; error: "malformed_answer" | "not_accepted" };
@@ -138,6 +139,7 @@ export class LiveGame {
         : null,
       players: state.seats.map((seat) => ({ player: seat.player, status: seat.status, score: seat.score, answered: state.phase === "question" && state.answered.includes(seat.player) })),
       standings: state.ended?.standings ?? null,
+      endedReason: state.ended?.reason ?? null,
     };
   }
 }

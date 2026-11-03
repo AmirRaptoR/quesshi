@@ -3,6 +3,7 @@ import type { Clock } from "./clock";
 import type { Db } from "./db";
 import type { Lang, Player } from "./identity.store";
 import type { Mailer } from "./mailer";
+import type { Rooms } from "./rooms";
 import type { Schedule } from "./schedule";
 
 /** What the core hands every feature at start-up. It grows as the core does (events, live hub). */
@@ -29,6 +30,8 @@ export interface FeatureContext extends Core {
   signInGuest(name: string, lang: Lang): { player: Player; cookie: string };
   /** Sends a message to every WebSocket subscribed to the topic. */
   publish(topic: string, message: unknown): void;
+  /** Every feature's game lobbies, sharing one set of codes. */
+  rooms: Rooms;
 }
 
 /** A self-contained feature: one folder, enabled by being listed in features/index.ts. */
