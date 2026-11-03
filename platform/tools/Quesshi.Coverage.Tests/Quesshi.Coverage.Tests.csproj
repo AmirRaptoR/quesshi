@@ -1,6 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="../Quesshi.Coverage/Quesshi.Coverage.csproj" />
-  </ItemGroup>
-  <Import Project="../../tests/TestProject.props" />
-</Project>

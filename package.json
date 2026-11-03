@@ -1,0 +1,26 @@
+{
+  "name": "quesshi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch server/main.ts",
+    "start": "bun server/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun test && tsc --noEmit",
+    "build": "bun scripts/build-client.ts",
+    "dev:client": "bun scripts/build-client.ts --watch"
+  },
+  "dependencies": {
+    "elysia": "1.4.30",
+    "nodemailer": "10.1.7",
+    "preact": "11.0.1",
+    "preact-iso": "2.12.2",
+    "preact-render-to-string": "6.8.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "@types/nodemailer": "8.0.2",
+    "typescript": "7.0.2"
+  }
+}

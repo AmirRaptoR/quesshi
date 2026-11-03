@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Orleans.Core.Abstractions" Version="10.2.2" />
-  </ItemGroup>
-</Project>
