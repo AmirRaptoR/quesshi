@@ -1,5 +1,5 @@
 import { createApp } from "../../server/app";
-import type { Feature } from "../../server/core/feature";
+import type { Core, Feature } from "../../server/core/feature";
 import { createQuestionsStore } from "../../server/core/questions.store";
 import { tempWorld } from "./temp";
 import { fakeScheduler, fixedRandom } from "./time";
@@ -11,13 +11,14 @@ export const T0 = Date.parse("2026-11-03T12:00:00Z");
  * The whole app on a temporary database, with a fake scheduler and captured mail.
  * `listen()` starts a real server on a free port for WebSocket tests.
  */
-export function testApp(features: readonly Feature[]) {
+export function testApp(features: readonly Feature[], options: { bootstrapAdmin?: Core["bootstrapAdmin"] } = {}) {
   const world = tempWorld();
   const scheduler = fakeScheduler(T0);
   const mail: { to: string; text: string }[] = [];
   const { server } = createApp({
     db: world.db, clock: scheduler.clock, schedule: scheduler.schedule, random: fixedRandom,
     secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } },
+    ...(options.bootstrapAdmin ? { bootstrapAdmin: options.bootstrapAdmin } : {}),
   }, features);
   const questions = createQuestionsStore(world.db);
 
@@ -31,7 +32,7 @@ export function testApp(features: readonly Feature[]) {
   };
 
   return {
-    world, scheduler, questions, call,
+    world, scheduler, questions, call, mail,
     /** Signs a player in through the emailed-code flow and returns their cookie. */
     async signIn(email: string): Promise<string> {
       await call("POST", "/api/auth/code", { email, lang: "en" });

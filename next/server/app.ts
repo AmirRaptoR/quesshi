@@ -1,9 +1,13 @@
 import { Elysia } from "elysia";
 import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureContext } from "./core/feature";
+import { createAdminAuth } from "./core/admin";
+import { adminAuthRoutes } from "./core/admin.routes";
+import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
 import { createIdentityStore, type Lang } from "./core/identity.store";
 import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
+import { hashPasswordSync } from "./core/passwords";
 import { createRooms } from "./core/rooms";
 import { createSessionsStore } from "./core/sessions.store";
 
@@ -14,6 +18,9 @@ export function createApp(core: Core, features: readonly Feature[]) {
     { owner: "core", directory: CORE_MIGRATIONS },
     ...features.flatMap((feature) => (feature.migrations ? [{ owner: feature.name, directory: feature.migrations }] : [])),
   ], core.clock);
+  const admins = createAdminStore(core.db);
+  bootstrapAdmin(core, admins);
+  const adminAuth = createAdminAuth({ admins, clock: core.clock, mailer: core.mailer, origin: core.origin });
   const identity = createIdentityStore(core.db);
   const auth = createAuth({ identity, clock: core.clock, mailer: core.mailer, secret: core.secret });
   let server = new Elysia()
@@ -26,7 +33,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
       }
     })
     .get("/api/health", () => ({ status: "ok" }))
-    .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()));
+    .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()))
+    .use(adminAuthRoutes(adminAuth));
   const newId = () => crypto.randomUUID();
   const services = {
     ...core,
@@ -44,4 +52,16 @@ export function createApp(core: Core, features: readonly Feature[]) {
     if (routes) server = server.use(routes);
   }
   return { server, migrations };
+}
+
+/** Creates the first administrator when there is none; a generated password is logged and must be changed. */
+function bootstrapAdmin(core: Core, admins: ReturnType<typeof createAdminStore>) {
+  if (!core.bootstrapAdmin || admins.count() > 0) return;
+  const generated = core.bootstrapAdmin.password === null;
+  const password = core.bootstrapAdmin.password ?? crypto.randomUUID();
+  admins.create({
+    id: crypto.randomUUID(), username: core.bootstrapAdmin.username, email: core.bootstrapAdmin.email,
+    passwordHash: hashPasswordSync(password), mustChangePassword: generated, createdAt: core.clock.now().toISOString(),
+  });
+  if (generated) console.warn(`Created the first administrator "${core.bootstrapAdmin.username}" with password ${password}; change it at the first sign-in.`);
 }
