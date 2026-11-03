@@ -224,7 +224,12 @@ set_role_password quesshi_app "$app_password"
 set_role_password quesshi_system "$system_password"
 
 # Fail before touching the running application when a build, migration, or sync is invalid.
-RELEASE_TAG="$release" compose build app
+# The previous release's image supplies the client files a tab left open across the release still asks for.
+previous_image=build
+if [[ -n "$current_release" ]] && docker image inspect "quesshi-platform:$current_release" >/dev/null 2>&1; then
+    previous_image="quesshi-platform:$current_release"
+fi
+PREVIOUS_IMAGE="$previous_image" RELEASE_TAG="$release" compose build app
 RELEASE_TAG="$release" compose run --rm --no-deps \
     -e "DB_OWNER_PASSWORD=$owner_password" \
     app migrate

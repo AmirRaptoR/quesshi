@@ -38,8 +38,21 @@ sed \
     -e 's|^DEPLOY_POSTGRES_POLL_SECONDS=.*|DEPLOY_POSTGRES_POLL_SECONDS=1|' \
     "$deploy_dir/.env.example" > "$env_file"
 
+# Records the PREVIOUS_IMAGE each image build receives, so the test can see the deploy forward it.
+shim_dir="$work_dir/shim"
+mkdir -p "$shim_dir"
+real_docker="$(command -v docker)"
+cat > "$shim_dir/docker" <<SHIM
+#!/usr/bin/env bash
+if [[ " \$* " == *" build "* ]]; then
+    printf '%s\n' "\${PREVIOUS_IMAGE:-unset}" >> "$work_dir/previous-images"
+fi
+exec "$real_docker" "\$@"
+SHIM
+chmod +x "$shim_dir/docker"
+
 run_deploy() {
-    PLATFORM_COMPOSE_PROJECT="$compose_project" DEPLOY_ENV_FILE="$env_file" DEPLOY_STATE_DIR="$state_dir" \
+    PATH="$shim_dir:$PATH" PLATFORM_COMPOSE_PROJECT="$compose_project" DEPLOY_ENV_FILE="$env_file" DEPLOY_STATE_DIR="$state_dir" \
         "$deploy_dir/deploy.sh" "$1"
 }
 
@@ -49,6 +62,8 @@ compose() {
 }
 
 run_deploy good
+[[ "$(tail -n 1 "$work_dir/previous-images")" == build ]] \
+    || { printf 'a first deploy must not name a previous image\n' >&2; exit 1; }
 compose exec -T postgres psql -U postgres -d quesshi_platform -tAc \
     "select count(*) from pg_roles where rolname in ('quesshi_owner', 'quesshi_app', 'quesshi_system')" \
     | grep -qx '3'
@@ -93,6 +108,8 @@ if run_deploy bad; then
     printf 'a candidate with a failing health check unexpectedly deployed\n' >&2
     exit 1
 fi
+[[ "$(tail -n 1 "$work_dir/previous-images")" == quesshi-platform:good ]] \
+    || { printf 'a later deploy did not forward the current release as PREVIOUS_IMAGE\n' >&2; exit 1; }
 [[ "$(sed -n '1p' "$state_dir/current")" == good ]]
 [[ "$(docker inspect --format '{{.Config.Image}}' "$(compose ps -q app)")" == quesshi-platform:good ]]
 compose ps --status running app | grep -q app

@@ -81,6 +81,22 @@ test('a tab on the previous build keeps its fingerprinted files after the worker
   assert.equal(await (await v2.request('/_framework/Quesshi.Web.Admin.old.wasm')).text(), 'old build');
 });
 
+test('an unfingerprinted lazy file is refetched after a release, with the old copy only as the offline fallback', async () => {
+  const path = '/_content/Quesshi.Kinds.MapPick.Client/maps/world.svg';
+  const v1 = loadWorker({ assets: assets.slice(0, 2), version: 'v1', network: () => ok('map one') });
+  await v1.install();
+  assert.equal(await (await v1.request(path)).text(), 'map one');
+  let online = true;
+  const v2 = loadWorker({ assets: assets.slice(0, 2), version: 'v2', caches: v1.caches, network: () => { if (!online) throw new Error('offline'); return ok('map two'); } });
+  await v2.install();
+  await v2.activate();
+  assert.equal(await (await v2.request(path)).text(), 'map two');
+  const v3 = loadWorker({ assets: assets.slice(0, 2), version: 'v3', caches: v1.caches, network: () => { throw new Error('offline'); } });
+  await v3.install();
+  await v3.activate();
+  assert.equal(await (await v3.request(path)).text(), 'map two');
+});
+
 test('caches two releases back are removed once a worker activates', async () => {
   const v1 = loadWorker({ assets: assets.slice(0, 1), version: 'v1', network: () => ok('x') });
   await v1.install();

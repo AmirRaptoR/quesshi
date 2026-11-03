@@ -48,13 +48,21 @@ async function cachedAsset(request, current) {
   return (await current.match(request)) || (await caches.match(request));
 }
 
+// Lazy files without a fingerprint (the world map, the map client's script) keep one URL across
+// releases, so the current cache and then the network come first. Older caches only answer when the
+// network cannot, which still lets a tab on the previous build load its old fingerprinted files.
 async function lazyAsset(request) {
   const cache = await caches.open(lazyCache);
-  const cached = await cachedAsset(request, cache);
+  const cached = await cache.match(request);
   if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) await cache.put(request, response.clone());
-  return response;
+  let response;
+  try { response = await fetch(request); }
+  catch { return (await caches.match(request)) || Response.error(); }
+  if (response.ok) {
+    await cache.put(request, response.clone());
+    return response;
+  }
+  return (await caches.match(request)) || response;
 }
 
 function dynamicRequest(pathname) {
