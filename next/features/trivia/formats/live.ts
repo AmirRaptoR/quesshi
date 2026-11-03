@@ -8,7 +8,7 @@ const MISSES_BEFORE_ELIMINATION = 3;
 export type SeatStatus = "active" | "left" | "eliminated" | "done";
 export interface LiveSeat { player: string; status: SeatStatus; score: number; exitRound: number | null }
 export interface Standing { player: string; score: number; place: number; outcome: "win" | "draw" | "loss" | "none" }
-export interface LiveEnding { reason: "completed" | "no_contest"; standings: Standing[] }
+export interface LiveEnding { reason: "completed" | "no_contest" | "ended_by_admin"; standings: Standing[] }
 
 export interface LiveState {
   phase: "countdown" | "question" | "reveal" | "ended";
@@ -54,6 +54,11 @@ export const live = {
       },
       effects: [],
     };
+  },
+
+  /** An administrator ends the game: a no contest, whatever the scores. */
+  abort(state: LiveState): Step {
+    return state.phase === "ended" ? unchanged(state) : end(state, "ended_by_admin", []);
   },
 
   next(state: LiveState, event: LiveEvent): Step {
@@ -145,7 +150,7 @@ function leave(state: LiveState, event: Extract<LiveEvent, { type: "leave" }>): 
 }
 
 function end(state: LiveState, reason: LiveEnding["reason"], effects: LiveEffect[]): Step {
-  const ending: LiveEnding = { reason, standings: reason === "no_contest" ? noContest(state) : standings(state) };
+  const ending: LiveEnding = { reason, standings: reason === "completed" ? standings(state) : noContest(state) };
   const seats = state.seats.map((seat) => (seat.status === "active" ? { ...seat, status: "done" as const } : seat));
   return { state: { ...state, phase: "ended", seats, ended: ending }, effects: [...effects, { type: "ended", ending }] };
 }

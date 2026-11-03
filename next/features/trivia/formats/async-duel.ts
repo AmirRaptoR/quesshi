@@ -5,13 +5,13 @@ const FORFEIT_MS = 48 * 3600_000;
 
 export interface DuelAnswer { slot: number; points: number; missed: boolean }
 export interface DuelRun { answers: DuelAnswer[]; servedAt: number | null }
-export interface DuelStanding { player: string; score: number; place: number; outcome: "win" | "draw" | "loss" }
+export interface DuelStanding { player: string; score: number; place: number; outcome: "win" | "draw" | "loss" | "none" }
 export interface DuelState {
   players: string[];
   levels: (number | null)[];
   createdAt: number;
   runs: Record<string, DuelRun>;
-  ended: { reason: "resolved" | "forfeited"; standings: DuelStanding[] } | null;
+  ended: { reason: "resolved" | "forfeited" | "ended_by_admin"; standings: DuelStanding[] } | null;
 }
 
 export type DuelEvent =
@@ -36,6 +36,12 @@ export const asyncDuel = {
   /** Applies the 48-hour forfeit if it is due; otherwise returns the state unchanged. */
   settle(state: DuelState, at: number): DuelState {
     return !state.ended && at >= state.createdAt + FORFEIT_MS ? finish(state, "forfeited") : state;
+  },
+
+  /** An administrator ends the duel: a no contest, whatever the scores. */
+  abort(state: DuelState): DuelState {
+    if (state.ended) return state;
+    return { ...state, ended: { reason: "ended_by_admin", standings: state.players.map((player) => ({ player, score: 0, place: 0, outcome: "none" })) } };
   },
 
   next(state: DuelState, event: DuelEvent): { state: DuelState; result: DuelResult } {

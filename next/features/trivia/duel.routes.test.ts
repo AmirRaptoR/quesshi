@@ -92,3 +92,15 @@ describe("async duel", () => {
     expect((await app.call("GET", `/f/trivia/duel/${id}`, undefined, ann)).body).toMatchObject({ phase: "ended", endedReason: "forfeited" });
   });
 });
+
+describe("async duel, ended by an administrator", () => {
+  test("ends as a no contest and serves nothing more", async () => {
+    const { id, ann } = await started();
+    await app.call("POST", `/f/trivia/duel/${id}/next`, undefined, ann);
+
+    await app.call("POST", `/api/admin/rooms/${id}/end`, undefined, await app.signInAdmin());
+
+    expect((await app.call("GET", `/f/trivia/duel/${id}`, undefined, ann)).body).toMatchObject({ phase: "ended", endedReason: "ended_by_admin" });
+    expect((await app.call("POST", `/f/trivia/duel/${id}/next`, undefined, ann)).status).toBe(409);
+  });
+});

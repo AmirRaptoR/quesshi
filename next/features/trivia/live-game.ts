@@ -2,7 +2,7 @@ import type { Clock } from "../../server/core/clock";
 import { MalformedAnswer } from "../../server/core/kind";
 import type { Schedule } from "../../server/core/schedule";
 import type { SessionsStore } from "../../server/core/sessions.store";
-import { live, type LiveEffect, type LiveEvent, type LiveState, type SeatStatus, type Standing } from "./formats/live";
+import { live, type LiveEnding, type LiveEffect, type LiveEvent, type LiveState, type SeatStatus, type Standing } from "./formats/live";
 import { kinds, type TriviaItem } from "./items";
 
 export type { TriviaItem } from "./items";
@@ -19,7 +19,7 @@ export interface LiveView {
   reveal: { answer: unknown; explanation: string | null; answers: { player: string; value: unknown; points: number }[] } | null;
   players: { player: string; status: SeatStatus; score: number; answered: boolean }[];
   standings: Standing[] | null;
-  endedReason: "completed" | "no_contest" | null;
+  endedReason: LiveEnding["reason"] | null;
 }
 
 export type AnswerResult = { ok: true; answer: unknown } | { ok: false; error: "malformed_answer" | "not_accepted" };
@@ -68,6 +68,12 @@ export class LiveGame {
     const credit = kind.grade(item.payload, this.#resolved[slot], stored);
     const accepted = this.#apply({ type: "answer", player, slot, credit, at: this.#now() }, new Map([[player, stored]]));
     return accepted ? { ok: true, answer: stored } : { ok: false, error: "not_accepted" };
+  }
+
+  /** An administrator ends the game as a no contest. */
+  end(): void {
+    const { state, effects } = live.abort(this.#state);
+    if (state !== this.#state) this.#commit(state, effects);
   }
 
   leave(player: string): void {

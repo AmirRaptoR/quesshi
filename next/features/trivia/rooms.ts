@@ -64,6 +64,7 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
             return true;
           },
           ended: () => (last?.phase === "ended" ? { reason: last.endedReason ?? "completed" } : null),
+          end: () => game.end(),
           view: () => ({ game: last }),
         },
       };
@@ -93,6 +94,7 @@ export function duelRoomType(context: FeatureContext, stores: Stores, games: Map
           // A started duel cannot be left, as today.
           leave: () => false,
           ended: () => game.ended,
+          end: () => game.end(),
           view: (viewer) => game.view(viewer ?? ""),
         },
       };

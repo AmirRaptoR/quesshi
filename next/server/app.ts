@@ -6,6 +6,7 @@ import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { selectCategories } from "./core/categories";
 import { categoryAdminRoutes } from "./core/categories.routes";
+import { roomAdminRoutes } from "./core/room-admin.routes";
 import { reportAdminRoutes, reportRoutes } from "./core/reports.routes";
 import { createReportsStore } from "./core/reports.store";
 import { userAdminRoutes } from "./core/user-admin.routes";
@@ -32,6 +33,19 @@ export function createApp(core: Core, features: readonly Feature[]) {
   const questions = createQuestionsStore(core.db);
   const reports = createReportsStore(core.db);
   const auth = createAuth({ identity, clock: core.clock, mailer: core.mailer, secret: core.secret });
+  const newId = () => crypto.randomUUID();
+  const services = {
+    ...core,
+    playerFor: (header: string | null) => auth.playerFor(tokenFromCookies(header)),
+    player: (id: string) => identity.player(id),
+    signInGuest(name: string, lang: Lang) {
+      const player = auth.createGuest(name, lang, newId);
+      return { player, cookie: sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600) };
+    },
+    publish: (topic: string, message: unknown) => { server.server?.publish(topic, JSON.stringify(message)); },
+  };
+  const context: Omit<FeatureContext, "categories"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db)) };
+  // The server is read only when a message is published, after start-up.
   let server = new Elysia()
     // Every change must come from this site; SameSite cookies plus this check stop cross-site requests.
     .onRequest(({ request, set }) => {
@@ -49,19 +63,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(questionAdminRoutes(adminAuth, questions, features, core.clock))
     .use(userAdminRoutes(adminAuth, identity, core.clock))
     .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
-    .use(reportAdminRoutes(adminAuth, reports, questions));
-  const newId = () => crypto.randomUUID();
-  const services = {
-    ...core,
-    playerFor: (header: string | null) => auth.playerFor(tokenFromCookies(header)),
-    player: (id: string) => identity.player(id),
-    signInGuest(name: string, lang: Lang) {
-      const player = auth.createGuest(name, lang, newId);
-      return { player, cookie: sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600) };
-    },
-    publish: (topic: string, message: unknown) => { server.server?.publish(topic, JSON.stringify(message)); },
-  };
-  const context: Omit<FeatureContext, "categories"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db)) };
+    .use(reportAdminRoutes(adminAuth, reports, questions))
+    .use(roomAdminRoutes(adminAuth, context.rooms));
   for (const feature of features) {
     const routes = featureRoutes(feature, { ...context, categories: featureCategories(questions, feature.name, core.random) });
     if (routes) server = server.use(routes);

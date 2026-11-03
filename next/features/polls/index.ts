@@ -48,7 +48,7 @@ function pollRoutes(context: FeatureContext) {
         clock: context.clock, schedule: context.schedule, sessions, onChange: changed,
       });
       games.set(room.id, game);
-      return { ok: true, game: { leave: (player) => game.leave(player), ended: () => game.ended, view: (viewer) => game.view(viewer) } };
+      return { ok: true, game: { leave: (player) => game.leave(player), ended: () => game.ended, end: () => game.end(), view: (viewer) => game.view(viewer) } };
     },
   };
 

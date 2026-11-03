@@ -7,6 +7,8 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I, O, 0 or 1: co
 export interface GameHandle {
   /** A player leaves a running game; false when the format does not allow it. */
   leave(player: string): boolean;
+  /** An administrator ends the game at once, as a no contest. */
+  end(): void;
   /** The ending, once the game is over. */
   ended(): { reason: string } | null;
   /** What one viewer (null: everyone) may see of the game; merged into the room view. */
@@ -179,6 +181,22 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
       room.settings = settings;
       if (capacity !== null) room.capacity = capacity;
       broadcast(room);
+      return true;
+    },
+
+    /** Every open lobby and running game, oldest first, as everyone sees them. */
+    all() {
+      return [...rooms.values()].filter((room) => !ended(room)).sort((a, b) => a.createdAt - b.createdAt).map((room) => view(room, null));
+    },
+
+    /** An administrator ends a lobby or a running game; false when it is unknown or already over. */
+    endByAdmin(id: string): boolean {
+      const room = rooms.get(id);
+      if (!room || ended(room)) return false;
+      if (room.game) {
+        room.game.end();
+        broadcast(room);
+      } else end(room, "ended_by_admin");
       return true;
     },
 

@@ -2,7 +2,7 @@ import { createApp } from "../../server/app";
 import type { Core, Feature } from "../../server/core/feature";
 import { createQuestionsStore } from "../../server/core/questions.store";
 import { tempWorld } from "./temp";
-import { fakeScheduler, fixedRandom } from "./time";
+import { fakeScheduler, seededRandom } from "./time";
 
 export const ORIGIN = "https://quesshi.example.com";
 export const T0 = Date.parse("2026-11-03T12:00:00Z");
@@ -19,7 +19,7 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
   const scheduler = fakeScheduler(T0);
   const mail: { to: string; text: string }[] = [];
   const { server } = createApp({
-    db: world.db, clock: scheduler.clock, schedule: scheduler.schedule, random: fixedRandom,
+    db: world.db, clock: scheduler.clock, schedule: scheduler.schedule, random: seededRandom(),
     secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } },
     ...(options.bootstrapAdmin ? { bootstrapAdmin: options.bootstrapAdmin } : {}),
   }, features);

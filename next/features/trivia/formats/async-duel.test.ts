@@ -80,3 +80,16 @@ describe("async duel", () => {
     ] });
   });
 });
+
+describe("async duel, ended by an administrator", () => {
+  test("ends at once as a no contest, and serves nothing more", () => {
+    const { state: running } = duel(["ann", "bob"], 2, [serve("ann", T0 + 1_000), answer("ann", 0, T0 + 2_000)]);
+
+    const state = asyncDuel.abort(running);
+
+    expect(state.ended).toEqual({ reason: "ended_by_admin", standings: [
+      { player: "ann", score: 0, place: 0, outcome: "none" }, { player: "bob", score: 0, place: 0, outcome: "none" },
+    ] });
+    expect(asyncDuel.next(state, serve("bob", T0 + 3_000)).result).toEqual({ type: "refused" });
+  });
+});

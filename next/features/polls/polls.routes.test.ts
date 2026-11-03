@@ -96,3 +96,14 @@ describe("polls", () => {
     expect((await app.call("POST", "/f/polls/poll/lobby", { ...settings, capacity: 9 }, ann)).body).toEqual({ error: "bad_capacity" });
   });
 });
+
+describe("polls, ended by an administrator", () => {
+  test("ends without results and stops waiting for idle players", async () => {
+    const { id, ann } = await started();
+
+    await app.call("POST", `/api/admin/rooms/${id}/end`, undefined, await app.signInAdmin());
+
+    expect((await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body).toMatchObject({ phase: "ended", endedReason: "ended_by_admin", question: null });
+    expect(app.scheduler.pending()).toBe(0);
+  });
+});

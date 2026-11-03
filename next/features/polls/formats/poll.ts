@@ -9,7 +9,7 @@ export interface PollState {
   shapes: SlotShape[];
   slots: PollSlot[];
   current: number | null;
-  ended: { reason: "resolved" | "no_contest" } | null;
+  ended: { reason: "resolved" | "no_contest" | "ended_by_admin" } | null;
 }
 
 export type PollEvent =
@@ -25,6 +25,11 @@ export const poll = {
   id: "poll",
   start({ players, slots }: { players: string[]; slots: SlotShape[] }, at: number): PollState {
     return { players, inactive: [], shapes: slots, slots: [{ servedAt: at, answers: {} }], current: 0, ended: null };
+  },
+
+  /** An administrator ends the poll; it has no results. */
+  abort(state: PollState): PollState {
+    return state.ended ? state : { ...state, current: null, ended: { reason: "ended_by_admin" } };
   },
 
   next(state: PollState, event: PollEvent): { state: PollState } {

@@ -94,3 +94,15 @@ describe("pollResults", () => {
     expect(pollResults(state).slots[0]).toMatchObject({ counts: [0, 2, 0, 0] });
   });
 });
+
+describe("poll, ended by an administrator", () => {
+  test("ends at once and takes no more answers", () => {
+    const { state: running } = run(["ann", "bob"], [vote("ann", 0, 1)]);
+
+    const state = poll.abort(running);
+
+    expect(state).toMatchObject({ current: null, ended: { reason: "ended_by_admin" } });
+    expect(poll.next(state, vote("bob", 0, 1)).state).toBe(state);
+    expect(pollResults(state).pairs).toBeNull();
+  });
+});

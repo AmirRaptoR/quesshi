@@ -161,3 +161,17 @@ describe("live", () => {
     expect(ignored([], answer("ann", 0, T0 + 1_000))).toBe(true); // during the countdown
   });
 });
+
+describe("live, ended by an administrator", () => {
+  test("ends at once as a no contest: no scores, no places", () => {
+    const { state: running } = play(["ann", "bob"], 2, [timeout(opens(0)), answer("ann", 0, opens(0) + 1_000)]);
+
+    const { state, effects } = live.abort(running);
+
+    expect(state.ended).toEqual({ reason: "ended_by_admin", standings: [
+      { player: "ann", score: 0, place: 0, outcome: "none" }, { player: "bob", score: 0, place: 0, outcome: "none" },
+    ] });
+    expect(of(effects, "ended")).toHaveLength(1);
+    expect(live.abort(state).effects).toEqual([]);
+  });
+});

@@ -38,6 +38,11 @@ export class DuelGame {
     return this.#state.ended;
   }
 
+  /** An administrator ends the duel as a no contest. */
+  end(): void {
+    if (!this.#state.ended) this.#apply(asyncDuel.abort(this.#state));
+  }
+
   /** The player's open question, or their next one. Null when they have nothing left to play. */
   next(player: string) {
     const before = this.#state;

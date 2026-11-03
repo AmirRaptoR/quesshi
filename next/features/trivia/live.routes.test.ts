@@ -236,3 +236,16 @@ describe("trivia categories", () => {
     expect((await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner)).body).toEqual({ error: "not_enough_questions" });
   });
 });
+
+describe("live, ended by an administrator", () => {
+  test("ends as a no contest and stops its clock", async () => {
+    const { owner, id, code } = await lobby();
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+    await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner);
+
+    await app.call("POST", `/api/admin/rooms/${id}/end`, undefined, await app.signInAdmin());
+
+    expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body).toMatchObject({ phase: "ended", endedReason: "ended_by_admin", game: { standings: [{ outcome: "none" }, { outcome: "none" }] } });
+    expect(app.scheduler.pending()).toBe(0);
+  });
+});

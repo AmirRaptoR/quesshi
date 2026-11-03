@@ -40,6 +40,11 @@ export class PollGame {
     return this.#apply({ type: "answer", player, slot, option, at: this.#now() });
   }
 
+  /** An administrator ends the poll; it has no results. */
+  end(): void {
+    this.#commit(poll.abort(this.#state));
+  }
+
   leave(player: string): boolean {
     return this.#apply({ type: "leave", player, at: this.#now() });
   }
@@ -65,8 +70,11 @@ export class PollGame {
   }
 
   #apply(event: PollEvent): boolean {
+    return this.#commit(poll.next(this.#state, event).state);
+  }
+
+  #commit(state: PollState): boolean {
     const before = this.#state;
-    const { state } = poll.next(before, event);
     if (state === before) return false;
     this.#state = state;
     // A question closes when the next opens or the game ends; its final answers are recorded then.
