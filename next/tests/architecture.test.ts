@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = path.join(import.meta.dir, "..");
-const sources = [...new Bun.Glob("server/**/*.ts").scanSync(ROOT)]
+const sources = [...new Bun.Glob("{server,features}/**/*.ts").scanSync(ROOT)]
   .filter((file) => !file.endsWith(".test.ts"))
   .map((file) => ({ file, text: readFileSync(path.join(ROOT, file), "utf8") }));
 
@@ -17,13 +17,13 @@ function imports(file: string, text: string): { target: string; typeOnly: boolea
   });
 }
 
-const featureOf = (file: string) => file.match(/^server\/features\/([^/]+)\//)?.[1];
+const featureOf = (file: string) => file.match(/^features\/([^/]+)\//)?.[1];
 
 describe("architecture", () => {
   test("the core never imports a feature", () => {
     const offenders = sources
       .filter(({ file }) => file.startsWith("server/core/"))
-      .flatMap(({ file, text }) => imports(file, text).filter((i) => i.target.startsWith("server/features")).map((i) => `${file} → ${i.target}`));
+      .flatMap(({ file, text }) => imports(file, text).filter((i) => i.target.startsWith("features")).map((i) => `${file} → ${i.target}`));
     expect(offenders).toEqual([]);
   });
 
@@ -32,7 +32,7 @@ describe("architecture", () => {
       const own = featureOf(file);
       if (!own) return [];
       return imports(file, text)
-        .filter((i) => i.target.startsWith("server/features/") && featureOf(`${i.target}/`) !== own)
+        .filter((i) => i.target.startsWith("features/") && featureOf(`${i.target}/`) !== own)
         .map((i) => `${file} → ${i.target}`);
     });
     expect(offenders).toEqual([]);
@@ -46,7 +46,7 @@ describe("architecture", () => {
   });
 
   test("Elysia is used only in route files", () => {
-    const routeFile = (file: string) => file === "server/app.ts" || file.endsWith(".routes.ts") || /^server\/features\/[^/]+\/index\.ts$/.test(file);
+    const routeFile = (file: string) => file === "server/app.ts" || file.endsWith(".routes.ts") || /^features\/[^/]+\/index\.ts$/.test(file);
     const offenders = sources
       .filter(({ file }) => !routeFile(file))
       .flatMap(({ file, text }) => imports(file, text).filter((i) => i.target === "elysia" && !i.typeOnly).map(() => file));

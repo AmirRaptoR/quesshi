@@ -3,7 +3,7 @@ import path from "node:path";
 import { createApp } from "./app";
 import { systemClock } from "./core/clock";
 import { openDatabase } from "./core/db";
-import { features } from "./features";
+import { features } from "../features";
 
 const dataDir = process.env.QUESSHI_DATA_DIR ?? path.join(import.meta.dir, "..", "data");
 const port = Number(process.env.PORT ?? 3000);

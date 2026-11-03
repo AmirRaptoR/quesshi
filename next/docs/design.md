@@ -43,15 +43,16 @@ rewriting the core (section 13).
 next/
   server/
     core/            # identity, sessions engine, questions, live hub, events, db, migrations runner
-    features/        # one folder per feature; features/index.ts is the hand-written list
     app.ts           # builds the Elysia app from core + listed features
-  client/
-    core/            # shell, routing, auth screens, session screens, slot host
-    features/        # each feature's client part, loaded as its own chunk
-  shared/            # types and schemas used by both sides
-  tests/             # cross-cutting tests: HTTP, WebSocket, a few browser journeys
+  client/            # shell, routing, auth screens, session screens, slot host
+  features/          # one folder per feature, holding its server part, client part, kinds,
+                     # formats and migrations; features/index.ts is the hand-written list
+  tests/             # cross-cutting tests: architecture, HTTP, WebSocket, a few browser journeys
   docs/
 ```
+
+A feature is one folder for both sides, so its client can use its kinds' card and answer types
+without anything leaving the folder.
 
 Rules, enforced by lint and a test:
 - **`core` never imports `features`.**

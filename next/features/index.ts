@@ -1,4 +1,4 @@
-import type { Feature } from "../core/feature";
+import type { Feature } from "../server/core/feature";
 import polls from "./polls";
 import trivia from "./trivia";
 
