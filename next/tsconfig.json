@@ -12,7 +12,9 @@
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
-  "include": ["server", "features", "tests"]
+  "include": ["server", "client", "features", "tests", "scripts"]
 }

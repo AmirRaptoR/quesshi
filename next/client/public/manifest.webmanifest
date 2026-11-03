@@ -1,0 +1,16 @@
+{
+  "name": "Quesshi — کوئیشی",
+  "short_name": "Quesshi",
+  "id": "/",
+  "start_url": "/play",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090E22",
+  "theme_color": "#090E22",
+  "description": "Trivia duels with your friends, in Persian and English.",
+  "icons": [
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ]
+}

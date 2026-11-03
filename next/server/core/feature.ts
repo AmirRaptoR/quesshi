@@ -17,6 +17,8 @@ export interface Core {
   mailer: Mailer;
   /** Signs sign-in codes; set from the environment in production. */
   secret: string;
+  /** The built client to serve, when there is one. */
+  clientDir?: string;
   /** Where uploaded media files are kept. */
   mediaDir: string;
   /** The site's own origin; changes requested from any other origin are refused. */

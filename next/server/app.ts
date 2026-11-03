@@ -6,6 +6,7 @@ import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { selectCategories } from "./core/categories";
 import { categoryAdminRoutes } from "./core/categories.routes";
+import { clientRoutes } from "./core/client.routes";
 import { mediaRoutes } from "./core/media.routes";
 import { dashboardRoutes } from "./core/dashboard.routes";
 import { roomAdminRoutes } from "./core/room-admin.routes";
@@ -74,6 +75,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     const routes = featureRoutes(feature, { ...context, categories: featureCategories(questions, feature.name, core.random) });
     if (routes) server = server.use(routes);
   }
+  if (core.clientDir) server = server.use(clientRoutes(core.clientDir));
   return { server, migrations };
 }
 
