@@ -2,6 +2,7 @@ import type { FeatureContext } from "../../server/core/feature";
 import { drawQuestions, NotEnoughQuestions } from "../../server/core/questions";
 import type { QuestionsStore, StoredQuestion } from "../../server/core/questions.store";
 import type { RoomType } from "../../server/core/rooms";
+import type { SettingsStore } from "./settings.store";
 import type { SessionsStore } from "../../server/core/sessions.store";
 import { DuelGame } from "./duel-game";
 import { TRIVIA_KINDS, type TriviaItem } from "./items";
@@ -9,12 +10,10 @@ import { LiveGame, type LiveView } from "./live-game";
 
 const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
 const DEFAULT_QUESTIONS = 10;
-/** Today's default largest lobby; an admin setting comes with the admin pages. */
-export const MAX_CAPACITY = 20;
 const LANGS = ["fa", "en", "nl"];
 
 export interface GameSettings { lang: string; questions: number; categoryIds: string[]; levels: number[] }
-interface Stores { sessions: SessionsStore; questions: QuestionsStore }
+interface Stores { sessions: SessionsStore; questions: QuestionsStore; settings: SettingsStore }
 
 function draw(context: FeatureContext, stores: Stores, settings: GameSettings): StoredQuestion[] | null {
   try {
@@ -38,7 +37,10 @@ const toItems = (drawn: StoredQuestion[]): TriviaItem[] =>
 export function liveRoomType(context: FeatureContext, stores: Stores, games: Map<string, LiveGame>): RoomType<GameSettings> {
   return {
     format: "live",
-    maxCapacity: MAX_CAPACITY,
+    get maxCapacity() {
+      return stores.settings.get().maxCapacity;
+    },
+    closed: () => (stores.settings.get().liveEnabled ? null : "live_disabled"),
     lobbyLifetimeMs: 10 * 60_000,
     lobbyEnding: "lobby_expired",
     start(room, changed) {
@@ -76,7 +78,9 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
 export function duelRoomType(context: FeatureContext, stores: Stores, games: Map<string, DuelGame>): RoomType<GameSettings> {
   return {
     format: "async_duel",
-    maxCapacity: MAX_CAPACITY,
+    get maxCapacity() {
+      return stores.settings.get().maxCapacity;
+    },
     lobbyLifetimeMs: 48 * 3600_000,
     lobbyEnding: "forfeited",
     start(room, changed) {

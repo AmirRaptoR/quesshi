@@ -29,6 +29,8 @@ export function lobbyRoutes<S>({ context, rooms, type, segment, readSettings, on
     .post(`/${segment}/lobby`, ({ player, body, set }) => {
       if (!player) return fail(set, 401, "signed_out");
       if (player.guest) return fail(set, 403, "guests_cannot_create");
+      const closed = type.closed?.();
+      if (closed) return fail(set, 503, closed);
       const raw = (body ?? {}) as Record<string, unknown>;
       const settings = readSettings(raw);
       const capacity = raw.capacity;
@@ -38,6 +40,8 @@ export function lobbyRoutes<S>({ context, rooms, type, segment, readSettings, on
     })
     .post(`/${segment}/join/:code`, ({ player, params, set }) => {
       if (!player) return fail(set, 401, "signed_out");
+      const closed = type.closed?.();
+      if (closed) return fail(set, 503, closed);
       const joined = rooms.join(params.code, format, player.id);
       return joined.ok ? { id: joined.id } : fail(set, joined.error === "not_found" ? 404 : 409, joined.error);
     })
@@ -46,6 +50,8 @@ export function lobbyRoutes<S>({ context, rooms, type, segment, readSettings, on
       const { name, lang } = (body ?? {}) as { name?: unknown; lang?: unknown };
       const trimmed = typeof name === "string" ? name.trim() : "";
       if (trimmed.length < 2 || trimmed.length > 24) return fail(set, 400, "name_length");
+      const closed = type.closed?.();
+      if (closed) return fail(set, 503, closed);
       const id = rooms.idForCode(params.code, format);
       if (!id) return fail(set, 404, "not_found");
       if (rooms.view(id, format, null)?.phase !== "lobby") return fail(set, 409, "started");

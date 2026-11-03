@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureCategories, type FeatureContext } from "./core/feature";
 import { createAdminAuth } from "./core/admin";
-import { adminAccountRoutes, adminAuthRoutes } from "./core/admin.routes";
+import { adminAccountRoutes, adminAuthRoutes, adminToken } from "./core/admin.routes";
 import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { selectCategories } from "./core/categories";
@@ -38,6 +38,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     ...core,
     playerFor: (header: string | null) => auth.playerFor(tokenFromCookies(header)),
     player: (id: string) => identity.player(id),
+    isAdmin: (header: string | null) => adminAuth.adminFor(adminToken(header)) !== null,
     signInGuest(name: string, lang: Lang) {
       const player = auth.createGuest(name, lang, newId);
       return { player, cookie: sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600) };

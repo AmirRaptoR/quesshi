@@ -6,10 +6,12 @@ import { createSessionsStore } from "../../server/core/sessions.store";
 import type { DuelGame } from "./duel-game";
 import type { LiveGame } from "./live-game";
 import { kinds, TRIVIA_KINDS } from "./items";
+import { createSettingsStore, type TriviaSettings } from "./settings.store";
 import { duelRoomType, liveRoomType, readSettings } from "./rooms";
 
 function triviaRoutes(context: FeatureContext) {
-  const stores = { sessions: createSessionsStore(context.db), questions: createQuestionsStore(context.db) };
+  const settings = createSettingsStore(context.db);
+  const stores = { sessions: createSessionsStore(context.db), questions: createQuestionsStore(context.db), settings };
   const liveGames = new Map<string, LiveGame>();
   const duels = new Map<string, DuelGame>();
   const live = liveRoomType(context, stores, liveGames);
@@ -18,6 +20,24 @@ function triviaRoutes(context: FeatureContext) {
 
   return new Elysia({ prefix: "/f/trivia" })
     .get("/categories", () => context.categories.offered(TRIVIA_KINDS))
+    .get("/limits", () => settings.get())
+    .get("/admin/settings", ({ request, set }) => (context.isAdmin(request.headers.get("cookie")) ? settings.get() : fail(set, 401, "signed_out")))
+    .put("/admin/settings", ({ request, body, set }) => {
+      if (!context.isAdmin(request.headers.get("cookie"))) return fail(set, 401, "signed_out");
+      const { liveEnabled, maxCapacity } = (body ?? {}) as Record<string, unknown>;
+      const changes: Partial<TriviaSettings> = {};
+      if (liveEnabled !== undefined) {
+        if (typeof liveEnabled !== "boolean") return fail(set, 400, "bad_live_enabled");
+        changes.liveEnabled = liveEnabled;
+      }
+      if (maxCapacity !== undefined) {
+        // Today's bounds: two players at least, five hundred at most.
+        if (!Number.isInteger(maxCapacity) || (maxCapacity as number) < 2 || (maxCapacity as number) > 500) return fail(set, 400, "bad_capacity");
+        changes.maxCapacity = maxCapacity as number;
+      }
+      settings.save(changes);
+      return settings.get();
+    })
     .use(lobbyRoutes({
       context, rooms, type: live, segment: "live", readSettings,
       // A live game takes answers on its socket.
@@ -59,5 +79,6 @@ function triviaRoutes(context: FeatureContext) {
 export default defineFeature({
   name: "trivia",
   kinds,
+  migrations: new URL("./migrations/", import.meta.url),
   server: triviaRoutes,
 });

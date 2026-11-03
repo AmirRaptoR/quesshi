@@ -23,6 +23,8 @@ export interface RoomInfo<S> { id: string; code: string; owner: string; particip
 export interface RoomType<S> {
   format: string;
   maxCapacity: number;
+  /** Why the format takes no new lobbies or joins right now, or null when it does. */
+  closed?(): string | null;
   /** How long an unstarted lobby stays open, and what its ending is called when it runs out. */
   lobbyLifetimeMs: number;
   lobbyEnding: string;

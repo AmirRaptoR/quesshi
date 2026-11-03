@@ -32,6 +32,8 @@ export interface FeatureContext extends Core {
   player(id: string): Player | null;
   /** Creates a guest player and returns them with the cookie that signs them in. */
   signInGuest(name: string, lang: Lang): { player: Player; cookie: string };
+  /** Whether a request's cookie header belongs to a signed-in administrator. */
+  isAdmin(cookieHeader: string | null): boolean;
   /** Sends a message to every WebSocket subscribed to the topic. */
   publish(topic: string, message: unknown): void;
   /** Every feature's game lobbies, sharing one set of codes. */
