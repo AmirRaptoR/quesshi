@@ -276,6 +276,25 @@ Without tenancy, today's split between global accounts and per-tenant players co
 - #105 admin: fix reported questions in place, show topic, record question provenance
 - #85 reveals: carry the tolerance radius and the asynchronous history verdict
 
+## 14a. As built (first release, 2026-11-03)
+
+Where the first release differs from the plan above, the code is the reference:
+
+- **No Eden client.** The client calls the API with a small `fetch` helper (`client/api.ts`); the
+  app's route types are too loose after mounting features in a loop for Eden to add much.
+- **No event bus yet.** Nothing needed one: no feature reacts to another's change. Add it with the
+  first handler that does.
+- **Answers are written as they arrive,** in the actor's synchronous transaction, not batched. The
+  500-player benchmark (`scripts/bench-live.ts`) showed the cost was in the broadcasts, not the
+  writes: broadcasts are now batched per event-loop turn and kept small (`broadcastView`), and two
+  500-player games use about 100 MB.
+- **No server-sent-events fallback.** WebSockets work through the Cloudflare tunnel in production.
+- **Games survive restarts** through JSON room snapshots (`room_snapshots`): each running room saves
+  its state with every broadcast and its room type's `resume()` rebuilds it at start-up.
+- **The architecture rules are enforced by `tests/architecture.test.ts`,** not a lint rule.
+- **Releases:** every merge to `main` is tested, versioned by date and deployed as one image (see
+  `docs/operations.md`).
+
 ## 15. Open questions
 
 *Answered 2026-11-03:* the first release is the core, sign-in, admin for questions and
