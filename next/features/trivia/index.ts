@@ -21,14 +21,6 @@ function triviaRoutes(context: FeatureContext) {
   return new Elysia({ prefix: "/f/trivia" })
     .get("/categories", () => context.categories.offered(TRIVIA_KINDS))
     .get("/limits", () => settings.get())
-    // Which trivia room a game code opens, so a lobby page can live at the code it shares.
-    .get("/code/:code", ({ params, set }) => {
-      for (const format of ["live", "async_duel"]) {
-        const id = rooms.idForCode(params.code, format);
-        if (id) return { id, format };
-      }
-      return fail(set, 404, "not_found");
-    })
     .get("/admin/settings", ({ request, set }) => (context.isAdmin(request.headers.get("cookie")) ? settings.get() : fail(set, 401, "signed_out")))
     .put("/admin/settings", ({ request, body, set }) => {
       if (!context.isAdmin(request.headers.get("cookie"))) return fail(set, 401, "signed_out");

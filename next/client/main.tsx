@@ -2,7 +2,7 @@ import { render, type ComponentType } from "preact";
 import { lazy, LocationProvider, Route, Router } from "preact-iso";
 import { AppProvider } from "./app";
 import { clientFeatures } from "./features";
-import type { PageProps } from "./feature";
+import { orderedRoutes, type PageProps } from "./feature";
 import { Layout, NotFound } from "./layout";
 import { Landing } from "./pages/landing";
 import { Join } from "./pages/join";
@@ -32,7 +32,7 @@ function App() {
             <PageRoute path="/join/:code" component={Join} />
             <Route path="/settings" component={Settings} />
             <Route path="/profile" component={Profile} />
-            {clientFeatures.flatMap((feature) => feature.routes.map((route) => <PageRoute key={route.path} path={route.path} component={route.page} />))}
+            {orderedRoutes(clientFeatures).map((route) => <PageRoute key={route.path} path={route.path} component={route.page} />)}
             <Route default component={NotFound} />
           </Router>
         </Layout>

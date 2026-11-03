@@ -13,7 +13,7 @@ import { Ring } from "../components/ring";
 import { SortList } from "../components/sort-list";
 import { SortReveal } from "../components/sort-reveal";
 import { StandingsList } from "../components/standings-list";
-import { initial, tint } from "../logic/avatar";
+import { initial, tint } from "../../../../client/avatar";
 import { textsOf } from "../logic/answer-reveal";
 import { remainingSeconds, shouldTick } from "../logic/clock";
 import { headlineKey } from "../logic/outcome";

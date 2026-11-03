@@ -1,9 +1,9 @@
+import { SOUNDS_KEY, soundsOn } from "../../../client/sounds";
 import { stored } from "../../../client/storage";
 
 /**
  * Today's six cues, synthesised with Web Audio so they need no files. A context made before the
- * first gesture would stay silent, so it is made on the first tap or key, and a muted player
- * ("quesshi.sounds" set to "0") hears nothing.
+ * first gesture would stay silent, so it is made on the first tap or key, and a player who turned sounds off hears nothing.
  */
 let context: AudioContext | null = null;
 if (typeof document !== "undefined") {
@@ -44,7 +44,7 @@ const cues: Record<string, (ctx: AudioContext) => void> = {
 };
 
 export function play(cue: "correct" | "wrong" | "roundStart" | "tick" | "win" | "loss") {
-  if (!context || stored.get("quesshi.sounds") === "0") return;
+  if (!context || !soundsOn(stored.get(SOUNDS_KEY))) return;
   try {
     cues[cue]!(context);
   } catch {

@@ -24,3 +24,11 @@ export interface ClientFeature {
   /** Panels the feature adds to the admin's live page (trivia: live on or off, largest lobby). */
   adminLivePanels?: readonly ComponentType[];
 }
+
+/**
+ * Every feature's pages, a fixed address before one with a named part: the router takes the first
+ * match, so /play/:id must not swallow another feature's /play/voting.
+ */
+export function orderedRoutes(features: readonly ClientFeature[]): ClientFeature["routes"] {
+  return features.flatMap((feature) => feature.routes).sort((a, b) => Number(a.path.includes("/:")) - Number(b.path.includes("/:")));
+}

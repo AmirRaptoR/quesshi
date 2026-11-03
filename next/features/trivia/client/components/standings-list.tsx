@@ -1,5 +1,5 @@
 import { useApp } from "../../../../client/app";
-import { initial, tint } from "../logic/avatar";
+import { initial, tint } from "../../../../client/avatar";
 import { chipClass, outcomeKey } from "../logic/outcome";
 import type { Participant, Standing } from "../types";
 

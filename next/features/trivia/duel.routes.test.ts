@@ -144,19 +144,6 @@ describe("a player's own duels", () => {
   });
 });
 
-describe("a game code", () => {
-  test("leads to its room and format, and an unknown code to nothing", async () => {
-    app = testApp([trivia]);
-    const ann = await app.signIn("ann@example.com");
-    const live = (await app.call("POST", "/f/trivia/live/lobby", settings, ann)).body;
-    const duel = (await app.call("POST", "/f/trivia/duel/lobby", settings, ann)).body;
-
-    expect((await app.call("GET", `/f/trivia/code/${live.code.toLowerCase()}`)).body).toEqual({ id: live.id, format: "live" });
-    expect((await app.call("GET", `/f/trivia/code/${duel.code}`)).body).toEqual({ id: duel.id, format: "async_duel" });
-    expect((await app.call("GET", "/f/trivia/code/ZZZZZZ")).status).toBe(404);
-  });
-});
-
 describe("async duel, ended by an administrator", () => {
   test("ends as a no contest and serves nothing more", async () => {
     const { id, ann } = await started();

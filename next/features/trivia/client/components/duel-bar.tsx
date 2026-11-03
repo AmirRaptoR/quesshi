@@ -1,5 +1,5 @@
 import { useApp } from "../../../../client/app";
-import { initial, tint } from "../logic/avatar";
+import { initial, tint } from "../../../../client/avatar";
 
 export interface DuelBarSide { id: string; name: string; avatar: string; score: number; out: boolean }
 

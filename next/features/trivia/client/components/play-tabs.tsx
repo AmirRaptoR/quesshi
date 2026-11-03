@@ -1,8 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import { useApp } from "../../../../client/app";
+import { CodeField } from "../../../../client/components/code-field";
 import { ApiError, get, post } from "../../../../client/api";
-import { initial, tint } from "../logic/avatar";
+import { initial, tint } from "../../../../client/avatar";
 import { lastSettings, remember, settingsLine } from "../logic/duel-settings";
 import { duelRoute, opponentOf, split, standing } from "../logic/home-duels";
 import type { DuelRoomView } from "../types";
@@ -25,23 +26,6 @@ function SettingsLine() {
       <span class="home-settings__text">{settingsLine(lastSettings(t.lang), t)}</span>
       <span class="home-settings__change">{t.t("home.settingsChange")}</span>
     </button>
-  );
-}
-
-/** The code field: a code is a code, so the join page decides which game it opens. */
-function CodeField() {
-  const { t } = useApp();
-  const { route } = useLocation();
-  const [code, setCode] = useState("");
-  const join = () => route(`/join/${code.trim().toUpperCase()}`);
-  return (
-    <div class="home-code">
-      <input class="input grow" dir="ltr" maxLength={6} style="text-transform:uppercase" placeholder={t.t("home.joinPlaceholder")} aria-label={t.t("home.joinPlaceholder")}
-        value={code} onInput={(e) => setCode(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter" && code.length >= 4) join(); }} />
-      <button type="button" class="btn btn--gold home-code__go" aria-label={t.t("home.join")} disabled={code.length < 4} onClick={join}>
-        <Go class="home-go" />
-      </button>
-    </div>
   );
 }
 
