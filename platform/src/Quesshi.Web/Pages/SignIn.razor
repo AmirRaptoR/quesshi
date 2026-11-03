@@ -234,7 +234,9 @@ else
 
     private Task GuestCreatedAsync()
     {
-        Navigation.NavigateTo("/", replace: true);
+        // An invite link stays where it is: the join screen takes the new guest in from there.
+        if (!Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("join/", StringComparison.OrdinalIgnoreCase))
+            Navigation.NavigateTo("/", replace: true);
         return Task.CompletedTask;
     }
 

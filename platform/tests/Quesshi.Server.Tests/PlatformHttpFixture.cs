@@ -182,6 +182,19 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
     /// <summary>Creates another signed-in player in the fixture tenant.</summary>
     public async Task<(HttpClient Client, Guid PlayerId)> CreateSecondPlayerClientAsync(CancellationToken cancellationToken = default)
     {
+        var (accountId, playerId) = await InsertSecondPlayerAsync(cancellationToken);
+        return (await CreatePlayerClientAsync(accountId, cancellationToken), playerId);
+    }
+
+    /// <summary>Creates another signed-in player and returns their session as a <c>Cookie</c> header value, for a browser a test drives.</summary>
+    public async Task<(string Cookie, Guid PlayerId)> CreateSecondPlayerBrowserSessionAsync(CancellationToken cancellationToken = default)
+    {
+        var (accountId, playerId) = await InsertSecondPlayerAsync(cancellationToken);
+        return ($"__Host-qp={await IssueAccountCookieAsync(TenantId, accountId, cancellationToken)}", playerId);
+    }
+
+    private async Task<(Guid AccountId, Guid PlayerId)> InsertSecondPlayerAsync(CancellationToken cancellationToken)
+    {
         var accountId = Guid.NewGuid();
         var playerId = Guid.NewGuid();
         await ExecuteOwnerAsync("""
@@ -189,7 +202,7 @@ public sealed class PlatformHttpFixture(params IFeature[] features) : IAsyncDisp
             insert into players(tenant_id, id, account_id, display_name, avatar_seed, lang)
             values (@tenantId, @playerId, @accountId, 'Second fixture player', 'second', 'en');
             """, new { tenantId = TenantId, accountId, playerId, email = $"second-{accountId:N}@example.test" }, cancellationToken);
-        return (await CreatePlayerClientAsync(accountId, cancellationToken), playerId);
+        return (accountId, playerId);
     }
 
     /// <summary>Creates a new authenticated session for the fixture's primary player.</summary>
