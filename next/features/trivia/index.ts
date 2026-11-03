@@ -56,6 +56,18 @@ function liveRoutes(context: FeatureContext) {
       if (!player) return fail(set, 401, "signed_out");
       return rooms.leave(params.id, player.id) ? { left: true } : fail(set, 400, "cannot_leave");
     })
+    .put("/live/:id/settings", ({ player, params, body, set }) => {
+      if (!player) return fail(set, 401, "signed_out");
+      const raw = (body ?? {}) as Record<string, unknown>;
+      const settings = readSettings(raw);
+      const capacity = raw.capacity === undefined || raw.capacity === null ? null : raw.capacity;
+      if (!settings || (capacity !== null && !Number.isInteger(capacity))) return fail(set, 400, "invalid_settings");
+      return rooms.updateSettings(params.id, player.id, settings, capacity as number | null) ? { updated: true } : fail(set, 400, "cannot_update_settings");
+    })
+    .post("/live/:id/rematch", ({ player, params, set }) => {
+      if (!player) return fail(set, 401, "signed_out");
+      return rooms.rematch(params.id, player.id) ?? fail(set, 400, "refused");
+    })
     .delete("/live/:id", ({ player, params, set }) => {
       if (!player) return fail(set, 401, "signed_out");
       return rooms.cancel(params.id, player.id) ? { cancelled: true } : fail(set, 400, "cannot_cancel");

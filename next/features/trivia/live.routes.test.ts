@@ -151,3 +151,61 @@ describe("live game over WebSocket", () => {
     server.close();
   });
 });
+
+describe("lobby settings", () => {
+  test("the owner changes settings and capacity before the start; nobody else can", async () => {
+    const { owner, id, code } = await lobby();
+    const bo = await app.signIn("bo@example.com");
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, bo);
+    const changed = { lang: "fa", questions: 20, categoryIds: ["geo"], levels: [2, 4], capacity: 5 };
+
+    expect((await app.call("PUT", `/f/trivia/live/${id}/settings`, changed, bo)).body).toEqual({ error: "cannot_update_settings" });
+    expect((await app.call("PUT", `/f/trivia/live/${id}/settings`, changed, owner)).status).toBe(200);
+
+    expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body).toMatchObject({
+      capacity: 5, settings: { lang: "fa", questions: 20, categoryIds: ["geo"], levels: [2, 4] },
+    });
+  });
+
+  test("capacity cannot drop below the players already in", async () => {
+    const { owner, id, code } = await lobby();
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("cy@example.com"));
+
+    expect((await app.call("PUT", `/f/trivia/live/${id}/settings`, { ...settings, capacity: 2 }, owner)).body).toEqual({ error: "cannot_update_settings" });
+  });
+});
+
+describe("rematch", () => {
+  async function finished() {
+    const { owner, id, code } = await lobby();
+    const bo = await app.signIn("bo@example.com");
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, bo);
+    await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner);
+    await app.call("POST", `/f/trivia/live/${id}/leave`, undefined, owner); // one player left: the game completes
+    return { owner, bo, id };
+  }
+
+  test("a player opens one rematch lobby, owned by the original owner with the same settings", async () => {
+    const { owner, bo, id } = await finished();
+
+    const first = await app.call("POST", `/f/trivia/live/${id}/rematch`, undefined, bo);
+    const again = await app.call("POST", `/f/trivia/live/${id}/rematch`, undefined, owner);
+
+    expect(again.body).toEqual(first.body);
+    expect((await app.call("GET", `/f/trivia/live/${first.body.id}`, undefined, owner)).body).toMatchObject({
+      phase: "lobby", code: first.body.code, capacity: 3, settings: { lang: "en", questions: 10 }, participants: [{ displayName: "owner" }],
+    });
+    expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.rematch).toEqual(first.body);
+  });
+
+  test("a game still running and a guest cannot ask for a rematch", async () => {
+    const { owner, id, code } = await lobby();
+    const guest = (await app.call("POST", `/f/trivia/live/guest/${code}`, { name: "Dina" })).cookie;
+    await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner);
+
+    expect((await app.call("POST", `/f/trivia/live/${id}/rematch`, undefined, owner)).body).toEqual({ error: "refused" });
+    await app.call("POST", `/f/trivia/live/${id}/leave`, undefined, owner);
+    expect((await app.call("POST", `/f/trivia/live/${id}/rematch`, undefined, guest)).body).toEqual({ error: "refused" });
+  });
+});

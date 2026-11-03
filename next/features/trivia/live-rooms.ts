@@ -28,6 +28,7 @@ interface Room {
   createdAt: number;
   game: LiveGame | null;
   lastView: LiveView | null;
+  rematch: { id: string; code: string } | null;
   cancelExpiry: () => void;
 }
 
@@ -55,6 +56,7 @@ export function createLiveRooms(context: FeatureContext, stores: { sessions: Ses
       return { id, displayName: player?.displayName ?? "", avatarSeed: player?.avatarSeed ?? id, guest: player?.guest ?? false };
     }),
     game: room.lastView,
+    rematch: room.rematch,
   });
   const broadcast = (room: Room) => context.publish(topic(room.id), { type: "view", view: view(room) });
 
@@ -74,27 +76,28 @@ export function createLiveRooms(context: FeatureContext, stores: { sessions: Ses
     }
   };
 
+  const open = (owner: string, settings: LiveSettings, capacity: number): { id: string; code: string } => {
+    const room: Room = {
+      id: crypto.randomUUID(), code: newCode(), owner, capacity, settings, participants: [owner],
+      status: "lobby", endedReason: null, createdAt: now(), game: null, lastView: null, rematch: null, cancelExpiry: () => {},
+    };
+    rooms.set(room.id, room);
+    byCode.set(room.code, room);
+    stores.sessions.createLobby({ id: room.id, code: room.code, format: "live", createdAt: new Date(room.createdAt).toISOString() });
+    room.cancelExpiry = context.schedule(room.createdAt + LOBBY_MINUTES * 60_000, () => {
+      if (room.status === "lobby") end(room, "lobby_expired");
+    });
+    return { id: room.id, code: room.code };
+  };
+
   return {
     topic,
+    open,
     view: (id: string) => {
       const room = rooms.get(id);
       return room ? view(room) : null;
     },
     idForCode: (code: string) => byCode.get(code.trim().toUpperCase())?.id ?? null,
-
-    open(owner: string, settings: LiveSettings, capacity: number): { id: string; code: string } {
-      const room: Room = {
-        id: crypto.randomUUID(), code: newCode(), owner, capacity, settings, participants: [owner],
-        status: "lobby", endedReason: null, createdAt: now(), game: null, lastView: null, cancelExpiry: () => {},
-      };
-      rooms.set(room.id, room);
-      byCode.set(room.code, room);
-      stores.sessions.createLobby({ id: room.id, code: room.code, format: "live", createdAt: new Date(room.createdAt).toISOString() });
-      room.cancelExpiry = context.schedule(room.createdAt + LOBBY_MINUTES * 60_000, () => {
-        if (room.status === "lobby") end(room, "lobby_expired");
-      });
-      return { id: room.id, code: room.code };
-    },
 
     join(code: string, player: string): JoinResult {
       const room = byCode.get(code.trim().toUpperCase());
@@ -160,6 +163,28 @@ export function createLiveRooms(context: FeatureContext, stores: { sessions: Ses
       });
       room.game.start();
       return { ok: true };
+    },
+
+    updateSettings(id: string, player: string, settings: LiveSettings, capacity: number | null): boolean {
+      const room = rooms.get(id);
+      if (!room || room.status !== "lobby" || player !== room.owner) return false;
+      if (capacity !== null && (capacity < 2 || capacity > MAX_CAPACITY || capacity < room.participants.length)) return false;
+      room.settings = settings;
+      if (capacity !== null) room.capacity = capacity;
+      broadcast(room);
+      return true;
+    },
+
+    /** One rematch lobby per finished game, owned by the original owner with the same settings. */
+    rematch(id: string, player: string): { id: string; code: string } | null {
+      const room = rooms.get(id);
+      const finished = room?.lastView?.phase === "ended";
+      if (!room || !finished || !room.participants.includes(player) || context.player(player)?.guest) return null;
+      if (!room.rematch) {
+        room.rematch = open(room.owner, room.settings, room.capacity);
+        broadcast(room);
+      }
+      return room.rematch;
     },
 
     answer(id: string, player: string, slot: number, answer: unknown) {
