@@ -78,6 +78,8 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     settings: room.settings,
     phase: ended(room) ? "ended" : room.status,
     endedReason: room.endedReason ?? room.game?.ended()?.reason ?? null,
+    // The admin's monitor shows when each room opened.
+    createdAt: room.createdAt,
     lobbyEndsAt: room.createdAt + room.type.lobbyLifetimeMs,
     // A running game's roster no longer changes much, and with hundreds of phones it would be most
     // of every broadcast; phones keep the roster from their first full view.

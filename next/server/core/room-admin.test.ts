@@ -41,7 +41,7 @@ describe("admin rooms", () => {
 
     expect((await app.call("GET", "/api/admin/rooms", undefined, admin)).body).toMatchObject([
       { id: lobby.id, code: lobby.code, format: "game", phase: "lobby", participants: [{ displayName: "ann" }] },
-      { id: running.id, phase: "lobby" },
+      { id: running.id, phase: "lobby", createdAt: Date.parse("2026-11-03T12:00:01Z") },
     ]);
   });
 
