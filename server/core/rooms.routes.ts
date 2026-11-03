@@ -21,7 +21,8 @@ export interface LobbyRoutesOptions<S> {
   type: RoomType<S>;
   /** The path segment under the feature's prefix, such as "live". */
   segment: string;
-  readSettings(body: Record<string, unknown>): S | null;
+  /** Null refuses the settings; the player is the one asking, for settings that name something they must own. */
+  readSettings(body: Record<string, unknown>, player: Player): S | null;
   /** Handles a message a phone sends on the room's socket; returns the reply. */
   onMessage?(roomId: string, player: Player, message: Record<string, unknown>): unknown;
 }
@@ -37,7 +38,7 @@ export function lobbyRoutes<S>({ context, rooms, type, segment, readSettings, on
       const closed = type.closed?.();
       if (closed) return fail(set, 503, closed);
       const raw = (body ?? {}) as Record<string, unknown>;
-      const settings = readSettings(raw);
+      const settings = readSettings(raw, player);
       const capacity = raw.capacity;
       if (!settings) return fail(set, 400, "invalid_settings");
       if (!Number.isInteger(capacity) || (capacity as number) < 2 || (capacity as number) > type.maxCapacity) return fail(set, 400, "bad_capacity");
@@ -80,7 +81,7 @@ export function lobbyRoutes<S>({ context, rooms, type, segment, readSettings, on
     .put(`/${segment}/:id/settings`, ({ player, params, body, set }) => {
       if (!player) return fail(set, 401, "signed_out");
       const raw = (body ?? {}) as Record<string, unknown>;
-      const settings = readSettings(raw);
+      const settings = readSettings(raw, player);
       const capacity = raw.capacity === undefined || raw.capacity === null ? null : raw.capacity;
       if (!settings || (capacity !== null && !Number.isInteger(capacity))) return fail(set, 400, "invalid_settings");
       return rooms.updateSettings(params.id, format, player.id, settings, capacity as number | null) ? { updated: true } : fail(set, 400, "cannot_update_settings");

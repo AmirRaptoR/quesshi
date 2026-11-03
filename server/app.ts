@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureCategories, type FeatureContext } from "./core/feature";
+import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureCategories, type FeatureContext, type FeatureQuestionSets } from "./core/feature";
 import { createAdminAuth } from "./core/admin";
 import { adminAccountRoutes, adminAuthRoutes, adminToken } from "./core/admin.routes";
 import { createAdminStore } from "./core/admin.store";
@@ -16,6 +16,7 @@ import { userAdminRoutes } from "./core/user-admin.routes";
 import { questionAdminRoutes } from "./core/question-admin.routes";
 import { questionSetRoutes } from "./core/question-sets.routes";
 import { createQuestionSetsStore } from "./core/question-sets.store";
+import { drawFromSet } from "./core/questions";
 import { createQuestionsStore, type QuestionsStore } from "./core/questions.store";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
 import { createIdentityStore, type Lang } from "./core/identity.store";
@@ -39,6 +40,14 @@ export function createApp(core: Core, features: readonly Feature[]) {
   const identity = createIdentityStore(core.db);
   const questions = createQuestionsStore(core.db);
   const reports = createReportsStore(core.db);
+  const questionSetsStore = createQuestionSetsStore(core.db);
+  const questionSets: FeatureQuestionSets = {
+    ownedBy(setId, playerId) {
+      const set = questionSetsStore.set(setId);
+      return set && set.ownerId === playerId ? { id: set.id, lang: set.lang } : null;
+    },
+    draw: (setId, count, kinds) => drawFromSet(questionSetsStore, setId, { count, kinds }),
+  };
   const auth = createAuth({ identity, clock: core.clock, mailer: core.mailer, secret: core.secret });
   const newId = () => crypto.randomUUID();
   const services = {
@@ -52,7 +61,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     },
     publish: (topic: string, message: unknown) => { server.server?.publish(topic, JSON.stringify(message)); },
   };
-  const context: Omit<FeatureContext, "categories"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db), createRoomsStore(core.db)) };
+  const context: Omit<FeatureContext, "categories" | "questionSets"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db), createRoomsStore(core.db)) };
   // The server is read only when a message is published, after start-up.
   let server = new Elysia()
     // Every change must come from this site; SameSite cookies plus this check stop cross-site requests.
@@ -72,13 +81,13 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(userAdminRoutes(adminAuth, identity, core.clock))
     .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
     .use(reportAdminRoutes(adminAuth, reports, questions))
-    .use(questionSetRoutes(createQuestionSetsStore(core.db), services.playerFor, () => core.clock.now(), newId, new Map(features.flatMap((feature) => Object.entries(feature.kinds ?? {}).map(([kind, rules]) => [kind, { feature: feature.name, rules }] as const)))))
+    .use(questionSetRoutes(questionSetsStore, services.playerFor, () => core.clock.now(), newId, new Map(features.flatMap((feature) => Object.entries(feature.kinds ?? {}).map(([kind, rules]) => [kind, { feature: feature.name, rules }] as const)))))
     .use(roomCodeRoutes(context.rooms))
     .use(roomAdminRoutes(adminAuth, context.rooms))
     .use(dashboardRoutes(adminAuth, core.db, context.rooms))
     .use(mediaRoutes(adminAuth, core.mediaDir));
   for (const feature of features) {
-    const routes = featureRoutes(feature, { ...context, categories: featureCategories(questions, feature.name, core.random) });
+    const routes = featureRoutes(feature, { ...context, categories: featureCategories(questions, feature.name, core.random), questionSets });
     if (routes) server = server.use(routes);
   }
   if (core.clientDir) server = server.use(clientRoutes(core.clientDir));
