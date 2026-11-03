@@ -10,6 +10,9 @@ export const triviaClient: ClientFeature = {
   name: "trivia",
   routes: [
     { path: "/play/questions", page: lazy(() => import("./pages/routes").then((m) => m.QuestionsPage)) },
+    { path: "/sets", page: lazy(() => import("./pages/routes").then((m) => m.MySetsPage)) },
+    { path: "/sets/new", page: lazy(() => import("./pages/routes").then((m) => m.NewQuestionSetPage)) },
+    { path: "/sets/:id", page: lazy(() => import("./pages/routes").then((m) => m.QuestionSetPage)) },
     { path: "/lobby/:code", page: lazy(() => import("./pages/routes").then((m) => m.LobbyPage)) },
     { path: "/live/:id", page: lazy(() => import("./pages/routes").then((m) => m.LivePage)) },
     { path: "/play/:id", page: lazy(() => import("./pages/routes").then((m) => m.PlayPage)) },
