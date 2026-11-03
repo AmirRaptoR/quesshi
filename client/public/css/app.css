@@ -1546,6 +1546,11 @@ input[type='range'] { accent-color: var(--firouzeh); }
   margin: -10px;
   border-radius: 50%;
   color: var(--sadaf-2);
+  /* As a <button> it would otherwise wear the browser's grey face and border. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
   transition: color 0.2s var(--ease), background 0.2s var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {

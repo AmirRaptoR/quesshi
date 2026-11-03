@@ -41,7 +41,7 @@ export function Live({ params }: PageProps) {
   const [room, setRoom] = useState<LiveRoomView | null>(null);
   const [refused, setRefused] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [locked, setLocked] = useState(false);
   const [myChoice, setMyChoice] = useState<number | null>(null);
   const [ordering, setOrdering] = useState<Ordering>([]);
@@ -54,7 +54,10 @@ export function Live({ params }: PageProps) {
   const lastTicked = useRef<number | null>(null);
   const cued = useRef<string>("");
 
-  const take = (next: LiveRoomView) =>
+  // How far the server's clock is ahead of this phone's; every deadline in a view is on the server's.
+  const offset = useRef(0);
+  const take = (next: LiveRoomView) => {
+    if (next.serverTime !== undefined) offset.current = next.serverTime - Date.now();
     setRoom((previous) => {
       const game = next.game ?? null;
       // Batched broadcasts may skip views but never reorder them; an older one is ignored.
@@ -65,6 +68,7 @@ export function Live({ params }: PageProps) {
         game: game && { ...game, players: game.players ?? previous?.game?.players ?? [] },
       };
     });
+  };
 
   useEffect(() => {
     get<LiveRoomView>(`/f/trivia/live/${id}`).then(
@@ -81,7 +85,7 @@ export function Live({ params }: PageProps) {
       },
       connected: (up) => setReconnecting(!up),
     });
-    const timer = setInterval(() => setNow(Date.now()), 250);
+    const timer = setInterval(() => setNow(Date.now() + offset.current), 250);
     return () => {
       clearInterval(timer);
       socket.current?.close();
@@ -201,7 +205,7 @@ export function Live({ params }: PageProps) {
       <>
         {bar}
         <GameHud question={question} slot={game.slot} total={game.total}
-          clock={game.questionEndsAt !== null && <Ring endsAt={game.questionEndsAt} total={QUESTION_SECONDS} size="38" />} />
+          clock={game.questionEndsAt !== null && <Ring endsAt={game.questionEndsAt - offset.current} total={QUESTION_SECONDS} size="38" />} />
         <section class="card card--taq game-stage" key={game.slot}>
           <p class="game-kicker">{t.t("play.question")} <span class="numeral">{t.num(game.slot + 1)}</span></p>
           <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">{question.prompt}</h1>
@@ -281,7 +285,7 @@ export function Live({ params }: PageProps) {
     body = (
       <>
         {bar}
-        <GameHud question={question} slot={game.slot} total={game.total} clock={<Ring endsAt={game.dueAt} total={3} size="38" />} />
+        <GameHud question={question} slot={game.slot} total={game.total} clock={<Ring endsAt={game.dueAt - offset.current} total={3} size="38" />} />
         <section class="card card--taq game-stage game-stage--reveal" key={game.slot}>
           <h1 dir="auto" style="font-size:var(--step-2);text-wrap:balance">{question.prompt}</h1>
           <MediaBlock media={question.media} loop={false} autoplay={false} />
@@ -299,7 +303,8 @@ export function Live({ params }: PageProps) {
       </>
     );
   } else if (game.phase === "ended" || room.phase === "ended") {
-    const rays = (playerId: string) =>
+    // The server's results cover rounds this phone never saw, after a reload or a late join.
+    const rays = (playerId: string) => game.results?.[playerId] ??
       Array.from({ length: game.total }, (_, slot) => {
         const given = rounds.get(slot)?.find((a) => a.player === playerId);
         return given && given.value !== null ? given.points > 0 : null;

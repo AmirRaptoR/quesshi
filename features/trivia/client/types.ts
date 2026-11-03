@@ -26,6 +26,8 @@ export interface RoomView {
   phase: "lobby" | "running" | "ended";
   endedReason: string | null;
   lobbyEndsAt: number;
+  /** The server's clock when the view was made; deadlines are on this clock. */
+  serverTime?: number;
   /** Left out of live broadcasts once the game runs; the client keeps the last roster it saw. */
   participants?: Participant[];
   rematch?: { id: string; code: string };
@@ -46,6 +48,8 @@ export interface LiveGameView {
   answeredCount?: number;
   activeCount?: number;
   standings: Standing[] | null;
+  /** Each player's rounds so far (true scored, false wrong or missed, null to come); in full views and the ending. */
+  results?: Record<string, (boolean | null)[]>;
   endedReason: string | null;
 }
 export interface LiveRoomView extends RoomView { game?: LiveGameView | null }

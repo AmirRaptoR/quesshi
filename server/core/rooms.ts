@@ -96,6 +96,8 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     // The admin's monitor shows when each room opened.
     createdAt: room.createdAt,
     lobbyEndsAt: room.createdAt + room.type.lobbyLifetimeMs,
+    // Deadlines are the server's; a phone whose clock is off corrects by the difference.
+    serverTime: now(),
     // A running game's roster no longer changes much, and with hundreds of phones it would be most
     // of every broadcast; phones keep the roster from their first full view.
     ...(full || room.status === "lobby" ? { participants: roster(room) } : {}),

@@ -88,6 +88,19 @@ export class LiveGame {
     this.#commit(this.#state, []);
   }
 
+  /**
+   * Each player's rounds so far: true scored, false wrong or missed, null not yet closed. A phone that
+   * joins or reloads mid-game draws its results from this rather than from reveals it never saw.
+   */
+  results(): Record<string, (boolean | null)[]> {
+    const state = this.#state;
+    const closedThrough = state.phase === "reveal" || state.phase === "ended" ? state.slot : state.slot - 1;
+    return Object.fromEntries(state.seats.map((seat) => [
+      seat.player,
+      this.#deps.items.map((_, slot) => (slot > closedThrough ? null : (this.#rounds.get(slot)?.get(seat.player)?.points ?? 0) > 0)),
+    ]));
+  }
+
   snapshot(): LiveSnapshot {
     return { players: this.#deps.players, items: this.#deps.items, resolved: this.#resolved, state: this.#state, version: this.#version, rounds: toPairs(this.#rounds) };
   }
