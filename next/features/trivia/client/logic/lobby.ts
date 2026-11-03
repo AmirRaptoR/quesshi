@@ -23,3 +23,6 @@ export function expiryText(endsAt: number, now: number, t: Translator): string {
   const seconds = remainingSeconds(endsAt, now);
   return seconds >= 60 ? t.format("lobby.closesInMinutes", Math.ceil(seconds / 60)) : t.format("lobby.closesIn", seconds);
 }
+
+/** The path segment of a format's routes under /f/trivia. */
+export const segment = (format: string) => (format === "live" ? "live" : "duel");
