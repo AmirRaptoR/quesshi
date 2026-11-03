@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Clock } from "../../server/core/clock";
+import type { Core } from "../../server/core/feature";
 import { openDatabase, type Db } from "../../server/core/db";
 import { CORE_MIGRATIONS, runMigrations } from "../../server/core/migrations";
 
@@ -22,6 +23,10 @@ export function tempWorld() {
     /** Applies the core's migrations, for tests that use the core tables. */
     migrateCore(): void {
       runMigrations(db, [{ owner: "core", directory: CORE_MIGRATIONS }], fixedClock);
+    },
+    /** A core for the app, with a fixed clock and a mailer that drops messages. */
+    core(clock: Clock = fixedClock): Core {
+      return { db, clock, mailer: { send: async () => {} }, secret: "test-secret", origin: "https://quesshi.example.com" };
     },
     cleanup(): void {
       db.close();

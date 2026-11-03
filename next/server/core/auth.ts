@@ -1,0 +1,72 @@
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import type { Clock } from "./clock";
+import type { IdentityStore, Lang, Player } from "./identity.store";
+import { signInCodeMail, type Mailer } from "./mailer";
+
+const CODE_MINUTES = 10;
+const MAX_ATTEMPTS = 5;
+export const SESSION_DAYS = 30;
+
+export type VerifyResult = { ok: true; player: Player } | { ok: false; error: "wrong" | "expired" | "too_many_attempts" };
+
+interface Deps { identity: IdentityStore; clock: Clock; mailer: Mailer; secret: string }
+
+/** Passwordless sign-in with an emailed code, and the sessions it opens. */
+export function createAuth({ identity, clock, mailer, secret }: Deps) {
+  const hashCode = (email: string, code: string) => createHmac("sha256", secret).update(`${email}:${code}`).digest("hex");
+  const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+  const now = () => clock.now();
+
+  return {
+    async requestCode(rawEmail: string, lang: Lang): Promise<void> {
+      const email = normalize(rawEmail);
+      const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+      identity.saveCode(email, hashCode(email, code), now().toISOString());
+      await mailer.send(signInCodeMail(email, code, lang, CODE_MINUTES));
+    },
+
+    verifyCode(rawEmail: string, code: string, lang: Lang, newId: () => string): VerifyResult {
+      const email = normalize(rawEmail);
+      const challenge = identity.code(email);
+      // An unknown address reads as an expired code, so nobody can probe which addresses exist.
+      if (!challenge) return { ok: false, error: "expired" };
+      if (challenge.attempts >= MAX_ATTEMPTS) return { ok: false, error: "too_many_attempts" };
+      if (now().getTime() > Date.parse(challenge.issuedAt) + CODE_MINUTES * 60_000) return { ok: false, error: "expired" };
+      identity.countAttempt(email);
+      const expected = Buffer.from(challenge.codeHash, "hex");
+      const given = Buffer.from(hashCode(email, code), "hex");
+      if (!timingSafeEqual(expected, given)) return { ok: false, error: "wrong" };
+      identity.deleteCode(email);
+      let player = identity.playerByEmail(email);
+      if (!player) {
+        identity.createPlayer({ id: newId(), email, displayName: email.split("@")[0] || "player", lang, guest: false, createdAt: now().toISOString() });
+        player = identity.playerByEmail(email)!;
+      }
+      // A ban reads as a wrong code: never confirm that the address has an account.
+      return player.banned ? { ok: false, error: "wrong" } : { ok: true, player };
+    },
+
+    /** Opens a session for the player and returns the token for the cookie. */
+    openSession(player: Player): string {
+      const token = randomBytes(32).toString("base64url");
+      const created = now();
+      identity.createSession({
+        tokenHash: hashToken(token),
+        playerId: player.id,
+        createdAt: created.toISOString(),
+        expiresAt: new Date(created.getTime() + SESSION_DAYS * 24 * 3600_000).toISOString(),
+      });
+      return token;
+    },
+
+    playerFor(token: string | undefined): Player | null {
+      return token ? identity.sessionPlayer(hashToken(token), now().toISOString()) : null;
+    },
+
+    closeSession(token: string | undefined): void {
+      if (token) identity.deleteSession(hashToken(token));
+    },
+  };
+}
+
+const normalize = (email: string) => email.trim().toLowerCase();

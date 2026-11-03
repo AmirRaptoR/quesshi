@@ -1,11 +1,17 @@
 import type { AnyElysia } from "elysia";
 import type { Clock } from "./clock";
 import type { Db } from "./db";
+import type { Mailer } from "./mailer";
 
-/** What the core hands every feature at start-up. It grows as the core does (auth, events, live hub). */
+/** What the core hands every feature at start-up. It grows as the core does (events, live hub). */
 export interface Core {
   db: Db;
   clock: Clock;
+  mailer: Mailer;
+  /** Signs sign-in codes; set from the environment in production. */
+  secret: string;
+  /** The site's own origin; changes requested from any other origin are refused. */
+  origin: string;
 }
 
 /** A self-contained feature: one folder, enabled by being listed in features/index.ts. */
