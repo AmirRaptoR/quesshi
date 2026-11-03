@@ -4,6 +4,8 @@ import { AppProvider } from "./app";
 import { clientFeatures } from "./features";
 import type { PageProps } from "./feature";
 import { Layout, NotFound } from "./layout";
+import { Landing } from "./pages/landing";
+import { SignIn } from "./pages/signin";
 
 // preact-iso types a route's props from a literal path; these paths come from a list, so the
 // router is given the one shape every page takes.
@@ -15,6 +17,8 @@ function App() {
       <LocationProvider>
         <Layout>
           <Router>
+            <Route path="/" component={Landing} />
+            <Route path="/signin" component={SignIn} />
             {clientFeatures.flatMap((feature) => feature.routes.map((route) => <PageRoute key={route.path} path={route.path} component={route.page} />))}
             <Route default component={NotFound} />
           </Router>
