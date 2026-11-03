@@ -1,4 +1,4 @@
-import { distinctTexts, MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
+import { cells, distinctTexts, MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
 
 export interface OrderItem { id: string; text: string }
 /** The items in their correct order. */
@@ -12,6 +12,9 @@ export interface OrderReveal { itemIds: string[] }
 export const order: Kind<OrderPayload, OrderResolved, OrderCard, OrderAnswer, OrderReveal> = {
   id: "order",
   levelled: true,
+  columns: ["item1", "item2", "item3", "item4"],
+  fromRow: (row) => ({ items: cells(row, ["item1", "item2", "item3", "item4"]).map((text, i) => ({ id: String(i + 1), text })) }),
+  example: { prompt: "Order these cities by population, largest first", item1: "Tokyo", item2: "Delhi", item3: "Cairo", item4: "Lima" },
   check(payload) {
     const items = ((payload ?? {}) as Record<string, unknown>).items;
     if (!Array.isArray(items) || items.length !== 4) return refuse("bad_choices");

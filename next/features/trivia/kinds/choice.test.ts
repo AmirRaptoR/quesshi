@@ -44,3 +44,9 @@ describe("authoring a choice question", () => {
     expect(choice.check({ options: ["A", "B", "C", "D"], correctIndex: 4 })).toEqual({ ok: false, error: "bad_correct_index" });
   });
 });
+
+describe("importing a choice question", () => {
+  test("reads today's columns", () => {
+    expect(choice.fromRow({ choice1: "A", choice2: "B", choice3: "C", choice4: "D", correctindex: "2" })).toEqual({ options: ["A", "B", "C", "D"], correctIndex: 2 });
+  });
+});

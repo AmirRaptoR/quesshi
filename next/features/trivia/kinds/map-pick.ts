@@ -1,4 +1,4 @@
-import { MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
+import { MalformedAnswer, numberCell, refuse, type Kind } from "../../../server/core/kind";
 
 export type MapTarget =
   | { shape: "country"; countryCode: string }
@@ -18,6 +18,15 @@ const finiteIn = (value: unknown, limit: number) => typeof value === "number" &&
 export const mapPick: Kind<MapPickPayload, null, MapPickCard, MapPickAnswer, MapPickReveal> = {
   id: "map_pick",
   levelled: true,
+  columns: ["targetshape", "countrycode", "latitude", "longitude", "radiuskm", "baselayer"],
+  // Today's files call a point target a city.
+  fromRow: (row) => ({
+    baseLayer: row.baselayer,
+    target: row.targetshape === "city"
+      ? { shape: "point", latitude: numberCell(row.latitude), longitude: numberCell(row.longitude), radiusKm: numberCell(row.radiuskm) }
+      : { shape: row.targetshape, countryCode: row.countrycode },
+  }),
+  example: { prompt: "Which country is shaped like this?", targetshape: "country", countrycode: "NL", latitude: "", longitude: "", radiuskm: "", baselayer: "borders" },
   check(payload) {
     const { baseLayer, target } = (payload ?? {}) as Record<string, unknown>;
     if (baseLayer !== "blank" && baseLayer !== "borders") return refuse("bad_base_layer");

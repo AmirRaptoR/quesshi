@@ -1,4 +1,4 @@
-import { distinctTexts, refuse, type KindRules } from "../../server/core/kind";
+import { cells, distinctTexts, refuse, type KindRules } from "../../server/core/kind";
 
 /** One option as a player sees it; a poll answer is the option's index in this list. */
 export type PollOption =
@@ -21,9 +21,14 @@ export function optionsFor(kind: PollKind, payload: unknown, players: readonly s
 }
 
 /** Today's voting rules: two to eight fixed options, or the players themselves. Poll questions have no level. */
+const CHOICE_COLUMNS = ["choice1", "choice2", "choice3", "choice4", "choice5", "choice6", "choice7", "choice8"];
+
 export const pollKinds: Record<PollKind, KindRules> = {
   poll_choice: {
     levelled: false,
+    columns: CHOICE_COLUMNS,
+    fromRow: (row) => ({ options: cells(row, CHOICE_COLUMNS) }),
+    example: { prompt: "Tea or coffee?", choice1: "Tea", choice2: "Coffee", choice3: "", choice4: "", choice5: "", choice6: "", choice7: "", choice8: "" },
     check(payload) {
       const options = ((payload ?? {}) as Record<string, unknown>).options;
       if (!Array.isArray(options) || options.length < 2) return refuse("too_few_choices");
@@ -34,6 +39,10 @@ export const pollKinds: Record<PollKind, KindRules> = {
   },
   poll_roster: {
     levelled: false,
+    columns: [],
+    // Choice cells on a roster row are read so that check refuses them rather than dropping them unseen.
+    fromRow: (row) => ({ options: cells(row, CHOICE_COLUMNS) }),
+    example: { prompt: "Who would survive longest on a desert island?" },
     check(payload) {
       const options = ((payload ?? {}) as Record<string, unknown>).options;
       return Array.isArray(options) && options.length ? refuse("players_has_choices") : { ok: true, payload: {} };

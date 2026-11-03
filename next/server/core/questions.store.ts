@@ -107,6 +107,10 @@ export function createQuestionsStore(db: Db) {
       ).all(...params, filter.take, filter.skip);
       return { items: rows.map((row) => ({ ...toQuestion(row), status: row.status, createdAt: row.created_at })), total };
     },
+    /** Adds many questions in one transaction: an import writes all its accepted rows or none. */
+    addMany(questions: readonly (StoredQuestion & { status: string; createdAt: string })[]): void {
+      db.transaction(() => { for (const question of questions) this.add(question); })();
+    },
     update(question: StoredQuestion & { status: string }): void {
       db.run(
         "update questions set kind = ?, lang = ?, category_id = ?, level = ?, prompt = ?, payload = ?, explanation = ?, status = ? where id = ?",

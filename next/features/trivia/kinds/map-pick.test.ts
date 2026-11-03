@@ -76,3 +76,12 @@ describe("authoring a map question", () => {
     expect(point({ radiusKm: 2001 })).toEqual({ ok: false, error: "bad_radius" });
   });
 });
+
+describe("importing a map question", () => {
+  test("reads today's country and city columns", () => {
+    expect(mapPick.fromRow({ targetshape: "country", countrycode: "NL", baselayer: "borders" })).toEqual({ baseLayer: "borders", target: { shape: "country", countryCode: "NL" } });
+    expect(mapPick.fromRow({ targetshape: "city", latitude: "52.37", longitude: "4.9", radiuskm: "50", baselayer: "blank" })).toEqual({
+      baseLayer: "blank", target: { shape: "point", latitude: 52.37, longitude: 4.9, radiusKm: 50 },
+    });
+  });
+});

@@ -1,4 +1,4 @@
-import { distinctTexts, MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
+import { cells, distinctTexts, numberCell, MalformedAnswer, refuse, type Kind } from "../../../server/core/kind";
 
 export interface ChoicePayload { options: string[]; correctIndex: number }
 export interface ChoiceCard { options: string[] }
@@ -9,6 +9,9 @@ export interface ChoiceReveal { correctIndex: number; correctOption: string }
 export const choice: Kind<ChoicePayload, null, ChoiceCard, ChoiceAnswer, ChoiceReveal> = {
   id: "choice",
   levelled: true,
+  columns: ["choice1", "choice2", "choice3", "choice4", "correctindex"],
+  fromRow: (row) => ({ options: cells(row, ["choice1", "choice2", "choice3", "choice4"]), correctIndex: numberCell(row.correctindex) }),
+  example: { prompt: "Which sea has no coastline?", choice1: "Sargasso Sea", choice2: "Baltic Sea", choice3: "Red Sea", choice4: "Black Sea", correctindex: "0" },
   check(payload) {
     const { options, correctIndex } = (payload ?? {}) as Record<string, unknown>;
     const texts = distinctTexts(options);

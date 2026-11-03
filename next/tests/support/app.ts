@@ -31,11 +31,21 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
       headers: { "content-type": "application/json", origin: ORIGIN, ...(cookie ? { cookie } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }));
-    return { status: response.status, body: await response.json().catch(() => null), cookie: response.headers.get("set-cookie")?.split(";")[0] };
+    const text = await response.text();
+    const json = (() => { try { return JSON.parse(text); } catch { return null; } })();
+    return { status: response.status, body: json, text, type: response.headers.get("content-type"), cookie: response.headers.get("set-cookie")?.split(";")[0] };
+  };
+
+  /** Sends a file as the raw request body, as the admin's import form does. */
+  const upload = async (path: string, content: string, contentType: string, cookie?: string) => {
+    const response = await server.handle(new Request(`${ORIGIN}${path}`, {
+      method: "POST", body: content, headers: { "content-type": contentType, origin: ORIGIN, ...(cookie ? { cookie } : {}) },
+    }));
+    return { status: response.status, body: await response.json().catch(() => null) };
   };
 
   return {
-    world, scheduler, questions, call, mail,
+    world, scheduler, questions, call, mail, upload,
     /** Signs a player in through the emailed-code flow and returns their cookie. */
     async signIn(email: string): Promise<string> {
       await call("POST", "/api/auth/code", { email, lang: "en" });

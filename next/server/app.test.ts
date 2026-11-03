@@ -53,7 +53,7 @@ describe("createApp", () => {
 
   test("refuses two features that claim the same question kind", () => {
     world = tempWorld();
-    const rules = { levelled: true, check: (payload: unknown) => ({ ok: true as const, payload }) };
+    const rules = { levelled: true, check: (payload: unknown) => ({ ok: true as const, payload }), columns: [], fromRow: () => ({}), example: {} };
 
     expect(() => createApp(world.core(), [defineFeature({ name: "one", kinds: { quiz: rules } }), defineFeature({ name: "two", kinds: { quiz: rules } })])).toThrow(FeatureError);
   });

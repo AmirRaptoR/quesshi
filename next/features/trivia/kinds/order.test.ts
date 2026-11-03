@@ -60,3 +60,11 @@ describe("authoring an order question", () => {
     expect(order.check({ items: [...items.slice(0, 3), { id: "a", text: "Fourth" }] })).toEqual({ ok: false, error: "bad_choices" });
   });
 });
+
+describe("importing an order question", () => {
+  test("reads today's columns, in their correct order", () => {
+    expect(order.fromRow({ item1: "Tokyo", item2: "Delhi", item3: "Cairo", item4: "Lima" })).toEqual({
+      items: [{ id: "1", text: "Tokyo" }, { id: "2", text: "Delhi" }, { id: "3", text: "Cairo" }, { id: "4", text: "Lima" }],
+    });
+  });
+});

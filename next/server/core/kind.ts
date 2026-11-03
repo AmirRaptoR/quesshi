@@ -26,7 +26,20 @@ export interface KindRules<Payload = unknown> {
   /** Whether questions of this kind carry a level from 1 to 5. */
   levelled: boolean;
   check(payload: unknown): Checked<Payload>;
+  /** The kind's own import columns, lowercase, after the shared lang, categoryId, level and prompt. */
+  columns: readonly string[];
+  /** An import row's kind columns as a payload for check; empty cells are absent. */
+  fromRow(row: Readonly<Record<string, string>>): unknown;
+  /** A sample question for the import template: the prompt and the kind's columns. */
+  example: Readonly<Record<string, string>>;
 }
+
+/** The non-empty cells of the named columns, in order. */
+export const cells = (row: Readonly<Record<string, string>>, columns: readonly string[]) =>
+  columns.map((column) => row[column]).filter((value): value is string => value !== undefined);
+
+/** A number cell as written in any locale's files: invariant digits and a dot. */
+export const numberCell = (value: string | undefined) => (value !== undefined && /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : undefined);
 
 /** Trimmed non-blank strings, distinct ignoring case, as today's choice rules; null when not. */
 export function distinctTexts(value: unknown): string[] | null {

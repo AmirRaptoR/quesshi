@@ -10,8 +10,14 @@ afterEach(() => app.cleanup());
 const quiz = defineFeature({
   name: "quiz",
   kinds: {
-    yesno: { levelled: true, check: (p) => (typeof (p as { yes?: unknown })?.yes === "boolean" ? { ok: true, payload: { yes: (p as { yes: boolean }).yes } } : refuse("bad_answer")) },
-    opinion: { levelled: false, check: () => ({ ok: true, payload: {} }) },
+    yesno: {
+      levelled: true,
+      check: (p) => (typeof (p as { yes?: unknown })?.yes === "boolean" ? { ok: true, payload: { yes: (p as { yes: boolean }).yes } } : refuse("bad_answer")),
+      columns: ["yes"],
+      fromRow: (row) => ({ yes: row.yes === undefined ? undefined : row.yes === "true" }),
+      example: { prompt: "Is water wet?", yes: "true" },
+    },
+    opinion: { levelled: false, check: () => ({ ok: true, payload: {} }), columns: [], fromRow: () => ({}), example: { prompt: "Tea?" } },
   },
 });
 
@@ -92,5 +98,69 @@ describe("admin questions", () => {
     expect((await app.call("GET", "/api/admin/question-kinds", undefined, admin)).body).toEqual([
       { kind: "yesno", feature: "quiz", levelled: true }, { kind: "opinion", feature: "quiz", levelled: false },
     ]);
+  });
+});
+
+describe("importing questions", () => {
+  const csv = [
+    "lang,categoryId,level,prompt,yes,explanation,status",
+    'en,geo,2,"Is Amsterdam the capital, still?",true,,approved',
+    "en,geo,9,Too hard?,true,,",
+    "en,geo,1,No answer?,,,",
+    "de,geo,1,Ist das so?,true,,",
+  ].join("\r\n");
+  const importing = (cookie: string, query: string, content: string, type = "text/csv") => app.upload(`/api/admin/questions/import?${query}`, content, type, cookie);
+
+  test("a dry run reports every row and writes nothing", async () => {
+    const admin = await asAdmin();
+
+    const report = (await importing(admin, "kind=yesno&format=csv", csv)).body;
+
+    expect(report).toEqual({
+      dryRun: true, total: 4, accepted: 1, rejected: 3,
+      rows: [
+        { row: 1, prompt: "Is Amsterdam the capital, still?", accepted: true, error: null },
+        { row: 2, prompt: "Too hard?", accepted: false, error: "bad_level" },
+        { row: 3, prompt: "No answer?", accepted: false, error: "bad_answer" },
+        { row: 4, prompt: "Ist das so?", accepted: false, error: "bad_lang" },
+      ],
+    });
+    expect(app.questions.find({ skip: 0, take: 10 }).total).toBe(0);
+  });
+
+  test("a real run writes the accepted rows", async () => {
+    const admin = await asAdmin();
+
+    await importing(admin, "kind=yesno&format=csv&dryRun=false", csv);
+
+    expect(app.questions.find({ skip: 0, take: 10 }).items).toMatchObject([{ prompt: "Is Amsterdam the capital, still?", payload: { yes: true }, status: "approved", level: 2 }]);
+  });
+
+  test("JSON files hold the same rows, and a question without levels needs no level", async () => {
+    const admin = await asAdmin();
+    const rows = [{ lang: "en", categoryId: "geo", prompt: "Tea or coffee?" }];
+
+    expect((await importing(admin, "kind=opinion&format=json", JSON.stringify(rows), "application/json")).body).toMatchObject({ accepted: 1 });
+  });
+
+  test("refuses a file it cannot read as a whole", async () => {
+    const admin = await asAdmin();
+    const error = async (query: string, content: string) => (await importing(admin, query, content)).body;
+
+    expect(await error("kind=essay&format=csv", csv)).toEqual({ error: "bad_kind" });
+    expect(await error("kind=yesno&format=xlsx", csv)).toEqual({ error: "bad_format" });
+    expect(await error("kind=yesno&format=csv", "")).toEqual({ error: "empty_file" });
+    expect(await error("kind=yesno&format=csv", "lang,prompt\nen,Hi?")).toEqual({ error: "bad_row" });
+    expect(await error("kind=yesno&format=json", "{")).toEqual({ error: "bad_json" });
+    expect(await error("kind=yesno&format=csv", [csv, ...Array(2000).fill("en,geo,1,More?,true,,")].join("\n"))).toEqual({ error: "too_many_rows" });
+  });
+
+  test("the template holds the shared columns and the kind's example", async () => {
+    const admin = await asAdmin();
+
+    const response = await app.call("GET", "/api/admin/questions/import/template?kind=yesno&format=csv", undefined, admin);
+
+    expect(response.type).toStartWith("text/csv");
+    expect(response.text).toBe("lang,categoryId,level,prompt,yes,explanation,status\r\nen,geography,2,Is water wet?,true,,pending\r\n");
   });
 });

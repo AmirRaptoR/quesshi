@@ -2,12 +2,9 @@ import type { AdminAuth } from "./admin";
 import { adminOnly } from "./admin.routes";
 import type { Clock } from "./clock";
 import type { Feature } from "./feature";
+import { checkQuestion, importTemplate, readImport } from "./question-input";
 import type { QuestionFilter, QuestionsStore } from "./questions.store";
 
-const LANGS = ["fa", "en", "nl"];
-const STATUSES = ["pending", "approved", "rejected"];
-
-const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 const optional = (value: string | undefined) => (value?.trim() ? value.trim() : undefined);
 const whole = (value: string | undefined, fallback: number) => (value && /^\d+$/.test(value) ? Number(value) : fallback);
 
@@ -34,38 +31,39 @@ export function questionAdminRoutes(auth: AdminAuth, questions: QuestionsStore, 
       if (level) filter.level = level;
       return questions.find(filter);
     })
-    // One route writes any kind, new or edited; each rejection is a code the form translates and shows by its field.
+    // One route writes any kind, new or edited.
     .post("/questions", ({ body, set }) => {
       const input = (body ?? {}) as Record<string, unknown>;
-      const kind = kinds.get(text(input.kind));
-      if (!kind) return bad(set, "bad_kind");
-      const lang = text(input.lang);
-      if (!LANGS.includes(lang)) return bad(set, "bad_lang");
-      const level = input.level ?? null;
-      const levelOk = kind.rules.levelled ? Number.isInteger(level) && (level as number) >= 1 && (level as number) <= 5 : level === null;
-      if (!levelOk) return bad(set, "bad_level");
-      const prompt = text(input.prompt);
-      if (!prompt) return bad(set, "bad_prompt");
-      const categoryId = optional(typeof input.categoryId === "string" ? input.categoryId : undefined) ?? null;
-      if (categoryId && !questions.categories().some((c) => c.id === categoryId)) return bad(set, "bad_category");
-      const status = input.status === undefined ? "pending" : text(input.status);
-      if (!STATUSES.includes(status)) return bad(set, "bad_status");
-      const checked = kind.rules.check(input.payload);
+      const checked = checkQuestion(input, kinds, questions.categories().map((c) => c.id));
       if (!checked.ok) return bad(set, checked.error);
-
-      const fields = {
-        kind: text(input.kind), lang, categoryId, level: level as number | null, prompt, payload: checked.payload,
-        explanation: optional(typeof input.explanation === "string" ? input.explanation : undefined) ?? null, status,
-      };
-      const id = text(input.id);
+      const id = typeof input.id === "string" ? input.id.trim() : "";
       if (id) {
         if (!questions.question(id)) return bad(set, "not_found", 404);
-        questions.update({ id, ...fields });
+        questions.update({ id, ...checked.value });
         return questions.question(id);
       }
-      const created = { id: crypto.randomUUID(), ...fields, createdAt: clock.now().toISOString() };
+      const created = { id: crypto.randomUUID(), ...checked.value, createdAt: clock.now().toISOString() };
       questions.add(created);
       return questions.question(created.id);
+    })
+    // A dry run is the default: the admin sees every row's fate before anything is written.
+    .post("/questions/import", ({ body, query, set }) => {
+      const read = readImport(query.kind ?? "", query.format ?? "", typeof body === "string" ? body : "", kinds, questions.categories().map((c) => c.id));
+      if (!read.ok) return bad(set, read.error);
+      const dryRun = query.dryRun !== "false";
+      if (!dryRun) {
+        const createdAt = clock.now().toISOString();
+        questions.addMany(read.value.questions.map((q) => ({ id: crypto.randomUUID(), ...q, createdAt })));
+      }
+      return { dryRun, ...read.value.report };
+    }, { parse: "text" })
+    .get("/questions/import/template", ({ query, set }) => {
+      const entry = kinds.get(query.kind ?? "");
+      if (!entry) return bad(set, "bad_kind");
+      if (query.format !== "csv" && query.format !== "json") return bad(set, "bad_format");
+      set.headers["content-type"] = query.format === "csv" ? "text/csv; charset=utf-8" : "application/json";
+      set.headers["content-disposition"] = `attachment; filename="${query.kind}-template.${query.format}"`;
+      return importTemplate(entry.rules, query.format);
     })
     .post("/questions/:id/approve", ({ params, set }) => (questions.setStatus(params.id, "approved") ? { ok: true } : bad(set, "not_found", 404)))
     .post("/questions/:id/reject", ({ params, set }) => (questions.setStatus(params.id, "rejected") ? { ok: true } : bad(set, "not_found", 404)))

@@ -14,3 +14,13 @@ describe("authoring a poll question", () => {
     expect(pollKinds.poll_roster.check({ options: ["Ann"] })).toEqual({ ok: false, error: "players_has_choices" });
   });
 });
+
+describe("importing a poll question", () => {
+  test("a choice poll reads up to eight choice columns, skipping empty ones", () => {
+    expect(pollKinds.poll_choice.fromRow({ choice1: "Tea", choice3: "Coffee" })).toEqual({ options: ["Tea", "Coffee"] });
+  });
+
+  test("a roster poll reads no columns", () => {
+    expect(pollKinds.poll_roster.fromRow({ choice1: "Ann" })).toEqual({ options: ["Ann"] });
+  });
+});
