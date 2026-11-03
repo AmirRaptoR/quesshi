@@ -165,10 +165,19 @@ network or the clock directly, so they are fully unit-tested.
 A format declares which kinds it accepts (a scored format accepts gradable kinds; a poll accepts
 ungraded ones).
 
-**Ported from the platform:** the rules of the existing kinds (`choice`, `order`, `map_pick`,
-`poll_choice`, `poll_roster`, `flashcard`) and formats (`live`, `async_duel`, `poll`,
-`flashcards`), with their unit tests as the specification. Which feature owns which kind and
-format is an open question.
+**Kinds and formats belong to features** *(decided)*. A feature owns its question types, how they
+are graded and scored, the formats that play them, and their screens. The core only defines the
+kind and format contracts and runs them. Removing a feature removes its kinds and formats.
+
+**First release** *(decided scope)*: two features.
+
+| Feature | Kinds | Formats |
+| --- | --- | --- |
+| `trivia` | `choice`, `order`, `map_pick` | `live`, `async_duel` |
+| `polls` | `poll_choice`, `poll_roster` | `poll` |
+
+**Ported from the platform:** the rules of these kinds and formats, with their unit tests as the
+specification. `flashcard` and `flashcards` come later, with the other features.
 
 ## 8. Live sessions
 
@@ -268,12 +277,11 @@ Without tenancy, today's split between global accounts and per-tenant players co
 
 ## 15. Open questions
 
-1. **First release scope.** Which formats, kinds and features must exist before the rebuild
-   replaces today's application? Proposal: core, auth, admin questions and categories, the `live`
-   and `async_duel` formats with `choice`, `order` and `map_pick`, and `poll`. Later: stats,
-   leaderboard, friends, matchmaking, reports, AI generation, packs and flashcards.
-2. **Ownership of kinds and formats.** Do they live in the core, or does each belong to a feature
-   (for example a *trivia* feature owning `choice`, `order`, `live`)?
-3. **Data from today's application.** Questions, categories and media only, or players and history
+*Answered 2026-11-03:* the first release is the core, sign-in, admin for questions and
+categories, and the `trivia` and `polls` features (section 7); stats, leaderboard, friends,
+matchmaking, reports, AI generation, packs and flashcards come later. Kinds and formats belong to
+features.
+
+1. **Data from today's application.** Questions, categories and media only, or players and history
    too?
-4. **Folder name.** `next/` until it replaces the root, unless you prefer another.
+2. **Folder name.** `next/` until it replaces the root, unless you prefer another.
