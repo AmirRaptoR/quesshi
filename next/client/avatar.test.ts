@@ -13,10 +13,10 @@ describe("avatars", () => {
     expect(isAvatarSeed("")).toBe(false);
   });
 
-  test("a seed always has the same tint, and the palette offers visibly different ones", () => {
+  test("a seed always has the same tint, and the twelve swatches are twelve different colours", () => {
     expect(tint("avatar-3")).toBe(tint("avatar-3"));
     expect(tint("avatar-3")).toMatch(/^hsl\(\d+ 55% 62%\)$/);
-    expect(new Set(AVATAR_SEEDS.map(tint)).size).toBeGreaterThan(1);
+    expect(new Set(AVATAR_SEEDS.map(tint)).size).toBe(12);
   });
 
   test("the initial is the name's first letter, upper-cased, or a question mark", () => {
