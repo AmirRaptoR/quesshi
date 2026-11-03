@@ -6,6 +6,8 @@ import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { selectCategories } from "./core/categories";
 import { categoryAdminRoutes } from "./core/categories.routes";
+import { reportAdminRoutes, reportRoutes } from "./core/reports.routes";
+import { createReportsStore } from "./core/reports.store";
 import { userAdminRoutes } from "./core/user-admin.routes";
 import { questionAdminRoutes } from "./core/question-admin.routes";
 import { createQuestionsStore, type QuestionsStore } from "./core/questions.store";
@@ -28,6 +30,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
   const adminAuth = createAdminAuth({ admins, clock: core.clock, mailer: core.mailer, origin: core.origin });
   const identity = createIdentityStore(core.db);
   const questions = createQuestionsStore(core.db);
+  const reports = createReportsStore(core.db);
   const auth = createAuth({ identity, clock: core.clock, mailer: core.mailer, secret: core.secret });
   let server = new Elysia()
     // Every change must come from this site; SameSite cookies plus this check stop cross-site requests.
@@ -44,7 +47,9 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()))
     .use(categoryAdminRoutes(adminAuth, questions, features.map((feature) => feature.name)))
     .use(questionAdminRoutes(adminAuth, questions, features, core.clock))
-    .use(userAdminRoutes(adminAuth, identity, core.clock));
+    .use(userAdminRoutes(adminAuth, identity, core.clock))
+    .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
+    .use(reportAdminRoutes(adminAuth, reports, questions));
   const newId = () => crypto.randomUUID();
   const services = {
     ...core,

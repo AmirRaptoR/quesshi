@@ -44,7 +44,7 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
     start(room, changed) {
       const drawn = draw(context, stores, room.settings);
       if (!drawn) return { ok: false, error: "not_enough_questions" };
-      stores.sessions.start(room.id, room.participants);
+      stores.sessions.start(room.id, room.participants, drawn.map((q) => q.id));
       let last: LiveView | null = null;
       const game = new LiveGame({
         sessionId: room.id, players: [...room.participants], items: toItems(drawn),
@@ -81,7 +81,7 @@ export function duelRoomType(context: FeatureContext, stores: Stores, games: Map
     start(room, changed) {
       const drawn = draw(context, stores, room.settings);
       if (!drawn) return { ok: false, error: "not_enough_questions" };
-      stores.sessions.start(room.id, room.participants);
+      stores.sessions.start(room.id, room.participants, drawn.map((q) => q.id));
       const game = new DuelGame({
         sessionId: room.id, players: [...room.participants], items: toItems(drawn), createdAt: room.createdAt,
         clock: context.clock, schedule: context.schedule, random: context.random, sessions: stores.sessions, onChange: changed,

@@ -25,7 +25,7 @@ function game(players = ["ann", "bob"], items = [capital, planet]) {
   const scheduler = fakeScheduler(T0);
   const sessions = createSessionsStore(world.db);
   sessions.createLobby({ id: "s1", code: "ABCD", format: "live", createdAt: new Date(T0).toISOString() });
-  sessions.start("s1", players);
+  sessions.start("s1", players, []);
   const views: LiveView[] = [];
   const live = new LiveGame({ sessionId: "s1", players, items, clock: scheduler.clock, schedule: scheduler.schedule, random: fixedRandom, sessions, publish: (view) => views.push(view) });
   live.start();

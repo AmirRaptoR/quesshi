@@ -42,7 +42,7 @@ function pollRoutes(context: FeatureContext) {
         if (error instanceof NotEnoughQuestions) return { ok: false, error: "not_enough_questions" };
         throw error;
       }
-      sessions.start(room.id, room.participants);
+      sessions.start(room.id, room.participants, drawn.map((q) => q.id));
       const game = new PollGame({
         sessionId: room.id, players: [...room.participants], items: drawn.map((q) => ({ prompt: q.prompt, kind: q.kind as PollKind, payload: q.payload })),
         clock: context.clock, schedule: context.schedule, sessions, onChange: changed,

@@ -9,10 +9,12 @@ export function createSessionsStore(db: Db) {
       db.run("insert into sessions (id, code, format, status, created_at) values (?, ?, ?, 'lobby', ?)", [session.id, session.code, session.format, session.createdAt]);
     },
     /** The game begins: the session runs and its players take their seats. */
-    start(sessionId: string, players: readonly string[]): void {
+    /** Seats the players and records the questions the session serves, by slot. */
+    start(sessionId: string, players: readonly string[], questionIds: readonly string[]): void {
       db.transaction(() => {
         db.run("update sessions set status = 'running' where id = ?", [sessionId]);
         for (const player of players) db.run("insert into seats (session_id, player_id) values (?, ?)", [sessionId, player]);
+        questionIds.forEach((question, slot) => db.run("insert into session_questions (session_id, slot, question_id) values (?, ?, ?)", [sessionId, slot, question]));
       })();
     },
     /** A null value records a miss. */
