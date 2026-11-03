@@ -6,7 +6,7 @@ import type { SettingsStore } from "./settings.store";
 import type { SessionsStore } from "../../server/core/sessions.store";
 import { DuelGame } from "./duel-game";
 import { TRIVIA_KINDS, type TriviaItem } from "./items";
-import { LiveGame, type LiveView } from "./live-game";
+import { broadcastView, LiveGame, type LiveView } from "./live-game";
 
 const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
 const DEFAULT_QUESTIONS = 10;
@@ -67,7 +67,7 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
           },
           ended: () => (last?.phase === "ended" ? { reason: last.endedReason ?? "completed" } : null),
           end: () => game.end(),
-          view: () => ({ game: last }),
+          view: (_viewer, full) => ({ game: full || !last ? last : broadcastView(last) }),
         },
       };
     },

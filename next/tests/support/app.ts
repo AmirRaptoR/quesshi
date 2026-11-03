@@ -110,7 +110,9 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
         close: () => server.stop(),
       };
     },
-    cleanup() {
+    /** Lets broadcasts queued for the next turn go out before the database closes. */
+    async cleanup() {
+      await new Promise((resolve) => setTimeout(resolve, 0));
       world.cleanup();
     },
   };
