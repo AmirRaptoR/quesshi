@@ -33,6 +33,11 @@ export const asyncDuel = {
     return { players, levels, createdAt, runs: Object.fromEntries(players.map((player) => [player, { answers: [], servedAt: null }])), ended: null };
   },
 
+  /** Applies the 48-hour forfeit if it is due; otherwise returns the state unchanged. */
+  settle(state: DuelState, at: number): DuelState {
+    return !state.ended && at >= state.createdAt + FORFEIT_MS ? finish(state, "forfeited") : state;
+  },
+
   next(state: DuelState, event: DuelEvent): { state: DuelState; result: DuelResult } {
     if (!state.ended && event.at >= state.createdAt + FORFEIT_MS) state = finish(state, "forfeited");
     const run = state.runs[event.player];

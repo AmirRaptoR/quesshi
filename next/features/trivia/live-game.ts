@@ -1,21 +1,11 @@
 import type { Clock } from "../../server/core/clock";
-import { MalformedAnswer, type Kind } from "../../server/core/kind";
+import { MalformedAnswer } from "../../server/core/kind";
 import type { Schedule } from "../../server/core/schedule";
 import type { SessionsStore } from "../../server/core/sessions.store";
 import { live, type LiveEffect, type LiveEvent, type LiveState, type SeatStatus, type Standing } from "./formats/live";
-import { choice } from "./kinds/choice";
-import { mapPick } from "./kinds/map-pick";
-import { order } from "./kinds/order";
+import { kinds, type TriviaItem } from "./items";
 
-const kinds: Record<TriviaItem["kind"], Kind<unknown, unknown, unknown, unknown, unknown>> = { choice, order, map_pick: mapPick };
-
-export interface TriviaItem {
-  prompt: string;
-  level: number | null;
-  explanation: string | null;
-  kind: "choice" | "order" | "map_pick";
-  payload: unknown;
-}
+export type { TriviaItem } from "./items";
 
 /** What every phone in the session receives after each change. It never carries an answer before the reveal. */
 export interface LiveView {
