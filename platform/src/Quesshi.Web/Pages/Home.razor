@@ -122,12 +122,28 @@
     protected override async Task OnInitializedAsync()
     {
         sessions = new HomeSessions(Api, State, Config);
-        formats = sessions.EnabledFormats(id => Registry.ResolveFormat(id) is not null);
-        randomFormats = sessions.MatchmakingEnabled ? formats.Where(id => Registry.ResolveFormat(id)?.Matchmaking == true).ToArray() : [];
+        RefreshFormats();
+        Config.Changed += OnConfigChanged;
         State.InboxChanged += OnInboxChanged;
         if (State.Inbox is { } known) inbox = HomeInbox.From(known.Data);
         inbox = await sessions.LoadInboxAsync();
         Observe();
+    }
+
+    private void RefreshFormats()
+    {
+        formats = sessions.EnabledFormats(id => Registry.ResolveFormat(id) is not null);
+        randomFormats = sessions.MatchmakingEnabled ? formats.Where(id => Registry.ResolveFormat(id)?.Matchmaking == true).ToArray() : [];
+    }
+
+    private void OnConfigChanged()
+    {
+        if (disposed) return;
+        _ = InvokeAsync(() =>
+        {
+            RefreshFormats();
+            StateHasChanged();
+        });
     }
 
     private bool StartsFromSettings(string id) => Registry.ResolveFormat(id)?.StartsFromSettings == true;
@@ -230,6 +246,7 @@
     public void Dispose()
     {
         disposed = true;
+        Config.Changed -= OnConfigChanged;
         State.InboxChanged -= OnInboxChanged;
     }
 }
