@@ -1,12 +1,12 @@
 import type { FeatureContext } from "../../server/core/feature";
 import { drawQuestions, NotEnoughQuestions } from "../../server/core/questions";
 import type { QuestionsStore, StoredQuestion } from "../../server/core/questions.store";
-import type { RoomType } from "../../server/core/rooms";
+import type { GameHandle, RoomType } from "../../server/core/rooms";
 import type { SettingsStore } from "./settings.store";
 import type { SessionsStore } from "../../server/core/sessions.store";
-import { DuelGame } from "./duel-game";
+import { DuelGame, type DuelSnapshot } from "./duel-game";
 import { TRIVIA_KINDS, type TriviaItem } from "./items";
-import { broadcastView, LiveGame, type LiveView } from "./live-game";
+import { broadcastView, LiveGame, type LiveSnapshot, type LiveView } from "./live-game";
 
 const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
 const DEFAULT_QUESTIONS = 10;
@@ -47,32 +47,43 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
       const drawn = draw(context, stores, room.settings);
       if (!drawn) return { ok: false, error: "not_enough_questions" };
       stores.sessions.start(room.id, room.participants, drawn.map((q) => q.id));
-      let last: LiveView | null = null;
-      const game = new LiveGame({
-        sessionId: room.id, players: [...room.participants], items: toItems(drawn),
-        clock: context.clock, schedule: context.schedule, random: context.random, sessions: stores.sessions,
-        publish: (view) => {
-          last = view;
-          changed();
-        },
-      });
-      games.set(room.id, game);
-      game.start();
-      return {
-        ok: true,
-        game: {
-          leave: (player) => {
-            game.leave(player);
-            return true;
-          },
-          ended: () => (last?.phase === "ended" ? { reason: last.endedReason ?? "completed" } : null),
-          end: () => game.end(),
-          snapshot: () => null,
-          view: (_viewer, full) => ({ game: full || !last ? last : broadcastView(last) }),
-        },
-      };
+      const live = runLive(room.id, changed, (publish) => new LiveGame({ ...deps(room.id, room.participants, toItems(drawn)), publish }));
+      live.game.start();
+      return { ok: true, game: live.handle };
+    },
+    resume(room, saved, changed) {
+      const snapshot = saved as LiveSnapshot;
+      const live = runLive(room.id, changed, (publish) => new LiveGame({ ...deps(room.id, snapshot.players, snapshot.items), publish }, snapshot));
+      live.game.resume();
+      return live.handle;
     },
   };
+
+  function deps(sessionId: string, players: readonly string[], items: TriviaItem[]) {
+    return { sessionId, players: [...players], items, clock: context.clock, schedule: context.schedule, random: context.random, sessions: stores.sessions };
+  }
+
+  function runLive(id: string, changed: () => void, create: (publish: (view: LiveView) => void) => LiveGame): { game: LiveGame; handle: GameHandle } {
+    let last: LiveView | null = null;
+    const game = create((view) => {
+      last = view;
+      changed();
+    });
+    games.set(id, game);
+    return {
+      game,
+      handle: {
+        leave: (player) => {
+          game.leave(player);
+          return true;
+        },
+        ended: () => (last?.phase === "ended" ? { reason: last.endedReason ?? "completed" } : null),
+        end: () => game.end(),
+        snapshot: () => game.snapshot(),
+        view: (_viewer, full) => ({ game: full || !last ? last : broadcastView(last) }),
+      },
+    };
+  }
 }
 
 /** The asynchronous duel; the duel, lobby included, is forfeited 48 hours after creation. */
@@ -88,24 +99,29 @@ export function duelRoomType(context: FeatureContext, stores: Stores, games: Map
       const drawn = draw(context, stores, room.settings);
       if (!drawn) return { ok: false, error: "not_enough_questions" };
       stores.sessions.start(room.id, room.participants, drawn.map((q) => q.id));
-      const game = new DuelGame({
-        sessionId: room.id, players: [...room.participants], items: toItems(drawn), createdAt: room.createdAt,
-        clock: context.clock, schedule: context.schedule, random: context.random, sessions: stores.sessions, onChange: changed,
-      });
-      games.set(room.id, game);
-      return {
-        ok: true,
-        game: {
-          // A started duel cannot be left, as today.
-          leave: () => false,
-          ended: () => game.ended,
-          end: () => game.end(),
-          snapshot: () => null,
-          view: (viewer) => game.view(viewer ?? ""),
-        },
-      };
+      return { ok: true, game: runDuel(room.id, new DuelGame({ ...deps(room.id, room.participants, toItems(drawn), room.createdAt), onChange: changed })) };
+    },
+    resume(room, saved, changed) {
+      const snapshot = saved as DuelSnapshot;
+      return runDuel(room.id, new DuelGame({ ...deps(room.id, snapshot.players, snapshot.items, snapshot.createdAt), onChange: changed }, snapshot));
     },
   };
+
+  function deps(sessionId: string, players: readonly string[], items: TriviaItem[], createdAt: number) {
+    return { sessionId, players: [...players], items, createdAt, clock: context.clock, schedule: context.schedule, random: context.random, sessions: stores.sessions };
+  }
+
+  function runDuel(id: string, game: DuelGame): GameHandle {
+    games.set(id, game);
+    return {
+      // A started duel cannot be left, as today.
+      leave: () => false,
+      ended: () => game.ended,
+      end: () => game.end(),
+      snapshot: () => game.snapshot(),
+      view: (viewer) => game.view(viewer ?? ""),
+    };
+  }
 }
 
 /** Reads game settings from a request, coercing an unknown question count to today's default. */

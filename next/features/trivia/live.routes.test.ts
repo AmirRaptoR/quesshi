@@ -262,3 +262,19 @@ describe("question media", () => {
     expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game.question.media).toEqual({ kind: "image", url: "/media/uploads/a.png", attribution: null });
   });
 });
+
+describe("live across a restart", () => {
+  test("a running game resumes on the same question and keeps its schedule", async () => {
+    const { owner, id, code } = await lobby();
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+    await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner);
+    app.scheduler.advanceTo(T0 + 3_000);
+    const before = (await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game;
+
+    await app.restart();
+
+    expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game).toMatchObject({ phase: "question", slot: 0, question: before.question, questionEndsAt: before.questionEndsAt });
+    app.scheduler.advanceTo(before.dueAt);
+    expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game).toMatchObject({ phase: "reveal", slot: 0 });
+  });
+});

@@ -155,3 +155,28 @@ describe("async duel, ended by an administrator", () => {
     expect((await app.call("POST", `/f/trivia/duel/${id}/next`, undefined, ann)).status).toBe(409);
   });
 });
+
+describe("async duel across a restart", () => {
+  test("each player carries on from where they were, with their score", async () => {
+    const { id, ann } = await started();
+    for (let slot = 0; slot < 3; slot++) {
+      await app.call("POST", `/f/trivia/duel/${id}/next`, undefined, ann);
+      await app.call("POST", `/f/trivia/duel/${id}/answer`, { slot, answer: { index: 0 } }, ann);
+    }
+    const before = (await app.call("GET", `/f/trivia/duel/${id}`, undefined, ann)).body;
+
+    await app.restart();
+
+    expect((await app.call("GET", `/f/trivia/duel/${id}`, undefined, ann)).body.runs).toEqual(before.runs);
+    expect((await app.call("POST", `/f/trivia/duel/${id}/next`, undefined, ann)).body).toMatchObject({ slot: 3 });
+  });
+
+  test("is still forfeited 48 hours after it was created", async () => {
+    const { id, ann } = await started();
+
+    await app.restart();
+    app.scheduler.advanceTo(T0 + 48 * 3600_000);
+
+    expect((await app.call("GET", `/f/trivia/duel/${id}`, undefined, ann)).body).toMatchObject({ phase: "ended", endedReason: "forfeited" });
+  });
+});

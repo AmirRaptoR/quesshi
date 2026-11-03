@@ -49,18 +49,47 @@ interface Deps {
   publish: (view: LiveView) => void;
 }
 
+
+/** Nested maps as plain arrays, for a JSON snapshot, and back. */
+const toPairs = <K, L, V>(outer: Map<K, Map<L, V>>) => [...outer].map(([key, inner]) => [key, [...inner]] as const);
+const fromPairs = <K, L, V>(pairs: readonly (readonly [K, readonly (readonly [L, V])[]])[]) => new Map(pairs.map(([key, inner]) => [key, new Map(inner)]));
+
+export interface LiveSnapshot {
+  players: string[];
+  items: TriviaItem[];
+  resolved: unknown[];
+  state: LiveState;
+  version: number;
+  rounds: ReturnType<typeof toPairs<number, string, { value: unknown; points: number }>>;
+}
+
 /** One running live trivia session, in memory. Commands run one at a time to completion, so nothing interleaves. */
 export class LiveGame {
   readonly #deps: Deps;
   readonly #resolved: unknown[];
-  readonly #rounds = new Map<number, Map<string, { value: unknown; points: number }>>();
+  readonly #rounds: Map<number, Map<string, { value: unknown; points: number }>>;
   #state!: LiveState;
   #version = 0;
   #cancelTimer: (() => void) | null = null;
 
-  constructor(deps: Deps) {
+  /** A new game, or, with `saved`, one resumed from its snapshot after a restart (call resume()). */
+  constructor(deps: Deps, saved?: LiveSnapshot) {
     this.#deps = deps;
-    this.#resolved = deps.items.map((item) => kinds[item.kind].resolve(item.payload, deps.random));
+    this.#resolved = saved?.resolved ?? deps.items.map((item) => kinds[item.kind].resolve(item.payload, deps.random));
+    this.#rounds = saved ? fromPairs(saved.rounds) : new Map();
+    if (saved) {
+      this.#state = saved.state;
+      this.#version = saved.version;
+    }
+  }
+
+  /** Picks up a restored game: its timer runs again from the saved deadline, which may already have passed. */
+  resume(): void {
+    this.#commit(this.#state, []);
+  }
+
+  snapshot(): LiveSnapshot {
+    return { players: this.#deps.players, items: this.#deps.items, resolved: this.#resolved, state: this.#state, version: this.#version, rounds: toPairs(this.#rounds) };
   }
 
   start(): void {

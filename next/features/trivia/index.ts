@@ -16,6 +16,9 @@ function triviaRoutes(context: FeatureContext) {
   const duels = new Map<string, DuelGame>();
   const live = liveRoomType(context, stores, liveGames);
   const duel = duelRoomType(context, stores, duels);
+  // Open lobbies and running games saved before a restart come back.
+  context.rooms.restore(live);
+  context.rooms.restore(duel);
   const { rooms } = context;
 
   return new Elysia({ prefix: "/f/trivia" })

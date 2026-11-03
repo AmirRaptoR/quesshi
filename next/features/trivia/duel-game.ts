@@ -20,6 +20,20 @@ interface Deps {
   onChange: () => void;
 }
 
+
+/** Nested maps as plain arrays, for a JSON snapshot, and back. */
+const toPairs = <K, L, V>(outer: Map<K, Map<L, V>>) => [...outer].map(([key, inner]) => [key, [...inner]] as const);
+const fromPairs = <K, L, V>(pairs: readonly (readonly [K, readonly (readonly [L, V])[]])[]) => new Map(pairs.map(([key, inner]) => [key, new Map(inner)]));
+
+export interface DuelSnapshot {
+  players: string[];
+  items: TriviaItem[];
+  createdAt: number;
+  resolved: unknown[];
+  state: DuelState;
+  given: ReturnType<typeof toPairs<string, number, { value: unknown; correct: boolean }>>;
+}
+
 /** One running asynchronous duel: each player plays the same questions at their own pace. */
 export class DuelGame {
   readonly #deps: Deps;
@@ -27,17 +41,24 @@ export class DuelGame {
   #state: DuelState;
   #cancelForfeit: () => void;
   /** What each player answered, by slot, for the review at the end of their run. */
-  readonly #given = new Map<string, Map<number, { value: unknown; correct: boolean }>>();
+  readonly #given: Map<string, Map<number, { value: unknown; correct: boolean }>>;
 
-  constructor(deps: Deps) {
+  /** A new duel, or, with `saved`, one resumed from its snapshot after a restart. */
+  constructor(deps: Deps, saved?: DuelSnapshot) {
     this.#deps = deps;
-    this.#resolved = deps.items.map((item) => kinds[item.kind].resolve(item.payload, deps.random));
-    this.#state = asyncDuel.start({ players: deps.players, levels: deps.items.map((item) => item.level), createdAt: deps.createdAt });
+    this.#resolved = saved?.resolved ?? deps.items.map((item) => kinds[item.kind].resolve(item.payload, deps.random));
+    this.#given = saved ? fromPairs(saved.given) : new Map();
+    this.#state = saved?.state ?? asyncDuel.start({ players: deps.players, levels: deps.items.map((item) => item.level), createdAt: deps.createdAt });
     this.#cancelForfeit = deps.schedule(deps.createdAt + FORFEIT_MS, () => this.#apply(asyncDuel.settle(this.#state, this.#now())));
   }
 
   get ended() {
     return this.#state.ended;
+  }
+
+  snapshot(): DuelSnapshot {
+    const { players, items, createdAt } = this.#deps;
+    return { players, items, createdAt, resolved: this.#resolved, state: this.#state, given: toPairs(this.#given) };
   }
 
   /** An administrator ends the duel as a no contest. */
