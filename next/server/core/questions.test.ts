@@ -70,6 +70,17 @@ describe("drawQuestions", () => {
     expect(drawn.map((q) => q.id)).toEqual([sportEasy, geoMedium]);
   });
 
+  test("draws questions without a level when the game has no levels", () => {
+    const { store, add } = bank();
+    world!.db.run("update questions set level = null");
+    add({ kind: "poll_choice" });
+    world!.db.run("update questions set level = null");
+
+    const drawn = draw(store, { count: 1, levels: null, kinds: ["poll_choice"] });
+
+    expect(drawn.map((q) => q.kind)).toEqual(["poll_choice"]);
+  });
+
   test("fails when the bank cannot fill the game", () => {
     const { store, add } = bank();
     add();

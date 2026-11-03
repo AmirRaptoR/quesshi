@@ -30,10 +30,14 @@ export function createQuestionsStore(db: Db) {
         [question.id, question.kind, question.lang, question.categoryId, question.level, question.prompt, JSON.stringify(question.payload), question.explanation, question.status, question.createdAt],
       );
     },
-    /** One random approved question matching the filter, or null. */
-    randomApproved(filter: { lang: string; kinds: readonly string[]; categoryIds: readonly string[] | null; level: number; exclude: readonly string[] }): StoredQuestion | null {
-      const where = ["status = 'approved'", "lang = ?", "level = ?", `kind in (${filter.kinds.map(() => "?").join(",")})`];
-      const params: (string | number)[] = [filter.lang, filter.level, ...filter.kinds];
+    /** One random approved question matching the filter, or null. A null level matches any level. */
+    randomApproved(filter: { lang: string; kinds: readonly string[]; categoryIds: readonly string[] | null; level: number | null; exclude: readonly string[] }): StoredQuestion | null {
+      const where = ["status = 'approved'", "lang = ?", `kind in (${filter.kinds.map(() => "?").join(",")})`];
+      const params: (string | number)[] = [filter.lang, ...filter.kinds];
+      if (filter.level !== null) {
+        where.push("level = ?");
+        params.push(filter.level);
+      }
       if (filter.categoryIds) {
         where.push(`category_id in (${filter.categoryIds.map(() => "?").join(",")})`);
         params.push(...filter.categoryIds);

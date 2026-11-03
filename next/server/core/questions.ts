@@ -19,8 +19,8 @@ export interface DrawOptions {
   lang: string;
   /** Chosen categories, taken in turn; null for any category. */
   categoryIds: readonly string[] | null;
-  /** Chosen levels; empty for all five. */
-  levels: readonly number[];
+  /** Chosen levels; empty for all five; null for games whose questions have no level (polls). */
+  levels: readonly number[] | null;
   count: number;
   /** The kinds the session's format can play. */
   kinds: readonly string[];
@@ -29,11 +29,12 @@ export interface DrawOptions {
 /** Draws a game's questions, slot by slot, as today's question set builder does. */
 export function drawQuestions(store: QuestionsStore, options: DrawOptions): StoredQuestion[] {
   if (options.categoryIds?.length === 0) throw new NotEnoughQuestions("The category scope is empty.");
-  const allowed = options.levels.length ? [...new Set(options.levels)].sort((a, b) => a - b) : ALL_LEVELS;
+  const levelled = options.levels !== null;
+  const allowed = options.levels?.length ? [...new Set(options.levels)].sort((a, b) => a - b) : ALL_LEVELS;
   const categories = options.categoryIds ? [...new Set(options.categoryIds)] : null;
   const picked: StoredQuestion[] = [];
   const take = (categoryIds: readonly string[] | null, level: number) =>
-    store.randomApproved({ lang: options.lang, kinds: options.kinds, categoryIds, level, exclude: picked.map((q) => q.id) });
+    store.randomApproved({ lang: options.lang, kinds: options.kinds, categoryIds, level: levelled ? level : null, exclude: picked.map((q) => q.id) });
 
   for (let slot = 0; slot < options.count; slot++) {
     const preferred = categories ? [categories[slot % categories.length]!] : null;
