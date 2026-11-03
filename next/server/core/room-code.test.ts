@@ -13,7 +13,7 @@ const game = defineFeature({
   server: (context: FeatureContext) => {
     const type: RoomType<{ questions: number }> = {
       format: "duo", maxCapacity: 2, lobbyLifetimeMs: 60_000, lobbyEnding: "lobby_expired",
-      start: () => ({ ok: true, game: { leave: () => false, ended: () => null, end: () => {}, view: () => ({}) } }),
+      start: () => ({ ok: true, game: { leave: () => false, ended: () => null, end: () => {}, view: () => ({}), snapshot: () => null } }),
     };
     return new Elysia({ prefix: "/f/game" }).use(lobbyRoutes({ context, rooms: context.rooms, type, segment: "play", readSettings: () => ({ questions: 20 }) }));
   },

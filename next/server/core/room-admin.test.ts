@@ -17,7 +17,7 @@ const game = defineFeature({
       format: "game", maxCapacity: 4, lobbyLifetimeMs: 60_000, lobbyEnding: "lobby_expired",
       start: (_room, changed) => {
         let over = false;
-        return { ok: true, game: { leave: () => false, ended: () => (over ? { reason: "ended_by_admin" } : null), end: () => { endedByAdmin++; over = true; changed(); }, view: () => ({}) } };
+        return { ok: true, game: { leave: () => false, ended: () => (over ? { reason: "ended_by_admin" } : null), end: () => { endedByAdmin++; over = true; changed(); }, view: () => ({}), snapshot: () => null } };
       },
     };
     return new Elysia({ prefix: "/f/game" }).use(lobbyRoutes({ context, rooms: context.rooms, type, segment: "play", readSettings: () => ({}) }));

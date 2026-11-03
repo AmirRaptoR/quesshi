@@ -1,4 +1,5 @@
 import type { FeatureContext } from "./feature";
+import type { RoomsStore } from "./rooms.store";
 import type { SessionsStore } from "./sessions.store";
 
 /** How long an ended room stays in memory, so players can still read its result and ask for a rematch. */
@@ -18,6 +19,8 @@ export interface GameHandle {
    * for broadcasts, which go to every phone on every change and so carry only what changes often.
    */
   view(viewer: string | null, full: boolean): Record<string, unknown>;
+  /** The game's state as plain JSON, saved so a restart can resume it. */
+  snapshot(): unknown;
 }
 
 export interface RoomInfo<S> { id: string; code: string; owner: string; participants: readonly string[]; settings: S; createdAt: number }
@@ -33,6 +36,14 @@ export interface RoomType<S> {
   lobbyEnding: string;
   /** Starts the game; `changed` is called after every change so the room is re-broadcast. */
   start(room: RoomInfo<S>, changed: () => void): { ok: true; game: GameHandle } | { ok: false; error: "not_enough_questions" };
+  /** Rebuilds a running game from its snapshot after a restart; without it, the game ends as server_restarted. */
+  resume?(room: RoomInfo<S>, snapshot: unknown, changed: () => void): GameHandle | null;
+}
+
+/** What a restart needs to bring a room back. */
+interface SavedRoom {
+  id: string; code: string; owner: string; capacity: number; settings: unknown; participants: string[];
+  status: "lobby" | "running"; createdAt: number; extra: Record<string, unknown>; game: unknown;
 }
 
 interface Room {
@@ -62,7 +73,7 @@ export type Rooms = ReturnType<typeof createRooms>;
  * the owner starts (two or more players), changes settings or cancels; others may leave. Rooms live
  * in memory; their sessions are recorded in the database.
  */
-export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" | "random" | "player" | "publish">, sessions: SessionsStore) {
+export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" | "random" | "player" | "publish">, sessions: SessionsStore, snapshots: RoomsStore) {
   const rooms = new Map<string, Room>();
   const byCode = new Map<string, Room>();
   const topic = (id: string) => `room:${id}`;
@@ -107,8 +118,28 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     room.flushQueued = true;
     setTimeout(() => {
       room.flushQueued = false;
+      save(room);
       context.publish(topic(room.id), { type: "view", view: view(room, null, false) });
     }, 0);
+  };
+
+  /** Keeps the room's latest state for a restart, or forgets it once the room has ended. */
+  const save = (room: Room) => {
+    if (ended(room)) {
+      snapshots.remove(room.id);
+      return;
+    }
+    const saved: SavedRoom = {
+      id: room.id, code: room.code, owner: room.owner, capacity: room.capacity, settings: room.settings, participants: room.participants,
+      status: room.status === "running" ? "running" : "lobby", createdAt: room.createdAt, extra: room.extra, game: room.game?.snapshot() ?? null,
+    };
+    snapshots.save(room.id, room.type.format, saved);
+  };
+
+  const expireLobby = (room: Room) => {
+    room.cancelExpiry = context.schedule(room.createdAt + room.type.lobbyLifetimeMs, () => {
+      if (room.status === "lobby") end(room, room.type.lobbyEnding);
+    });
   };
 
   const end = (room: Room, reason: string) => {
@@ -142,9 +173,8 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
       rooms.set(room.id, room);
       byCode.set(room.code, room);
       sessions.createLobby({ id: room.id, code: room.code, format: type.format, createdAt: new Date(room.createdAt).toISOString() });
-      room.cancelExpiry = context.schedule(room.createdAt + type.lobbyLifetimeMs, () => {
-        if (room.status === "lobby") end(room, type.lobbyEnding);
-      });
+      expireLobby(room);
+      broadcast(room);
       return { id: room.id, code: room.code };
     },
 
@@ -221,6 +251,29 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
       if (capacity !== null) room.capacity = capacity;
       broadcast(room);
       return true;
+    },
+
+    /**
+     * Brings back a format's open lobbies and running games after a restart. Called once by the
+     * feature that owns the format, when it has built its room type.
+     */
+    restore<S>(type: RoomType<S>): void {
+      for (const saved of snapshots.of(type.format) as SavedRoom[]) {
+        const room: Room = {
+          type: type as RoomType<unknown>, id: saved.id, code: saved.code, owner: saved.owner, capacity: saved.capacity, settings: saved.settings,
+          participants: saved.participants, status: saved.status, endedReason: null, createdAt: saved.createdAt, game: null, extra: saved.extra,
+          cancelExpiry: () => {}, forgetting: false, flushQueued: false,
+        };
+        rooms.set(room.id, room);
+        byCode.set(room.code, room);
+        if (room.status === "lobby") {
+          expireLobby(room);
+          continue;
+        }
+        const info = { id: room.id, code: room.code, owner: room.owner, participants: room.participants, settings: saved.settings as S, createdAt: room.createdAt };
+        room.game = type.resume?.(info, saved.game, () => broadcast(room)) ?? null;
+        if (!room.game) end(room, "server_restarted");
+      }
     },
 
     /** Every open lobby and running game, oldest first, as everyone sees them. */

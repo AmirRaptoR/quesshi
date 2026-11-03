@@ -20,6 +20,7 @@ import { createIdentityStore, type Lang } from "./core/identity.store";
 import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
 import { hashPasswordSync } from "./core/passwords";
 import { createRooms } from "./core/rooms";
+import { createRoomsStore } from "./core/rooms.store";
 import { roomCodeRoutes } from "./core/rooms.routes";
 import { createSessionsStore } from "./core/sessions.store";
 
@@ -49,7 +50,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     },
     publish: (topic: string, message: unknown) => { server.server?.publish(topic, JSON.stringify(message)); },
   };
-  const context: Omit<FeatureContext, "categories"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db)) };
+  const context: Omit<FeatureContext, "categories"> = { ...services, rooms: createRooms(services, createSessionsStore(core.db), createRoomsStore(core.db)) };
   // The server is read only when a message is published, after start-up.
   let server = new Elysia()
     // Every change must come from this site; SameSite cookies plus this check stop cross-site requests.
