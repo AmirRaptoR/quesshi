@@ -61,7 +61,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
         return { error: "cross_site_request" };
       }
     })
-    .get("/api/health", () => ({ status: "ok" }))
+    .get("/api/health", () => ({ status: "ok", version: core.version ?? "dev" }))
     .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()))
     .use(adminAuthRoutes(adminAuth, admins))
     .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()))

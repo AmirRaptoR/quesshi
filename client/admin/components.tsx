@@ -7,6 +7,7 @@ import { Icon } from "../components/icon";
 import { LangToggle } from "../components/lang-toggle";
 import { pagerSlots, pageCount, PAGE_SIZES } from "./logic";
 import { adminSession, useAdminSession, type AdminMe } from "./session";
+import { Version } from "../components/version";
 
 /** Sends a request whose body is a file, as the import and media upload take it. */
 export async function sendFile<T>(path: string, file: Blob): Promise<T> {
@@ -97,6 +98,7 @@ export function AdminNav() {
         </summary>
         <div class="admin-account__menu">
           <div class="admin-account__label">{t.format("admin.auth.signedInAs", username ?? "")}</div>
+          <div class="admin-account__label"><Version class="" /></div>
           <div class="admin-account__language"><LangToggle /></div>
           <a class="admin-account__item" href="/admin/password">{t.t("admin.auth.change")}</a>
           <button type="button" class="admin-account__item admin-account__item--danger" onClick={() => void signOut()}>{t.t("admin.auth.signOut")}</button>

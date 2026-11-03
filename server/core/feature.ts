@@ -17,6 +17,8 @@ export interface Core {
   mailer: Mailer;
   /** Signs sign-in codes; set from the environment in production. */
   secret: string;
+  /** The running release, reported by the health route. */
+  version?: string;
   /** The built client to serve, when there is one. */
   clientDir?: string;
   /** Where uploaded media files are kept. */

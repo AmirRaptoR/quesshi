@@ -3,7 +3,28 @@
 Quesshi is one Bun process with one SQLite file and a media folder. There is no other service to
 run.
 
-## Build and start
+## Releases
+
+Each release is one image, `ghcr.io/amirraptor/quesshi:<version>`, holding the server, the built
+client and its production dependencies. The version lives in `package.json` (semantic versioning,
+from 1.0.0), shows at the bottom of Settings and in the admin's account menu, and is reported by
+`/api/health`.
+
+To release: raise `version` in `package.json`, merge, then push a matching tag
+(`git tag v1.0.1 && git push origin v1.0.1`). The Release workflow checks that the tag matches,
+runs the tests and pushes the image.
+
+To deploy a release on the production host, keeping its data folder and settings:
+
+```sh
+ssh <production host> 'bash -s' -- 1.0.1 < scripts/deploy.sh
+```
+
+It tries the image on a spare port first, switches only when the new one reports the expected
+version, and puts the previous container back if the switch fails. To roll back, deploy an older
+version. The host keeps `~/quesshi/env` (the settings below) and `~/quesshi/data`.
+
+## Build and start from source
 
 ```sh
 bun install --frozen-lockfile
