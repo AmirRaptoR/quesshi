@@ -26,11 +26,6 @@ export function runMigrations(db: Db, sources: readonly MigrationSource[], clock
   for (const source of sources) {
     const files = migrationFiles(source.directory);
     const done = ledger.applied(source.owner);
-    for (const recorded of done) {
-      if (!files.includes(recorded)) {
-        throw new MigrationError(`${source.owner}: migration ${recorded} was applied but its file is missing. Migrations are forward-only; restore the file.`);
-      }
-    }
     for (const file of files) {
       if (done.has(file)) continue;
       const sql = readFileSync(path.join(fileURLToPath(source.directory), file), "utf8");

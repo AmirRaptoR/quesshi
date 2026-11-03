@@ -54,13 +54,4 @@ describe("runMigrations", () => {
     expect(result.orphaned).toEqual(["polls"]);
     expect(world.db.query("select name from sqlite_master where name = 'polls_p'").all()).toEqual([{ name: "polls_p" }]);
   });
-
-  test("refuses to start when an applied migration's file is gone", () => {
-    world = tempWorld();
-    const before = world.migrations("core", { "001.sql": "create table a (id text)" });
-    runMigrations(world.db, [{ owner: "core", directory: before }], fixedClock);
-    const after = world.migrations("core-without-001", {});
-
-    expect(() => runMigrations(world.db, [{ owner: "core", directory: after }], fixedClock)).toThrow(/001.sql was applied but its file is missing/);
-  });
 });
