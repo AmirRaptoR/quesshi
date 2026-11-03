@@ -6,6 +6,9 @@ import { fakeScheduler, fixedRandom } from "./time";
 
 export const ORIGIN = "https://quesshi.example.com";
 export const T0 = Date.parse("2026-11-03T12:00:00Z");
+/** Today's ASP.NET Identity hash of ADMIN_PASSWORD, made by the real PasswordHasher. */
+export const ADMIN_HASH = "AQAAAAIAAYagAAAAEIMhStRpzHj0KJcjTHOQ2gtXiOOLWmQwTF2A0150Y2lsYL0eWoa3SV5fIBgGcjM+kQ==";
+export const ADMIN_PASSWORD = "Correct horse battery 9";
 
 /**
  * The whole app on a temporary database, with a fake scheduler and captured mail.
@@ -38,6 +41,14 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
       await call("POST", "/api/auth/code", { email, lang: "en" });
       const code = mail.at(-1)!.text.match(/\b(\d{6})\b/)![1]!;
       return (await call("POST", "/api/auth/code/verify", { email, code, lang: "en" })).cookie!;
+    },
+    /** Adds the administrator root with today's hashed password, signs them in and returns their cookie. */
+    async signInAdmin(): Promise<string> {
+      world.db.run(
+        "insert into admins (id, username, email, password_hash, created_at) values ('a1', 'root', 'root@example.com', ?, '2026-11-03T12:00:00Z')",
+        [ADMIN_HASH],
+      );
+      return (await call("POST", "/api/admin/auth/login", { username: "root", password: ADMIN_PASSWORD })).cookie!;
     },
     /** Adds approved English choice questions at every level in a category every feature offers. */
     seedChoiceQuestions(count = 10) {

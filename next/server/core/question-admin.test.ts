@@ -6,7 +6,6 @@ import { refuse } from "./kind";
 let app: ReturnType<typeof testApp>;
 afterEach(() => app.cleanup());
 
-const LEGACY_HASH = "AQAAAAIAAYagAAAAEIMhStRpzHj0KJcjTHOQ2gtXiOOLWmQwTF2A0150Y2lsYL0eWoa3SV5fIBgGcjM+kQ==";
 /** A feature with one levelled kind and one without levels, standing in for trivia and polls. */
 const quiz = defineFeature({
   name: "quiz",
@@ -18,9 +17,8 @@ const quiz = defineFeature({
 
 async function asAdmin() {
   app = testApp([quiz]);
-  app.world.db.run("insert into admins (id, username, email, password_hash, created_at) values ('a1', 'root', 'root@example.com', ?, '2026-11-03T12:00:00Z')", [LEGACY_HASH]);
   app.questions.addCategory({ id: "geo", nameFa: "جغرافیا", nameEn: "Geography", nameNl: "Aardrijkskunde", icon: "🌍", color: "#2a9d8f" });
-  return (await app.call("POST", "/api/admin/auth/login", { username: "root", password: "Correct horse battery 9" })).cookie!;
+  return app.signInAdmin();
 }
 const question = (fields: Record<string, unknown> = {}) => ({ kind: "yesno", lang: "en", categoryId: "geo", level: 2, prompt: " Is Amsterdam the capital? ", payload: { yes: true, extra: 1 }, explanation: "It is.", ...fields });
 const save = (cookie: string, body: unknown) => app.call("POST", "/api/admin/questions", body, cookie);

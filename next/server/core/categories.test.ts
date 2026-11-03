@@ -39,17 +39,12 @@ describe("a game's categories", () => {
 let app: ReturnType<typeof testApp>;
 afterEach(() => app?.cleanup());
 
-const LEGACY_HASH = "AQAAAAIAAYagAAAAEIMhStRpzHj0KJcjTHOQ2gtXiOOLWmQwTF2A0150Y2lsYL0eWoa3SV5fIBgGcjM+kQ==";
 const trivia = defineFeature({ name: "trivia" });
 const polls = defineFeature({ name: "polls" });
 
 async function asAdmin() {
   app = testApp([trivia, polls]);
-  app.world.db.run(
-    "insert into admins (id, username, email, password_hash, created_at) values ('a1', 'root', 'root@example.com', ?, '2026-11-03T12:00:00Z')",
-    [LEGACY_HASH],
-  );
-  return (await app.call("POST", "/api/admin/auth/login", { username: "root", password: "Correct horse battery 9" })).cookie!;
+  return app.signInAdmin();
 }
 const category = (fields: Record<string, unknown> = {}) => ({ id: "", nameFa: "تاریخ", nameEn: "History", nameNl: "Geschiedenis", icon: "📜", color: "#264653", isActive: true, sortOrder: 0, ...fields });
 

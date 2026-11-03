@@ -67,6 +67,23 @@ export function createIdentityStore(db: Db) {
       ).get(tokenHash, now);
       return row ? toPlayer(row) : null;
     },
+    /** Members (never guests) newest first, matching name or email when a search is given. */
+    members(search: string | undefined, skip: number, take: number): { items: (Player & { createdAt: string })[]; total: number } {
+      const clause = search ? "where guest = 0 and (instr(lower(display_name), lower(?1)) > 0 or instr(lower(email), lower(?1)) > 0)" : "where guest = 0 and ?1 is null";
+      const total = db.query<{ n: number }, [string | null]>(`select count(*) as n from players ${clause}`).get(search ?? null)!.n;
+      const rows = db.query<PlayerRow & { created_at: string }, [string | null, number, number]>(
+        `select * from players ${clause} order by created_at desc, id limit ?2 offset ?3`,
+      ).all(search ?? null, take, skip);
+      return { items: rows.map((row) => ({ ...toPlayer(row), createdAt: row.created_at })), total };
+    },
+    /** Bans or lifts a ban; a ban also ends every session. False when there is no such player. */
+    setBanned(id: string, banned: boolean, at: string): boolean {
+      return db.transaction(() => {
+        const changed = db.run("update players set banned_at = ? where id = ?", [banned ? at : null, id]).changes > 0;
+        if (changed && banned) db.run("delete from auth_sessions where player_id = ?", [id]);
+        return changed;
+      })();
+    },
     deleteSession(tokenHash: string): void {
       db.run("delete from auth_sessions where token_hash = ?", [tokenHash]);
     },

@@ -6,6 +6,7 @@ import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { selectCategories } from "./core/categories";
 import { categoryAdminRoutes } from "./core/categories.routes";
+import { userAdminRoutes } from "./core/user-admin.routes";
 import { questionAdminRoutes } from "./core/question-admin.routes";
 import { createQuestionsStore, type QuestionsStore } from "./core/questions.store";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
@@ -42,7 +43,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(adminAuthRoutes(adminAuth, admins))
     .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()))
     .use(categoryAdminRoutes(adminAuth, questions, features.map((feature) => feature.name)))
-    .use(questionAdminRoutes(adminAuth, questions, features, core.clock));
+    .use(questionAdminRoutes(adminAuth, questions, features, core.clock))
+    .use(userAdminRoutes(adminAuth, identity, core.clock));
   const newId = () => crypto.randomUUID();
   const services = {
     ...core,
