@@ -32,7 +32,3 @@ export function radiusInDegrees(radiusKm: number, latitude: number): [number, nu
   const cosine = Math.max(Math.cos((latitude * Math.PI) / 180), 1e-6);
   return [Math.min(ry / cosine, 180), ry];
 }
-
-/** Whether an answer matches a target exactly; a point's verdict needs the radius, so it comes from the server instead. */
-export const sameCountry = (a: { shape: string; countryCode?: string } | null | undefined, b: { shape: string; countryCode?: string } | null | undefined) =>
-  a?.shape === "country" && b?.shape === "country" && a.countryCode === b.countryCode;

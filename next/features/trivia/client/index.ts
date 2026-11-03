@@ -1,7 +1,9 @@
 import { lazy } from "preact-iso";
 import type { ClientFeature } from "../../../client/feature";
-import { ChoiceForm, ChoicePreview, LiveSwitchPanel, LobbyCapacityPanel, MapPickForm, MapPickPreview, OrderForm, OrderPreview } from "./components/admin";
 import { LiveTab, OfflineTab } from "./components/play-tabs";
+
+// The admin's editors carry the world map; players never download them.
+const admin = <K extends keyof typeof import("./components/admin")>(name: K) => lazy(() => import("./components/admin").then((m) => m[name]));
 
 /** Trivia's screens, and what it adds to the core's: the Live and Offline tabs, its lobbies, question editors and live settings. */
 export const triviaClient: ClientFeature = {
@@ -19,7 +21,7 @@ export const triviaClient: ClientFeature = {
     { id: "live", label: "home.tabLive", panel: LiveTab },
     { id: "offline", label: "home.tabOffline", panel: OfflineTab },
   ],
-  questionForms: { choice: ChoiceForm, order: OrderForm, map_pick: MapPickForm },
-  questionPreviews: { choice: ChoicePreview, order: OrderPreview, map_pick: MapPickPreview },
-  adminLivePanels: [LiveSwitchPanel, LobbyCapacityPanel],
+  questionForms: { choice: admin("ChoiceForm"), order: admin("OrderForm"), map_pick: admin("MapPickForm") },
+  questionPreviews: { choice: admin("ChoicePreview"), order: admin("OrderPreview"), map_pick: admin("MapPickPreview") },
+  adminLivePanels: [admin("LiveSwitchPanel"), admin("LobbyCapacityPanel")],
 };
