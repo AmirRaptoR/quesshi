@@ -42,7 +42,9 @@ export function createReportsStore(db: Db) {
     dismiss(questionId: string): boolean {
       return db.transaction(() => {
         db.run("delete from question_reports where question_id = ?", [questionId]);
-        return db.run("update questions set status = 'approved' where id = ?", [questionId]).changes > 0;
+        // A question from a player's private set keeps its status: approving it would put it into the shared draws.
+        db.run("update questions set status = 'approved' where id = ? and set_id is null", [questionId]);
+        return db.query("select 1 from questions where id = ?").get(questionId) !== null;
       })();
     },
   };
