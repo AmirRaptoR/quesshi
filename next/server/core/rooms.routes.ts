@@ -10,6 +10,11 @@ export const fail = (set: Set, status: number, error: string) => {
   return { error };
 };
 
+/** Rooms of every feature share one set of codes; this says which room, and which format, a code names. */
+export function roomCodeRoutes(rooms: Rooms) {
+  return new Elysia().get("/api/rooms/:code", ({ params, set }) => rooms.byCode(params.code) ?? fail(set, 404, "not_found"));
+}
+
 export interface LobbyRoutesOptions<S> {
   context: FeatureContext;
   rooms: Rooms;

@@ -44,7 +44,7 @@ function pollRoutes(context: FeatureContext) {
       }
       sessions.start(room.id, room.participants, drawn.map((q) => q.id));
       const game = new PollGame({
-        sessionId: room.id, players: [...room.participants], items: drawn.map((q) => ({ prompt: q.prompt, kind: q.kind as PollKind, payload: q.payload })),
+        sessionId: room.id, players: [...room.participants], items: drawn.map((q) => ({ prompt: q.prompt, kind: q.kind as PollKind, payload: q.payload, media: q.media ?? null })),
         clock: context.clock, schedule: context.schedule, sessions, onChange: changed,
       });
       games.set(room.id, game);

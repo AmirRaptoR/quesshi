@@ -14,6 +14,13 @@ export const stored = {
       // Nothing to do: the value is a convenience.
     }
   },
+  remove(key: string): void {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Nothing to do: the value is a convenience.
+    }
+  },
 };
 
 /** Where a guest's one game is, so the front door sends them back to it. */
