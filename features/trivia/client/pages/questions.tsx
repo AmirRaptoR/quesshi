@@ -6,6 +6,7 @@ import { Icon } from "../../../../client/components/icon";
 import { LANGS } from "../../../../client/i18n";
 import { EASIEST, HARDEST, isWhole, position, withHigh, withLow } from "../logic/difficulty-range";
 import { difficultyText, lastSettings, QUESTION_COUNTS, readDraft, remember, summary, toSettings, type Draft } from "../logic/duel-settings";
+import { SetPicker, type HostSet } from "../components/set-picker";
 import { segment } from "../logic/lobby";
 import type { Category } from "../types";
 
@@ -21,16 +22,23 @@ export function QuestionSettings() {
   const { url, route } = useLocation();
   const [draft, setDraft] = useState<Draft>(() => readDraft(url.split("?")[1] ?? "", lastSettings(t.lang)));
   const [categories, setCategories] = useState<Category[] | null>(null);
+  const [sets, setSets] = useState<HostSet[] | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     // A failed fetch leaves no chips, which reads as "any category"; the rest still works.
     get<Category[]>("/f/trivia/categories").then(setCategories, () => setCategories([]));
+    // Guests have no sets and a failed fetch offers none; categories still work.
+    get<HostSet[]>("/api/question-sets").then(setSets, () => setSets([]));
   }, []);
 
   // Picks a language cannot be played in would count with nothing behind them.
   const prune = (next: Draft, list = categories) =>
     list ? { ...next, categoryIds: next.categoryIds.filter((id) => list.some((c) => c.id === id && c.langs.includes(next.lang))) } : next;
+  // A remembered set that was deleted since must not be sent.
+  useEffect(() => {
+    if (sets) setDraft((current) => (current.questionSetId && !sets.some((s) => s.id === current.questionSetId) ? { ...current, questionSetId: null } : current));
+  }, [sets]);
   useEffect(() => {
     if (categories) setDraft((current) => prune(current, categories));
   }, [categories]);
@@ -46,6 +54,11 @@ export function QuestionSettings() {
     route(draft.returnTo);
   };
 
+  // A set brings its own language; level and category do not apply to it.
+  const chooseSet = (id: string | null) => {
+    const set = sets?.find((s) => s.id === id);
+    setDraft(set ? { ...draft, questionSetId: set.id, lang: set.lang } : { ...draft, questionSetId: null });
+  };
   const stacked = draft.levels.low === draft.levels.high && draft.levels.high === HARDEST;
   const toggle = (id: string) =>
     setDraft({ ...draft, categoryIds: draft.categoryIds.includes(id) ? draft.categoryIds.filter((c) => c !== id) : [...draft.categoryIds, id] });
@@ -56,10 +69,12 @@ export function QuestionSettings() {
         <a class="icon-hit icon-hit--back" href={draft.returnTo} aria-label={t.t("common.back")}><Icon name="chevron-back" size="1.4rem" /></a>
         <h1 class="topbar__title">{t.t("questions.title")}</h1>
       </header>
-      {!categories ? (
+      {!categories || !sets ? (
         <div class="spinner" role="status" aria-label={t.t("common.loading")} />
       ) : (
         <div class="sheet enter">
+          {!draft.questionSetId && (
+            <>
           <div class="script-tiles" role="group" aria-label={t.t("lang.pick")}>
             {LANGS.map((code) => (
               <button type="button" class={`script-tile${draft.lang === code ? " is-on" : ""}`} style={`font-size:${SCRIPT_SIZE[code]}`}
@@ -68,6 +83,8 @@ export function QuestionSettings() {
               </button>
             ))}
           </div>
+            </>
+          )}
 
           <div class="count-row" role="group" aria-label={t.t("home.length")}>
             {QUESTION_COUNTS.map((count) => (
@@ -78,6 +95,8 @@ export function QuestionSettings() {
             ))}
           </div>
 
+          {!draft.questionSetId && (
+            <>
           <div class="ramp">
             <div class="ramp__ends">
               <span>{t.t(`level.${EASIEST}`)}</span>
@@ -118,6 +137,10 @@ export function QuestionSettings() {
               {draft.categoryIds.length === 0 ? t.t("home.anyCategory") : t.format("home.pickedCount", draft.categoryIds.length)}
             </p>
           </div>
+            </>
+          )}
+
+          <SetPicker t={t} sets={sets} value={draft.questionSetId} onChange={chooseSet} />
 
           <div class="sheet__rest" />
           <button class="btn btn--done" disabled={saving} onClick={() => void done()}>{t.t("questions.done")}</button>

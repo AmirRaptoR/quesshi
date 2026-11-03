@@ -36,7 +36,7 @@ describe("the remembered settings", () => {
 
 describe("the questions sheet's draft", () => {
   test("a bare arrival opens on the last saved settings and returns to the play hub", () => {
-    expect(readDraft("", saved)).toEqual({ lang: "en", questions: 30, levels: { low: 2, high: 3 }, categoryIds: ["geo", "science"], returnTo: "/play", lobby: null });
+    expect(readDraft("", saved)).toEqual({ lang: "en", questions: 30, levels: { low: 2, high: 3 }, categoryIds: ["geo", "science"], questionSetId: null, returnTo: "/play", lobby: null });
   });
 
   test("what the address carries wins over what was saved", () => {
@@ -58,6 +58,23 @@ describe("the questions sheet's draft", () => {
 
   test("the whole ramp goes back as an empty level list", () => {
     expect(toSettings(readDraft("?lo=1&hi=5", saved))).toEqual({ lang: "en", questions: 30, categoryIds: ["geo", "science"], levels: [] });
+  });
+
+  test("a chosen question set is remembered, carried through a link and sent with the settings; none sends nothing", () => {
+    const withSet = { ...saved, questionSetId: "s1" };
+    expect(readStored(JSON.stringify(withSet), "fa")).toEqual(withSet);
+    const draft = readDraft("", withSet);
+    expect(draft.questionSetId).toBe("s1");
+    expect(readDraft(draftLink("/play/questions", draft).split("?")[1]!, saved).questionSetId).toBe("s1");
+    expect(toSettings(draft)).toMatchObject({ questionSetId: "s1" });
+    // An address that says no set overrides the saved one.
+    expect(readDraft("?qs=", withSet).questionSetId).toBeNull();
+    expect(toSettings(readDraft("?qs=", withSet))).not.toHaveProperty("questionSetId");
+  });
+
+  test("a set game's line names the set instead of topics", () => {
+    const line = settingsLine({ ...saved, questionSetId: "s1" }, translator("en", { "home.settingsSeparator": " · ", "home.settingsQuestions": "{0} questions", "home.settingsFromSet": "Your question set" }));
+    expect(line).toBe("30 questions · Your question set");
   });
 
   test("only a path inside the app is a place to return to", () => {

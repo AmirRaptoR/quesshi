@@ -3,7 +3,8 @@ import { stored } from "../../../../client/storage";
 import { range, rangeLevels, withHigh, withLow, WHOLE, type DifficultyRange } from "./difficulty-range";
 
 /** What a new game is drawn with, as the lobby routes take it. */
-export interface DuelSettings { lang: string; questions: number; categoryIds: string[]; levels: number[] }
+/** With a questionSetId the game is drawn from that one of the host's question sets, and categories and levels do not apply. */
+export interface DuelSettings { lang: string; questions: number; categoryIds: string[]; levels: number[]; questionSetId?: string }
 
 export const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
 const KEY = "quesshi.duelSettings";
@@ -19,7 +20,8 @@ export function readStored(raw: string | null, lang: Lang): DuelSettings {
   try {
     const value = JSON.parse(raw ?? "null") as Partial<DuelSettings> | null;
     if (!value || !isLang(value.lang) || !Number.isInteger(value.questions) || !strings(value.categoryIds) || !numbers(value.levels)) return fallback;
-    return { lang: value.lang, questions: value.questions!, categoryIds: value.categoryIds!, levels: value.levels! };
+    const base = { lang: value.lang, questions: value.questions!, categoryIds: value.categoryIds!, levels: value.levels! };
+    return typeof value.questionSetId === "string" ? { ...base, questionSetId: value.questionSetId } : base;
   } catch {
     return fallback;
   }
@@ -43,6 +45,7 @@ export function difficultyText(s: ReturnType<typeof summary>, t: Translator): st
 /** Today's one line standing for the whole question form: how long, how hard, on what. */
 export function settingsLine(settings: DuelSettings, t: Translator): string {
   const s = summary(settings);
+  if (settings.questionSetId) return [t.format("home.settingsQuestions", s.questions), t.t("home.settingsFromSet")].join(t.t("home.settingsSeparator"));
   const topics = s.topics === 0 ? t.t("home.settingsAllTopics") : t.format("home.settingsTopics", s.topics);
   return [t.format("home.settingsQuestions", s.questions), difficultyText(s, t), topics].join(t.t("home.settingsSeparator"));
 }
@@ -53,6 +56,8 @@ export interface Draft {
   questions: number;
   levels: DifficultyRange;
   categoryIds: string[];
+  /** One of the host's own question sets, instead of categories and levels. */
+  questionSetId: string | null;
   returnTo: string;
   /** The lobby the owner opened the sheet from; Done also puts the settings to it. */
   lobby: { id: string; format: string } | null;
@@ -71,12 +76,14 @@ export function readDraft(search: string, saved: DuelSettings): Draft {
   const levels = lo !== null && hi !== null && /^-?\d+$/.test(lo) && /^-?\d+$/.test(hi) ? withLow(withHigh(WHOLE, Number(hi)), Number(lo)) : range(saved.levels);
   const topics = query.get("t");
   const lobby = query.get("lb");
+  const set = query.get("qs");
   return {
     lang: isLang(lang) ? lang : saved.lang,
     questions: Number.isInteger(count) && count > 0 ? count : saved.questions,
     levels,
     // Present but empty is "any topic", a real answer.
     categoryIds: topics === null ? saved.categoryIds : topics.split(",").map((id) => id.trim()).filter(Boolean),
+    questionSetId: set === null ? saved.questionSetId ?? null : set || null,
     returnTo: safeReturn(query.get("r")),
     lobby: lobby ? { id: lobby, format: query.get("lf") ?? "live" } : null,
   };
@@ -85,9 +92,14 @@ export function readDraft(search: string, saved: DuelSettings): Draft {
 export function draftLink(path: string, draft: Draft): string {
   const query = new URLSearchParams({
     lang: draft.lang, n: String(draft.questions), lo: String(draft.levels.low), hi: String(draft.levels.high), t: draft.categoryIds.join(","), r: draft.returnTo,
+    // Present but empty is "no set", a real answer.
+    qs: draft.questionSetId ?? "",
     ...(draft.lobby ? { lb: draft.lobby.id, lf: draft.lobby.format } : {}),
   });
   return `${path}?${query}`;
 }
 
-export const toSettings = (draft: Draft): DuelSettings => ({ lang: draft.lang, questions: draft.questions, categoryIds: draft.categoryIds, levels: rangeLevels(draft.levels) });
+export const toSettings = (draft: Draft): DuelSettings => ({
+  lang: draft.lang, questions: draft.questions, categoryIds: draft.categoryIds, levels: rangeLevels(draft.levels),
+  ...(draft.questionSetId ? { questionSetId: draft.questionSetId } : {}),
+});

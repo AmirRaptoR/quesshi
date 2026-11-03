@@ -38,7 +38,7 @@ export function Lobby({ params }: PageProps) {
       settingsHref={(room) => {
         const settings = settingsOf(room);
         return draftLink("/play/questions", {
-          lang: settings.lang, questions: settings.questions, levels: range(settings.levels), categoryIds: settings.categoryIds,
+          lang: settings.lang, questions: settings.questions, levels: range(settings.levels), categoryIds: settings.categoryIds, questionSetId: settings.questionSetId ?? null,
           returnTo: path, lobby: { id: room.id, format: room.format },
         });
       }} />
