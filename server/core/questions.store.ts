@@ -95,7 +95,8 @@ export function createQuestionsStore(db: Db) {
     },
     /** The admin's question list, newest first. */
     find(filter: QuestionFilter): { items: AdminQuestion[]; total: number } {
-      const where: string[] = [];
+      // A player's private set questions are theirs alone; admins never see them in this list.
+      const where: string[] = ["set_id is null"];
       const params: (string | number)[] = [];
       const match = (sql: string, value: string | number | undefined) => {
         if (value === undefined) return;
