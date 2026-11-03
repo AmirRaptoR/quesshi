@@ -1,6 +1,7 @@
 import { createContext, type ComponentChildren } from "preact";
 import { useCallback, useContext, useEffect, useState } from "preact/hooks";
-import { ApiError, get } from "./api";
+import { ApiError, get, post } from "./api";
+import { roomOf, signInWithTelegram, telegramLaunch } from "./telegram";
 import { LANGS, loadTranslator, type Lang, type Translator } from "./i18n";
 
 /** The signed-in player, as /api/me returns them. */
@@ -44,13 +45,20 @@ export function AppProvider({ children }: { children: ComponentChildren }) {
   const [me, setMe] = useState<Me | null>(null);
   const [checked, setChecked] = useState(false);
 
-  const refresh = useCallback(async () => {
+  /** Reads who is signed in; true when somebody is. */
+  const load = useCallback(async () => {
     try {
       setMe(await get<Me>("/api/me"));
+      return true;
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
       setMe(null);
+      return false;
     }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await load();
     setChecked(true);
   }, []);
 
@@ -67,8 +75,20 @@ export function AppProvider({ children }: { children: ComponentChildren }) {
 
   useEffect(() => {
     void setLang(storedLang());
-    void refresh();
+    void start();
   }, []);
+
+  /** Inside Telegram, nobody signed in is signed in with their Telegram account, and a room link opens joining that room. */
+  const start = async () => {
+    const signedIn = await load();
+    const launch = telegramLaunch();
+    if (launch) {
+      const room = roomOf(launch.startParam);
+      if (room && location.pathname === "/") history.replaceState(null, "", `/join/${room}`);
+      if (!signedIn && await signInWithTelegram(launch, post)) await load();
+    }
+    setChecked(true);
+  };
 
   if (!t || !checked) return <div class="spinner" role="status" aria-label="Loading" />;
   return <Context.Provider value={{ ready: true, me, t, refresh, setLang }}>{children}</Context.Provider>;

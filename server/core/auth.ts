@@ -59,6 +59,16 @@ export function createAuth({ identity, clock, mailer, secret }: Deps) {
       return player.banned ? "banned" : player;
     },
 
+    /** Signs in the player with a Telegram user id, creating them under their Telegram name. */
+    signInWithTelegram(telegramId: string, name: string, lang: Lang, newId: () => string): Player | "banned" {
+      let player = identity.playerByTelegram(telegramId);
+      if (!player) {
+        identity.createTelegramPlayer({ id: newId(), telegramId, displayName: name.slice(0, 24), lang, createdAt: now().toISOString() });
+        player = identity.playerByTelegram(telegramId)!;
+      }
+      return player.banned ? "banned" : player;
+    },
+
     /** A guest proves an address with a code and becomes a full member, keeping their player. */
     upgradeGuest(guest: Player, rawEmail: string, code: string): { ok: true; player: Player } | { ok: false; error: string } {
       // Only a guest has no address to replace; a member must not turn this into "change my email".
