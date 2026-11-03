@@ -30,6 +30,9 @@ export function readStored(raw: string | null, lang: Lang): DuelSettings {
 export const lastSettings = (lang: Lang) => readStored(stored.get(KEY), lang);
 export const remember = (settings: DuelSettings) => stored.set(KEY, JSON.stringify(settings));
 
+/** The settings with the question set forgotten, for when the server no longer accepts it (deleted, or another player's). */
+export const withoutSet = ({ questionSetId: _gone, ...rest }: DuelSettings): DuelSettings => rest;
+
 export function summary(settings: DuelSettings) {
   const levels = [...new Set(settings.levels.filter((l) => l >= 1 && l <= 5))].sort();
   const mixed = levels.length === 0 || levels.length === 5;

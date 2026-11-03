@@ -4,7 +4,7 @@ import { useApp } from "../../../../client/app";
 import { CodeField } from "../../../../client/components/code-field";
 import { ApiError, get, post } from "../../../../client/api";
 import { initial, tint } from "../../../../client/avatar";
-import { lastSettings, remember, settingsLine } from "../logic/duel-settings";
+import { lastSettings, remember, settingsLine, withoutSet } from "../logic/duel-settings";
 import { duelRoute, opponentOf, split, standing } from "../logic/home-duels";
 import type { DuelRoomView } from "../types";
 
@@ -44,6 +44,8 @@ function useCreate(segment: "live" | "duel") {
       const room = await post<{ id: string; code: string }>(`/f/trivia/${segment}/lobby`, { ...settings, capacity: DEFAULT_CAPACITY });
       route(`/lobby/${room.code}`);
     } catch (failure) {
+      // A set that was deleted or is not this player's is refused for good; forget it so the next tap uses categories.
+      if (settings.questionSetId && failure instanceof ApiError && failure.code === "invalid_settings") remember(withoutSet(settings));
       setError(t.t(failure instanceof ApiError && failure.code === "live_disabled" ? "live.disabled" : "common.error"));
       setBusy(false);
     }

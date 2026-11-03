@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { translator } from "../../../../client/i18n";
-import { draftLink, readDraft, readStored, safeReturn, settingsLine, summary, toSettings } from "./duel-settings";
+import { draftLink, readDraft, readStored, safeReturn, settingsLine, summary, toSettings, withoutSet } from "./duel-settings";
+
+describe("forgetting a refused question set", () => {
+  test("the remembered settings keep everything but the set", () => {
+    const saved = { lang: "en", questions: 20, categoryIds: ["a"], levels: [2], questionSetId: "gone" };
+    const next = withoutSet(saved);
+    expect(next).toEqual({ lang: "en", questions: 20, categoryIds: ["a"], levels: [2] });
+    expect(readStored(JSON.stringify(next), "en").questionSetId).toBeUndefined();
+  });
+});
 
 const t = translator("en", {
   "home.settingsSeparator": " · ", "home.settingsQuestions": "{0} questions", "home.settingsMixed": "Mixed", "home.settingsAllTopics": "All topics",
