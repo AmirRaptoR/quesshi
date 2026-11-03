@@ -14,6 +14,8 @@ import { reportAdminRoutes, reportRoutes } from "./core/reports.routes";
 import { createReportsStore } from "./core/reports.store";
 import { userAdminRoutes } from "./core/user-admin.routes";
 import { questionAdminRoutes } from "./core/question-admin.routes";
+import { questionSetRoutes } from "./core/question-sets.routes";
+import { createQuestionSetsStore } from "./core/question-sets.store";
 import { createQuestionsStore, type QuestionsStore } from "./core/questions.store";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
 import { createIdentityStore, type Lang } from "./core/identity.store";
@@ -70,6 +72,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(userAdminRoutes(adminAuth, identity, core.clock))
     .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
     .use(reportAdminRoutes(adminAuth, reports, questions))
+    .use(questionSetRoutes(createQuestionSetsStore(core.db), services.playerFor, () => core.clock.now(), newId))
     .use(roomCodeRoutes(context.rooms))
     .use(roomAdminRoutes(adminAuth, context.rooms))
     .use(dashboardRoutes(adminAuth, core.db, context.rooms))
