@@ -55,6 +55,13 @@ export function createAuth({ identity, clock, mailer, secret }: Deps) {
       return player.banned ? "banned" : player;
     },
 
+    /** Creates a guest: a player with a name and no address, who can join games by code. */
+    createGuest(name: string, lang: Lang, newId: () => string): Player {
+      const id = newId();
+      identity.createPlayer({ id, email: null, displayName: name, lang, guest: true, createdAt: now().toISOString() });
+      return identity.player(id)!;
+    },
+
     /** Opens a session for the player and returns the token for the cookie. */
     openSession(player: Player): string {
       const token = randomBytes(32).toString("base64url");

@@ -24,7 +24,8 @@ function game(players = ["ann", "bob"], items = [capital, planet]) {
   world.migrateCore();
   const scheduler = fakeScheduler(T0);
   const sessions = createSessionsStore(world.db);
-  sessions.create({ id: "s1", code: "ABCD", format: "live", createdAt: new Date(T0).toISOString(), players });
+  sessions.createLobby({ id: "s1", code: "ABCD", format: "live", createdAt: new Date(T0).toISOString() });
+  sessions.start("s1", players);
   const views: LiveView[] = [];
   const live = new LiveGame({ sessionId: "s1", players, items, clock: scheduler.clock, schedule: scheduler.schedule, random: fixedRandom, sessions, publish: (view) => views.push(view) });
   live.start();
@@ -56,7 +57,7 @@ describe("LiveGame", () => {
     const { live, scheduler, last, answers } = game();
     scheduler.advanceTo(QUESTION_OPENS + 1_000);
 
-    expect(live.answer("ann", 0, { index: 2 })).toEqual({ ok: true });
+    expect(live.answer("ann", 0, { index: 2 })).toEqual({ ok: true, answer: { index: 2 } });
 
     expect(answers()).toEqual([{ player_id: "ann", slot: 0, value: '{"index":2}', credit: 1, points: 157 }]);
     expect(last().players.find((p) => p.player === "ann")).toMatchObject({ answered: true });

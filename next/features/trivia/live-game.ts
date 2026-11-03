@@ -31,7 +31,7 @@ export interface LiveView {
   standings: Standing[] | null;
 }
 
-export type AnswerResult = { ok: true } | { ok: false; error: "malformed_answer" | "not_accepted" };
+export type AnswerResult = { ok: true; answer: unknown } | { ok: false; error: "malformed_answer" | "not_accepted" };
 
 interface Deps {
   sessionId: string;
@@ -76,7 +76,7 @@ export class LiveGame {
     }
     const credit = kind.grade(item.payload, this.#resolved[slot], stored);
     const accepted = this.#apply({ type: "answer", player, slot, credit, at: this.#now() }, new Map([[player, stored]]));
-    return accepted ? { ok: true } : { ok: false, error: "not_accepted" };
+    return accepted ? { ok: true, answer: stored } : { ok: false, error: "not_accepted" };
   }
 
   leave(player: string): void {

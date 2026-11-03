@@ -5,10 +5,14 @@ export type SessionsStore = ReturnType<typeof createSessionsStore>;
 /** Sessions, their seats and every answer given in them. */
 export function createSessionsStore(db: Db) {
   return {
-    create(session: { id: string; code: string; format: string; createdAt: string; players: string[] }): void {
+    createLobby(session: { id: string; code: string; format: string; createdAt: string }): void {
+      db.run("insert into sessions (id, code, format, status, created_at) values (?, ?, ?, 'lobby', ?)", [session.id, session.code, session.format, session.createdAt]);
+    },
+    /** The game begins: the session runs and its players take their seats. */
+    start(sessionId: string, players: readonly string[]): void {
       db.transaction(() => {
-        db.run("insert into sessions (id, code, format, status, created_at) values (?, ?, ?, 'running', ?)", [session.id, session.code, session.format, session.createdAt]);
-        for (const player of session.players) db.run("insert into seats (session_id, player_id) values (?, ?)", [session.id, player]);
+        db.run("update sessions set status = 'running' where id = ?", [sessionId]);
+        for (const player of players) db.run("insert into seats (session_id, player_id) values (?, ?)", [sessionId, player]);
       })();
     },
     /** A null value records a miss. */

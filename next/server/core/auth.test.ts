@@ -12,7 +12,7 @@ function setup(google?: { verify: (token: string) => Promise<{ email: string; na
   let now = Date.parse("2026-11-03T12:00:00Z");
   const clock: Clock = { now: () => new Date(now) };
   const mail: { to: string; text: string }[] = [];
-  const { server } = createApp({ db: world.db, clock, secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } }, ...(google ? { google: { clientId: "client-1", ...google } } : {}) }, []);
+  const { server } = createApp({ db: world.db, clock, schedule: () => () => {}, random: Math.random, secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } }, ...(google ? { google: { clientId: "client-1", ...google } } : {}) }, []);
   const call = (method: string, path: string, body?: unknown, cookie?: string, origin = ORIGIN) =>
     server.handle(new Request(`${ORIGIN}${path}`, {
       method,

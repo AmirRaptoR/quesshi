@@ -26,7 +26,7 @@ export function tempWorld() {
     },
     /** A core for the app, with a fixed clock and a mailer that drops messages. */
     core(clock: Clock = fixedClock): Core {
-      return { db, clock, mailer: { send: async () => {} }, secret: "test-secret", origin: "https://quesshi.example.com" };
+      return { db, clock, schedule: () => () => {}, random: Math.random, mailer: { send: async () => {} }, secret: "test-secret", origin: "https://quesshi.example.com" };
     },
     cleanup(): void {
       db.close();

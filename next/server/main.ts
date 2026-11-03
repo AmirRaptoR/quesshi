@@ -3,6 +3,7 @@ import path from "node:path";
 import { createApp } from "./app";
 import { systemClock } from "./core/clock";
 import { openDatabase } from "./core/db";
+import { realSchedule } from "./core/schedule";
 import { features } from "../features";
 
 const dataDir = process.env.QUESSHI_DATA_DIR ?? path.join(import.meta.dir, "..", "data");
@@ -27,7 +28,7 @@ const google = googleClientId ? {
     return { email: token.email, name: token.name ?? null };
   },
 } : undefined;
-const { server, migrations } = createApp({ db, clock: systemClock, mailer, secret, origin, ...(google ? { google } : {}) }, features);
+const { server, migrations } = createApp({ db, clock: systemClock, schedule: realSchedule(systemClock), random: Math.random, mailer, secret, origin, ...(google ? { google } : {}) }, features);
 
 for (const name of migrations.applied) console.log(`Applied migration ${name}`);
 for (const owner of migrations.orphaned) console.warn(`Tables of removed feature "${owner}" remain in the database`);

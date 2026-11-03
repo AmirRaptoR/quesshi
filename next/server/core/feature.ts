@@ -1,12 +1,16 @@
 import type { AnyElysia } from "elysia";
 import type { Clock } from "./clock";
 import type { Db } from "./db";
+import type { Lang, Player } from "./identity.store";
 import type { Mailer } from "./mailer";
+import type { Schedule } from "./schedule";
 
 /** What the core hands every feature at start-up. It grows as the core does (events, live hub). */
 export interface Core {
   db: Db;
   clock: Clock;
+  schedule: Schedule;
+  random: () => number;
   mailer: Mailer;
   /** Signs sign-in codes; set from the environment in production. */
   secret: string;
@@ -16,6 +20,17 @@ export interface Core {
   google?: { clientId: string; verify(idToken: string): Promise<{ email: string; name: string | null } | null> };
 }
 
+/** The core's services a feature uses at run time, on top of the Core settings. */
+export interface FeatureContext extends Core {
+  /** The signed-in player for a request's cookie header, or null. */
+  playerFor(cookieHeader: string | null): Player | null;
+  player(id: string): Player | null;
+  /** Creates a guest player and returns them with the cookie that signs them in. */
+  signInGuest(name: string, lang: Lang): { player: Player; cookie: string };
+  /** Sends a message to every WebSocket subscribed to the topic. */
+  publish(topic: string, message: unknown): void;
+}
+
 /** A self-contained feature: one folder, enabled by being listed in features/index.ts. */
 export interface Feature {
   /** Lowercase words joined by hyphens. Also the route prefix (/f/<name>) and the migration owner. */
@@ -23,7 +38,7 @@ export interface Feature {
   /** The feature's folder of forward-only SQL migrations. */
   migrations?: URL;
   /** The feature's HTTP and WebSocket routes, an Elysia instance with the prefix /f/<name>. */
-  server?: (core: Core) => AnyElysia;
+  server?: (context: FeatureContext) => AnyElysia;
 }
 
 export function defineFeature<const F extends Feature>(feature: F): F {
@@ -46,9 +61,9 @@ export function checkFeatures(features: readonly Feature[]): void {
 }
 
 /** Builds a feature's routes and checks they stay under its own prefix. */
-export function featureRoutes(feature: Feature, core: Core): AnyElysia | undefined {
+export function featureRoutes(feature: Feature, context: FeatureContext): AnyElysia | undefined {
   if (!feature.server) return undefined;
-  const routes = feature.server(core);
+  const routes = feature.server(context);
   const expected = `/f/${feature.name}`;
   if (routes.config.prefix !== expected) {
     throw new FeatureError(`Feature "${feature.name}" must put its routes under the prefix ${expected}, not ${routes.config.prefix ?? "(none)"}.`);

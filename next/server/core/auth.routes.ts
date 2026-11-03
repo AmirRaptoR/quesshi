@@ -14,7 +14,11 @@ type Auth = ReturnType<typeof createAuth>;
 
 /** Reads the sign-in token from the request's cookie. */
 export function sessionToken(request: Request): string | undefined {
-  const cookies = request.headers.get("cookie") ?? "";
+  return tokenFromCookies(request.headers.get("cookie"));
+}
+
+export function tokenFromCookies(header: string | null): string | undefined {
+  const cookies = header ?? "";
   for (const part of cookies.split(";")) {
     const [name, ...value] = part.trim().split("=");
     if (name === COOKIE) return value.join("=");
@@ -22,7 +26,7 @@ export function sessionToken(request: Request): string | undefined {
   return undefined;
 }
 
-const sessionCookie = (token: string, maxAge: number) => `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+export const sessionCookie = (token: string, maxAge: number) => `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 const lang = (value: unknown): Lang => (LANGS.includes(value as Lang) ? (value as Lang) : "fa");
 export const playerJson = (player: Player) => ({
   id: player.id, email: player.email, displayName: player.displayName, avatarSeed: player.avatarSeed, lang: player.lang, guest: player.guest,

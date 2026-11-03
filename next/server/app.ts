@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
-import { checkFeatures, featureRoutes, type Core, type Feature } from "./core/feature";
-import { createAuth } from "./core/auth";
-import { authRoutes } from "./core/auth.routes";
+import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureContext } from "./core/feature";
+import { createAuth, SESSION_DAYS } from "./core/auth";
+import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
 import { createIdentityStore } from "./core/identity.store";
 import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
 
@@ -25,8 +25,19 @@ export function createApp(core: Core, features: readonly Feature[]) {
     })
     .get("/api/health", () => ({ status: "ok" }))
     .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()));
+  const newId = () => crypto.randomUUID();
+  const context: FeatureContext = {
+    ...core,
+    playerFor: (header) => auth.playerFor(tokenFromCookies(header)),
+    player: (id) => identity.player(id),
+    signInGuest(name, lang) {
+      const player = auth.createGuest(name, lang, newId);
+      return { player, cookie: sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600) };
+    },
+    publish: (topic, message) => { server.server?.publish(topic, JSON.stringify(message)); },
+  };
   for (const feature of features) {
-    const routes = featureRoutes(feature, core);
+    const routes = featureRoutes(feature, context);
     if (routes) server = server.use(routes);
   }
   return { server, migrations };
