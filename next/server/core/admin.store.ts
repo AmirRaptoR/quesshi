@@ -26,6 +26,20 @@ export function createAdminStore(db: Db) {
     return row ? toAdmin(row) : null;
   };
   return {
+    all(): (Admin & { createdAt: string; lastLoginAt: string | null })[] {
+      return db.query<AdminRow & { created_at: string; last_login_at: string | null }, []>("select * from admins order by created_at").all()
+        .map((row) => ({ ...toAdmin(row), createdAt: row.created_at, lastLoginAt: row.last_login_at }));
+    },
+    setActive(id: string, active: boolean): void {
+      db.run("update admins set active = ? where id = ?", [active ? 1 : 0, id]);
+      if (!active) db.run("delete from admin_sessions where admin_id = ?", [id]);
+    },
+    remove(id: string): void {
+      db.run("delete from admins where id = ?", [id]);
+    },
+    setEmail(id: string, email: string): void {
+      db.run("update admins set email = ? where id = ?", [email.trim().toLowerCase(), id]);
+    },
     count: () => db.query<{ n: number }, []>("select count(*) as n from admins").get()!.n,
     byId: (id: string) => one("select * from admins where id = ?", id),
     byUsername: (username: string) => one("select * from admins where username = ?", username.trim()),

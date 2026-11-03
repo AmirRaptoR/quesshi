@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { checkFeatures, featureRoutes, type Core, type Feature, type FeatureContext } from "./core/feature";
 import { createAdminAuth } from "./core/admin";
-import { adminAuthRoutes } from "./core/admin.routes";
+import { adminAccountRoutes, adminAuthRoutes } from "./core/admin.routes";
 import { createAdminStore } from "./core/admin.store";
 import { createAuth, SESSION_DAYS } from "./core/auth";
 import { authRoutes, sessionCookie, tokenFromCookies } from "./core/auth.routes";
@@ -34,7 +34,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
     })
     .get("/api/health", () => ({ status: "ok" }))
     .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()))
-    .use(adminAuthRoutes(adminAuth));
+    .use(adminAuthRoutes(adminAuth, admins))
+    .use(adminAccountRoutes(adminAuth, admins, () => core.clock.now()));
   const newId = () => crypto.randomUUID();
   const services = {
     ...core,

@@ -25,7 +25,7 @@ export function passwordProblems(password: string): string[] {
   return problems;
 }
 
-export type LoginResult = { ok: true; admin: Admin; mustChangePassword: boolean } | { ok: false; error: "invalid_credentials" } | { ok: false; error: "locked"; until: string };
+export type LoginResult = { ok: true; admin: Admin; mustChangePassword: boolean } | { ok: false; error: "admin.auth.invalid" } | { ok: false; error: "admin.auth.locked"; until: string };
 export type PasswordResult = { ok: true } | { ok: false; error: string; problems?: string[] };
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -40,14 +40,14 @@ export function createAdminAuth({ admins, clock, mailer, origin }: { admins: Adm
       const admin = admins.byUsername(username);
       if (!admin || !admin.active) {
         await burnTime();
-        return { ok: false, error: "invalid_credentials" };
+        return { ok: false, error: "admin.auth.invalid" };
       }
-      if (locked(admin)) return { ok: false, error: "locked", until: admin.lockedUntil! };
+      if (locked(admin)) return { ok: false, error: "admin.auth.locked", until: admin.lockedUntil! };
       if (!(await verifyPassword(admin.passwordHash, password))) {
         const lockNow = admin.failedAttempts + 1 >= MAX_FAILED_ATTEMPTS;
         const until = lockNow ? new Date(now().getTime() + LOCK_MS).toISOString() : null;
         admins.recordFailure(admin.id, until);
-        return until ? { ok: false, error: "locked", until } : { ok: false, error: "invalid_credentials" };
+        return until ? { ok: false, error: "admin.auth.locked", until } : { ok: false, error: "admin.auth.invalid" };
       }
       admins.recordSuccess(admin.id, now().toISOString());
       return { ok: true, admin, mustChangePassword: admin.mustChangePassword };
@@ -79,21 +79,21 @@ export function createAdminAuth({ admins, clock, mailer, origin }: { admins: Adm
 
     async reset(secret: string, password: string): Promise<PasswordResult> {
       const token = admins.resetToken(sha256(secret));
-      if (!token) return { ok: false, error: "invalid_token" };
-      if (token.used) return { ok: false, error: "used_token" };
-      if (now().getTime() > Date.parse(token.issuedAt) + RESET_MINUTES * 60_000) return { ok: false, error: "expired_token" };
+      if (!token) return { ok: false, error: "admin.auth.linkInvalid" };
+      if (token.used) return { ok: false, error: "admin.auth.linkUsed" };
+      if (now().getTime() > Date.parse(token.issuedAt) + RESET_MINUTES * 60_000) return { ok: false, error: "admin.auth.linkExpired" };
       // Judge the password before spending the link: a typo should not cost the admin their link.
       const problems = passwordProblems(password);
-      if (problems.length) return { ok: false, error: "weak_password", problems };
+      if (problems.length) return { ok: false, error: "admin.auth.weak", problems };
       admins.useResetToken(sha256(secret));
       admins.setPassword(token.adminId, await hashPassword(password));
       return { ok: true };
     },
 
     async changePassword(admin: Admin, current: string, next: string): Promise<PasswordResult> {
-      if (!(await verifyPassword(admin.passwordHash, current))) return { ok: false, error: "wrong_current_password" };
+      if (!(await verifyPassword(admin.passwordHash, current))) return { ok: false, error: "admin.auth.wrongCurrent" };
       const problems = passwordProblems(next);
-      if (problems.length) return { ok: false, error: "weak_password", problems };
+      if (problems.length) return { ok: false, error: "admin.auth.weak", problems };
       admins.setPassword(admin.id, await hashPassword(next));
       return { ok: true };
     },
