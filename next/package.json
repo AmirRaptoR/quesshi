@@ -1,0 +1,19 @@
+{
+  "name": "quesshi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch server/main.ts",
+    "start": "bun server/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun test && tsc --noEmit"
+  },
+  "dependencies": {
+    "elysia": "1.4.30"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
+  }
+}
