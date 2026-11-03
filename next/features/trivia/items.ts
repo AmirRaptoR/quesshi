@@ -10,6 +10,9 @@ export const TRIVIA_KINDS = Object.keys(kinds) as TriviaItem["kind"][];
 
 /** A drawn question, as a game plays it. */
 export interface TriviaItem {
+  /** The question's id, so a player can report it. */
+  id: string;
+  categoryId: string | null;
   prompt: string;
   level: number | null;
   explanation: string | null;

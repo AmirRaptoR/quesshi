@@ -26,6 +26,8 @@ export class DuelGame {
   readonly #resolved: unknown[];
   #state: DuelState;
   #cancelForfeit: () => void;
+  /** What each player answered, by slot, for the review at the end of their run. */
+  readonly #given = new Map<string, Map<number, { value: unknown; correct: boolean }>>();
 
   constructor(deps: Deps) {
     this.#deps = deps;
@@ -53,7 +55,7 @@ export class DuelGame {
     const item = this.#deps.items[result.slot]!;
     return {
       slot: result.slot, total: this.#deps.items.length, servedAt: result.servedAt, limitMs: LIMIT_MS,
-      question: { prompt: item.prompt, kind: item.kind, level: item.level, media: item.media, card: kinds[item.kind].card(item.payload, this.#resolved[result.slot]) },
+      question: { id: item.id, categoryId: item.categoryId, prompt: item.prompt, kind: item.kind, level: item.level, media: item.media, card: kinds[item.kind].card(item.payload, this.#resolved[result.slot]) },
     };
   }
 
@@ -82,10 +84,11 @@ export class DuelGame {
       sessionId: this.#deps.sessionId, playerId: player, slot, value: stored, credit, points: result.points,
       answeredAt: new Date(this.#now()).toISOString(),
     });
+    this.#givenBy(player).set(slot, { value: stored, correct: credit === 1 });
     this.#apply(state);
     const run = state.runs[player]!;
     return {
-      slot, points: result.points, correct: credit === 1, reveal: kind.reveal(item.payload, this.#resolved[slot]), explanation: item.explanation,
+      slot, questionId: item.id, points: result.points, correct: credit === 1, reveal: kind.reveal(item.payload, this.#resolved[slot]), explanation: item.explanation,
       runFinished: run.answers.length >= this.#deps.items.length, runScore: run.answers.reduce((sum, a) => sum + a.points, 0),
     };
   }
@@ -102,7 +105,27 @@ export class DuelGame {
         return { player, answered: run.answers.length, finished: run.answers.length >= this.#deps.items.length, score: visible ? run.answers.reduce((sum, a) => sum + a.points, 0) : null };
       }),
       standings: state.ended?.standings ?? null,
+      review: viewerDone || state.ended !== null ? this.#review() : null,
     };
+  }
+
+  /** Every question with its answer and the answers given so far, in seat order. */
+  #review() {
+    return this.#deps.items.map((item, slot) => ({
+      slot, questionId: item.id, categoryId: item.categoryId, prompt: item.prompt, kind: item.kind, level: item.level, media: item.media, explanation: item.explanation,
+      card: kinds[item.kind].card(item.payload, this.#resolved[slot]),
+      reveal: kinds[item.kind].reveal(item.payload, this.#resolved[slot]),
+      answers: this.#state.players.flatMap((player) => {
+        const given = this.#given.get(player)?.get(slot);
+        return given ? [{ player, ...given }] : [];
+      }),
+    }));
+  }
+
+  #givenBy(player: string) {
+    let given = this.#given.get(player);
+    if (!given) this.#given.set(player, (given = new Map()));
+    return given;
   }
 
   #now() {
@@ -113,6 +136,7 @@ export class DuelGame {
     const known = before.runs[player]?.answers.length ?? 0;
     for (const missed of after.runs[player]?.answers.slice(known) ?? []) {
       this.#deps.sessions.recordAnswer({ sessionId: this.#deps.sessionId, playerId: player, slot: missed.slot, value: null, credit: 0, points: 0, answeredAt: null });
+      this.#givenBy(player).set(missed.slot, { value: null, correct: false });
     }
   }
 

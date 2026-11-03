@@ -200,6 +200,14 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
       return [...rooms.values()].filter((room) => !ended(room)).sort((a, b) => a.createdAt - b.createdAt).map((room) => view(room, null));
     },
 
+    /** The rooms of a format a player sits in, still kept in memory, newest first, as that player sees them. */
+    ofPlayer(player: string, format: string) {
+      return [...rooms.values()]
+        .filter((room) => room.type.format === format && room.participants.includes(player))
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((room) => view(room, player));
+    },
+
     /** An administrator ends a lobby or a running game; false when it is unknown or already over. */
     endByAdmin(id: string): boolean {
       const room = rooms.get(id);

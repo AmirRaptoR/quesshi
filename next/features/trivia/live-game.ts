@@ -15,7 +15,7 @@ export interface LiveView {
   total: number;
   dueAt: number;
   questionEndsAt: number | null;
-  question: { prompt: string; kind: string; level: number | null; media: TriviaItem["media"]; card: unknown } | null;
+  question: { id: string; categoryId: string | null; prompt: string; kind: string; level: number | null; media: TriviaItem["media"]; card: unknown } | null;
   reveal: { answer: unknown; explanation: string | null; answers: { player: string; value: unknown; points: number }[] } | null;
   players: { player: string; status: SeatStatus; score: number; answered: boolean }[];
   standings: Standing[] | null;
@@ -132,7 +132,7 @@ export class LiveGame {
       total: this.#deps.items.length,
       dueAt: state.dueAt,
       questionEndsAt: state.questionEndsAt,
-      question: item ? { prompt: item.prompt, kind: item.kind, level: item.level, media: item.media, card: kinds[item.kind].card(item.payload, resolved) } : null,
+      question: item ? { id: item.id, categoryId: item.categoryId, prompt: item.prompt, kind: item.kind, level: item.level, media: item.media, card: kinds[item.kind].card(item.payload, resolved) } : null,
       reveal: item && state.phase === "reveal"
         ? {
           answer: kinds[item.kind].reveal(item.payload, resolved),
