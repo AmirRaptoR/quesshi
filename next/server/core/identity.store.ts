@@ -35,6 +35,9 @@ export function createIdentityStore(db: Db) {
         [player.id, player.email, player.displayName, player.id, player.lang, player.guest ? 1 : 0, player.createdAt],
       );
     },
+    claimEmail(id: string, email: string): void {
+      db.run("update players set email = ?, guest = 0 where id = ?", [email, id]);
+    },
     updateProfile(id: string, profile: { displayName: string; avatarSeed: string | null; lang: Lang }): void {
       db.run("update players set display_name = ?, avatar_seed = coalesce(?, avatar_seed), lang = ? where id = ?", [profile.displayName, profile.avatarSeed, profile.lang, id]);
     },

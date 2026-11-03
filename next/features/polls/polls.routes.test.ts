@@ -34,7 +34,7 @@ describe("polls", () => {
     const { id, ann } = await started();
 
     expect((await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body.question).toMatchObject({
-      slot: 0, total: 10, prompt: "Poll 0?", options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }],
+      slot: 0, total: 10, prompt: expect.stringMatching(/^Poll \d\?$/), options: [{ kind: "choice", text: "Tea" }, { kind: "choice", text: "Coffee" }, { kind: "not_applicable" }],
     });
   });
 

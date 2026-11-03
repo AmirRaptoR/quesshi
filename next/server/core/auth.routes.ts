@@ -93,6 +93,24 @@ export function authRoutes(auth: Auth, identity: IdentityStore, google: Core["go
       }
       return playerJson(player);
     })
+    .post("/api/me/upgrade", ({ request, body, set }) => {
+      const player = auth.playerFor(sessionToken(request));
+      if (!player) {
+        set.status = 401;
+        return { error: "signed_out" };
+      }
+      const { email, code } = (body ?? {}) as { email?: unknown; code?: unknown };
+      if (typeof email !== "string" || typeof code !== "string") {
+        set.status = 400;
+        return { error: "invalid_request" };
+      }
+      const result = auth.upgradeGuest(player, email, code);
+      if (!result.ok) {
+        set.status = 400;
+        return { error: result.error };
+      }
+      return signedIn(result.player, set);
+    })
     .put("/api/me", ({ request, body, set }) => {
       const player = auth.playerFor(sessionToken(request));
       if (!player) {

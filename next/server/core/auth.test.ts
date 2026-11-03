@@ -175,3 +175,42 @@ describe("sign-in with Google", () => {
     expect(await (await call("POST", "/api/auth/google", { idToken: "good" })).json()).toEqual({ error: "banned" });
   });
 });
+
+describe("guest upgrade", () => {
+  async function guest() {
+    const ctx = setup();
+    const id = crypto.randomUUID();
+    world.db.run("insert into players (id, email, display_name, avatar_seed, lang, guest, created_at) values (?, null, 'Dina', ?, 'en', 1, '2026-11-03T12:00:00Z')", [id, id]);
+    world.db.run("insert into auth_sessions (token_hash, player_id, created_at, expires_at) values (?, ?, '2026-11-03T12:00:00Z', '2026-12-03T12:00:00Z')",
+      [new Bun.CryptoHasher("sha256").update("guest-token").digest("hex"), id]);
+    return { ...ctx, id, cookie: "__Host-quesshi=guest-token" };
+  }
+
+  test("a guest proves an email with a code and keeps their player as a full member", async () => {
+    const { call, requestCode, lastCode, id, cookie } = await guest();
+    await requestCode("dina@example.com");
+
+    const upgraded = await call("POST", "/api/me/upgrade", { email: "dina@example.com", code: lastCode() }, cookie);
+
+    expect(await upgraded.json()).toMatchObject({ id, email: "dina@example.com", displayName: "Dina", guest: false });
+    expect(upgraded.headers.get("set-cookie")).toContain("HttpOnly");
+  });
+
+  test("refuses an address that already has an account, and a wrong code", async () => {
+    const { call, requestCode, lastCode, signIn, cookie } = await guest();
+    await signIn("taken@example.com");
+    await requestCode("taken@example.com");
+
+    expect(await (await call("POST", "/api/me/upgrade", { email: "taken@example.com", code: lastCode() }, cookie)).json()).toEqual({ error: "address_taken" });
+    await requestCode("dina@example.com");
+    expect(await (await call("POST", "/api/me/upgrade", { email: "dina@example.com", code: "999999" === lastCode() ? "000000" : "999999" }, cookie)).json()).toEqual({ error: "wrong" });
+  });
+
+  test("a signed-in member cannot use it to change their email", async () => {
+    const { call, signIn, requestCode, lastCode } = setup();
+    const cookie = await signIn("ann@example.com");
+    await requestCode("other@example.com");
+
+    expect(await (await call("POST", "/api/me/upgrade", { email: "other@example.com", code: lastCode() }, cookie)).json()).toEqual({ error: "not_a_guest" });
+  });
+});
