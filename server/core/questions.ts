@@ -1,3 +1,4 @@
+import type { QuestionSetsStore } from "./question-sets.store";
 import type { QuestionsStore, StoredQuestion } from "./questions.store";
 
 export class NotEnoughQuestions extends Error {}
@@ -43,6 +44,21 @@ export function drawQuestions(store: QuestionsStore, options: DrawOptions): Stor
     if (!question) throw new NotEnoughQuestions(`Not enough approved ${options.lang} questions (got ${picked.length} of ${options.count}).`);
     picked.push(question);
   }
+  return picked;
+}
+
+/**
+ * Draws a game's questions from one question set: at random, without repeats, of the kinds the
+ * format can play. A set holding fewer than asked gives all it has; level and category do not apply.
+ */
+export function drawFromSet(sets: QuestionSetsStore, setId: string, options: { count: number; kinds: readonly string[] }): StoredQuestion[] {
+  const picked: StoredQuestion[] = [];
+  while (picked.length < options.count) {
+    const question = sets.draw(setId, { kinds: options.kinds, exclude: picked.map((q) => q.id) });
+    if (!question) break;
+    picked.push(question);
+  }
+  if (picked.length === 0) throw new NotEnoughQuestions("The question set has no playable questions.");
   return picked;
 }
 

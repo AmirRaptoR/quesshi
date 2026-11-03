@@ -4,7 +4,7 @@ import type { Db } from "./db";
 import type { Lang, Player } from "./identity.store";
 import type { KindRules } from "./kind";
 import type { Mailer } from "./mailer";
-import type { Category } from "./questions.store";
+import type { Category, StoredQuestion } from "./questions.store";
 import type { Rooms } from "./rooms";
 import type { Schedule } from "./schedule";
 
@@ -48,6 +48,15 @@ export interface FeatureContext extends Core {
   rooms: Rooms;
   /** The categories an admin set this feature to offer. */
   categories: FeatureCategories;
+  /** The players' private question sets, which a game may be drawn from instead of categories. */
+  questionSets: FeatureQuestionSets;
+}
+
+export interface FeatureQuestionSets {
+  /** The set when the player owns it, else null. */
+  ownedBy(setId: string, playerId: string): { id: string; lang: Lang } | null;
+  /** A game's questions drawn from the set alone; throws NotEnoughQuestions when it has none of these kinds. */
+  draw(setId: string, count: number, kinds: readonly string[]): StoredQuestion[];
 }
 
 export interface FeatureCategories {

@@ -1,6 +1,7 @@
 import type { FeatureContext } from "../../server/core/feature";
 import { drawQuestions, NotEnoughQuestions } from "../../server/core/questions";
 import type { QuestionsStore, StoredQuestion } from "../../server/core/questions.store";
+import type { Player } from "../../server/core/identity.store";
 import type { GameHandle, RoomType } from "../../server/core/rooms";
 import type { SettingsStore } from "./settings.store";
 import type { SessionsStore } from "../../server/core/sessions.store";
@@ -12,11 +13,13 @@ const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
 const DEFAULT_QUESTIONS = 10;
 const LANGS = ["fa", "en", "nl"];
 
-export interface GameSettings { lang: string; questions: number; categoryIds: string[]; levels: number[] }
+/** With a questionSetId the game draws from that set alone, and the categories and levels do not apply. */
+export interface GameSettings { lang: string; questions: number; categoryIds: string[]; levels: number[]; questionSetId?: string }
 interface Stores { sessions: SessionsStore; questions: QuestionsStore; settings: SettingsStore }
 
 function draw(context: FeatureContext, stores: Stores, settings: GameSettings): StoredQuestion[] | null {
   try {
+    if (settings.questionSetId) return context.questionSets.draw(settings.questionSetId, settings.questions, TRIVIA_KINDS);
     return drawQuestions(stores.questions, {
       lang: settings.lang,
       categoryIds: context.categories.forGame(settings.categoryIds, settings.lang, TRIVIA_KINDS),
@@ -128,11 +131,14 @@ export function duelRoomType(context: FeatureContext, stores: Stores, games: Map
 }
 
 /** Reads game settings from a request, coercing an unknown question count to today's default. */
-export function readSettings(body: Record<string, unknown>): GameSettings | null {
-  const { lang, questions, categoryIds, levels } = body;
+export function readSettings(context: FeatureContext, body: Record<string, unknown>, player: Player): GameSettings | null {
+  const { lang, questions, categoryIds, levels, questionSetId } = body;
   if (typeof lang !== "string" || !LANGS.includes(lang)) return null;
   if (!Array.isArray(categoryIds) || !categoryIds.every((id) => typeof id === "string")) return null;
   if (!Array.isArray(levels) || !levels.every((level) => Number.isInteger(level) && level >= 1 && level <= 5)) return null;
   const count = QUESTION_COUNTS.includes(questions as number) ? (questions as number) : DEFAULT_QUESTIONS;
-  return { lang, questions: count, categoryIds, levels };
+  if (questionSetId === undefined || questionSetId === null) return { lang, questions: count, categoryIds, levels };
+  // Another player's set, or one that does not exist, is refused alike; the set's own language rules.
+  const owned = typeof questionSetId === "string" ? context.questionSets.ownedBy(questionSetId, player.id) : null;
+  return owned ? { lang: owned.lang, questions: count, categoryIds: [], levels: [], questionSetId: owned.id } : null;
 }

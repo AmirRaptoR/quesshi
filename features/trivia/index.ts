@@ -42,7 +42,7 @@ function triviaRoutes(context: FeatureContext) {
       return settings.get();
     })
     .use(lobbyRoutes({
-      context, rooms, type: live, segment: "live", readSettings,
+      context, rooms, type: live, segment: "live", readSettings: (body, player) => readSettings(context, body, player),
       // A live game takes answers on its socket.
       onMessage(roomId, player, { type, slot, answer }) {
         const game = liveGames.get(roomId);
@@ -51,7 +51,7 @@ function triviaRoutes(context: FeatureContext) {
         return result.ok ? { type: "answered", slot, answer: result.answer } : { type: "error", error: result.error };
       },
     }))
-    .use(lobbyRoutes({ context, rooms, type: duel, segment: "duel", readSettings }))
+    .use(lobbyRoutes({ context, rooms, type: duel, segment: "duel", readSettings: (body, player) => readSettings(context, body, player) }))
     .resolve(({ request }) => ({ player: context.playerFor(request.headers.get("cookie")) }))
     .get("/duels", ({ player, set }) => (player ? rooms.ofPlayer(player.id, "async_duel") : fail(set, 401, "signed_out")))
     // One rematch lobby per finished live game, owned by the original owner with the same settings.
