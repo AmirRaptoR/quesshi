@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createSessionsStore } from "../../server/core/sessions.store";
 import { fakeScheduler, fixedRandom } from "../../tests/support/time";
 import { tempWorld } from "../../tests/support/temp";
-import { LiveGame, type LiveView, type TriviaItem } from "./live-game";
+import { broadcastView, LiveGame, type LiveView, type TriviaItem } from "./live-game";
 
 const T0 = 1_000_000;
 const QUESTION_OPENS = T0 + 3_000;
@@ -116,5 +116,27 @@ describe("LiveGame", () => {
     live.leave("cy");
 
     expect(last().phase).toBe("reveal");
+  });
+});
+
+describe("the live view everyone is sent", () => {
+  test("while a question is open, counts who answered instead of listing every player", () => {
+    const { live, scheduler, last } = game(["ann", "bob", "cy"]);
+    scheduler.advanceTo(QUESTION_OPENS + 1_000);
+    live.answer("ann", 0, { index: 2 });
+
+    const short = broadcastView(last());
+
+    expect(short).toMatchObject({ phase: "question", answeredCount: 1, activeCount: 3, question: { prompt: "Capital of Australia?" } });
+    expect(short).not.toHaveProperty("players");
+  });
+
+  test("at the reveal, carries every player's score", () => {
+    const { live, scheduler, last } = game();
+    scheduler.advanceTo(QUESTION_OPENS + 1_000);
+    live.answer("ann", 0, { index: 2 });
+    live.answer("bob", 0, { index: 0 });
+
+    expect(broadcastView(last())).toMatchObject({ phase: "reveal", players: [{ player: "ann" }, { player: "bob" }] });
   });
 });

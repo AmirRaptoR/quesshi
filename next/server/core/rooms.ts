@@ -13,8 +13,11 @@ export interface GameHandle {
   end(): void;
   /** The ending, once the game is over. */
   ended(): { reason: string } | null;
-  /** What one viewer (null: everyone) may see of the game; merged into the room view. */
-  view(viewer: string | null): Record<string, unknown>;
+  /**
+   * What one viewer (null: everyone) may see of the game; merged into the room view. `full` is false
+   * for broadcasts, which go to every phone on every change and so carry only what changes often.
+   */
+  view(viewer: string | null, full: boolean): Record<string, unknown>;
 }
 
 export interface RoomInfo<S> { id: string; code: string; owner: string; participants: readonly string[]; settings: S; createdAt: number }
@@ -47,6 +50,7 @@ interface Room {
   extra: Record<string, unknown>;
   cancelExpiry: () => void;
   forgetting: boolean;
+  flushQueued: boolean;
 }
 
 export type JoinResult = { ok: true; id: string } | { ok: false; error: "not_found" | "full" | "started" };
@@ -65,7 +69,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
   const now = () => context.clock.now().getTime();
 
   const ended = (room: Room) => room.status === "ended" || room.game?.ended() != null;
-  const view = (room: Room, viewer: string | null) => ({
+  const view = (room: Room, viewer: string | null, full: boolean) => ({
     id: room.id,
     format: room.type.format,
     code: room.code,
@@ -75,11 +79,15 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     phase: ended(room) ? "ended" : room.status,
     endedReason: room.endedReason ?? room.game?.ended()?.reason ?? null,
     lobbyEndsAt: room.createdAt + room.type.lobbyLifetimeMs,
-    participants: room.participants.map((id) => {
-      const player = context.player(id);
-      return { id, displayName: player?.displayName ?? "", avatarSeed: player?.avatarSeed ?? id, guest: player?.guest ?? false };
-    }),
-    ...(room.game ? room.game.view(viewer) : {}),
+    // A running game's roster no longer changes much, and with hundreds of phones it would be most
+    // of every broadcast; phones keep the roster from their first full view.
+    ...(full || room.status === "lobby" ? {
+      participants: room.participants.map((id) => {
+        const player = context.player(id);
+        return { id, displayName: player?.displayName ?? "", avatarSeed: player?.avatarSeed ?? id, guest: player?.guest ?? false };
+      }),
+    } : {}),
+    ...(room.game ? room.game.view(viewer, full) : {}),
     ...room.extra,
   });
   const broadcast = (room: Room) => {
@@ -91,7 +99,14 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
         context.schedule(now() + ENDED_ROOM_RETENTION_MS, () => rooms.delete(room.id));
       }
     }
-    context.publish(topic(room.id), { type: "view", view: view(room, null) });
+    // Every change in one turn of the event loop goes out as one message, so a burst of answers in a
+    // big game costs one broadcast instead of one per answer.
+    if (room.flushQueued) return;
+    room.flushQueued = true;
+    setTimeout(() => {
+      room.flushQueued = false;
+      context.publish(topic(room.id), { type: "view", view: view(room, null, false) });
+    }, 0);
   };
 
   const end = (room: Room, reason: string) => {
@@ -120,7 +135,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
     open<S>(type: RoomType<S>, owner: string, settings: S, capacity: number): { id: string; code: string } {
       const room: Room = {
         type: type as RoomType<unknown>, id: crypto.randomUUID(), code: newCode(), owner, capacity, settings, participants: [owner],
-        status: "lobby", endedReason: null, createdAt: now(), game: null, extra: {}, cancelExpiry: () => {}, forgetting: false,
+        status: "lobby", endedReason: null, createdAt: now(), game: null, extra: {}, cancelExpiry: () => {}, forgetting: false, flushQueued: false,
       };
       rooms.set(room.id, room);
       byCode.set(room.code, room);
@@ -133,7 +148,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
 
     view(id: string, format: string, viewer: string | null) {
       const room = find(id, format);
-      return room ? view(room, viewer) : null;
+      return room ? view(room, viewer, true) : null;
     },
 
     idForCode(code: string, format: string): string | null {
@@ -197,7 +212,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
 
     /** Every open lobby and running game, oldest first, as everyone sees them. */
     all() {
-      return [...rooms.values()].filter((room) => !ended(room)).sort((a, b) => a.createdAt - b.createdAt).map((room) => view(room, null));
+      return [...rooms.values()].filter((room) => !ended(room)).sort((a, b) => a.createdAt - b.createdAt).map((room) => view(room, null, false));
     },
 
     /** An administrator ends a lobby or a running game; false when it is unknown or already over. */

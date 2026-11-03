@@ -18,8 +18,22 @@ export interface LiveView {
   question: { prompt: string; kind: string; level: number | null; media: TriviaItem["media"]; card: unknown } | null;
   reveal: { answer: unknown; explanation: string | null; answers: { player: string; value: unknown; points: number }[] } | null;
   players: { player: string; status: SeatStatus; score: number; answered: boolean }[];
+  /** How many players answered the open question, and how many are still in the game. */
+  answeredCount: number;
+  activeCount: number;
   standings: Standing[] | null;
   endedReason: LiveEnding["reason"] | null;
+}
+
+/**
+ * The view sent to every phone on every change. While the countdown runs or a question is open, the
+ * only thing that changes is who answered, so it carries counts instead of every player; the reveal
+ * and the end carry the scores.
+ */
+export function broadcastView(view: LiveView): Omit<LiveView, "players"> & { players?: LiveView["players"] } {
+  if (view.phase !== "countdown" && view.phase !== "question") return view;
+  const { players: _players, ...rest } = view;
+  return rest;
 }
 
 export type AnswerResult = { ok: true; answer: unknown } | { ok: false; error: "malformed_answer" | "not_accepted" };
@@ -144,6 +158,8 @@ export class LiveGame {
         }
         : null,
       players: state.seats.map((seat) => ({ player: seat.player, status: seat.status, score: seat.score, answered: state.phase === "question" && state.answered.includes(seat.player) })),
+      answeredCount: state.phase === "question" ? state.answered.length : 0,
+      activeCount: state.seats.filter((seat) => seat.status === "active").length,
       standings: state.ended?.standings ?? null,
       endedReason: state.ended?.reason ?? null,
     };
