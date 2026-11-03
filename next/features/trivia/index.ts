@@ -50,6 +50,7 @@ function triviaRoutes(context: FeatureContext) {
     }))
     .use(lobbyRoutes({ context, rooms, type: duel, segment: "duel", readSettings }))
     .resolve(({ request }) => ({ player: context.playerFor(request.headers.get("cookie")) }))
+    .get("/duels", ({ player, set }) => (player ? rooms.ofPlayer(player.id, "async_duel") : fail(set, 401, "signed_out")))
     // One rematch lobby per finished live game, owned by the original owner with the same settings.
     .post("/live/:id/rematch", ({ player, params, set }) => {
       if (!player) return fail(set, 401, "signed_out");

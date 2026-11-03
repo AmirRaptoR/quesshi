@@ -8,11 +8,11 @@ const T0 = 1_000_000;
 const QUESTION_OPENS = T0 + 3_000;
 
 const capital: TriviaItem = {
-  prompt: "Capital of Australia?", level: null, explanation: "Canberra was built as a compromise.",
+  id: "q-capital", categoryId: "geo", prompt: "Capital of Australia?", level: null, explanation: "Canberra was built as a compromise.",
   kind: "choice", payload: { options: ["Sydney", "Melbourne", "Canberra", "Perth"], correctIndex: 2 }, media: null,
 };
 const planet: TriviaItem = {
-  prompt: "Largest planet?", level: 3, explanation: null,
+  id: "q-planet", categoryId: null, prompt: "Largest planet?", level: 3, explanation: null,
   kind: "choice", payload: { options: ["Jupiter", "Saturn", "Earth", "Mars"], correctIndex: 0 }, media: null,
 };
 
@@ -40,7 +40,7 @@ describe("LiveGame", () => {
 
     scheduler.advanceTo(QUESTION_OPENS);
 
-    expect(last()).toMatchObject({ phase: "question", slot: 0, total: 2, question: { prompt: "Capital of Australia?", kind: "choice", card: { options: ["Sydney", "Melbourne", "Canberra", "Perth"] } }, reveal: null });
+    expect(last()).toMatchObject({ phase: "question", slot: 0, total: 2, question: { id: "q-capital", categoryId: "geo", prompt: "Capital of Australia?", kind: "choice", card: { options: ["Sydney", "Melbourne", "Canberra", "Perth"] } }, reveal: null });
   });
 
   test("refuses a malformed answer without storing or publishing anything", () => {
