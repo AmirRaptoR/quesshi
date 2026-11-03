@@ -1,8 +1,6 @@
 import { Elysia } from "elysia";
 import { checkFeatures, featureRoutes, type Core, type Feature } from "./core/feature";
-import { runMigrations } from "./core/migrations";
-
-const CORE_MIGRATIONS = new URL("./core/migrations/", import.meta.url);
+import { CORE_MIGRATIONS, runMigrations } from "./core/migrations";
 
 /** Checks the features, migrates the core then each feature, and mounts every feature's routes. */
 export function createApp(core: Core, features: readonly Feature[]) {

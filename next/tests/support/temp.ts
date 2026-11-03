@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Clock } from "../../server/core/clock";
 import { openDatabase, type Db } from "../../server/core/db";
+import { CORE_MIGRATIONS, runMigrations } from "../../server/core/migrations";
 
 /** A temporary directory with a real SQLite file, removed by cleanup(). */
 export function tempWorld() {
@@ -17,6 +18,10 @@ export function tempWorld() {
       mkdirSync(folder, { recursive: true });
       for (const [file, sql] of Object.entries(files)) writeFileSync(path.join(folder, file), sql);
       return pathToFileURL(folder + path.sep);
+    },
+    /** Applies the core's migrations, for tests that use the core tables. */
+    migrateCore(): void {
+      runMigrations(db, [{ owner: "core", directory: CORE_MIGRATIONS }], fixedClock);
     },
     cleanup(): void {
       db.close();

@@ -19,6 +19,9 @@ export interface MigrationResult {
 
 export class MigrationError extends Error {}
 
+/** The core's own migrations, applied before any feature's. */
+export const CORE_MIGRATIONS = new URL("./migrations/", import.meta.url);
+
 /** Applies every missing migration, owner by owner in the given order, files in name order. */
 export function runMigrations(db: Db, sources: readonly MigrationSource[], clock: Clock): MigrationResult {
   const ledger = createMigrationsStore(db);

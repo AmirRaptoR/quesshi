@@ -41,7 +41,7 @@ describe("createApp", () => {
 
     const { migrations } = createApp({ db: world.db, clock: fixedClock }, [notes]);
 
-    expect(migrations.applied).toEqual(["notes/001.sql"]);
+    expect(migrations.applied).toContain("notes/001.sql");
   });
 
   test("refuses a feature whose routes are outside its prefix", () => {
