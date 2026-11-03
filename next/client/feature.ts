@@ -11,6 +11,8 @@ export interface ClientFeature {
   name: string;
   /** Pages by address, lazily loaded so a feature costs nothing until it is opened. */
   routes: readonly { path: string; page: ComponentType<PageProps> }[];
+  /** Where someone holding a game code goes, by the room's format (rooms of every feature share one set of codes). */
+  lobbyPaths?: Readonly<Record<string, (room: { id: string; code: string }) => string>>;
   /** A tab on the play hub (today's Live, Offline and Voting tabs). */
   playTabs?: readonly { id: string; label: string; panel: ComponentType }[];
   /** The admin's payload editor for each of the feature's question kinds, by kind id. */
