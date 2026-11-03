@@ -1,5 +1,8 @@
 # One image per release: the server, the built client and production dependencies on Bun.
 FROM oven/bun:1.4.2 AS build
+# The release, from the date (e.g. 20261103 or 20261103.2); written into the client and the server.
+ARG QUESSHI_VERSION=dev
+ENV QUESSHI_VERSION=$QUESSHI_VERSION
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -7,6 +10,9 @@ COPY . .
 RUN bun run build
 
 FROM oven/bun:1.4.2-slim
+ARG QUESSHI_VERSION=dev
+ENV QUESSHI_VERSION=$QUESSHI_VERSION
+LABEL org.opencontainers.image.version=$QUESSHI_VERSION
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production

@@ -5,24 +5,22 @@ run.
 
 ## Releases
 
-Each release is one image, `ghcr.io/amirraptor/quesshi:<version>`, holding the server, the built
-client and its production dependencies. The version lives in `package.json` (semantic versioning,
-from 1.0.0), shows at the bottom of Settings and in the admin's account menu, and is reported by
-`/api/health`.
+Every merge to `main` is a release. The Release workflow runs the tests, names the release after
+the date (`20261103`, then `20261103.2`, `20261103.3` for later merges that day), publishes one
+image, `ghcr.io/amirraptor/quesshi:<version>`, tags the commit `v<version>`, and deploys it to the
+production host over SSH. The version shows at the bottom of Settings, in the admin's account
+menu, and in `/api/health`.
 
-To release: raise `version` in `package.json`, merge, then push a matching tag
-(`git tag v1.0.1 && git push origin v1.0.1`). The Release workflow checks that the tag matches,
-runs the tests and pushes the image.
+The deploy (`scripts/deploy.sh`) tries the image on a spare port first, switches only when the new
+one reports the expected version, puts the previous container back if the switch fails, and keeps
+the last two images for a rollback. The host keeps `~/quesshi/env` (the settings below) and
+`~/quesshi/data`.
 
-To deploy a release on the production host, keeping its data folder and settings:
+To roll back, or to deploy by hand, run it with an earlier version:
 
 ```sh
-ssh <production host> 'bash -s' -- 1.0.1 < scripts/deploy.sh
+ssh <production host> 'bash -s' -- 20261103 < scripts/deploy.sh
 ```
-
-It tries the image on a spare port first, switches only when the new one reports the expected
-version, and puts the previous container back if the switch fails. To roll back, deploy an older
-version. The host keeps `~/quesshi/env` (the settings below) and `~/quesshi/data`.
 
 ## Build and start from source
 

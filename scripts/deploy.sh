@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploys a released image on the production host, keeping the data folder and settings:
-#   ssh <host> 'bash -s' -- 1.0.0 < scripts/deploy.sh
+#   ssh <host> 'bash -s' -- 20261103 < scripts/deploy.sh
 # A failed start puts the previous container back. To roll back later, deploy an older version.
 set -euo pipefail
 
@@ -47,6 +47,10 @@ fi
 run quesshi "$BIND"
 if healthy "$BIND"; then
   docker rm -f quesshi-previous >/dev/null 2>&1 || true
+  # Keep this release and the one before it for a rollback; older images only take disk.
+  docker images ghcr.io/amirraptor/quesshi --format "{{.Tag}}" | tail -n +3 | while read -r old; do
+    docker rmi "ghcr.io/amirraptor/quesshi:$old" >/dev/null 2>&1 || true
+  done
   echo "Quesshi $VERSION is live."
 else
   docker logs quesshi 2>&1 | tail -20
