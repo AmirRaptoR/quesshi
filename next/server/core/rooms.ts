@@ -220,7 +220,7 @@ export function createRooms(context: Pick<FeatureContext, "clock" | "schedule" |
       return [...rooms.values()]
         .filter((room) => room.type.format === format && room.participants.includes(player))
         .sort((a, b) => b.createdAt - a.createdAt)
-        .map((room) => view(room, player));
+        .map((room) => view(room, player, true));
     },
 
     /** An administrator ends a lobby or a running game; false when it is unknown or already over. */
