@@ -1,11 +1,14 @@
 import { Elysia } from "elysia";
 import type { createAuth } from "./auth";
 import { SESSION_DAYS } from "./auth";
-import type { Lang, Player } from "./identity.store";
+import type { Core } from "./feature";
+import type { IdentityStore, Lang, Player } from "./identity.store";
 
 const COOKIE = "__Host-quesshi";
 const LANGS: readonly Lang[] = ["fa", "en", "nl"];
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+/** Today's twelve avatars. */
+const AVATARS = new Set(Array.from({ length: 12 }, (_, i) => `avatar-${i}`));
 
 type Auth = ReturnType<typeof createAuth>;
 
@@ -25,8 +28,31 @@ export const playerJson = (player: Player) => ({
   id: player.id, email: player.email, displayName: player.displayName, avatarSeed: player.avatarSeed, lang: player.lang, guest: player.guest,
 });
 
-export function authRoutes(auth: Auth, newId: () => string) {
+export function authRoutes(auth: Auth, identity: IdentityStore, google: Core["google"], newId: () => string) {
+  const signedIn = (player: Player, set: { headers: Record<string, unknown> }) => {
+    set.headers["set-cookie"] = sessionCookie(auth.openSession(player), SESSION_DAYS * 24 * 3600);
+    return playerJson(player);
+  };
   return new Elysia()
+    .get("/api/auth/config", () => ({ googleEnabled: Boolean(google), googleClientId: google?.clientId ?? null }))
+    .post("/api/auth/google", async ({ body, set }) => {
+      if (!google) {
+        set.status = 400;
+        return { error: "google_disabled" };
+      }
+      const { idToken, lang: requested } = (body ?? {}) as { idToken?: unknown; lang?: unknown };
+      const verified = typeof idToken === "string" ? await google.verify(idToken) : null;
+      if (!verified) {
+        set.status = 400;
+        return { error: "invalid_token" };
+      }
+      const player = auth.signInWithGoogle(verified.email, verified.name, lang(requested), newId);
+      if (player === "banned") {
+        set.status = 400;
+        return { error: "banned" };
+      }
+      return signedIn(player, set);
+    })
     .post("/api/auth/code", async ({ body, set }) => {
       const { email, lang: requested } = (body ?? {}) as { email?: unknown; lang?: unknown };
       if (typeof email !== "string" || !EMAIL.test(email.trim())) {
@@ -48,8 +74,7 @@ export function authRoutes(auth: Auth, newId: () => string) {
         set.status = 400;
         return { error: result.error };
       }
-      set.headers["set-cookie"] = sessionCookie(auth.openSession(result.player), SESSION_DAYS * 24 * 3600);
-      return playerJson(result.player);
+      return signedIn(result.player, set);
     })
     .post("/api/auth/sign-out", ({ request, set }) => {
       auth.closeSession(sessionToken(request));
@@ -63,5 +88,25 @@ export function authRoutes(auth: Auth, newId: () => string) {
         return { error: "signed_out" };
       }
       return playerJson(player);
+    })
+    .put("/api/me", ({ request, body, set }) => {
+      const player = auth.playerFor(sessionToken(request));
+      if (!player) {
+        set.status = 401;
+        return { error: "signed_out" };
+      }
+      const { displayName, avatarSeed, lang: requested } = (body ?? {}) as { displayName?: unknown; avatarSeed?: unknown; lang?: unknown };
+      const name = typeof displayName === "string" ? displayName.trim() : "";
+      if (name.length < 2 || name.length > 24) {
+        set.status = 400;
+        return { error: "name_length" };
+      }
+      // A missing avatar leaves it as it is.
+      if (avatarSeed !== undefined && avatarSeed !== null && !AVATARS.has(avatarSeed as string)) {
+        set.status = 400;
+        return { error: "bad_avatar" };
+      }
+      identity.updateProfile(player.id, { displayName: name, avatarSeed: (avatarSeed as string | null | undefined) ?? null, lang: lang(requested) });
+      return playerJson(identity.player(player.id)!);
     });
 }

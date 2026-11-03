@@ -12,7 +12,8 @@ export function createApp(core: Core, features: readonly Feature[]) {
     { owner: "core", directory: CORE_MIGRATIONS },
     ...features.flatMap((feature) => (feature.migrations ? [{ owner: feature.name, directory: feature.migrations }] : [])),
   ], core.clock);
-  const auth = createAuth({ identity: createIdentityStore(core.db), clock: core.clock, mailer: core.mailer, secret: core.secret });
+  const identity = createIdentityStore(core.db);
+  const auth = createAuth({ identity, clock: core.clock, mailer: core.mailer, secret: core.secret });
   let server = new Elysia()
     // Every change must come from this site; SameSite cookies plus this check stop cross-site requests.
     .onRequest(({ request, set }) => {
@@ -23,7 +24,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
       }
     })
     .get("/api/health", () => ({ status: "ok" }))
-    .use(authRoutes(auth, () => crypto.randomUUID()));
+    .use(authRoutes(auth, identity, core.google, () => crypto.randomUUID()));
   for (const feature of features) {
     const routes = featureRoutes(feature, core);
     if (routes) server = server.use(routes);

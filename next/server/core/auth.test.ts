@@ -7,12 +7,12 @@ const ORIGIN = "https://quesshi.example.com";
 let world: ReturnType<typeof tempWorld>;
 afterEach(() => world.cleanup());
 
-function setup() {
+function setup(google?: { verify: (token: string) => Promise<{ email: string; name: string | null } | null> }) {
   world = tempWorld();
   let now = Date.parse("2026-11-03T12:00:00Z");
   const clock: Clock = { now: () => new Date(now) };
   const mail: { to: string; text: string }[] = [];
-  const { server } = createApp({ db: world.db, clock, secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } } }, []);
+  const { server } = createApp({ db: world.db, clock, secret: "test-secret", origin: ORIGIN, mailer: { send: async (message) => { mail.push(message); } }, ...(google ? { google: { clientId: "client-1", ...google } } : {}) }, []);
   const call = (method: string, path: string, body?: unknown, cookie?: string, origin = ORIGIN) =>
     server.handle(new Request(`${ORIGIN}${path}`, {
       method,
@@ -126,5 +126,52 @@ describe("the sign-in session", () => {
     const response = await call("POST", "/api/auth/code", { email: "ann@example.com", lang: "en" }, undefined, "https://evil.example.net");
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe("profile", () => {
+  test("a player changes their name, avatar and language", async () => {
+    const { signIn, call } = setup();
+    const cookie = await signIn("ann@example.com");
+
+    const response = await call("PUT", "/api/me", { displayName: "  Annie  ", avatarSeed: "avatar-3", lang: "nl" }, cookie);
+
+    expect(await response.json()).toMatchObject({ displayName: "Annie", avatarSeed: "avatar-3", lang: "nl" });
+  });
+
+  test("refuses a name outside 2 to 24 characters and an unknown avatar", async () => {
+    const { signIn, call } = setup();
+    const cookie = await signIn("ann@example.com");
+
+    expect(await (await call("PUT", "/api/me", { displayName: "A", lang: "en" }, cookie)).json()).toEqual({ error: "name_length" });
+    expect(await (await call("PUT", "/api/me", { displayName: "x".repeat(25), lang: "en" }, cookie)).json()).toEqual({ error: "name_length" });
+    expect(await (await call("PUT", "/api/me", { displayName: "Annie", avatarSeed: "avatar-12", lang: "en" }, cookie)).json()).toEqual({ error: "bad_avatar" });
+  });
+});
+
+describe("sign-in with Google", () => {
+  const google = { verify: async (token: string) => (token === "good" ? { email: "Bo@Example.com", name: "Bo Diddley" } : null) };
+
+  test("a verified Google account signs in the player with that email, named as on Google", async () => {
+    const { call } = setup(google);
+
+    const response = await call("POST", "/api/auth/google", { idToken: "good", lang: "en" });
+
+    expect(await response.json()).toMatchObject({ email: "bo@example.com", displayName: "Bo Diddley" });
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+  });
+
+  test("refuses a token Google does not vouch for, and is off without a client id", async () => {
+    expect(await (await setup(google).call("POST", "/api/auth/google", { idToken: "forged" })).json()).toEqual({ error: "invalid_token" });
+    world.cleanup();
+    expect(await (await setup().call("POST", "/api/auth/google", { idToken: "good" })).json()).toEqual({ error: "google_disabled" });
+  });
+
+  test("a banned player cannot sign in with Google", async () => {
+    const { call } = setup(google);
+    await call("POST", "/api/auth/google", { idToken: "good" });
+    world.db.run("update players set banned_at = '2026-11-03T12:00:00Z'");
+
+    expect(await (await call("POST", "/api/auth/google", { idToken: "good" })).json()).toEqual({ error: "banned" });
   });
 });

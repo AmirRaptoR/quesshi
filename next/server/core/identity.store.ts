@@ -35,6 +35,9 @@ export function createIdentityStore(db: Db) {
         [player.id, player.email, player.displayName, player.id, player.lang, player.guest ? 1 : 0, player.createdAt],
       );
     },
+    updateProfile(id: string, profile: { displayName: string; avatarSeed: string | null; lang: Lang }): void {
+      db.run("update players set display_name = ?, avatar_seed = coalesce(?, avatar_seed), lang = ? where id = ?", [profile.displayName, profile.avatarSeed, profile.lang, id]);
+    },
     saveCode(email: string, codeHash: string, issuedAt: string): void {
       db.run(
         "insert into login_codes (email, code_hash, issued_at, attempts) values (?, ?, ?, 0) on conflict (email) do update set code_hash = excluded.code_hash, issued_at = excluded.issued_at, attempts = 0",

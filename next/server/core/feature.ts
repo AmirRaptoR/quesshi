@@ -12,6 +12,8 @@ export interface Core {
   secret: string;
   /** The site's own origin; changes requested from any other origin are refused. */
   origin: string;
+  /** Google sign-in, when a client id is configured. verify returns the verified email and name. */
+  google?: { clientId: string; verify(idToken: string): Promise<{ email: string; name: string | null } | null> };
 }
 
 /** A self-contained feature: one folder, enabled by being listed in features/index.ts. */

@@ -16,6 +16,12 @@ export function createAuth({ identity, clock, mailer, secret }: Deps) {
   const hashCode = (email: string, code: string) => createHmac("sha256", secret).update(`${email}:${code}`).digest("hex");
   const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
   const now = () => clock.now();
+  const playerFor = (email: string, displayName: string, lang: Lang, newId: () => string): Player => {
+    const existing = identity.playerByEmail(email);
+    if (existing) return existing;
+    identity.createPlayer({ id: newId(), email, displayName, lang, guest: false, createdAt: now().toISOString() });
+    return identity.playerByEmail(email)!;
+  };
 
   return {
     async requestCode(rawEmail: string, lang: Lang): Promise<void> {
@@ -37,13 +43,16 @@ export function createAuth({ identity, clock, mailer, secret }: Deps) {
       const given = Buffer.from(hashCode(email, code), "hex");
       if (!timingSafeEqual(expected, given)) return { ok: false, error: "wrong" };
       identity.deleteCode(email);
-      let player = identity.playerByEmail(email);
-      if (!player) {
-        identity.createPlayer({ id: newId(), email, displayName: email.split("@")[0] || "player", lang, guest: false, createdAt: now().toISOString() });
-        player = identity.playerByEmail(email)!;
-      }
+      const player = playerFor(email, email.split("@")[0] || "player", lang, newId);
       // A ban reads as a wrong code: never confirm that the address has an account.
       return player.banned ? { ok: false, error: "wrong" } : { ok: true, player };
+    },
+
+    /** Signs in the player with a Google-verified address, creating them under their Google name. */
+    signInWithGoogle(rawEmail: string, name: string | null, lang: Lang, newId: () => string): Player | "banned" {
+      const email = normalize(rawEmail);
+      const player = playerFor(email, name?.trim() || email.split("@")[0] || "player", lang, newId);
+      return player.banned ? "banned" : player;
     },
 
     /** Opens a session for the player and returns the token for the cookie. */
