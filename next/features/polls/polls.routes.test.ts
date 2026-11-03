@@ -138,3 +138,27 @@ describe("polls, ended by an administrator", () => {
     expect(app.scheduler.pending()).toBe(1);
   });
 });
+
+describe("polls across a restart", () => {
+  test("a running poll carries on with the answers given so far", async () => {
+    const { id, ann, bob, annId } = await started();
+    await app.call("POST", `/f/polls/poll/${id}/answer`, { slot: 0, option: 1 }, ann);
+
+    await app.restart();
+
+    expect((await app.call("GET", `/f/polls/poll/${id}`, undefined, bob)).body).toMatchObject({ phase: "running", answered: [annId], question: { slot: 0 } });
+    await app.call("POST", `/f/polls/poll/${id}/answer`, { slot: 0, option: 0 }, bob);
+    expect((await app.call("GET", `/f/polls/poll/${id}`, undefined, ann)).body.question.slot).toBe(1);
+  });
+
+  test("an open lobby keeps its code", async () => {
+    app = testApp([polls]);
+    seedPolls();
+    const ann = await app.signIn("ann@example.com");
+    const { id, code } = (await app.call("POST", "/f/polls/poll/lobby", settings, ann)).body;
+
+    await app.restart();
+
+    expect((await app.call("POST", `/f/polls/poll/join/${code}`, undefined, await app.signIn("bob@example.com"))).body).toEqual({ id });
+  });
+});

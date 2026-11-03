@@ -9,6 +9,8 @@ const IDLE_MS = 48 * 3600_000;
 
 export interface PollItem { prompt: string; kind: PollKind; payload: unknown; media: Media | null }
 
+export interface PollSnapshot { players: string[]; items: PollItem[]; state: PollState }
+
 interface Deps {
   sessionId: string;
   players: string[];
@@ -26,11 +28,17 @@ export class PollGame {
   #state: PollState;
   #cancelIdle: () => void = () => {};
 
-  constructor(deps: Deps) {
+  /** A new poll, or, with `saved`, one resumed from its snapshot after a restart. */
+  constructor(deps: Deps, saved?: PollState) {
     this.#deps = deps;
     this.#options = deps.items.map((item) => optionsFor(item.kind, item.payload, deps.players));
-    this.#state = poll.start({ players: deps.players, slots: this.#options.map((o) => ({ options: o.options.length, notApplicable: o.notApplicable })) }, this.#now());
+    this.#state = saved ?? poll.start({ players: deps.players, slots: this.#options.map((o) => ({ options: o.options.length, notApplicable: o.notApplicable })) }, this.#now());
     this.#scheduleIdle();
+  }
+
+  /** Everything needed to resume the poll: its questions, its players and its state. */
+  snapshot(): PollSnapshot {
+    return { players: this.#deps.players, items: this.#deps.items, state: this.#state };
   }
 
   get ended() {

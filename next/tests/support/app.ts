@@ -16,17 +16,21 @@ export const ADMIN_PASSWORD = "Correct horse battery 9";
  */
 export function testApp(features: readonly Feature[], options: { bootstrapAdmin?: Core["bootstrapAdmin"] } = {}) {
   const world = tempWorld();
-  const scheduler = fakeScheduler(T0);
   const mail: { to: string; text: string }[] = [];
-  const { server } = createApp({
-    db: world.db, clock: scheduler.clock, schedule: scheduler.schedule, random: seededRandom(),
-    secret: "test-secret", origin: ORIGIN, mediaDir: world.mediaDir, mailer: { send: async (message) => { mail.push(message); } },
-    ...(options.bootstrapAdmin ? { bootstrapAdmin: options.bootstrapAdmin } : {}),
-  }, features);
+  const boot = (at: number, seed: number) => {
+    const scheduler = fakeScheduler(at);
+    const { server } = createApp({
+      db: world.db, clock: scheduler.clock, schedule: scheduler.schedule, random: seededRandom(seed),
+      secret: "test-secret", origin: ORIGIN, mediaDir: world.mediaDir, mailer: { send: async (message) => { mail.push(message); } },
+      ...(options.bootstrapAdmin ? { bootstrapAdmin: options.bootstrapAdmin } : {}),
+    }, features);
+    return { scheduler, server };
+  };
+  let current = boot(T0, 1);
   const questions = createQuestionsStore(world.db);
 
   const call = async (method: string, path: string, body?: unknown, cookie?: string) => {
-    const response = await server.handle(new Request(`${ORIGIN}${path}`, {
+    const response = await current.server.handle(new Request(`${ORIGIN}${path}`, {
       method,
       headers: { "content-type": "application/json", origin: ORIGIN, ...(cookie ? { cookie } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -38,14 +42,25 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
 
   /** Sends a file as the raw request body, as the admin's import form does. */
   const upload = async (path: string, content: string | Uint8Array<ArrayBuffer>, contentType: string, cookie?: string) => {
-    const response = await server.handle(new Request(`${ORIGIN}${path}`, {
+    const response = await current.server.handle(new Request(`${ORIGIN}${path}`, {
       method: "POST", body: content, headers: { "content-type": contentType, origin: ORIGIN, ...(cookie ? { cookie } : {}) },
     }));
     return { status: response.status, body: await response.json().catch(() => null) };
   };
 
   return {
-    world, scheduler, questions, call, mail, upload,
+    world, questions, call, mail, upload,
+    get scheduler() {
+      return current.scheduler;
+    },
+    /**
+     * Starts a new app on the same database at the current time, as a restart does: the old app's
+     * timers stop with it, and only what the database kept comes back.
+     */
+    async restart() {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      current = boot(current.scheduler.clock.now().getTime(), 2);
+    },
     /** Signs a player in through the emailed-code flow and returns their cookie. */
     async signIn(email: string): Promise<string> {
       await call("POST", "/api/auth/code", { email, lang: "en" });
@@ -73,6 +88,7 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
     },
     /** Starts a real server on a free port; returns a WebSocket opener. */
     listen() {
+      const { server } = current;
       server.listen(0);
       const port = server.server!.port;
       return {

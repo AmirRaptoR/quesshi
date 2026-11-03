@@ -2,11 +2,11 @@ import { Elysia } from "elysia";
 import { defineFeature, type FeatureContext } from "../../server/core/feature";
 import { drawQuestions, NotEnoughQuestions } from "../../server/core/questions";
 import { createQuestionsStore } from "../../server/core/questions.store";
-import type { RoomType } from "../../server/core/rooms";
+import type { GameHandle, RoomType } from "../../server/core/rooms";
 import { fail, lobbyRoutes } from "../../server/core/rooms.routes";
 import { createSessionsStore } from "../../server/core/sessions.store";
 import { POLL_KINDS, pollKinds, type PollKind } from "./options";
-import { PollGame } from "./poll-game";
+import { PollGame, type PollSnapshot } from "./poll-game";
 
 const QUESTION_COUNTS = [10, 20, 30, 40, 50, 100];
 const LANGS = ["fa", "en", "nl"];
@@ -43,14 +43,19 @@ function pollRoutes(context: FeatureContext) {
         throw error;
       }
       sessions.start(room.id, room.participants, drawn.map((q) => q.id));
-      const game = new PollGame({
-        sessionId: room.id, players: [...room.participants], items: drawn.map((q) => ({ prompt: q.prompt, kind: q.kind as PollKind, payload: q.payload, media: q.media ?? null })),
-        clock: context.clock, schedule: context.schedule, sessions, onChange: changed,
-      });
-      games.set(room.id, game);
-      return { ok: true, game: { leave: (player) => game.leave(player), ended: () => game.ended, end: () => game.end(), view: (viewer) => game.view(viewer), snapshot: () => null } };
+      const items = drawn.map((q) => ({ prompt: q.prompt, kind: q.kind as PollKind, payload: q.payload, media: q.media ?? null }));
+      return { ok: true, game: run(room.id, new PollGame({ sessionId: room.id, players: [...room.participants], items, clock: context.clock, schedule: context.schedule, sessions, onChange: changed })) };
+    },
+    resume(room, saved, changed) {
+      const { players, items, state } = saved as PollSnapshot;
+      return run(room.id, new PollGame({ sessionId: room.id, players, items, clock: context.clock, schedule: context.schedule, sessions, onChange: changed }, state));
     },
   };
+  const run = (id: string, game: PollGame): GameHandle => {
+    games.set(id, game);
+    return { leave: (player) => game.leave(player), ended: () => game.ended, end: () => game.end(), view: (viewer) => game.view(viewer), snapshot: () => game.snapshot() };
+  };
+  context.rooms.restore(type);
 
   return new Elysia({ prefix: "/f/polls" })
     .get("/categories", () => context.categories.offered(POLL_KINDS))
