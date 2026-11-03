@@ -140,3 +140,23 @@ describe("the live view everyone is sent", () => {
     expect(broadcastView(last())).toMatchObject({ phase: "reveal", players: [{ player: "ann" }, { player: "bob" }] });
   });
 });
+
+describe("every round's results", () => {
+  test("say for each player whether each closed round scored, missed or is still to come", () => {
+    const { live, scheduler } = game();
+    scheduler.advanceTo(QUESTION_OPENS + 1_000);
+    live.answer("ann", 0, { index: 2 });
+    live.answer("bob", 0, { index: 0 });
+
+    expect(live.results()).toEqual({ ann: [true, null], bob: [false, null] });
+  });
+
+  test("count a player who never answered a closed round as a miss", () => {
+    const { live, scheduler, last } = game();
+    scheduler.advanceTo(QUESTION_OPENS + 1_000);
+    live.answer("ann", 0, { index: 2 });
+    scheduler.advanceTo(last().dueAt);
+
+    expect(live.results().bob).toEqual([false, null]);
+  });
+});

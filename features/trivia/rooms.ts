@@ -80,7 +80,10 @@ export function liveRoomType(context: FeatureContext, stores: Stores, games: Map
         ended: () => (last?.phase === "ended" ? { reason: last.endedReason ?? "completed" } : null),
         end: () => game.end(),
         snapshot: () => game.snapshot(),
-        view: (_viewer, full) => ({ game: full || !last ? last : broadcastView(last) }),
+        // Results go with a full view, and with the ending, which every phone needs once.
+        view: (_viewer, full) => ({
+          game: !last ? last : full || last.phase === "ended" ? { ...last, results: game.results() } : broadcastView(last),
+        }),
       },
     };
   }

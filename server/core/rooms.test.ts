@@ -58,6 +58,15 @@ describe("room broadcasts", () => {
   });
 });
 
+describe("a room's view", () => {
+  test("carries the server's time, so phones can correct their own clock", () => {
+    const { rooms, type } = setUp();
+    const { id } = rooms.open(type, "ann", {}, 4);
+
+    expect(rooms.view(id, "game", "ann")).toMatchObject({ serverTime: Date.parse("2026-11-03T12:00:00Z") });
+  });
+});
+
 describe("rooms across a restart", () => {
   /** A game whose whole state is a counter, saved in its snapshot. */
   function counterType(resumable: boolean): RoomType<{ lang: string }> {

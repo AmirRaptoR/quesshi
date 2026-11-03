@@ -278,3 +278,16 @@ describe("live across a restart", () => {
     expect((await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game).toMatchObject({ phase: "reveal", slot: 0 });
   });
 });
+
+describe("live results for a phone that joins late", () => {
+  test("the full view carries every player's results so far; broadcasts during a question do not", async () => {
+    const { owner, id, code } = await lobby();
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+    await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner);
+    app.scheduler.advanceTo(T0 + 3_000);
+
+    const full = (await app.call("GET", `/f/trivia/live/${id}`, undefined, owner)).body.game;
+
+    expect(Object.values(full.results)).toEqual([Array(10).fill(null), Array(10).fill(null)]);
+  });
+});
