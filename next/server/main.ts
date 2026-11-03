@@ -29,7 +29,9 @@ const google = googleClientId ? {
     return { email: token.email, name: token.name ?? null };
   },
 } : undefined;
-const { server, migrations } = createApp({ db, clock: systemClock, schedule: realSchedule(systemClock), random: Math.random, mailer, secret, origin, mediaDir: path.join(dataDir, "media"), clientDir: path.join(import.meta.dir, "..", "dist", "client"), ...(google ? { google } : {}) }, features);
+const { server, migrations } = createApp({ db, clock: systemClock, schedule: realSchedule(systemClock), random: Math.random, mailer, secret, origin, mediaDir: path.join(dataDir, "media"),
+  // Today's first administrator: created on an empty database; without a password one is generated and logged.
+  bootstrapAdmin: { username: process.env.ADMIN_USERNAME ?? "admin", email: process.env.ADMIN_EMAIL ?? "admin@quesshi.local", password: process.env.ADMIN_PASSWORD || null }, clientDir: path.join(import.meta.dir, "..", "dist", "client"), ...(google ? { google } : {}) }, features);
 
 for (const name of migrations.applied) console.log(`Applied migration ${name}`);
 for (const owner of migrations.orphaned) console.warn(`Tables of removed feature "${owner}" remain in the database`);
