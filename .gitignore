@@ -9,3 +9,6 @@ data/
 .superpowers/
 .serena/
 __pycache__/
+
+# Leftover drafts from the old platform, kept locally.
+docs/platform/

@@ -6,7 +6,6 @@ import { openDatabase } from "./core/db";
 import { realSchedule } from "./core/schedule";
 import { features } from "../features";
 import { mailerFromEnv } from "./smtp";
-import { version } from "../package.json";
 
 const dataDir = process.env.QUESSHI_DATA_DIR ?? path.join(import.meta.dir, "..", "data");
 const port = Number(process.env.PORT ?? 3000);
@@ -30,7 +29,7 @@ const google = googleClientId ? {
     return { email: token.email, name: token.name ?? null };
   },
 } : undefined;
-const { server, migrations } = createApp({ db, clock: systemClock, schedule: realSchedule(systemClock), random: Math.random, mailer, secret, origin, mediaDir: path.join(dataDir, "media"), version,
+const { server, migrations } = createApp({ db, clock: systemClock, schedule: realSchedule(systemClock), random: Math.random, mailer, secret, origin, mediaDir: path.join(dataDir, "media"), version: process.env.QUESSHI_VERSION ?? "dev",
   // Today's first administrator: created on an empty database; without a password one is generated and logged.
   bootstrapAdmin: { username: process.env.ADMIN_USERNAME ?? "admin", email: process.env.ADMIN_EMAIL ?? "admin@quesshi.local", password: process.env.ADMIN_PASSWORD || null }, clientDir: path.join(import.meta.dir, "..", "dist", "client"), ...(google ? { google } : {}) }, features);
 

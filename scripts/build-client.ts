@@ -18,6 +18,8 @@ async function build() {
     sourcemap: watch ? "inline" : "none",
     naming: { entry: "[name]-[hash].[ext]", chunk: "[name]-[hash].[ext]", asset: "[name]-[hash].[ext]" },
     publicPath: "/assets/",
+    // The release, written into the bundle; a build outside a release says "dev".
+    define: { "process.env.QUESSHI_VERSION": JSON.stringify(process.env.QUESSHI_VERSION ?? "dev") },
   });
   if (!result.success) {
     for (const message of result.logs) console.error(message);
