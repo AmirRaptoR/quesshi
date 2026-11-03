@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import type { Player } from "./identity.store";
+import { readSetImport, type KindEntry } from "./question-input";
 import type { QuestionSet, QuestionSetsStore } from "./question-sets.store";
 
 const LANGS = ["fa", "en", "nl"] as const;
@@ -7,7 +8,7 @@ const MAX_NAME = 60;
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
 /** A signed-in member's private question sets; guests and other players' sets are out of reach. */
-export function questionSetRoutes(sets: QuestionSetsStore, playerFor: (cookie: string | null) => Player | null, now: () => Date, newId: () => string) {
+export function questionSetRoutes(sets: QuestionSetsStore, playerFor: (cookie: string | null) => Player | null, now: () => Date, newId: () => string, kinds: ReadonlyMap<string, KindEntry>) {
   return new Elysia({ prefix: "/api/question-sets" })
     .resolve(({ request }) => ({ player: playerFor(request.headers.get("cookie")) }))
     .onBeforeHandle(({ player, set }) => {
@@ -59,6 +60,19 @@ export function questionSetRoutes(sets: QuestionSetsStore, playerFor: (cookie: s
     .get("/:id/questions", ({ player, params, set }) => {
       if (sets.set(params.id)?.ownerId !== player!.id) return notFound(set);
       return sets.questions(params.id);
+    })
+    .post("/:id/import", ({ player, params, body, set }) => {
+      const owned = sets.set(params.id);
+      if (owned?.ownerId !== player!.id) return notFound(set);
+      const pasted = (body as { text?: unknown } | null)?.text;
+      const read = readSetImport(typeof pasted === "string" ? pasted : "", owned.lang, kinds);
+      if (!read.ok) {
+        set.status = read.error === "file_too_large" ? 413 : 400;
+        return { error: read.error };
+      }
+      const { added } = sets.append(owned.id, read.value.questions.map(({ question }) => ({ ...question, id: newId() })), now().toISOString());
+      const full = read.value.questions.slice(added).map(({ row }) => ({ row, reason: "set_full" }));
+      return { accepted: added, rejected: [...read.value.rejected, ...full].sort((a, b) => a.row - b.row) };
     })
     .delete("/:id/questions/:questionId", ({ player, params, set }) => {
       if (sets.set(params.id)?.ownerId !== player!.id || !sets.removeQuestion(params.id, params.questionId)) return notFound(set);

@@ -72,7 +72,7 @@ export function createApp(core: Core, features: readonly Feature[]) {
     .use(userAdminRoutes(adminAuth, identity, core.clock))
     .use(reportRoutes(reports, (cookie) => auth.playerFor(tokenFromCookies(cookie)), core.clock))
     .use(reportAdminRoutes(adminAuth, reports, questions))
-    .use(questionSetRoutes(createQuestionSetsStore(core.db), services.playerFor, () => core.clock.now(), newId))
+    .use(questionSetRoutes(createQuestionSetsStore(core.db), services.playerFor, () => core.clock.now(), newId, new Map(features.flatMap((feature) => Object.entries(feature.kinds ?? {}).map(([kind, rules]) => [kind, { feature: feature.name, rules }] as const)))))
     .use(roomCodeRoutes(context.rooms))
     .use(roomAdminRoutes(adminAuth, context.rooms))
     .use(dashboardRoutes(adminAuth, core.db, context.rooms))
