@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { T0, testApp } from "../../tests/support/app";
+import { MIN_APPROVED_QUESTIONS_PER_LANGUAGE } from "../../server/core/questions.store";
 import trivia from ".";
 
 let app: ReturnType<typeof testApp>;
@@ -234,6 +235,33 @@ describe("trivia categories", () => {
     await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
 
     expect((await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner)).body).toEqual({ error: "not_enough_questions" });
+  });
+
+  test("a category below the minimum for the language is not offered, not picked and not chosen at random", async () => {
+    app = testApp([trivia]);
+    app.seedChoiceQuestions(MIN_APPROVED_QUESTIONS_PER_LANGUAGE - 1);
+    const owner = await app.signIn("owner@example.com");
+    const bo = await app.signIn("bo@example.com");
+
+    const listed = (await app.call("GET", "/f/trivia/categories", undefined, owner)).body;
+    expect(listed.map((c: { id: string; langs: string[] }) => [c.id, c.langs])).toEqual([["geo", []]]);
+
+    for (const categoryIds of [["geo"], []]) {
+      const { id, code } = (await app.call("POST", "/f/trivia/live/lobby", { ...settings, categoryIds }, owner)).body;
+      await app.call("POST", `/f/trivia/live/join/${code}`, undefined, bo);
+      expect((await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner)).body).toEqual({ error: "not_enough_questions" });
+    }
+  });
+
+  test("a category with exactly the minimum for the language is offered and starts", async () => {
+    app = testApp([trivia]);
+    app.seedChoiceQuestions(MIN_APPROVED_QUESTIONS_PER_LANGUAGE);
+    const owner = await app.signIn("owner@example.com");
+    const { id, code } = (await app.call("POST", "/f/trivia/live/lobby", { ...settings, categoryIds: ["geo"] }, owner)).body;
+    await app.call("POST", `/f/trivia/live/join/${code}`, undefined, await app.signIn("bo@example.com"));
+
+    expect((await app.call("GET", "/f/trivia/categories", undefined, owner)).body.map((c: { langs: string[] }) => c.langs)).toEqual([["en"]]);
+    expect((await app.call("POST", `/f/trivia/live/${id}/start`, undefined, owner)).body).not.toEqual({ error: "not_enough_questions" });
   });
 });
 

@@ -1,6 +1,6 @@
 import { createApp } from "../../server/app";
 import type { Core, Feature } from "../../server/core/feature";
-import { createQuestionsStore } from "../../server/core/questions.store";
+import { createQuestionsStore, MIN_APPROVED_QUESTIONS_PER_LANGUAGE } from "../../server/core/questions.store";
 import { tempWorld } from "./temp";
 import { fakeScheduler, seededRandom } from "./time";
 
@@ -75,8 +75,8 @@ export function testApp(features: readonly Feature[], options: { bootstrapAdmin?
       );
       return (await call("POST", "/api/admin/auth/login", { username: "root", password: ADMIN_PASSWORD })).cookie!;
     },
-    /** Adds approved English choice questions at every level in a category every feature offers. */
-    seedChoiceQuestions(count = 10) {
+    /** Adds approved English choice questions (by default as many as a category needs to be offered) at every level in a category every feature offers. */
+    seedChoiceQuestions(count = MIN_APPROVED_QUESTIONS_PER_LANGUAGE) {
       questions.addCategory({ id: "geo", nameFa: "جغرافیا", nameEn: "Geography", nameNl: "Aardrijkskunde", icon: "🌍", color: "#2a9d8f" });
       for (const feature of features) questions.setOffers(feature.name, ["geo"]);
       for (let i = 0; i < count; i++) {
