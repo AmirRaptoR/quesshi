@@ -25,6 +25,8 @@ services:
     build:
       context: ../..
       dockerfile: platform/Dockerfile
+      args:
+        PREVIOUS_IMAGE: ${PREVIOUS_IMAGE:-build}
     image: quesshi-platform:${RELEASE_TAG:-local}
     restart: unless-stopped
     depends_on:

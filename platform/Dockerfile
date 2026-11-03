@@ -1,5 +1,7 @@
 # Build the isolated platform host. The server project references the Blazor client, so publishing
 # it produces the client shell and static-web-assets manifest served by the one host process.
+# The previous release's image, set at deploy time. Defaults to this build, which makes a first deploy a no-op.
+ARG PREVIOUS_IMAGE=build
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -7,6 +9,9 @@ COPY platform/ platform/
 RUN dotnet restore platform/src/Quesshi.Server/Quesshi.Server.csproj
 RUN dotnet publish platform/src/Quesshi.Server/Quesshi.Server.csproj \
     --configuration Release --output /app --no-restore
+
+# Its client files stay available beside this build's so a tab left open across a release can load them.
+FROM ${PREVIOUS_IMAGE} AS previous
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
@@ -17,6 +22,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app .
+COPY --from=previous /app/wwwroot /app/wwwroot-previous
 COPY platform/entrypoint.sh /app/entrypoint.sh
 
 RUN mkdir -p /app/wwwroot/media \
