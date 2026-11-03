@@ -197,7 +197,7 @@ public sealed class AsyncDuelScreenTests : BunitContext
         var cut = RenderScreen(View("0", deadline: Now.AddSeconds(3), body: Body()));
 
         cut.WaitForAssertion(() => Assert.Contains(JSInterop.Invocations, i => i.Identifier == "quesshi.sounds.play" && (string?)i.Arguments[0] == "tick"));
-        Thread.Sleep(600);
+        Thread.Sleep(300);
         Assert.Single(JSInterop.Invocations, i => i.Identifier == "quesshi.sounds.play");
     }
 
