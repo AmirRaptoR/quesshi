@@ -6,6 +6,7 @@ import { AVATAR_SEEDS, isAvatarSeed } from "../avatar";
 import { AvatarPicker } from "../components/avatar-picker";
 import { GuestUpgrade } from "../components/guest-upgrade";
 import { Icon } from "../components/icon";
+import { Version } from "../components/version";
 import { LANGS, type Lang } from "../i18n";
 import { usePlayer } from "../player";
 import { soundsOn, SOUNDS_KEY, storedSounds } from "../sounds";
@@ -112,6 +113,7 @@ function SettingsForm({ me }: { me: Me }) {
       {me.guest && <GuestUpgrade />}
 
       <button class="btn btn--ghost btn--block" style="margin-top:1.4rem" onClick={() => void signOut()}>{t.t("profile.signOut")}</button>
+      <p style="text-align:center;margin-top:1.2rem;font-size:var(--step--1)"><Version /></p>
     </div>
   );
 }

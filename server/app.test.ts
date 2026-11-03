@@ -10,13 +10,13 @@ afterEach(() => world.cleanup());
 const request = (path: string) => new Request(`http://localhost${path}`);
 
 describe("createApp", () => {
-  test("serves the health route", async () => {
+  test("serves the health route, with the running version", async () => {
     world = tempWorld();
-    const { server } = createApp(world.core(), []);
+    const { server } = createApp({ ...world.core(), version: "1.2.3" }, []);
 
     const response = await server.handle(request("/api/health"));
 
-    expect(await response.json()).toEqual({ status: "ok" });
+    expect(await response.json()).toEqual({ status: "ok", version: "1.2.3" });
   });
 
   test("mounts a listed feature's routes under its prefix", async () => {
