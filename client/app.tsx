@@ -1,7 +1,7 @@
 import { createContext, type ComponentChildren } from "preact";
 import { useCallback, useContext, useEffect, useState } from "preact/hooks";
 import { ApiError, get, post } from "./api";
-import { roomOf, signInWithTelegram, telegramLaunch } from "./telegram";
+import { startUp, telegramLaunch } from "./telegram";
 import { LANGS, loadTranslator, type Lang, type Translator } from "./i18n";
 
 /** The signed-in player, as /api/me returns them. */
@@ -80,13 +80,7 @@ export function AppProvider({ children }: { children: ComponentChildren }) {
 
   /** Inside Telegram, nobody signed in is signed in with their Telegram account, and a room link opens joining that room. */
   const start = async () => {
-    const signedIn = await load();
-    const launch = telegramLaunch();
-    if (launch) {
-      const room = roomOf(launch.startParam);
-      if (room && location.pathname === "/") history.replaceState(null, "", `/join/${room}`);
-      if (!signedIn && await signInWithTelegram(launch, post)) await load();
-    }
+    await startUp({ load, post, launch: telegramLaunch(), pathname: location.pathname, replace: (path) => history.replaceState(null, "", path) });
     setChecked(true);
   };
 

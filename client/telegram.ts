@@ -31,3 +31,25 @@ export async function signInWithTelegram(launch: TelegramLaunch, post: (path: st
     return false;
   }
 }
+
+/** What the start-up needs from the page, injected so the decision can be tested. */
+export interface StartUp {
+  /** Reads who is signed in; true when somebody is. */
+  load(): Promise<boolean>;
+  post(path: string, body: unknown): Promise<unknown>;
+  launch: TelegramLaunch | null;
+  pathname: string;
+  replace(path: string): void;
+}
+
+/**
+ * Inside Telegram, nobody signed in is signed in with their Telegram account, and a room link on
+ * the home path opens joining that room. Outside Telegram it only reads who is signed in.
+ */
+export async function startUp({ load, post, launch, pathname, replace }: StartUp): Promise<void> {
+  const signedIn = await load();
+  if (!launch) return;
+  const room = roomOf(launch.startParam);
+  if (room && pathname === "/") replace(`/join/${room}`);
+  if (!signedIn && await signInWithTelegram(launch, post)) await load();
+}
