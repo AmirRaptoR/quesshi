@@ -19,6 +19,26 @@ jobs:
       - run: bun run check
       - run: bun run build
 
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-traces-and-screenshots
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 15

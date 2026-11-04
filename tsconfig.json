@@ -16,5 +16,5 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact"
   },
-  "include": ["server", "client", "features", "tests", "scripts"]
+  "include": ["server", "client", "features", "tests", "scripts", "e2e", "playwright.config.ts"]
 }

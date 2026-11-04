@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "bun --watch server/main.ts",
     "start": "bun server/main.ts",
-    "test": "bun test",
+    "test": "bun test ./server ./client ./features ./tests",
     "typecheck": "tsc --noEmit",
-    "check": "bun test && tsc --noEmit",
+    "check": "bun run test && tsc --noEmit",
+    "e2e": "bun scripts/e2e.ts",
     "build": "bun scripts/build-client.ts",
     "dev:client": "bun scripts/build-client.ts --watch"
   },
@@ -19,6 +20,7 @@
     "preact-render-to-string": "6.8.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/bun": "1.4.4",
     "@types/nodemailer": "8.0.2",
     "typescript": "7.0.2"

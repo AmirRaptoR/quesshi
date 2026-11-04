@@ -12,3 +12,5 @@ __pycache__/
 
 # Leftover drafts from the old platform, kept locally.
 docs/platform/
+test-results/
+playwright-report/

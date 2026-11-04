@@ -14,6 +14,7 @@ model and [docs/operations.md](docs/operations.md) for running it.
 | --- | --- |
 | Tests and typecheck (what CI runs) | `bun run check` |
 | One test file | `bun test server/core/rooms.test.ts` |
+| Browser tests (first `bunx playwright install chromium`) | `bun run e2e` (one spec: `bun run e2e e2e/phone.spec.ts`) |
 | Build the client | `bun run build` |
 | Run locally | `QUESSHI_SECRET=dev bun run dev` |
 | Live load test | `bun scripts/bench-live.ts [players] [games] [questions]` |
@@ -52,6 +53,7 @@ model and [docs/operations.md](docs/operations.md) for running it.
 - Write the test first. Test behaviour through the public interface; never reach private members.
 - Fake only the edges: the clock and scheduler (`tests/support/time.ts`), mail, Google.
 - No slow tests: no real waiting or sleeps; a timeout is only a hang guard.
+- Browser tests live in `e2e/<name>.spec.ts` (Playwright, 360×740, Persian and English). Import `test` from `e2e/fixtures.ts`: it gives each test its own seeded app and helpers to sign in. **Every new screen gets a phone-width check there** (`expectNoHorizontalOverflow` in `e2e/overflow.ts`). They are not part of `bun run check`; CI's `e2e` job and the Release workflow run them.
 - Ask whether a test adds value before adding it; one assertion per listed case.
 
 ## Style
