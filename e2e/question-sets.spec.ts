@@ -28,6 +28,7 @@ test("a player makes a question set from the template's example answer and hosts
   // The set now holds the imported question.
   await page.locator("a.btn--ghost[href^='/sets/']").click();
   await expect(page).toHaveURL(/\/sets\/[^/]+$/);
+  const setId = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.locator(".topbar__title")).toHaveText(SET_NAME);
   await expect(page.getByText("Mars").first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -41,4 +42,6 @@ test("a player makes a question set from the template's example answer and hosts
   await page.locator(".home-primary").click();
   await expect(page).toHaveURL(/\/lobby\/[A-Z0-9]+$/);
   await expect(page.locator(".lobby-code")).toBeVisible();
+  // The room was made with the chosen set, not an ordinary game.
+  await expect(page.locator(".lobby-settings-line")).toHaveAttribute("href", new RegExp(`[?&]qs=${setId}(&|$)`));
 });
