@@ -68,7 +68,9 @@ export function Profile() {
         )}
       </div>
 
-      {toast && <div class="notice notice--good enter" style="margin-top:.8rem">{toast}</div>}
+      {!me.guest && <a class="btn btn--ghost btn--block" style="margin-top:1rem" href="/sets">{t.t("profile.sets")}</a>}
+
+      {toast &&<div class="notice notice--good enter" style="margin-top:.8rem">{toast}</div>}
       {error && <div class="notice notice--bad enter" style="margin-top:.8rem">{error}</div>}
     </div>
   );

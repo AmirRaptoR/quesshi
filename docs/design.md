@@ -299,7 +299,8 @@ Where the first release differs from the plan above, the code is the reference:
 
 *Answered 2026-11-03:* the first release is the core, sign-in, admin for questions and
 categories, and the `trivia` and `polls` features (section 7); stats, leaderboard, friends,
-matchmaking, reports, AI generation, packs and flashcards come later. Kinds and formats belong to
+matchmaking, reports, AI generation, private question sets (which replace "packs") and flashcards
+come later. Kinds and formats belong to
 features.
 
 1. ~~**Data from today's application.**~~ *Answered 2026-11-03:* questions, categories, content
