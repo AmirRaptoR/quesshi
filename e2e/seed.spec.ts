@@ -6,7 +6,7 @@ test("a fresh app holds the seeded categories, approved questions and the one ad
   await quesshi.signInAdmin(context);
   const headers = { origin: app.origin };
 
-  const me = await context.request.get(`${app.origin}/api/admin/me`, { headers });
+  const me = await context.request.get(`${app.origin}/api/admin/auth/me`, { headers });
   expect(me.ok()).toBe(true);
   expect(((await me.json()) as { username: string }).username).toBe(ADMIN.username);
 
