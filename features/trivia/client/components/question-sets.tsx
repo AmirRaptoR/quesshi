@@ -93,3 +93,45 @@ export function SetQuestions({ t, questions, onDelete }: { t: Translator; questi
     </ul>
   );
 }
+
+/** Rename and delete for one set; the rename field and the delete confirmation open in place. */
+export function SetActions(props: {
+  t: Translator;
+  renaming: string | null;
+  confirming: boolean;
+  onStartRename(): void;
+  onRenameInput(name: string): void;
+  onRename(): void;
+  onCancelRename(): void;
+  onAskDelete(): void;
+  onDelete(): void;
+  onCancelDelete(): void;
+}) {
+  const { t, renaming } = props;
+  return (
+    <>
+      {renaming === null ? (
+        <div class="row" style="flex-wrap:wrap;gap:.5rem">
+          <button type="button" class="btn btn--ghost btn--sm" onClick={props.onStartRename}>{t.t("sets.rename")}</button>
+          <button type="button" class="btn btn--ghost btn--sm" onClick={props.onAskDelete}>{t.t("sets.delete")}</button>
+        </div>
+      ) : (
+        <div class="row" style="flex-wrap:wrap;gap:.5rem">
+          <input class="input" style="flex:1 1 10rem;min-width:0" dir="auto" maxLength={60} aria-label={t.t("sets.name")} value={renaming}
+            onInput={(e) => props.onRenameInput(e.currentTarget.value)} />
+          <button type="button" class="btn btn--sm" disabled={!renaming.trim()} onClick={props.onRename}>{t.t("profile.save")}</button>
+          <button type="button" class="btn btn--ghost btn--sm" onClick={props.onCancelRename}>{t.t("admin.cancel")}</button>
+        </div>
+      )}
+      {props.confirming && (
+        <div class="notice notice--bad enter" style="margin-top:.8rem">
+          <p style="overflow-wrap:anywhere">{t.t("sets.deleteConfirm")}</p>
+          <div class="row" style="gap:.5rem">
+            <button type="button" class="btn btn--danger btn--sm" onClick={props.onDelete}>{t.t("sets.delete")}</button>
+            <button type="button" class="btn btn--ghost btn--sm" onClick={props.onCancelDelete}>{t.t("admin.cancel")}</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

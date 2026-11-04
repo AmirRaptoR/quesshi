@@ -4,7 +4,7 @@ import path from "node:path";
 import { render } from "preact-render-to-string";
 import { translator, type Lang } from "../../../../client/i18n";
 import { canCreateSets, clampCount, copyText, MAX_SETS, reasonKey } from "../logic/question-sets";
-import { ImportReport, PromptPanel, SetList, SetQuestions } from "./question-sets";
+import { ImportReport, PromptPanel, SetActions, SetList, SetQuestions } from "./question-sets";
 
 const table = (lang: Lang) => JSON.parse(readFileSync(path.join(import.meta.dir, `../../../../client/public/i18n/${lang}.json`), "utf8")) as Record<string, string>;
 const en = translator("en", table("en"));
@@ -78,6 +78,48 @@ describe("a set's questions", () => {
     expect(html).toContain("Which planet is red?");
     expect(html).toContain("Mars");
     expect(html).toContain('aria-label="Delete question"');
+  });
+});
+
+describe("renaming and deleting a set", () => {
+  const noop = () => {};
+  const handlers = { onStartRename: noop, onRenameInput: noop, onRename: noop, onCancelRename: noop, onAskDelete: noop, onDelete: noop, onCancelDelete: noop };
+  const base = { t: en, renaming: null, confirming: false, ...handlers };
+  const buttonsOf = (tree: any): any[] => {
+    const found: any[] = [];
+    const walk = (node: any) => {
+      if (node?.type === "button") found.push(node);
+      [node?.props?.children].flat(5).forEach((child) => child && typeof child === "object" && walk(child));
+    };
+    walk(tree);
+    return found;
+  };
+
+  test("offers Rename and Delete, and the delete confirmation only once asked", () => {
+    const html = render(<SetActions {...base} />);
+    expect(html).toContain(">Rename<");
+    expect(html).toContain(">Delete set<");
+    expect(html).not.toContain(en.t("sets.deleteConfirm"));
+    expect(render(<SetActions {...base} confirming />)).toContain(en.t("sets.deleteConfirm"));
+  });
+
+  test("renaming shows the name in an editable field with Save", () => {
+    const html = render(<SetActions {...base} renaming="Space" />);
+    expect(html).toContain('value="Space"');
+    expect(html).toContain(">Save<");
+  });
+
+  test("Save is disabled for a blank name", () => {
+    expect(render(<SetActions {...base} renaming="  " />)).toMatch(/<button[^>]*disabled[^>]*>Save</);
+  });
+
+  test("Rename starts a rename, Save submits it, and the confirmed Delete deletes the set", () => {
+    const calls: string[] = [];
+    const on = { ...base, onStartRename: () => calls.push("start"), onAskDelete: () => calls.push("ask"), onRename: () => calls.push("rename"), onDelete: () => calls.push("delete") };
+    buttonsOf(SetActions(on)).forEach((b) => b.props.onClick());
+    buttonsOf(SetActions({ ...on, renaming: "Space" })).filter((b) => b.props.disabled === false).forEach((b) => b.props.onClick());
+    buttonsOf(SetActions({ ...on, confirming: true })).filter((b) => b.props.class.includes("danger")).forEach((b) => b.props.onClick());
+    expect(calls).toEqual(["start", "ask", "rename", "delete"]);
   });
 });
 
