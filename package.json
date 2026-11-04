@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "bun --watch server/main.ts",
     "start": "bun server/main.ts",
-    "test": "bun test ./server ./client ./features ./tests",
+    "test": "bun test ./server ./client ./features ./tests ./scripts",
     "typecheck": "tsc --noEmit",
     "check": "bun run test && tsc --noEmit",
     "e2e": "bun scripts/e2e.ts",
